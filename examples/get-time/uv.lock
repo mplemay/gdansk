@@ -212,10 +212,6 @@ dev = [
     { name = "rumdl", specifier = ">=0.1.21" },
     { name = "ty", specifier = ">=0.0.17" },
 ]
-examples = [
-    { name = "starlette", specifier = ">=0.52.1" },
-    { name = "uvicorn", specifier = ">=0.40.0" },
-]
 
 [[package]]
 name = "get-time"

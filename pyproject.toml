@@ -32,10 +32,6 @@ dev = [
     "rumdl>=0.1.21",
     "ty>=0.0.17",
 ]
-examples = [
-    "starlette>=0.52.1",
-    "uvicorn>=0.40.0",
-]
 
 [tool.uv.build-backend]
 source-exclude = ["**/__tests__/**"]
