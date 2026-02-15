@@ -48,7 +48,7 @@ class Amber:
         if self._bundle_future is None and self._ui_paths:
             self._bundle_future = asyncio.ensure_future(bundle(self._ui_paths, dev=self._dev, output=self._output))
 
-    def tool(self, *, ui: Path | None = None, **kwargs: Any) -> Callable:  # noqa: ANN401
+    def tool(self, *, ui: Path | None = None, **kwargs: Any) -> Callable:
         if ui is None:
             return self._mcp.tool(**kwargs)
 
@@ -70,7 +70,7 @@ class Amber:
             @self._mcp.resource(resource_uri, mime_type="text/html;profile=mcp-app")
             async def _resource_handler() -> str:
                 self._ensure_bundling()
-                while not js_path.exists():  # noqa: ASYNC110
+                while not js_path.exists():
                     await asyncio.sleep(0.05)
                 js = js_path.read_text(encoding="utf-8")
                 return _HTML_TEMPLATE.format(js=js)
