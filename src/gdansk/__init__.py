@@ -1,5 +1,3 @@
-from gdansk._core import hello_from_bin
+from gdansk._core import bundle
 
-
-def main() -> None:
-    print(hello_from_bin())
+__all__ = ["bundle"]

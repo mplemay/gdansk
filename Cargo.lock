@@ -638,6 +638,7 @@ dependencies = [
  "pyo3",
  "pyo3-async-runtimes",
  "rolldown",
+ "rolldown_dev",
  "tokio",
 ]
 
@@ -2056,6 +2057,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rolldown-file-id"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77087e8de5a5a65ea239ed3a5b182dfc27807a8fca4d0c2c0e693eb528b322b7"
+dependencies = [
+ "windows-sys",
+]
+
+[[package]]
 name = "rolldown-notify"
 version = "10.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2072,6 +2082,19 @@ dependencies = [
  "tracing",
  "walkdir",
  "windows-sys",
+]
+
+[[package]]
+name = "rolldown-notify-debouncer-full"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7141151f3eb9d0869f9fff744ce728f45a0db9c54fe3178e4f60c3c682035083"
+dependencies = [
+ "rolldown-file-id",
+ "rolldown-notify",
+ "rolldown-notify-types",
+ "tracing",
+ "walkdir",
 ]
 
 [[package]]
@@ -2109,6 +2132,27 @@ dependencies = [
  "string_wizard",
  "sugar_path",
  "tokio",
+]
+
+[[package]]
+name = "rolldown_dev"
+version = "0.1.0"
+source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.4#179df1630a47f8de71ba4450131b364fc9ca4f20"
+dependencies = [
+ "anyhow",
+ "arcstr",
+ "futures",
+ "rolldown",
+ "rolldown-notify",
+ "rolldown_common",
+ "rolldown_dev_common",
+ "rolldown_error",
+ "rolldown_fs_watcher",
+ "rolldown_utils",
+ "rustc-hash",
+ "sugar_path",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -2194,6 +2238,16 @@ source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.4#179df1630
 dependencies = [
  "oxc_resolver",
  "vfs",
+]
+
+[[package]]
+name = "rolldown_fs_watcher"
+version = "0.1.0"
+source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.4#179df1630a47f8de71ba4450131b364fc9ca4f20"
+dependencies = [
+ "rolldown-notify",
+ "rolldown-notify-debouncer-full",
+ "rolldown_error",
 ]
 
 [[package]]

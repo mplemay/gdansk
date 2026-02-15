@@ -9,9 +9,6 @@ authors = [
 requires-python = ">=3.11,<3.15"
 dependencies = []
 
-[project.scripts]
-gdansk = "gdansk:main"
-
 [tool.maturin]
 module-name = "gdansk._core"
 python-packages = ["gdansk"]
