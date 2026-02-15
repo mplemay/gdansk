@@ -20,7 +20,7 @@ _HTML_TEMPLATE = """\
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="color-scheme" content="light dark">
-</head>
+{css}</head>
 <body>
 <div id="root"></div>
 <script type="module">
@@ -59,6 +59,7 @@ class Amber:
 
         self._ui_paths.add(ui)
         js_path = self._output / ui.with_suffix(".js")
+        css_path = self._output / ui.with_suffix(".css")
         resource_uri = f"ui://{_slugify(self._mcp.name)}/{ui.stem}"
 
         meta = kwargs.pop("meta", None) or {}
@@ -73,7 +74,12 @@ class Amber:
                 while not js_path.exists():
                     await asyncio.sleep(0.05)
                 js = js_path.read_text(encoding="utf-8")
-                return _HTML_TEMPLATE.format(js=js)
+                if css_path.exists():
+                    css_content = css_path.read_text(encoding="utf-8")
+                    css = f"<style>\n{css_content}\n</style>\n"
+                else:
+                    css = ""
+                return _HTML_TEMPLATE.format(js=js, css=css)
 
             return fn
 

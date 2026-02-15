@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from gdansk import bundle
+from gdansk.amber import _HTML_TEMPLATE
 
 
 def _path_exists(path: Path) -> bool:
@@ -112,3 +113,37 @@ async def test_bundle_dev_mode_can_run_in_background_and_cancel(
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
+
+
+@pytest.mark.asyncio
+async def test_bundle_outputs_css_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "page.css").write_text("body { color: red; }\n", encoding="utf-8")
+    (tmp_path / "page.tsx").write_text(
+        'import "./page.css";\nexport const page = 1;\n',
+        encoding="utf-8",
+    )
+
+    await bundle({Path("page.tsx")})
+
+    assert (tmp_path / ".gdansk" / "page.js").exists()
+    assert (tmp_path / ".gdansk" / "page.css").exists()
+
+
+def test_html_template_inlines_css() -> None:
+    js = "console.log('hello');"
+    css_content = "body { color: red; }"
+    css = f"<style>\n{css_content}\n</style>\n"
+    html = _HTML_TEMPLATE.format(js=js, css=css)
+
+    assert "<style>" in html
+    assert css_content in html
+    assert js in html
+
+
+def test_html_template_no_css() -> None:
+    js = "console.log('hello');"
+    html = _HTML_TEMPLATE.format(js=js, css="")
+
+    assert "<style>" not in html
+    assert js in html

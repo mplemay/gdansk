@@ -242,6 +242,7 @@ mod _core {
                 cwd: Some(cwd),
                 dir: Some(output_dir_string),
                 entry_filenames: Some("[name].js".to_string().into()),
+                css_entry_filenames: Some("[name].css".to_string().into()),
                 ..Default::default()
             };
 
