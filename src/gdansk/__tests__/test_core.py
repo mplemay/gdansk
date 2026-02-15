@@ -6,6 +6,10 @@ import pytest
 from gdansk import bundle
 
 
+def _path_exists(path: Path) -> bool:
+    return path.exists()
+
+
 async def _wait_for_file_or_task_failure(
     task: "asyncio.Task[None]",
     output_path: Path,
@@ -15,16 +19,16 @@ async def _wait_for_file_or_task_failure(
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout_seconds
     while loop.time() < deadline:
-        if output_path.exists():
+        if _path_exists(output_path):
             return
         if task.done():
             exc = task.exception()
-            raise AssertionError(
-                f"bundle task ended before emitting {output_path}: {exc!r}",
-            )
+            message = f"bundle task ended before emitting {output_path}: {exc!r}"
+            pytest.fail(message)
         await asyncio.sleep(0.05)
 
-    raise AssertionError(f"timed out waiting for bundle output: {output_path}")
+    message = f"timed out waiting for bundle output: {output_path}"
+    pytest.fail(message)
 
 
 @pytest.mark.asyncio
