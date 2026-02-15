@@ -12,5 +12,5 @@ crate-type = ["cdylib"]
 # "extension-module" tells pyo3 we want to build an extension module (skips linking against libpython.so)
 # "abi3-py311" tells pyo3 (and maturin) to build using the stable ABI with minimum Python version 3.11
 pyo3 = { version = "0.28", features = ["extension-module", "abi3-py311"] }
-pyo3-async-runtimes = { version = "0.28", features = ["attributes", "tokio-runtime"] }
+pyo3-async-runtimes = { version = "0.28", features = ["tokio-runtime"] }
 tokio = "1.40"
