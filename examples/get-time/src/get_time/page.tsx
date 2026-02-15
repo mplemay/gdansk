@@ -14,9 +14,6 @@ function GetTimeApp() {
     appInfo: { name: "Get Time", version: "1.0.0" },
     capabilities: {},
     onAppCreated: (app) => {
-      app.ontoolresult = async (result) => {
-        setToolResult(result);
-      };
       app.onerror = console.error;
     },
   });
@@ -49,7 +46,10 @@ function GetTimeApp() {
             {serverTime ?? "No time fetched yet."}
           </span>
         </p>
-        <button onClick={() => app.callServerTool({ name: "get-time" })}>
+        <button onClick={async () => {
+          const result = await app.callServerTool({ name: "get-time" });
+          setToolResult(result);
+        }}>
           Get Server Time
         </button>
       </div>
