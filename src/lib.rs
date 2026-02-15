@@ -1,27 +1,59 @@
 use std::{
     collections::{HashMap, HashSet},
+    fmt,
     path::{Path, PathBuf},
-    sync::Arc,
 };
 
+#[cfg(not(test))]
 use pyo3::{
     exceptions::{PyRuntimeError, PyValueError},
     prelude::*,
 };
+#[cfg(not(test))]
 use rolldown::{Bundler, BundlerOptions, ExperimentalOptions, InputItem};
+#[cfg(not(test))]
 use rolldown_dev::{BundlerConfig, DevEngine, DevOptions, RebuildStrategy};
+#[cfg(not(test))]
+use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 struct NormalizedInput {
     import: String,
     name: String,
+    #[cfg_attr(not(test), allow(dead_code))]
     output_relative_js: PathBuf,
 }
 
+#[derive(Debug, Clone)]
+enum BundleError {
+    Validation(String),
+    Runtime(String),
+}
+
+impl BundleError {
+    fn validation(message: impl Into<String>) -> Self {
+        Self::Validation(message.into())
+    }
+
+    fn runtime(message: impl Into<String>) -> Self {
+        Self::Runtime(message.into())
+    }
+}
+
+impl fmt::Display for BundleError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Validation(message) | Self::Runtime(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+#[cfg(not(test))]
 struct DevEngineCloseGuard {
     engine: Option<Arc<DevEngine>>,
 }
 
+#[cfg(not(test))]
 impl DevEngineCloseGuard {
     fn new(engine: Arc<DevEngine>) -> Self {
         Self {
@@ -34,6 +66,7 @@ impl DevEngineCloseGuard {
     }
 }
 
+#[cfg(not(test))]
 impl Drop for DevEngineCloseGuard {
     fn drop(&mut self) {
         let Some(engine) = self.engine.take() else {
@@ -50,20 +83,21 @@ impl Drop for DevEngineCloseGuard {
     }
 }
 
+#[cfg(not(test))]
 fn py_runtime_error(context: &str, err: impl std::fmt::Display) -> PyErr {
     PyRuntimeError::new_err(format!("{context}: {err}"))
 }
 
-fn path_to_utf8(path: &Path, label: &str) -> PyResult<String> {
+fn path_to_utf8(path: &Path, label: &str) -> Result<String, BundleError> {
     path.to_str().map(ToOwned::to_owned).ok_or_else(|| {
-        PyValueError::new_err(format!(
+        BundleError::validation(format!(
             "{label} must be UTF-8 encodable: {}",
             path.display()
         ))
     })
 }
 
-fn normalize_relative_for_rolldown(path: &Path, label: &str) -> PyResult<String> {
+fn normalize_relative_for_rolldown(path: &Path, label: &str) -> Result<String, BundleError> {
     let utf8 = path_to_utf8(path, label)?;
     Ok(utf8.replace('\\', "/"))
 }
@@ -78,15 +112,15 @@ fn normalize_inputs(
     paths: HashSet<PathBuf>,
     cwd: &Path,
     output_dir: &Path,
-) -> PyResult<Vec<NormalizedInput>> {
+) -> Result<Vec<NormalizedInput>, BundleError> {
     if paths.is_empty() {
-        return Err(PyValueError::new_err(
+        return Err(BundleError::validation(
             "`paths` must not be empty; expected at least one .tsx or .jsx file",
         ));
     }
 
     let cwd_canonical = cwd.canonicalize().map_err(|err| {
-        PyRuntimeError::new_err(format!(
+        BundleError::runtime(format!(
             "failed to resolve current working directory {}: {err}",
             cwd.display()
         ))
@@ -103,35 +137,35 @@ fn normalize_inputs(
         };
 
         if !absolute_candidate.exists() {
-            return Err(PyValueError::new_err(format!(
+            return Err(BundleError::validation(format!(
                 "input path does not exist: {}",
                 provided_path.display()
             )));
         }
 
         if !absolute_candidate.is_file() {
-            return Err(PyValueError::new_err(format!(
+            return Err(BundleError::validation(format!(
                 "input path is not a file: {}",
                 provided_path.display()
             )));
         }
 
         if !is_supported_jsx_extension(&absolute_candidate) {
-            return Err(PyValueError::new_err(format!(
+            return Err(BundleError::validation(format!(
                 "input path must end in .tsx or .jsx: {}",
                 provided_path.display()
             )));
         }
 
         let canonical_input = absolute_candidate.canonicalize().map_err(|err| {
-            PyRuntimeError::new_err(format!(
+            BundleError::runtime(format!(
                 "failed to canonicalize input {}: {err}",
                 provided_path.display()
             ))
         })?;
 
         let relative_path = canonical_input.strip_prefix(&cwd_canonical).map_err(|_| {
-            PyValueError::new_err(format!(
+            BundleError::validation(format!(
                 "input path must resolve inside cwd {}: {}",
                 cwd_canonical.display(),
                 canonical_input.display()
@@ -147,7 +181,7 @@ fn normalize_inputs(
         if let Some(previous_input) =
             output_collisions.insert(output_relative_js.clone(), import.clone())
         {
-            return Err(PyValueError::new_err(format!(
+            return Err(BundleError::validation(format!(
                 "multiple inputs map to the same output {}: {} and {}",
                 output_dir.join(&output_relative_js).display(),
                 previous_input,
@@ -166,6 +200,15 @@ fn normalize_inputs(
     Ok(normalized_inputs)
 }
 
+#[cfg(not(test))]
+fn map_bundle_error(err: BundleError) -> PyErr {
+    match err {
+        BundleError::Validation(message) => PyValueError::new_err(message),
+        BundleError::Runtime(message) => PyRuntimeError::new_err(message),
+    }
+}
+
+#[cfg(not(test))]
 #[pymodule]
 mod _core {
     use super::*;
@@ -181,9 +224,11 @@ mod _core {
             let cwd = std::env::current_dir()
                 .map_err(|err| py_runtime_error("failed to read current working directory", err))?;
             let output_dir = output.unwrap_or_else(|| PathBuf::from(".gdansk"));
-            let output_dir_string = path_to_utf8(&output_dir, "output path")?;
+            let output_dir_string =
+                path_to_utf8(&output_dir, "output path").map_err(map_bundle_error)?;
 
-            let normalized = normalize_inputs(paths, &cwd, &output_dir)?;
+            let normalized =
+                normalize_inputs(paths, &cwd, &output_dir).map_err(map_bundle_error)?;
             let input_items = normalized
                 .into_iter()
                 .map(|item| InputItem {

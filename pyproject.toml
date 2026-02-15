@@ -23,6 +23,8 @@ build-backend = "maturin"
 
 [dependency-groups]
 dev = [
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
     "ruff>=0.15.1",
     "rumdl>=0.1.21",
     "ty>=0.0.17",
