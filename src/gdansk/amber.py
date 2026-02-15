@@ -51,9 +51,9 @@ class Amber:
 
     def tool(
         self,
+        ui: Path,
         name: str | None = None,
         *,
-        ui: Path | None = None,
         title: str | None = None,
         description: str | None = None,
         annotations: ToolAnnotations | None = None,
@@ -70,9 +70,6 @@ class Amber:
             "meta": meta,
             "structured_output": structured_output,
         }
-
-        if ui is None:
-            return self._mcp.tool(**mcp_kwargs)
 
         # Resolve ui path relative to the caller's file, then make cwd-relative
         if not ui.is_absolute():
