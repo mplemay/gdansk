@@ -102,7 +102,7 @@ async def test_bundle_dev_mode_can_run_in_background_and_cancel(
     monkeypatch.chdir(tmp_path)
     (tmp_path / "main.tsx").write_text("export const value = 1;\n", encoding="utf-8")
 
-    task = asyncio.create_task(bundle({Path("main.tsx")}, dev=True))
+    task = asyncio.ensure_future(bundle({Path("main.tsx")}, dev=True))
     await _wait_for_file_or_task_failure(task, tmp_path / ".gdansk" / "main.js")
 
     task.cancel()
