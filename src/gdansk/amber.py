@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from mcp.server.fastmcp import FastMCP
+    from mcp.types import AnyFunction, Icon, ToolAnnotations
 
 _HTML_TEMPLATE = """\
 <!DOCTYPE html>
@@ -48,9 +49,30 @@ class Amber:
         if self._bundle_future is None and self._ui_paths:
             self._bundle_future = asyncio.ensure_future(bundle(self._ui_paths, dev=self._dev, output=self._output))
 
-    def tool(self, *, ui: Path | None = None, **kwargs: Any) -> Callable:
+    def tool(
+        self,
+        name: str | None = None,
+        *,
+        ui: Path | None = None,
+        title: str | None = None,
+        description: str | None = None,
+        annotations: ToolAnnotations | None = None,
+        icons: list[Icon] | None = None,
+        meta: dict[str, Any] | None = None,
+        structured_output: bool | None = None,
+    ) -> Callable[[AnyFunction], AnyFunction]:
+        mcp_kwargs: dict[str, Any] = {
+            "name": name,
+            "title": title,
+            "description": description,
+            "annotations": annotations,
+            "icons": icons,
+            "meta": meta,
+            "structured_output": structured_output,
+        }
+
         if ui is None:
-            return self._mcp.tool(**kwargs)
+            return self._mcp.tool(**mcp_kwargs)
 
         # Resolve ui path relative to the caller's file, then make cwd-relative
         if not ui.is_absolute():
@@ -62,11 +84,12 @@ class Amber:
         css_path = self._output / ui.with_suffix(".css")
         resource_uri = f"ui://{_slugify(self._mcp.name)}/{ui.stem}"
 
-        meta = kwargs.pop("meta", None) or {}
-        meta["ui"] = {"resourceUri": resource_uri}
+        resolved_meta = meta or {}
+        resolved_meta["ui"] = {"resourceUri": resource_uri}
+        mcp_kwargs["meta"] = resolved_meta
 
-        def decorator(fn: Callable) -> Callable:
-            self._mcp.tool(meta=meta, **kwargs)(fn)
+        def decorator(fn: AnyFunction) -> AnyFunction:
+            self._mcp.tool(**mcp_kwargs)(fn)
 
             @self._mcp.resource(resource_uri, mime_type="text/html;profile=mcp-app")
             async def _resource_handler() -> str:
