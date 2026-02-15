@@ -32,6 +32,10 @@ dev = [
     "rumdl>=0.1.21",
     "ty>=0.0.17",
 ]
+examples = [
+    "starlette>=0.52.1",
+    "uvicorn>=0.40.0",
+]
 
 [tool.uv.build-backend]
 source-exclude = ["**/__tests__/**"]
@@ -50,6 +54,12 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = [
     "F401", # imported but unused (common in __init__.py to re-export symbols)
+]
+"examples/**/*" = [
+    "INP001",  # implicit namespace package (examples don't need __init__.py)
+    "PLR0913", # too many arguments in function definition
+    "T201",    # print statements (fine in example scripts)
+    "S104",    # binding to all interfaces (fine in example scripts)
 ]
 "**/__tests__/**/*" = [
     "ANN001",  # missing type annotation for function argument
