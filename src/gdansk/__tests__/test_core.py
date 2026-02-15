@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from gdansk import bundle
+from gdansk._core import bundle
 from gdansk.amber import _HTML_TEMPLATE
 
 
