@@ -54,7 +54,6 @@ class Amber:
             return
 
         loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)  # Required for Windows ProactorEventLoop
 
         async def _bundle() -> None:
             await bundle(paths=self._paths, dev=dev, output=self.output, cwd=self.views)
@@ -71,26 +70,15 @@ class Amber:
         try:
             yield
         finally:
-            # Cancel task if still running
             if not task.done():
                 loop.call_soon_threadsafe(task.cancel)
-
-            # Stop event loop if running in thread
             if thread is not None:
                 loop.call_soon_threadsafe(loop.stop)
-                thread.join(timeout=5.0)
-
-            # Complete or cancel the task to release tokio resources
+                thread.join()
             if not task.done():
                 with suppress(asyncio.CancelledError):
                     loop.run_until_complete(task)
-
-            # Shutdown async generators (Windows requirement)
-            loop.run_until_complete(loop.shutdown_asyncgens())
-
-            # Close and clear event loop
             loop.close()
-            asyncio.set_event_loop(None)
 
     def tool(  # noqa: PLR0913
         self,
