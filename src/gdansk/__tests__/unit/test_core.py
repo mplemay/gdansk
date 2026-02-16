@@ -4,11 +4,15 @@ import asyncio
 import dataclasses
 import threading
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
 
 from gdansk.core import Amber
+
+if TYPE_CHECKING:
+    from gdansk.metadata import Metadata
 
 # --- __post_init__ + paths property ---
 
@@ -47,7 +51,7 @@ def test_paths_empty_initially(amber):
 
 def test_frozen_dataclass(amber):
     with pytest.raises(dataclasses.FrozenInstanceError):
-        amber.mcp = None  # type: ignore[misc]
+        amber.mcp = None
 
 
 # --- __call__ context manager ---
@@ -417,6 +421,89 @@ async def test_resource_raises_friendly_error_when_js_missing(amber, mock_mcp, t
         await handler()
 
 
+@pytest.mark.asyncio
+async def test_constructor_metadata_applies_to_tool_resource(mock_mcp, views_dir, tmp_path):
+    amber = Amber(
+        mcp=mock_mcp,
+        views=views_dir,
+        metadata={
+            "title": "Root App",
+            "description": "Shared description",
+            "openGraph": {"title": "Shared OG"},
+        },
+    )
+    object.__setattr__(amber, "output", tmp_path / "output")
+
+    @amber.tool(Path("simple.tsx"))
+    def my_tool():
+        pass
+
+    js_path = amber.output / "simple.js"
+    js_path.parent.mkdir(parents=True, exist_ok=True)
+    js_path.write_text("console.log('hello');", encoding="utf-8")
+
+    handler = mock_mcp._resource_calls[-1]["handler"]
+    html = await handler()
+
+    assert "<title>Root App</title>" in html
+    assert '<meta name="description" content="Shared description" />' in html
+    assert '<meta property="og:title" content="Shared OG" />' in html
+
+
+@pytest.mark.asyncio
+async def test_tool_metadata_overrides_constructor_metadata_shallowly(mock_mcp, views_dir, tmp_path):
+    amber = Amber(
+        mcp=mock_mcp,
+        views=views_dir,
+        metadata={
+            "description": "Shared description",
+            "openGraph": {"title": "Shared OG", "description": "Shared OG description"},
+        },
+    )
+    object.__setattr__(amber, "output", tmp_path / "output")
+
+    @amber.tool(
+        Path("simple.tsx"),
+        metadata={"title": "Tool Title", "openGraph": {"title": "Tool OG"}},
+    )
+    def my_tool():
+        pass
+
+    js_path = amber.output / "simple.js"
+    js_path.parent.mkdir(parents=True, exist_ok=True)
+    js_path.write_text("console.log('hello');", encoding="utf-8")
+
+    handler = mock_mcp._resource_calls[-1]["handler"]
+    html = await handler()
+
+    assert "<title>Tool Title</title>" in html
+    assert '<meta name="description" content="Shared description" />' in html
+    assert '<meta property="og:title" content="Tool OG" />' in html
+    assert "Shared OG description" not in html
+
+
+@pytest.mark.asyncio
+async def test_metadata_merge_is_non_mutating(mock_mcp, views_dir, tmp_path):
+    base_metadata: Metadata = {"openGraph": {"title": "Shared OG"}}
+    tool_metadata: Metadata = {"openGraph": {"title": "Tool OG"}}
+    amber = Amber(mcp=mock_mcp, views=views_dir, metadata=base_metadata)
+    object.__setattr__(amber, "output", tmp_path / "output")
+
+    @amber.tool(Path("simple.tsx"), metadata=tool_metadata)
+    def my_tool():
+        pass
+
+    js_path = amber.output / "simple.js"
+    js_path.parent.mkdir(parents=True, exist_ok=True)
+    js_path.write_text("console.log('hello');", encoding="utf-8")
+
+    handler = mock_mcp._resource_calls[-1]["handler"]
+    await handler()
+
+    assert base_metadata == {"openGraph": {"title": "Shared OG"}}
+    assert tool_metadata == {"openGraph": {"title": "Tool OG"}}
+
+
 def test_returns_original_function(amber):
     def my_tool():
         return "original"
@@ -432,7 +519,7 @@ def test_returns_original_function(amber):
 def test_inlines_css():
     js = "console.log('hello');"
     css = "body { color: red; }"
-    html = Amber._env.render_template(Amber._template, js=js, css=css)
+    html = Amber._env.render_template(Amber._template, js=js, css=css, metadata=None)
 
     assert "<style>" in html
     assert css in html
@@ -441,7 +528,7 @@ def test_inlines_css():
 
 def test_no_css():
     js = "console.log('hello');"
-    html = Amber._env.render_template(Amber._template, js=js, css="")
+    html = Amber._env.render_template(Amber._template, js=js, css="", metadata=None)
 
     assert "<style>" not in html
     assert js in html
@@ -449,16 +536,18 @@ def test_no_css():
 
 def test_html_structure():
     js = "console.log('test');"
-    html = Amber._env.render_template(Amber._template, js=js, css="")
+    html = Amber._env.render_template(Amber._template, js=js, css="", metadata=None)
 
     assert html.startswith("<!DOCTYPE html>")
+    assert '<meta charset="utf-8" />' in html
+    assert '<meta name="viewport" content="width=device-width, initial-scale=1" />' in html
     assert '<div id="root"></div>' in html
     assert '<script type="module">' in html
 
 
 def test_js_injected_in_script_tag():
     js = "const x = 42;"
-    html = Amber._env.render_template(Amber._template, js=js, css="")
+    html = Amber._env.render_template(Amber._template, js=js, css="", metadata=None)
 
     script_start = html.index('<script type="module">')
     script_end = html.index("</script>")

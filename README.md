@@ -182,9 +182,10 @@ from gdansk import Amber
 from pathlib import Path
 
 amber = Amber(
-    mcp=mcp,              # Your FastMCP server instance
-    views=Path("./views"), # Directory containing TSX/JSX files
-    output=Path(".gdansk") # Optional: bundled output directory (default: .gdansk)
+    mcp=mcp,                           # Your FastMCP server instance
+    views=Path("./views"),             # Directory containing TSX/JSX files
+    output=Path(".gdansk"),            # Optional: bundled output directory (default: .gdansk)
+    metadata={"title": "My MCP App"},  # Optional: static HTML metadata for all tools
 )
 ```
 
@@ -207,7 +208,8 @@ The `@amber.tool()` decorator registers both a tool and its UI resource:
     description="...",        # Optional: tool description
     annotations=...,          # Optional: MCP tool annotations
     icons=[...],              # Optional: tool icons
-    meta={...},               # Optional: additional metadata
+    meta={...},               # Optional: MCP tool metadata (ui resource metadata is added automatically)
+    metadata={...},           # Optional: HTML metadata for this tool only
     structured_output=False,  # Optional: structured output support
 )
 def my_tool(arg: str) -> list[TextContent]:

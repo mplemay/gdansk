@@ -8,9 +8,10 @@ from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from anyio import Path as APath
-from minijinja import Environment
 
 from gdansk._core import bundle
+from gdansk.metadata import Metadata, merge_metadata
+from gdansk.render import ENV
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator
@@ -22,14 +23,13 @@ if TYPE_CHECKING:
 @dataclass(frozen=True, slots=True)
 class Amber:
     _paths: set[Path] = field(default_factory=set, init=False)
-    _template: ClassVar[str] = "template.html.j2"
-    _env: ClassVar[Environment] = Environment(
-        templates={_template: (Path(__file__).parent / _template).read_text(encoding="utf-8")},
-    )
+    _template: ClassVar[str] = "template.html"
+    _env: ClassVar = ENV
 
     mcp: FastMCP
     views: Path
     output: Path = field(default=Path(".gdansk"), kw_only=True)
+    metadata: Metadata | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
         if not self.views.is_dir():
@@ -90,6 +90,7 @@ class Amber:
         annotations: ToolAnnotations | None = None,
         icons: list[Icon] | None = None,
         meta: dict[str, Any] | None = None,
+        metadata: Metadata | None = None,
         structured_output: bool | None = None,
     ) -> Callable[[AnyFunction], AnyFunction]:
         if ui.suffix not in {".tsx", ".jsx"}:
@@ -139,7 +140,12 @@ class Amber:
                     else await path.read_text(encoding="utf-8")
                 )
 
-                return Amber._env.render_template(Amber._template, js=js, css=css)
+                return Amber._env.render_template(
+                    Amber._template,
+                    js=js,
+                    css=css,
+                    metadata=merge_metadata(self.metadata, metadata),
+                )
 
             return fn
 

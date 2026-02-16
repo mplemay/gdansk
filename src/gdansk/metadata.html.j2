@@ -1,0 +1,414 @@
+{% macro stringify(value) -%}
+{%- if value is boolean -%}
+{{- 'true' if value else 'false' -}}
+{%- else -%}
+{{- value -}}
+{%- endif -%}
+{%- endmacro %}
+
+{% macro emit_meta_name(name, content, media=None) -%}
+<meta name="{{ name }}" content="{{ stringify(content) }}"{% if media %} media="{{ media }}"{% endif %} />
+{%- endmacro %}
+
+{% macro emit_meta_property(property_name, content) -%}
+<meta property="{{ property_name }}" content="{{ stringify(content) }}" />
+{%- endmacro %}
+
+{% macro emit_link(rel, href, hreflang=None, media=None, mime_type=None, sizes=None, title=None) -%}
+<link rel="{{ rel }}" href="{{ href }}"{% if hreflang %} hreflang="{{ hreflang }}"{% endif %}{% if media %} media="{{ media }}"{% endif %}{% if mime_type %} type="{{ mime_type }}"{% endif %}{% if sizes %} sizes="{{ sizes }}"{% endif %}{% if title %} title="{{ title }}"{% endif %} />
+{%- endmacro %}
+
+{% macro each(value) -%}
+{%- if value is not none -%}
+{%- if value is sequence and value is not string -%}
+{%- for item in value -%}
+{{- caller(item) -}}
+{%- endfor -%}
+{%- else -%}
+{{- caller(value) -}}
+{%- endif -%}
+{%- endif -%}
+{%- endmacro %}
+
+{% macro serialize_robots(directives) -%}
+{%- set tokens = [] -%}
+{%- if directives.index is defined -%}
+{%- set tokens = tokens + ['index' if directives.index else 'noindex'] -%}
+{%- endif -%}
+{%- if directives.follow is defined -%}
+{%- set tokens = tokens + ['follow' if directives.follow else 'nofollow'] -%}
+{%- endif -%}
+{%- if directives.nocache -%}
+{%- set tokens = tokens + ['nocache'] -%}
+{%- endif -%}
+{%- if directives.noarchive -%}
+{%- set tokens = tokens + ['noarchive'] -%}
+{%- endif -%}
+{%- if directives.nosnippet -%}
+{%- set tokens = tokens + ['nosnippet'] -%}
+{%- endif -%}
+{%- if directives.noimageindex -%}
+{%- set tokens = tokens + ['noimageindex'] -%}
+{%- endif -%}
+{%- if directives.maxVideoPreview is defined -%}
+{%- set tokens = tokens + ['max-video-preview:' ~ directives.maxVideoPreview] -%}
+{%- endif -%}
+{%- if directives.maxImagePreview is defined -%}
+{%- set tokens = tokens + ['max-image-preview:' ~ directives.maxImagePreview] -%}
+{%- endif -%}
+{%- if directives.maxSnippet is defined -%}
+{%- set tokens = tokens + ['max-snippet:' ~ directives.maxSnippet] -%}
+{%- endif -%}
+{%- if directives.unavailableAfter is defined -%}
+{%- set tokens = tokens + ['unavailable_after:' ~ directives.unavailableAfter] -%}
+{%- endif -%}
+{{- tokens|join(', ') -}}
+{%- endmacro %}
+
+{% if metadata %}
+{% set metadata_base = none %}
+{% if metadata.metadataBase is defined %}{% set metadata_base = metadata.metadataBase %}{% endif %}
+
+{% if metadata.title is defined %}
+{% if metadata.title is string %}
+<title>{{ metadata.title }}</title>
+{% elif metadata.title.absolute is defined %}
+<title>{{ metadata.title.absolute }}</title>
+{% elif metadata.title.default is defined %}
+<title>{{ metadata.title.default }}</title>
+{% endif %}
+{% endif %}
+
+{% if metadata.description is defined %}{{ emit_meta_name('description', metadata.description) }}
+{% endif %}{% if metadata.applicationName is defined %}{{ emit_meta_name('application-name', metadata.applicationName) }}
+{% endif %}{% if metadata.generator is defined %}{{ emit_meta_name('generator', metadata.generator) }}
+{% endif %}{% if metadata.referrer is defined %}{{ emit_meta_name('referrer', metadata.referrer) }}
+{% endif %}{% if metadata.colorScheme is defined %}{{ emit_meta_name('color-scheme', metadata.colorScheme) }}
+{% endif %}{% if metadata.creator is defined %}{{ emit_meta_name('creator', metadata.creator) }}
+{% endif %}{% if metadata.publisher is defined %}{{ emit_meta_name('publisher', metadata.publisher) }}
+{% endif %}{% if metadata.abstract is defined %}{{ emit_meta_name('abstract', metadata.abstract) }}
+{% endif %}{% if metadata.category is defined %}{{ emit_meta_name('category', metadata.category) }}
+{% endif %}{% if metadata.classification is defined %}{{ emit_meta_name('classification', metadata.classification) }}
+{% endif %}
+
+{% if metadata.keywords is defined %}
+{% if metadata.keywords is string %}
+{{ emit_meta_name('keywords', metadata.keywords) }}
+{% else %}
+{{ emit_meta_name('keywords', metadata.keywords|join(', ')) }}
+{% endif %}
+{% endif %}
+
+{% if metadata.viewport is defined %}
+{% if metadata.viewport is string %}
+{{ emit_meta_name('viewport', metadata.viewport) }}
+{% else %}
+{% set parts = [] %}
+{% if metadata.viewport.width is defined %}{% set parts = parts + ['width=' ~ metadata.viewport.width] %}{% endif %}
+{% if metadata.viewport.height is defined %}{% set parts = parts + ['height=' ~ metadata.viewport.height] %}{% endif %}
+{% if metadata.viewport.initialScale is defined %}{% set parts = parts + ['initial-scale=' ~ metadata.viewport.initialScale] %}{% endif %}
+{% if metadata.viewport.minimumScale is defined %}{% set parts = parts + ['minimum-scale=' ~ metadata.viewport.minimumScale] %}{% endif %}
+{% if metadata.viewport.maximumScale is defined %}{% set parts = parts + ['maximum-scale=' ~ metadata.viewport.maximumScale] %}{% endif %}
+{% if metadata.viewport.userScalable is defined %}{% set parts = parts + ['user-scalable=' ~ ('yes' if metadata.viewport.userScalable else 'no')] %}{% endif %}
+{% if metadata.viewport.viewportFit is defined %}{% set parts = parts + ['viewport-fit=' ~ metadata.viewport.viewportFit] %}{% endif %}
+{% if metadata.viewport.interactiveWidget is defined %}{% set parts = parts + ['interactive-widget=' ~ metadata.viewport.interactiveWidget] %}{% endif %}
+{% if parts %}
+{{ emit_meta_name('viewport', parts|join(', ')) }}
+{% endif %}
+{% endif %}
+{% endif %}
+
+{% if metadata.themeColor is defined %}
+{% call(entry) each(metadata.themeColor) %}
+{% if entry is string %}
+{{ emit_meta_name('theme-color', entry) }}
+{% else %}
+{{ emit_meta_name('theme-color', entry.color, entry.media) }}
+{% endif %}
+{% endcall %}
+{% endif %}
+
+{% if metadata.authors is defined %}
+{% call(author) each(metadata.authors) %}
+{% if author.name is defined %}
+{{ emit_meta_name('author', author.name) }}
+{% endif %}
+{% if author.url is defined %}
+{{ emit_link('author', resolve_metadata_url(author.url, metadata_base)) }}
+{% endif %}
+{% endcall %}
+{% endif %}
+
+{% if metadata.robots is defined %}
+{% if metadata.robots is string %}
+{{ emit_meta_name('robots', metadata.robots) }}
+{% else %}
+{% set robots_content = serialize_robots(metadata.robots) %}
+{% if robots_content %}
+{{ emit_meta_name('robots', robots_content) }}
+{% endif %}
+{% if metadata.robots.googleBot is defined %}
+{% if metadata.robots.googleBot is string %}
+{{ emit_meta_name('googlebot', metadata.robots.googleBot) }}
+{% else %}
+{% set googlebot_content = serialize_robots(metadata.robots.googleBot) %}
+{% if googlebot_content %}
+{{ emit_meta_name('googlebot', googlebot_content) }}
+{% endif %}
+{% endif %}
+{% endif %}
+{% endif %}
+{% endif %}
+
+{% if metadata.alternates is defined %}
+{% if metadata.alternates.canonical is defined %}
+{% call(descriptor) each(metadata.alternates.canonical) %}
+{% if descriptor is string %}
+{{ emit_link('canonical', resolve_metadata_url(descriptor, metadata_base)) }}
+{% else %}
+{{ emit_link('canonical', resolve_metadata_url(descriptor.url, metadata_base), title=descriptor.title) }}
+{% endif %}
+{% endcall %}
+{% endif %}
+
+{% if metadata.alternates.languages is defined %}
+{% for language, value in metadata.alternates.languages.items() %}
+{% call(descriptor) each(value) %}
+{% if descriptor is string %}
+{{ emit_link('alternate', resolve_metadata_url(descriptor, metadata_base), hreflang=language) }}
+{% else %}
+{{ emit_link('alternate', resolve_metadata_url(descriptor.url, metadata_base), hreflang=language, title=descriptor.title) }}
+{% endif %}
+{% endcall %}
+{% endfor %}
+{% endif %}
+
+{% if metadata.alternates.media is defined %}
+{% for media_query, value in metadata.alternates.media.items() %}
+{% call(descriptor) each(value) %}
+{% if descriptor is string %}
+{{ emit_link('alternate', resolve_metadata_url(descriptor, metadata_base), media=media_query) }}
+{% else %}
+{{ emit_link('alternate', resolve_metadata_url(descriptor.url, metadata_base), media=media_query, title=descriptor.title) }}
+{% endif %}
+{% endcall %}
+{% endfor %}
+{% endif %}
+
+{% if metadata.alternates.types is defined %}
+{% for mime_type, value in metadata.alternates.types.items() %}
+{% call(descriptor) each(value) %}
+{% if descriptor is string %}
+{{ emit_link('alternate', resolve_metadata_url(descriptor, metadata_base), mime_type=mime_type) }}
+{% else %}
+{{ emit_link('alternate', resolve_metadata_url(descriptor.url, metadata_base), mime_type=mime_type, title=descriptor.title) }}
+{% endif %}
+{% endcall %}
+{% endfor %}
+{% endif %}
+{% endif %}
+
+{% if metadata.icons is defined %}
+{% macro emit_icons(value, default_rel) -%}
+{%- call(descriptor) each(value) -%}
+{%- if descriptor is string -%}
+{{- emit_link(default_rel, resolve_metadata_url(descriptor, metadata_base)) -}}
+{%- else -%}
+{{- emit_link(
+    descriptor.rel if descriptor.rel is defined else default_rel,
+    resolve_metadata_url(descriptor.url, metadata_base),
+    media=descriptor.media,
+    mime_type=descriptor.type,
+    sizes=descriptor.sizes,
+) -}}
+{%- endif -%}
+{%- endcall -%}
+{%- endmacro %}
+
+{% if metadata.icons is string or (metadata.icons is sequence and metadata.icons is not string) %}
+{{ emit_icons(metadata.icons, 'icon') }}
+{% elif metadata.icons.url is defined %}
+{{ emit_icons(metadata.icons, 'icon') }}
+{% else %}
+{% if metadata.icons.icon is defined %}{{ emit_icons(metadata.icons.icon, 'icon') }}{% endif %}
+{% if metadata.icons.shortcut is defined %}{{ emit_icons(metadata.icons.shortcut, 'shortcut icon') }}{% endif %}
+{% if metadata.icons.apple is defined %}{{ emit_icons(metadata.icons.apple, 'apple-touch-icon') }}{% endif %}
+{% if metadata.icons.other is defined %}{{ emit_icons(metadata.icons.other, 'icon') }}{% endif %}
+{% endif %}
+{% endif %}
+
+{% if metadata.openGraph is defined %}
+{% if metadata.openGraph.title is defined %}{{ emit_meta_property('og:title', metadata.openGraph.title) }}{% endif %}
+{% if metadata.openGraph.description is defined %}{{ emit_meta_property('og:description', metadata.openGraph.description) }}{% endif %}
+{% if metadata.openGraph.siteName is defined %}{{ emit_meta_property('og:site_name', metadata.openGraph.siteName) }}{% endif %}
+{% if metadata.openGraph.locale is defined %}{{ emit_meta_property('og:locale', metadata.openGraph.locale) }}{% endif %}
+{% if metadata.openGraph.type is defined %}{{ emit_meta_property('og:type', metadata.openGraph.type) }}{% endif %}
+{% if metadata.openGraph.determiner is defined %}{{ emit_meta_property('og:determiner', metadata.openGraph.determiner) }}{% endif %}
+{% if metadata.openGraph.countryName is defined %}{{ emit_meta_property('og:country_name', metadata.openGraph.countryName) }}{% endif %}
+{% if metadata.openGraph.ttl is defined %}{{ emit_meta_property('og:ttl', metadata.openGraph.ttl) }}{% endif %}
+{% if metadata.openGraph.url is defined %}{{ emit_meta_property('og:url', resolve_metadata_url(metadata.openGraph.url, metadata_base)) }}{% endif %}
+
+{% if metadata.openGraph.emails is defined %}
+{% call(value) each(metadata.openGraph.emails) %}{{ emit_meta_property('og:email', value) }}{% endcall %}
+{% endif %}
+{% if metadata.openGraph.phoneNumbers is defined %}
+{% call(value) each(metadata.openGraph.phoneNumbers) %}{{ emit_meta_property('og:phone_number', value) }}{% endcall %}
+{% endif %}
+{% if metadata.openGraph.faxNumbers is defined %}
+{% call(value) each(metadata.openGraph.faxNumbers) %}{{ emit_meta_property('og:fax_number', value) }}{% endcall %}
+{% endif %}
+{% if metadata.openGraph.alternateLocale is defined %}
+{% call(value) each(metadata.openGraph.alternateLocale) %}{{ emit_meta_property('og:locale:alternate', value) }}{% endcall %}
+{% endif %}
+
+{% macro emit_open_graph_media(property_name, media_value) -%}
+{%- call(entry) each(media_value) -%}
+{%- if entry is string -%}
+{{- emit_meta_property(property_name, resolve_metadata_url(entry, metadata_base)) -}}
+{%- else -%}
+{{- emit_meta_property(property_name, resolve_metadata_url(entry.url, metadata_base)) -}}
+{%- if entry.secureUrl is defined -%}{{ emit_meta_property(property_name ~ ':secure_url', resolve_metadata_url(entry.secureUrl, metadata_base)) }}{% endif -%}
+{%- if entry.width is defined -%}{{ emit_meta_property(property_name ~ ':width', entry.width) }}{% endif -%}
+{%- if entry.height is defined -%}{{ emit_meta_property(property_name ~ ':height', entry.height) }}{% endif -%}
+{%- if entry.alt is defined -%}{{ emit_meta_property(property_name ~ ':alt', entry.alt) }}{% endif -%}
+{%- if entry.type is defined -%}{{ emit_meta_property(property_name ~ ':type', entry.type) }}{% endif -%}
+{%- endif -%}
+{%- endcall -%}
+{%- endmacro %}
+
+{% if metadata.openGraph.images is defined %}{{ emit_open_graph_media('og:image', metadata.openGraph.images) }}{% endif %}
+{% if metadata.openGraph.videos is defined %}{{ emit_open_graph_media('og:video', metadata.openGraph.videos) }}{% endif %}
+{% if metadata.openGraph.audio is defined %}{{ emit_open_graph_media('og:audio', metadata.openGraph.audio) }}{% endif %}
+{% endif %}
+
+{% if metadata.twitter is defined %}
+{% if metadata.twitter.card is defined %}{{ emit_meta_name('twitter:card', metadata.twitter.card) }}{% endif %}
+{% if metadata.twitter.title is defined %}{{ emit_meta_name('twitter:title', metadata.twitter.title) }}{% endif %}
+{% if metadata.twitter.description is defined %}{{ emit_meta_name('twitter:description', metadata.twitter.description) }}{% endif %}
+{% if metadata.twitter.site is defined %}{{ emit_meta_name('twitter:site', metadata.twitter.site) }}{% endif %}
+{% if metadata.twitter.siteId is defined %}{{ emit_meta_name('twitter:site:id', metadata.twitter.siteId) }}{% endif %}
+{% if metadata.twitter.creator is defined %}{{ emit_meta_name('twitter:creator', metadata.twitter.creator) }}{% endif %}
+{% if metadata.twitter.creatorId is defined %}{{ emit_meta_name('twitter:creator:id', metadata.twitter.creatorId) }}{% endif %}
+
+{% if metadata.twitter.images is defined %}
+{% call(entry) each(metadata.twitter.images) %}
+{% if entry is string %}
+{{ emit_meta_name('twitter:image', resolve_metadata_url(entry, metadata_base)) }}
+{% else %}
+{{ emit_meta_name('twitter:image', resolve_metadata_url(entry.url, metadata_base)) }}
+{% if entry.alt is defined %}
+{{ emit_meta_name('twitter:image:alt', entry.alt) }}
+{% endif %}
+{% endif %}
+{% endcall %}
+{% endif %}
+{% endif %}
+
+{% if metadata.verification is defined %}
+{% if metadata.verification.google is defined %}{% call(value) each(metadata.verification.google) %}{{ emit_meta_name('google', value) }}{% endcall %}{% endif %}
+{% if metadata.verification.yahoo is defined %}{% call(value) each(metadata.verification.yahoo) %}{{ emit_meta_name('yahoo', value) }}{% endcall %}{% endif %}
+{% if metadata.verification.yandex is defined %}{% call(value) each(metadata.verification.yandex) %}{{ emit_meta_name('yandex', value) }}{% endcall %}{% endif %}
+{% if metadata.verification.me is defined %}{% call(value) each(metadata.verification.me) %}{{ emit_meta_name('me', value) }}{% endcall %}{% endif %}
+{% if metadata.verification.other is defined %}
+{% for name, value in metadata.verification.other.items() %}
+{% call(item) each(value) %}{{ emit_meta_name(name, item) }}{% endcall %}
+{% endfor %}
+{% endif %}
+{% endif %}
+
+{% if metadata.appleWebApp is defined %}
+{% if metadata.appleWebApp is boolean %}
+{{ emit_meta_name('apple-mobile-web-app-capable', 'yes' if metadata.appleWebApp else 'no') }}
+{% else %}
+{% if metadata.appleWebApp.capable is defined %}
+{{ emit_meta_name('apple-mobile-web-app-capable', 'yes' if metadata.appleWebApp.capable else 'no') }}
+{% endif %}
+{% if metadata.appleWebApp.title is defined %}{{ emit_meta_name('apple-mobile-web-app-title', metadata.appleWebApp.title) }}{% endif %}
+{% if metadata.appleWebApp.statusBarStyle is defined %}
+{{ emit_meta_name('apple-mobile-web-app-status-bar-style', metadata.appleWebApp.statusBarStyle) }}
+{% endif %}
+{% if metadata.appleWebApp.startupImage is defined %}
+{% call(image) each(metadata.appleWebApp.startupImage) %}
+{% if image is string %}
+{{ emit_link('apple-touch-startup-image', resolve_metadata_url(image, metadata_base)) }}
+{% else %}
+{{ emit_link('apple-touch-startup-image', resolve_metadata_url(image.url, metadata_base), media=image.media) }}
+{% endif %}
+{% endcall %}
+{% endif %}
+{% endif %}
+{% endif %}
+
+{% if metadata.formatDetection is defined %}
+{% set directives = [] %}
+{% if metadata.formatDetection.telephone is defined %}{% set directives = directives + ['telephone=' ~ ('yes' if metadata.formatDetection.telephone else 'no')] %}{% endif %}
+{% if metadata.formatDetection.email is defined %}{% set directives = directives + ['email=' ~ ('yes' if metadata.formatDetection.email else 'no')] %}{% endif %}
+{% if metadata.formatDetection.address is defined %}{% set directives = directives + ['address=' ~ ('yes' if metadata.formatDetection.address else 'no')] %}{% endif %}
+{% if directives %}
+{{ emit_meta_name('format-detection', directives|join(', ')) }}
+{% endif %}
+{% endif %}
+
+{% if metadata.itunes is defined %}
+{% set chunks = ['app-id=' ~ metadata.itunes.appId] %}
+{% if metadata.itunes.appArgument is defined %}
+{% set chunks = chunks + ['app-argument=' ~ resolve_metadata_url(metadata.itunes.appArgument, metadata_base)] %}
+{% endif %}
+{{ emit_meta_name('apple-itunes-app', chunks|join(', ')) }}
+{% endif %}
+
+{% if metadata.facebook is defined %}
+{% if metadata.facebook.appId is defined %}{{ emit_meta_property('fb:app_id', metadata.facebook.appId) }}{% endif %}
+{% if metadata.facebook.admins is defined %}
+{% call(admin) each(metadata.facebook.admins) %}{{ emit_meta_property('fb:admins', admin) }}{% endcall %}
+{% endif %}
+{% endif %}
+
+{% if metadata.pinterest is defined %}
+{{ emit_meta_name('pinterest-rich-pin', 'true' if metadata.pinterest.richPin else 'false') }}
+{% endif %}
+
+{% if metadata.manifest is defined %}
+{{ emit_link('manifest', resolve_metadata_url(metadata.manifest, metadata_base)) }}
+{% endif %}
+
+{% if metadata.archives is defined %}
+{% call(value) each(metadata.archives) %}{{ emit_link('archives', resolve_metadata_url(value, metadata_base)) }}{% endcall %}
+{% endif %}
+{% if metadata.assets is defined %}
+{% call(value) each(metadata.assets) %}{{ emit_link('assets', resolve_metadata_url(value, metadata_base)) }}{% endcall %}
+{% endif %}
+{% if metadata.bookmarks is defined %}
+{% call(value) each(metadata.bookmarks) %}{{ emit_link('bookmark', resolve_metadata_url(value, metadata_base)) }}{% endcall %}
+{% endif %}
+
+{% if metadata.appLinks is defined %}
+{% set platform_map = {
+    'ios': 'ios',
+    'iphone': 'iphone',
+    'ipad': 'ipad',
+    'android': 'android',
+    'windows': 'windows',
+    'windowsUniversal': 'windows_universal',
+    'web': 'web',
+} %}
+{% for source_platform, output_platform in platform_map.items() %}
+{% if metadata.appLinks[source_platform] is defined %}
+{% call(link) each(metadata.appLinks[source_platform]) %}
+{% if link.url is defined %}{{ emit_meta_property('al:' ~ output_platform ~ ':url', resolve_metadata_url(link.url, metadata_base)) }}{% endif %}
+{% if link.appStoreId is defined %}{{ emit_meta_property('al:' ~ output_platform ~ ':app_store_id', link.appStoreId) }}{% endif %}
+{% if link.appName is defined %}{{ emit_meta_property('al:' ~ output_platform ~ ':app_name', link.appName) }}{% endif %}
+{% if link.package is defined %}{{ emit_meta_property('al:' ~ output_platform ~ ':package', link.package) }}{% endif %}
+{% if link['class'] is defined %}{{ emit_meta_property('al:' ~ output_platform ~ ':class', link['class']) }}{% endif %}
+{% if link.shouldFallback is defined %}{{ emit_meta_property('al:' ~ output_platform ~ ':should_fallback', link.shouldFallback) }}{% endif %}
+{% endcall %}
+{% endif %}
+{% endfor %}
+{% endif %}
+
+{% if metadata.other is defined %}
+{% for name, value in metadata.other.items() %}
+{% call(entry) each(value) %}{{ emit_meta_name(name, entry) }}{% endcall %}
+{% endfor %}
+{% endif %}
+{% endif %}
