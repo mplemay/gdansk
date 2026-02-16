@@ -5,7 +5,7 @@ import pytest
 from anyio import Path as APath
 
 from gdansk._core import bundle
-from gdansk.core import _HTML_TEMPLATE
+from gdansk.core import Amber
 
 
 async def _wait_for_file_or_task_failure(
@@ -130,18 +130,17 @@ async def test_bundle_outputs_css_file(tmp_path: Path, monkeypatch: pytest.Monke
 
 def test_html_template_inlines_css() -> None:
     js = "console.log('hello');"
-    css_content = "body { color: red; }"
-    css = f"<style>\n{css_content}\n</style>\n"
-    html = _HTML_TEMPLATE.format(js=js, css=css)
+    css = "body { color: red; }"
+    html = Amber._env.render_template(Amber._template, js=js, css=css)
 
     assert "<style>" in html
-    assert css_content in html
+    assert css in html
     assert js in html
 
 
 def test_html_template_no_css() -> None:
     js = "console.log('hello');"
-    html = _HTML_TEMPLATE.format(js=js, css="")
+    html = Amber._env.render_template(Amber._template, js=js, css="")
 
     assert "<style>" not in html
     assert js in html

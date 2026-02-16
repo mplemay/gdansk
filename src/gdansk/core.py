@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
+
+from anyio import Path as APath
+from minijinja import Environment
 
 from gdansk._core import bundle
 
@@ -14,29 +18,21 @@ if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
     from mcp.types import AnyFunction, Icon, ToolAnnotations
 
-_HTML_TEMPLATE = """\
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="color-scheme" content="light dark">
-{css}</head>
-<body>
-<div id="root"></div>
-<script type="module">
-{js}
-</script>
-</body>
-</html>"""
-
 
 @dataclass(frozen=True, slots=True)
 class Amber:
+    _paths: set[Path] = field(default_factory=set, init=False)
+    _template: ClassVar[str] = field(default="template.html.j2", init=False)
+    _env: ClassVar[Environment] = field(
+        default=Environment(
+            templates={_template: (Path(__file__).parent / _template).read_text(encoding="utf-8")},
+        ),
+        init=False,
+    )
+
     mcp: FastMCP
     views: Path
     output: Path = field(default=Path(".gdansk"), kw_only=True)
-    _paths: set[Path] = field(default_factory=set, init=False)
 
     def __post_init__(self) -> None:
         if not self.views.is_dir():
@@ -56,26 +52,35 @@ class Amber:
         if not self._paths:
             return
 
-        if (loop := asyncio.get_event_loop()).is_closed():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+        loop = asyncio.new_event_loop()
 
-        # Wraps the PyO3 async function so it's called inside a running event loop.
+        # Resolve output to absolute so it's correct regardless of the bundler's cwd.
+        output = self.output if self.output.is_absolute() else Path.cwd() / self.output
+
         async def _bundle() -> None:
-            await bundle(paths=self._paths, dev=dev, output=self.output)
+            await bundle(paths=self._paths, dev=dev, output=output, cwd=self.views)
 
         task = loop.create_task(_bundle())
+        thread: threading.Thread | None = None
+
+        if blocking:
+            loop.run_until_complete(task)
+        else:
+            thread = threading.Thread(target=loop.run_forever, daemon=True)
+            thread.start()
 
         try:
-            if blocking:
-                loop.run_until_complete(task)
-
             yield
         finally:
             if not task.done():
-                task.cancel()
+                loop.call_soon_threadsafe(task.cancel)
+            if thread is not None:
+                loop.call_soon_threadsafe(loop.stop)
+                thread.join()
+            if not task.done():
                 with suppress(asyncio.CancelledError):
                     loop.run_until_complete(task)
+            loop.close()
 
     def tool(  # noqa: PLR0913
         self,
@@ -117,14 +122,22 @@ class Amber:
                 structured_output=structured_output,
             )(fn)
 
-            @self.mcp.resource(uri=uri, mime_type="text/html;profile=mcp-app")
-            def _() -> str:
-                js = (self.output / ui.with_suffix(".js")).read_text(encoding="utf-8")
-                if (path := self.output / ui.with_suffix(".css")).exists():
-                    css = f"<style>\n{path.read_text(encoding='utf-8')}\n</style>\n"
-                else:
-                    css = ""
-                return _HTML_TEMPLATE.format(js=js, css=css)
+            @self.mcp.resource(
+                uri=uri,
+                name=name,
+                title=title,
+                description=description,
+                mime_type="text/html;profile=mcp-app",
+            )
+            async def _() -> str:
+                js = await APath(self.output / ui.with_suffix(".js")).read_text(encoding="utf-8")
+                css = (
+                    None
+                    if not await (path := APath(self.output / ui.with_suffix(".css"))).exists()
+                    else await path.read_text(encoding="utf-8")
+                )
+
+                return Amber._env.render_template(Amber._template, js=js, css=css)
 
             return fn
 

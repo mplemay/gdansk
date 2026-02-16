@@ -213,16 +213,23 @@ fn map_bundle_error(err: BundleError) -> PyErr {
 mod _core {
     use super::*;
 
-    #[pyfunction(signature = (paths, dev = false, output = None))]
+    #[pyfunction(signature = (paths, dev = false, output = None, cwd = None))]
     fn bundle(
         py: Python<'_>,
         paths: HashSet<PathBuf>,
         dev: bool,
         output: Option<PathBuf>,
+        cwd: Option<PathBuf>,
     ) -> PyResult<Bound<'_, PyAny>> {
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let cwd = std::env::current_dir()
-                .map_err(|err| py_runtime_error("failed to read current working directory", err))?;
+            let cwd = match cwd {
+                Some(dir) => dir
+                    .canonicalize()
+                    .map_err(|err| py_runtime_error("failed to resolve provided cwd", err))?,
+                None => std::env::current_dir().map_err(|err| {
+                    py_runtime_error("failed to read current working directory", err)
+                })?,
+            };
             let output_dir = output.unwrap_or_else(|| PathBuf::from(".gdansk"));
             let output_dir_string =
                 path_to_utf8(&output_dir, "output path").map_err(map_bundle_error)?;
