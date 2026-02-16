@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from gdansk._core import bundle
-from gdansk.amber import _HTML_TEMPLATE
+from gdansk.core import _HTML_TEMPLATE
 
 
 def _path_exists(path: Path) -> bool:

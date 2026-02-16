@@ -1,3 +1,3 @@
-from gdansk.amber import Amber
+from gdansk.core import Amber
 
 __all__ = ["Amber"]
