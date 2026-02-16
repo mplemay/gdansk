@@ -4,7 +4,7 @@ import asyncio
 import threading
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from anyio import Path as APath
@@ -40,6 +40,9 @@ class Amber:
             msg = f"The output directory {self.output} does not exist"
             raise ValueError(msg)
 
+        if not self.output.is_absolute():
+            object.__setattr__(self, "output", Path.cwd() / self.output)
+
     @property
     def paths(self) -> frozenset[Path]:
         return frozenset(self._paths)
@@ -47,15 +50,13 @@ class Amber:
     @contextmanager
     def __call__(self, *, dev: bool = False, blocking: bool = False) -> Generator[None]:
         if not self._paths:
+            yield
             return
 
         loop = asyncio.new_event_loop()
 
-        # Resolve output to absolute so it's correct regardless of the bundler's cwd.
-        output = self.output if self.output.is_absolute() else Path.cwd() / self.output
-
         async def _bundle() -> None:
-            await bundle(paths=self._paths, dev=dev, output=output, cwd=self.views)
+            await bundle(paths=self._paths, dev=dev, output=self.output, cwd=self.views)
 
         task = loop.create_task(_bundle())
         thread: threading.Thread | None = None
@@ -102,7 +103,7 @@ class Amber:
         self._paths.add(ui)
 
         # my/page.tsx -> ui://my/page
-        uri = f"ui://{ui.parent / ui.stem}"
+        uri = f"ui://{PurePosixPath(ui.parent, ui.stem)}"
 
         # add the ui to the metadata
         meta = meta or {}
@@ -127,7 +128,11 @@ class Amber:
                 mime_type="text/html;profile=mcp-app",
             )
             async def _() -> str:
-                js = await APath(self.output / ui.with_suffix(".js")).read_text(encoding="utf-8")
+                try:
+                    js = await APath(self.output / ui.with_suffix(".js")).read_text(encoding="utf-8")
+                except FileNotFoundError:
+                    msg = f"Bundled output for {ui} not found. Has the bundler been run?"
+                    raise FileNotFoundError(msg) from None
                 css = (
                     None
                     if not await (path := APath(self.output / ui.with_suffix(".css"))).exists()

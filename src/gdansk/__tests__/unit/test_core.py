@@ -38,7 +38,7 @@ def test_raises_when_output_has_suffix(mock_mcp, views_dir):
 
 def test_default_output(mock_mcp, views_dir):
     amber = Amber(mcp=mock_mcp, views=views_dir)
-    assert amber.output == Path(".gdansk")
+    assert amber.output == Path.cwd() / ".gdansk"
 
 
 def test_paths_empty_initially(amber):
@@ -54,12 +54,9 @@ def test_frozen_dataclass(amber):
 
 
 def test_noop_when_no_paths_registered(amber):
-    with patch("gdansk.core.bundle") as mock_bundle:
-        # When no paths are registered, __call__ has a bare return (no yield),
-        # so the @contextmanager wrapper raises RuntimeError.
-        with pytest.raises(RuntimeError, match="generator didn't yield"), amber():
-            pass
-        mock_bundle.assert_not_called()
+    with patch("gdansk.core.bundle") as mock_bundle, amber():
+        pass
+    mock_bundle.assert_not_called()
 
 
 @pytest.mark.usefixtures("views_dir")
@@ -380,6 +377,44 @@ async def test_resource_omits_css_when_absent(amber, mock_mcp, tmp_path):
     html = await handler()
 
     assert "<style>" not in html
+
+
+@pytest.mark.asyncio
+async def test_resource_uses_resolved_output(mock_mcp, views_dir, monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    amber = Amber(mcp=mock_mcp, views=views_dir, output=Path("rel-out"))
+
+    # output should have been resolved to absolute at construction time
+    assert amber.output == tmp_path / "rel-out"
+
+    @amber.tool(Path("simple.tsx"))
+    def my_tool():
+        pass
+
+    # Write the JS file at the resolved absolute path
+    js_path = tmp_path / "rel-out" / "simple.js"
+    js_path.parent.mkdir(parents=True, exist_ok=True)
+    js_path.write_text("console.log('resolved');", encoding="utf-8")
+
+    handler = mock_mcp._resource_calls[-1]["handler"]
+    html = await handler()
+
+    assert "console.log('resolved');" in html
+
+
+@pytest.mark.asyncio
+async def test_resource_raises_friendly_error_when_js_missing(amber, mock_mcp, tmp_path):
+    amber_output = tmp_path / "output"
+    object.__setattr__(amber, "output", amber_output)
+
+    @amber.tool(Path("simple.tsx"))
+    def my_tool():
+        pass
+
+    handler = mock_mcp._resource_calls[-1]["handler"]
+
+    with pytest.raises(FileNotFoundError, match="Has the bundler been run"):
+        await handler()
 
 
 def test_returns_original_function(amber):
