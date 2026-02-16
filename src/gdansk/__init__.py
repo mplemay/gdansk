@@ -1,3 +1,3 @@
-from gdansk._core import bundle
+from gdansk.core import Amber
 
-__all__ = ["bundle"]
+__all__ = ["Amber"]

@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+{% if css %}<style>
+{{ css|safe }}
+</style>
+{% endif %}</head>
+<body>
+<div id="root"></div>
+<script type="module">
+{{ js|safe }}
+</script>
+</body>
+</html>
