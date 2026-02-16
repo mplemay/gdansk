@@ -225,6 +225,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "mcp" },
+    { name = "minijinja" },
 ]
 
 [package.dev-dependencies]
@@ -238,7 +239,10 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "mcp", specifier = ">=1,<2" }]
+requires-dist = [
+    { name = "mcp", specifier = ">=1,<2" },
+    { name = "minijinja", specifier = ">=2,<3" },
+]
 
 [package.metadata.requires-dev]
 dev = [
@@ -373,6 +377,21 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/fc/6d/62e76bbb8144d6ed86e202b5edd8a4cb631e7c8130f3f4893c3f90262b10/mcp-1.26.0.tar.gz", hash = "sha256:db6e2ef491eecc1a0d93711a76f28dec2e05999f93afd48795da1c1137142c66", size = 608005, upload-time = "2026-01-24T19:40:32.468Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/fd/d9/eaa1f80170d2b7c5ba23f3b59f766f3a0bb41155fbc32a69adfa1adaaef9/mcp-1.26.0-py3-none-any.whl", hash = "sha256:904a21c33c25aa98ddbeb47273033c435e595bbacfdb177f4bd87f6dceebe1ca", size = 233615, upload-time = "2026-01-24T19:40:30.652Z" },
+]
+
+[[package]]
+name = "minijinja"
+version = "2.15.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/7b/61/8d20816809ca214b6901416745174cba886342ab2c9a6f5b9bf72cbea62e/minijinja-2.15.1.tar.gz", hash = "sha256:f25ae7a479cd7771e7d2c482bf59211e72196db7e0c7c858339331163f299cca", size = 279740, upload-time = "2026-01-26T22:37:35.594Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2a/e4/64ac289e5089d36243d12acb03c4558d254b4640dbe38bf111a8f7250c05/minijinja-2.15.1-cp38-abi3-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl", hash = "sha256:39963dfbc61c1d0b174a265569f58428d5bb1811dbc8669cd557de1abe24fd79", size = 2016460, upload-time = "2026-01-26T22:37:26.229Z" },
+    { url = "https://files.pythonhosted.org/packages/4e/1c/275ece09bdb99e6e071b677439b44a7608bcc4be34b69286b55e1299ca55/minijinja-2.15.1-cp38-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:daf7f58ca2a3df79d28a72fadb1c2065f99f57fea7020a9d1e70fce7d6e51a1d", size = 1054819, upload-time = "2026-01-26T22:37:27.635Z" },
+    { url = "https://files.pythonhosted.org/packages/d2/c4/894dc43f77cc06b42e3e9252e7030f8906cb5cc68eb10f2f79aa4a899bf7/minijinja-2.15.1-cp38-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:e7e908b1c458b9fc2cbd77c80a22c2052d55697527ebe41300a6b557fb11ab9f", size = 1026181, upload-time = "2026-01-26T22:37:28.883Z" },
+    { url = "https://files.pythonhosted.org/packages/6c/84/57214d870e7ff2aa8556ba7c9327cc15264fe759c6c675e4591b5845d3b8/minijinja-2.15.1-cp38-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:27385ec66713ee329020cb045ed32d926c6e22570858cf1cbb1af32fe7076256", size = 1081906, upload-time = "2026-01-26T22:37:30.139Z" },
+    { url = "https://files.pythonhosted.org/packages/dc/e9/7a5fe4bd852f08db7bdbc84e651499eb46894dc4120f8eebd186f6adc935/minijinja-2.15.1-cp38-abi3-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:aee8a6b3f209c79a4fe768279a93f2702b2810dd7b23b030efb244726181a936", size = 1208833, upload-time = "2026-01-26T22:37:31.525Z" },
+    { url = "https://files.pythonhosted.org/packages/8c/42/cf889a868a4d199b110907f2ab3d5ad609ef4eff2f2d889cf6161d1fb863/minijinja-2.15.1-cp38-abi3-win32.whl", hash = "sha256:05db1931d2bcd8f3db8ad2cbe1ea95832d2b66ea67204b30c58b3c697977a237", size = 983687, upload-time = "2026-01-26T22:37:32.876Z" },
+    { url = "https://files.pythonhosted.org/packages/f3/b6/7fdc3d9b25ad4e47302d5e5a0d3a483b2717f8249f98123ead0779ef8437/minijinja-2.15.1-cp38-abi3-win_amd64.whl", hash = "sha256:2740645d15b227647b83b4cb87cecc0a0bfd015e261721b372ed3d6842936086", size = 1031922, upload-time = "2026-01-26T22:37:34.27Z" },
 ]
 
 [[package]]
