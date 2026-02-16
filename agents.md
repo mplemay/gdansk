@@ -110,3 +110,11 @@ For multistep tasks, state a brief plan:
   - Use `urlparse()` and `urlunparse()` for URL composition
   - Example: `urlunparse((parsed.scheme, parsed.netloc, parsed.path, "", urlencode(params), ""))`
   - This ensures proper encoding and avoids common URL injection vulnerabilities
+
+### Testing
+
+- Test files are named `test_<module>.py` to match the source module they test (e.g. tests for `core.py` go in
+  `test_core.py`, tests for `_core` go in `test__core.py`)
+- Do not name test files by functionality (e.g. avoid `test_amber_init.py`, `test_template.py`)
+- Tests live under `__tests__/` with `unit/` and `integration/` subdirectories
+- Integration tests are marked with `@pytest.mark.integration`

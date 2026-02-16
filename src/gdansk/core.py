@@ -22,12 +22,9 @@ if TYPE_CHECKING:
 @dataclass(frozen=True, slots=True)
 class Amber:
     _paths: set[Path] = field(default_factory=set, init=False)
-    _template: ClassVar[str] = field(default="template.html.j2", init=False)
-    _env: ClassVar[Environment] = field(
-        default=Environment(
-            templates={_template: (Path(__file__).parent / _template).read_text(encoding="utf-8")},
-        ),
-        init=False,
+    _template: ClassVar[str] = "template.html.j2"
+    _env: ClassVar[Environment] = Environment(
+        templates={_template: (Path(__file__).parent / _template).read_text(encoding="utf-8")},
     )
 
     mcp: FastMCP
