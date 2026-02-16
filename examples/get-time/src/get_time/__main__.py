@@ -4,21 +4,21 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import uvicorn
-from mcp import types
 from mcp.server.fastmcp import FastMCP
+from mcp.types import TextContent
 from starlette.middleware.cors import CORSMiddleware
 
 from gdansk import Amber
 
 mcp = FastMCP("Get Time Server")
-amber = Amber(mcp=mcp, dev=True)
+amber = Amber(mcp=mcp, views=Path(__file__).parent)
 
 
 @amber.tool(name="get-time", ui=Path("page.tsx"))
-def get_time() -> list[types.TextContent]:
+def get_time() -> list[TextContent]:
     """Get the current server time in ISO 8601 format."""
     time_str = datetime.now(tz=UTC).isoformat()
-    return [types.TextContent(type="text", text=time_str)]
+    return [TextContent(type="text", text=time_str)]
 
 
 def main() -> None:
@@ -29,8 +29,9 @@ def main() -> None:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    print("Get Time Server listening on http://0.0.0.0:3001/mcp")
-    uvicorn.run(app, host="0.0.0.0", port=3001)
+
+    with amber(dev=True):
+        uvicorn.run(app, port=3001)
 
 
 if __name__ == "__main__":

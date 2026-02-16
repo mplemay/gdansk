@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-from asyncio import create_task
+import asyncio
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
-from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from gdansk._core import bundle
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Generator
 
     from mcp.server.fastmcp import FastMCP
     from mcp.types import AnyFunction, Icon, ToolAnnotations
@@ -51,19 +51,31 @@ class Amber:
     def paths(self) -> frozenset[Path]:
         return frozenset(self._paths)
 
-    async def __call__(
-        self,
-        *,
-        dev: bool = False,
-        blocking: bool = False,
-    ) -> None:
+    @contextmanager
+    def __call__(self, *, dev: bool = False, blocking: bool = False) -> Generator[None]:
         if not self._paths:
             return
 
-        task = create_task(bundle(paths=self._paths, dev=dev, output=self.output))
+        if (loop := asyncio.get_event_loop()).is_closed():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
 
-        if blocking:
-            await task
+        # Wraps the PyO3 async function so it's called inside a running event loop.
+        async def _bundle() -> None:
+            await bundle(paths=self._paths, dev=dev, output=self.output)
+
+        task = loop.create_task(_bundle())
+
+        try:
+            if blocking:
+                loop.run_until_complete(task)
+
+            yield
+        finally:
+            if not task.done():
+                task.cancel()
+                with suppress(asyncio.CancelledError):
+                    loop.run_until_complete(task)
 
     def tool(  # noqa: PLR0913
         self,
@@ -79,10 +91,6 @@ class Amber:
     ) -> Callable[[AnyFunction], AnyFunction]:
         if ui.suffix not in {".tsx", ".jsx"}:
             msg = f"The ui (i.e. {ui}) must be a .tsx or .jsx file"
-            raise ValueError(msg)
-
-        if not ui.is_absolute():
-            msg = f"The ui (i.e. {ui}) must be an absolute path"
             raise ValueError(msg)
 
         if not (self.views / ui).is_file():
@@ -110,7 +118,6 @@ class Amber:
             )(fn)
 
             @self.mcp.resource(uri=uri, mime_type="text/html;profile=mcp-app")
-            @lru_cache(maxsize=1, typed=True)
             def _() -> str:
                 js = (self.output / ui.with_suffix(".js")).read_text(encoding="utf-8")
                 if (path := self.output / ui.with_suffix(".css")).exists():
