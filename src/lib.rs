@@ -119,12 +119,13 @@ fn normalize_inputs(
         ));
     }
 
-    let cwd_canonical = cwd.canonicalize().map_err(|err| {
+    let cwd_canonical = dunce::simplified(&cwd.canonicalize().map_err(|err| {
         BundleError::runtime(format!(
             "failed to resolve current working directory {}: {err}",
             cwd.display()
         ))
-    })?;
+    })?)
+    .to_path_buf();
 
     let mut normalized_inputs = Vec::with_capacity(paths.len());
     let mut output_collisions: HashMap<PathBuf, String> = HashMap::new();
@@ -157,12 +158,14 @@ fn normalize_inputs(
             )));
         }
 
-        let canonical_input = absolute_candidate.canonicalize().map_err(|err| {
-            BundleError::runtime(format!(
-                "failed to canonicalize input {}: {err}",
-                provided_path.display()
-            ))
-        })?;
+        let canonical_input =
+            dunce::simplified(&absolute_candidate.canonicalize().map_err(|err| {
+                BundleError::runtime(format!(
+                    "failed to canonicalize input {}: {err}",
+                    provided_path.display()
+                ))
+            })?)
+            .to_path_buf();
 
         let relative_path = canonical_input.strip_prefix(&cwd_canonical).map_err(|_| {
             BundleError::validation(format!(
@@ -223,9 +226,11 @@ mod _core {
     ) -> PyResult<Bound<'_, PyAny>> {
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let cwd = match cwd {
-                Some(dir) => dir
-                    .canonicalize()
-                    .map_err(|err| py_runtime_error("failed to resolve provided cwd", err))?,
+                Some(dir) => dunce::simplified(
+                    &dir.canonicalize()
+                        .map_err(|err| py_runtime_error("failed to resolve provided cwd", err))?,
+                )
+                .to_path_buf(),
                 None => std::env::current_dir().map_err(|err| {
                     py_runtime_error("failed to read current working directory", err)
                 })?,
