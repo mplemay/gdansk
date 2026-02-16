@@ -1,8 +1,9 @@
 [project]
 name = "gdansk"
 version = "0.1.0"
-description = "Add your description here"
+description = "Interactive UI Tools for MCP Servers"
 readme = "README.md"
+license = { text = "MIT" }
 authors = [
     { name = "Matt LeMay", email = "mplemay@users.noreply.github.com" }
 ]
