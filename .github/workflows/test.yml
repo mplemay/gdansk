@@ -20,7 +20,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: lint
-          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - uses: astral-sh/setup-uv@v7
         with:
@@ -59,18 +58,18 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: test-rust-${{ matrix.os }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Run tests
         run: cargo test
 
   test-python:
-    name: Python tests (${{ matrix.os }})
+    name: Python tests (${{ matrix.os }}, ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v6
 
@@ -79,14 +78,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: test-python-${{ matrix.os }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - uses: astral-sh/setup-uv@v7
         with:
-          python-version: "3.11"
-
-      - name: Build extension
-        run: uv run maturin develop --release
+          python-version: ${{ matrix.python-version }}
 
       - name: Run tests
         run: uv run pytest
