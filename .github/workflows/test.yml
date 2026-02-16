@@ -8,7 +8,7 @@ on:
 
 jobs:
   lint:
-    name: Lint
+    name: lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -44,7 +44,7 @@ jobs:
         run: uv run rumdl check .
 
   test-rust:
-    name: Rust tests (${{ matrix.os }})
+    name: test (rust, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -63,8 +63,10 @@ jobs:
         run: cargo test
 
   test-python:
-    name: Python tests (${{ matrix.os }}, ${{ matrix.python-version }})
+    name: test (python ${{ matrix.python-version }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
     strategy:
       fail-fast: false
       matrix:
