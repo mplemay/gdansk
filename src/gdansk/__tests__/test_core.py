@@ -2,13 +2,10 @@ import asyncio
 from pathlib import Path
 
 import pytest
+from anyio import Path as APath
 
 from gdansk._core import bundle
 from gdansk.core import _HTML_TEMPLATE
-
-
-def _path_exists(path: Path) -> bool:
-    return path.exists()
 
 
 async def _wait_for_file_or_task_failure(
@@ -19,8 +16,9 @@ async def _wait_for_file_or_task_failure(
 ) -> None:
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout_seconds
+    path = APath(output_path)
     while loop.time() < deadline:
-        if _path_exists(output_path):
+        if await path.exists():
             return
         if task.done():
             exc = task.exception()
