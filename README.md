@@ -86,9 +86,8 @@ def greet(name: str) -> list[TextContent]:
     return [TextContent(type="text", text=f"Hello, {name}!")]
 
 if __name__ == "__main__":
-    app = mcp.streamable_http_app()
-    with amber(dev=True):  # Enable hot-reload for development (minify defaults to False in dev)
-        uvicorn.run(app, port=3000)
+    app = amber(dev=True)  # Enable hot-reload for development
+    uvicorn.run(app, port=3000)
 ```
 
 **views/apps/hello/app.tsx:**
@@ -171,8 +170,8 @@ The get-time example provides a working template you can clone and adapt for you
 5. **Communication** — Your React UI calls back to Python tools via the MCP protocol using the `useApp()` hook and
    methods like `app.callServerTool()`.
 
-**Development mode:** Use `amber(dev=True)` as a context manager to enable hot-reload. Changes to your TSX/JSX files are
-automatically rebundled, and you can refresh the UI in your MCP client to see updates instantly.
+**Development mode:** Use `app = amber(dev=True)` to enable hot-reload. Changes to your TSX/JSX files are automatically
+rebundled, and you can refresh the UI in your MCP client to see updates instantly.
 
 ## Key Concepts
 
@@ -193,15 +192,15 @@ amber = Amber(
 
 Bundled assets are always written to `views/.gdansk` and this output path is not configurable on `Amber`.
 
-Use the context manager to bundle and serve your UIs:
+Create your app with Amber to bundle and serve your UIs:
 
 ```python
-with amber(dev=True):    # dev=True enables hot-reload and defaults minify=False
-    uvicorn.run(app, port=3000)
+app = amber(dev=True)    # dev=True enables hot-reload and uses non-minified output
+uvicorn.run(app, port=3000)
 ```
 
-`Amber.__call__` supports `dev`, `minify`, and `blocking`.
-If `minify` is omitted, it defaults to `not dev` (enabled in production, disabled in development).
+`Amber.__call__` supports `dev` only. `dev=True` runs bundling/watch in the background and disables minification;
+`dev=False` blocks for an initial minified build.
 
 ### Tool Registration
 
@@ -291,15 +290,8 @@ cd ..
 Start your server with `dev=True` to enable hot-reload:
 
 ```python
-with amber(dev=True):
-    uvicorn.run(app, port=3000)
-```
-
-`minify` defaults to `False` in development mode. You can override it:
-
-```python
-with amber(dev=True, minify=True):
-    uvicorn.run(app, port=3000)
+app = amber(dev=True)
+uvicorn.run(app, port=3000)
 ```
 
 Make changes to your TSX/JSX files, and the bundler will automatically rebuild. Refresh the UI in your MCP client to see
@@ -310,15 +302,8 @@ updates.
 For production, use `dev=False` (or omit the parameter) to create optimized builds:
 
 ```python
-with amber(dev=False):
-    uvicorn.run(app, port=3000)
-```
-
-`minify` defaults to `True` in production mode. You can override it:
-
-```python
-with amber(dev=False, minify=False):
-    uvicorn.run(app, port=3000)
+app = amber(dev=False)
+uvicorn.run(app, port=3000)
 ```
 
 **Testing in Claude Desktop:**

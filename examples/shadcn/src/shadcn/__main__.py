@@ -67,16 +67,14 @@ def delete_todo(todo_id: str) -> list[Todo]:
 
 
 def main() -> None:
-    app = mcp.streamable_http_app()
+    app = amber(dev=True)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
         allow_methods=["*"],
         allow_headers=["*"],
     )
-
-    with amber(dev=True):
-        uvicorn.run(app, port=3001)
+    uvicorn.run(app, port=3001)
 
 
 if __name__ == "__main__":

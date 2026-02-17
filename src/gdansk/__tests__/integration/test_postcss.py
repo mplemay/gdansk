@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+import threading
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -7,6 +10,21 @@ from anyio import Path as APath
 
 from gdansk.core import Amber
 from gdansk.experimental.postcss import PostCSS, PostCSSError
+
+
+@contextmanager
+def _lifespan(app):
+    loop = asyncio.new_event_loop()
+    context = app.router.lifespan_context(app)
+    entered = False
+    try:
+        loop.run_until_complete(context.__aenter__())
+        entered = True
+        yield
+    finally:
+        if entered:
+            loop.run_until_complete(context.__aexit__(None, None, None))
+        loop.close()
 
 
 def _create_postcss_cli(views: Path) -> None:
@@ -37,7 +55,7 @@ def test_postcss_plugin_transforms_bundled_css(mock_mcp, views_dir, tmp_path, mo
 
     monkeypatch.setattr(PostCSS, "_process_css_file", _transform_css)
 
-    with amber(blocking=True):
+    with _lifespan(amber(dev=False)):
         css_output = output / "apps/with_css/app.css"
         assert css_output.exists()
         assert "/* transformed */" in css_output.read_text(encoding="utf-8")
@@ -62,5 +80,36 @@ def test_postcss_plugin_failure_raises(mock_mcp, views_dir, tmp_path, monkeypatc
 
     monkeypatch.setattr(PostCSS, "_process_css_file", _raise_postcss_error)
 
-    with pytest.raises(PostCSSError, match="postcss failed"), amber(blocking=True):
+    with pytest.raises(PostCSSError, match="postcss failed"), _lifespan(amber(dev=False)):
         pass
+
+
+@pytest.mark.integration
+def test_postcss_watch_starts_and_stops_in_dev(mock_mcp, views_dir, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    started = threading.Event()
+    stopped = threading.Event()
+    cancelled = threading.Event()
+    plugin = PostCSS()
+    amber = Amber(mcp=mock_mcp, views=views_dir, plugins=[plugin])
+
+    @amber.tool(Path("with_css/app.tsx"))
+    def my_tool():
+        return "result"
+
+    async def _watch(self, *, views: Path, output: Path, stop_event: asyncio.Event) -> None:
+        _ = (self, views, output)
+        started.set()
+        try:
+            await stop_event.wait()
+            stopped.set()
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    monkeypatch.setattr(PostCSS, "watch", _watch)
+
+    with _lifespan(amber(dev=True)):
+        assert started.wait(timeout=5)
+
+    assert stopped.wait(timeout=5) or cancelled.wait(timeout=5)
