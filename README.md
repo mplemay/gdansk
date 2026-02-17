@@ -62,7 +62,10 @@ Here's a complete example showing how to build a simple greeting tool with a Rea
 my-mcp-server/
 ├── server.py
 └── views/
-    └── hello.tsx
+    ├── package.json
+    └── apps/
+        └── hello/
+            └── app.tsx
 ```
 
 **server.py:**
@@ -77,18 +80,18 @@ import uvicorn
 mcp = FastMCP("Hello World Server")
 amber = Amber(mcp=mcp, views=Path(__file__).parent / "views")
 
-@amber.tool(name="greet", ui=Path("hello.tsx"))
+@amber.tool(name="greet", ui=Path("hello/app.tsx"))
 def greet(name: str) -> list[TextContent]:
     """Greet someone by name."""
     return [TextContent(type="text", text=f"Hello, {name}!")]
 
 if __name__ == "__main__":
     app = mcp.streamable_http_app()
-    with amber(dev=True):  # Enable hot-reload for development
+    with amber(dev=True):  # Enable hot-reload for development (minify defaults to False in dev)
         uvicorn.run(app, port=3000)
 ```
 
-**views/hello.tsx:**
+**views/apps/hello/app.tsx:**
 
 ```tsx
 import { useApp } from "@modelcontextprotocol/ext-apps/react";
@@ -183,18 +186,22 @@ from pathlib import Path
 
 amber = Amber(
     mcp=mcp,                           # Your FastMCP server instance
-    views=Path("./views"),             # Directory containing TSX/JSX files
-    output=Path(".gdansk"),            # Optional: bundled output directory (default: .gdansk)
+    views=Path("./views"),             # Directory containing package.json and apps/
     metadata={"title": "My MCP App"},  # Optional: static HTML metadata for all tools
 )
 ```
 
+Bundled assets are always written to `views/.gdansk` and this output path is not configurable on `Amber`.
+
 Use the context manager to bundle and serve your UIs:
 
 ```python
-with amber(dev=True):    # dev=True enables hot-reload
+with amber(dev=True):    # dev=True enables hot-reload and defaults minify=False
     uvicorn.run(app, port=3000)
 ```
+
+`Amber.__call__` supports `dev`, `minify`, and `blocking`.
+If `minify` is omitted, it defaults to `not dev` (enabled in production, disabled in development).
 
 ### Tool Registration
 
@@ -203,7 +210,7 @@ The `@amber.tool()` decorator registers both a tool and its UI resource:
 ```python
 @amber.tool(
     name="my-tool",           # Tool name (optional, defaults to function name)
-    ui=Path("my-ui.tsx"),     # Path to UI file relative to views directory
+    ui=Path("my-tool/app.tsx"),  # Path to UI file relative to views/apps directory
     title="My Tool",          # Optional: display title
     description="...",        # Optional: tool description
     annotations=...,          # Optional: MCP tool annotations
@@ -217,7 +224,7 @@ def my_tool(arg: str) -> list[TextContent]:
     return [TextContent(type="text", text=f"Result: {arg}")]
 ```
 
-The UI file must be a `.tsx` or `.jsx` file in your views directory.
+The UI file must match `**/app.tsx` or `**/app.jsx`, relative to your `views/apps` directory.
 
 ### React Integration
 
@@ -269,12 +276,14 @@ mkdir my-mcp-server && cd my-mcp-server
 uv init
 uv add gdansk mcp uvicorn
 
-# Install frontend dependencies
+# Create views directory
+mkdir -p views/apps/hello
+
+# Install frontend dependencies inside views/
+cd views
 npm install @modelcontextprotocol/ext-apps react react-dom
 npm install -D @types/react @types/react-dom typescript
-
-# Create views directory
-mkdir views
+cd ..
 ```
 
 **Development mode:**
@@ -283,6 +292,13 @@ Start your server with `dev=True` to enable hot-reload:
 
 ```python
 with amber(dev=True):
+    uvicorn.run(app, port=3000)
+```
+
+`minify` defaults to `False` in development mode. You can override it:
+
+```python
+with amber(dev=True, minify=True):
     uvicorn.run(app, port=3000)
 ```
 
@@ -295,6 +311,13 @@ For production, use `dev=False` (or omit the parameter) to create optimized buil
 
 ```python
 with amber(dev=False):
+    uvicorn.run(app, port=3000)
+```
+
+`minify` defaults to `True` in production mode. You can override it:
+
+```python
+with amber(dev=False, minify=False):
     uvicorn.run(app, port=3000)
 ```
 
