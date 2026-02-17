@@ -125,3 +125,14 @@ async def test_bundle_outputs_css_file(tmp_path, monkeypatch):
 
     assert (tmp_path / ".gdansk" / "page.js").exists()
     assert (tmp_path / ".gdansk" / "page.css").exists()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_bundle_accepts_minify_false(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "main.tsx").write_text("export const value = 1;\n", encoding="utf-8")
+
+    await bundle({Path("main.tsx")}, minify=False)
+
+    assert (tmp_path / ".gdansk" / "main.js").exists()

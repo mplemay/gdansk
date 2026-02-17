@@ -72,16 +72,23 @@ class Amber:
         return normalized_ui, bundle_ui, uri
 
     @contextmanager
-    def __call__(self, *, dev: bool = False, blocking: bool = False) -> Generator[None]:
+    def __call__(self, *, dev: bool = False, minify: bool | None = None, blocking: bool = False) -> Generator[None]:
         if not self._paths:
             yield
             return
 
         loop = asyncio.new_event_loop()
         bundle_paths = {Path("apps", *path.parts) for path in self._paths}
+        resolved_minify = (not dev) if minify is None else minify
 
         async def _bundle() -> None:
-            await bundle(paths=bundle_paths, dev=dev, output=self.output, cwd=self.views)
+            await bundle(
+                paths=bundle_paths,
+                dev=dev,
+                minify=resolved_minify,
+                output=self.output,
+                cwd=self.views,
+            )
 
         task = loop.create_task(_bundle())
         thread: threading.Thread | None = None

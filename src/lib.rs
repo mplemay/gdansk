@@ -216,11 +216,12 @@ fn map_bundle_error(err: BundleError) -> PyErr {
 mod _core {
     use super::*;
 
-    #[pyfunction(signature = (paths, dev = false, output = None, cwd = None))]
+    #[pyfunction(signature = (paths, dev = false, minify = true, output = None, cwd = None))]
     fn bundle(
         py: Python<'_>,
         paths: HashSet<PathBuf>,
         dev: bool,
+        minify: bool,
         output: Option<PathBuf>,
         cwd: Option<PathBuf>,
     ) -> PyResult<Bound<'_, PyAny>> {
@@ -255,6 +256,7 @@ mod _core {
                 dir: Some(output_dir_string),
                 entry_filenames: Some("[name].js".to_string().into()),
                 css_entry_filenames: Some("[name].css".to_string().into()),
+                minify: Some(minify.into()),
                 ..Default::default()
             };
 

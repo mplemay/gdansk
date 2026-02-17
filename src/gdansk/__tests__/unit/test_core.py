@@ -115,6 +115,62 @@ def test_passes_dev_flag(amber):
     assert captured[-1]["dev"] is False
 
 
+@pytest.mark.usefixtures("views_dir")
+def test_default_minify_true_when_not_dev(amber):
+    amber._paths.add(Path("simple/app.tsx"))
+    captured: list[dict] = []
+
+    async def _fake_bundle(**kwargs: object):
+        captured.append(kwargs)
+
+    with patch("gdansk.core.bundle", _fake_bundle), amber(blocking=True, dev=False):
+        pass
+
+    assert captured[-1]["minify"] is True
+
+
+@pytest.mark.usefixtures("views_dir")
+def test_default_minify_false_when_dev(amber):
+    amber._paths.add(Path("simple/app.tsx"))
+    captured: list[dict] = []
+
+    async def _fake_bundle(**kwargs: object):
+        captured.append(kwargs)
+
+    with patch("gdansk.core.bundle", _fake_bundle), amber(blocking=True, dev=True):
+        pass
+
+    assert captured[-1]["minify"] is False
+
+
+@pytest.mark.usefixtures("views_dir")
+def test_explicit_minify_true_overrides_dev_default(amber):
+    amber._paths.add(Path("simple/app.tsx"))
+    captured: list[dict] = []
+
+    async def _fake_bundle(**kwargs: object):
+        captured.append(kwargs)
+
+    with patch("gdansk.core.bundle", _fake_bundle), amber(blocking=True, dev=True, minify=True):
+        pass
+
+    assert captured[-1]["minify"] is True
+
+
+@pytest.mark.usefixtures("views_dir")
+def test_explicit_minify_false_overrides_prod_default(amber):
+    amber._paths.add(Path("simple/app.tsx"))
+    captured: list[dict] = []
+
+    async def _fake_bundle(**kwargs: object):
+        captured.append(kwargs)
+
+    with patch("gdansk.core.bundle", _fake_bundle), amber(blocking=True, dev=False, minify=False):
+        pass
+
+    assert captured[-1]["minify"] is False
+
+
 def test_passes_views_dot_gdansk_as_output(mock_mcp, views_dir):
     amber = Amber(mcp=mock_mcp, views=views_dir)
     amber._paths.add(Path("simple/app.tsx"))

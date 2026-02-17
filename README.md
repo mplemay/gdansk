@@ -87,7 +87,7 @@ def greet(name: str) -> list[TextContent]:
 
 if __name__ == "__main__":
     app = mcp.streamable_http_app()
-    with amber(dev=True):  # Enable hot-reload for development
+    with amber(dev=True):  # Enable hot-reload for development (minify defaults to False in dev)
         uvicorn.run(app, port=3000)
 ```
 
@@ -196,9 +196,12 @@ Bundled assets are always written to `views/.gdansk` and this output path is not
 Use the context manager to bundle and serve your UIs:
 
 ```python
-with amber(dev=True):    # dev=True enables hot-reload
+with amber(dev=True):    # dev=True enables hot-reload and defaults minify=False
     uvicorn.run(app, port=3000)
 ```
+
+`Amber.__call__` supports `dev`, `minify`, and `blocking`.
+If `minify` is omitted, it defaults to `not dev` (enabled in production, disabled in development).
 
 ### Tool Registration
 
@@ -292,6 +295,13 @@ with amber(dev=True):
     uvicorn.run(app, port=3000)
 ```
 
+`minify` defaults to `False` in development mode. You can override it:
+
+```python
+with amber(dev=True, minify=True):
+    uvicorn.run(app, port=3000)
+```
+
 Make changes to your TSX/JSX files, and the bundler will automatically rebuild. Refresh the UI in your MCP client to see
 updates.
 
@@ -301,6 +311,13 @@ For production, use `dev=False` (or omit the parameter) to create optimized buil
 
 ```python
 with amber(dev=False):
+    uvicorn.run(app, port=3000)
+```
+
+`minify` defaults to `True` in production mode. You can override it:
+
+```python
+with amber(dev=False, minify=False):
     uvicorn.run(app, port=3000)
 ```
 
