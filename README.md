@@ -187,10 +187,11 @@ from pathlib import Path
 amber = Amber(
     mcp=mcp,                           # Your FastMCP server instance
     views=Path("./views"),             # Directory containing package.json and apps/
-    output=Path(".gdansk"),            # Optional: bundled output directory (default: .gdansk)
     metadata={"title": "My MCP App"},  # Optional: static HTML metadata for all tools
 )
 ```
+
+Bundled assets are always written to `views/.gdansk` and this output path is not configurable on `Amber`.
 
 Use the context manager to bundle and serve your UIs:
 

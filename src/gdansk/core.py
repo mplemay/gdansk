@@ -29,7 +29,7 @@ class Amber:
 
     mcp: FastMCP
     views: Path
-    output: Path = field(default=Path(".gdansk"), kw_only=True)
+    output: Path = field(init=False)
     metadata: Metadata | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
@@ -37,12 +37,7 @@ class Amber:
             msg = f"The views directory {self.views} does not exist"
             raise ValueError(msg)
 
-        if self.output.suffix != "":
-            msg = f"The output directory {self.output} does not exist"
-            raise ValueError(msg)
-
-        if not self.output.is_absolute():
-            object.__setattr__(self, "output", Path.cwd() / self.output)
+        object.__setattr__(self, "output", self.views / ".gdansk")
 
     @property
     def paths(self) -> frozenset[Path]:

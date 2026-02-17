@@ -35,14 +35,14 @@ def test_raises_when_views_missing(mock_mcp, tmp_path):
         Amber(mcp=mock_mcp, views=missing)
 
 
-def test_raises_when_output_has_suffix(mock_mcp, views_dir):
-    with pytest.raises(ValueError, match="does not exist"):
-        Amber(mcp=mock_mcp, views=views_dir, output=Path("out.txt"))
+def test_rejects_output_argument(mock_mcp, views_dir):
+    with pytest.raises(TypeError, match="output"):
+        Amber(mcp=mock_mcp, views=views_dir, output=Path("out.txt"))  # ty: ignore[unknown-argument]
 
 
 def test_default_output(mock_mcp, views_dir):
     amber = Amber(mcp=mock_mcp, views=views_dir)
-    assert amber.output == Path.cwd() / ".gdansk"
+    assert amber.output == views_dir / ".gdansk"
 
 
 def test_paths_empty_initially(amber):
@@ -115,9 +115,8 @@ def test_passes_dev_flag(amber):
     assert captured[-1]["dev"] is False
 
 
-def test_resolves_relative_output_to_absolute(mock_mcp, views_dir, monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
-    amber = Amber(mcp=mock_mcp, views=views_dir, output=Path("rel-out"))
+def test_passes_views_dot_gdansk_as_output(mock_mcp, views_dir):
+    amber = Amber(mcp=mock_mcp, views=views_dir)
     amber._paths.add(Path("simple/app.tsx"))
 
     captured: list[dict] = []
@@ -128,24 +127,7 @@ def test_resolves_relative_output_to_absolute(mock_mcp, views_dir, monkeypatch, 
     with patch("gdansk.core.bundle", _fake_bundle), amber(blocking=True):
         pass
 
-    assert captured[-1]["output"] == tmp_path / "rel-out"
-    assert captured[-1]["output"].is_absolute()
-
-
-def test_absolute_output_unchanged(mock_mcp, views_dir, tmp_path):
-    abs_output = tmp_path / "abs-out"
-    amber = Amber(mcp=mock_mcp, views=views_dir, output=abs_output)
-    amber._paths.add(Path("simple/app.tsx"))
-
-    captured: list[dict] = []
-
-    async def _fake_bundle(**kwargs: object):
-        captured.append(kwargs)
-
-    with patch("gdansk.core.bundle", _fake_bundle), amber(blocking=True):
-        pass
-
-    assert captured[-1]["output"] == abs_output
+    assert captured[-1]["output"] == views_dir / ".gdansk"
 
 
 def test_passes_views_as_cwd(amber, views_dir):
@@ -417,19 +399,15 @@ async def test_resource_omits_css_when_absent(amber, mock_mcp, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_resource_uses_resolved_output(mock_mcp, views_dir, monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
-    amber = Amber(mcp=mock_mcp, views=views_dir, output=Path("rel-out"))
-
-    # output should have been resolved to absolute at construction time
-    assert amber.output == tmp_path / "rel-out"
+async def test_resource_uses_views_dot_gdansk_output(mock_mcp, views_dir):
+    amber = Amber(mcp=mock_mcp, views=views_dir)
+    assert amber.output == views_dir / ".gdansk"
 
     @amber.tool(Path("simple/app.tsx"))
     def my_tool():
         pass
 
-    # Write the JS file at the resolved absolute path
-    js_path = tmp_path / "rel-out" / "apps/simple/app.js"
+    js_path = views_dir / ".gdansk" / "apps/simple/app.js"
     js_path.parent.mkdir(parents=True, exist_ok=True)
     js_path.write_text("console.log('resolved');", encoding="utf-8")
 

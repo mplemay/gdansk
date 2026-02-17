@@ -12,8 +12,8 @@ from gdansk.core import Amber
 @pytest.mark.integration
 def test_blocking_bundles_and_serves_html(mock_mcp, views_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    output = tmp_path / ".gdansk"
-    amber = Amber(mcp=mock_mcp, views=views_dir, output=output)
+    output = views_dir / ".gdansk"
+    amber = Amber(mcp=mock_mcp, views=views_dir)
 
     @amber.tool(Path("simple/app.tsx"))
     def my_tool():
@@ -39,8 +39,8 @@ def test_blocking_bundles_and_serves_html(mock_mcp, views_dir, tmp_path, monkeyp
 @pytest.mark.integration
 def test_with_css_bundles_and_serves_html(mock_mcp, views_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    output = tmp_path / ".gdansk"
-    amber = Amber(mcp=mock_mcp, views=views_dir, output=output)
+    output = views_dir / ".gdansk"
+    amber = Amber(mcp=mock_mcp, views=views_dir)
 
     @amber.tool(Path("with_css/app.tsx"))
     def my_tool():
@@ -64,8 +64,8 @@ def test_with_css_bundles_and_serves_html(mock_mcp, views_dir, tmp_path, monkeyp
 @pytest.mark.integration
 def test_non_blocking_bundles_in_background(mock_mcp, views_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    output = tmp_path / ".gdansk"
-    amber = Amber(mcp=mock_mcp, views=views_dir, output=output)
+    output = views_dir / ".gdansk"
+    amber = Amber(mcp=mock_mcp, views=views_dir)
 
     @amber.tool(Path("simple/app.tsx"))
     def my_tool():
@@ -85,8 +85,8 @@ def test_non_blocking_bundles_in_background(mock_mcp, views_dir, tmp_path, monke
 @pytest.mark.integration
 def test_multiple_tools_all_bundled(mock_mcp, views_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    output = tmp_path / ".gdansk"
-    amber = Amber(mcp=mock_mcp, views=views_dir, output=output)
+    output = views_dir / ".gdansk"
+    amber = Amber(mcp=mock_mcp, views=views_dir)
 
     @amber.tool(Path("simple/app.tsx"))
     def tool_a():
