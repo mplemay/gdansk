@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import threading
+import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import patch
@@ -54,13 +56,27 @@ def test_frozen_dataclass(amber):
         amber.mcp = None
 
 
-# --- __call__ context manager ---
+# --- __call__ app factory ---
+
+
+@contextmanager
+def _lifespan(app):
+    loop = asyncio.new_event_loop()
+    context = app.router.lifespan_context(app)
+    entered = False
+    try:
+        loop.run_until_complete(context.__aenter__())
+        entered = True
+        yield
+    finally:
+        if entered:
+            loop.run_until_complete(context.__aexit__(None, None, None))
+        loop.close()
 
 
 def test_noop_when_no_paths_registered(amber):
-    with patch("gdansk.core.bundle") as mock_bundle, amber():
-        pass
-    mock_bundle.assert_not_called()
+    app = amber()
+    assert app is amber.mcp.streamable_http_app.return_value
 
 
 @pytest.mark.usefixtures("views_dir")
@@ -77,31 +93,29 @@ def test_no_plugins_called_when_no_paths_registered(mock_mcp, views_dir):
             _ = (views, output, stop_event)
 
     amber = Amber(mcp=mock_mcp, views=views_dir, plugins=[_TestPlugin()])
-    with patch("gdansk.core.bundle") as mock_bundle, amber():
-        pass
-
+    with patch("gdansk.core.bundle") as mock_bundle:
+        amber(dev=True)
     assert called is False
     mock_bundle.assert_not_called()
 
 
 @pytest.mark.usefixtures("views_dir")
-def test_blocking_calls_bundle(amber):
+def test_dev_false_blocks_until_bundle_done(amber):
     amber._paths.add(Path("simple/app.tsx"))
-
     called = False
 
     async def _fake_bundle(**_kwargs: object):
         nonlocal called
         called = True
 
-    with patch("gdansk.core.bundle", _fake_bundle), amber(blocking=True):
-        pass
-
-    assert called
+    with patch("gdansk.core.bundle", _fake_bundle):
+        app = amber(dev=False)
+        with _lifespan(app):
+            assert called is True
 
 
 @pytest.mark.usefixtures("views_dir")
-def test_plugins_run_after_bundle(mock_mcp, views_dir):
+def test_plugins_run_after_bundle_in_prod(mock_mcp, views_dir):
     calls: list[str] = []
 
     class _TestPlugin:
@@ -118,86 +132,51 @@ def test_plugins_run_after_bundle(mock_mcp, views_dir):
     async def _fake_bundle(**_kwargs: object):
         calls.append("bundle")
 
-    with patch("gdansk.core.bundle", _fake_bundle), amber(blocking=True):
+    with patch("gdansk.core.bundle", _fake_bundle), _lifespan(amber(dev=False)):
         pass
 
     assert calls == ["bundle", "plugin"]
 
 
 @pytest.mark.usefixtures("views_dir")
-def test_non_blocking_runs_in_background_thread(amber):
+def test_dev_true_starts_background_runner(amber):
     amber._paths.add(Path("simple/app.tsx"))
-    threads_during: list[list[threading.Thread]] = []
-
-    async def _fake_bundle(**_kwargs: object):
-        pass
-
-    with patch("gdansk.core.bundle", _fake_bundle), amber(blocking=False):
-        threads_during.append(
-            [t for t in threading.enumerate() if t.daemon and t.is_alive()],
-        )
-
-    assert len(threads_during[0]) >= 1
-
-
-@pytest.mark.usefixtures("views_dir")
-def test_dev_plugin_watcher_is_cancelled_on_exit(mock_mcp, views_dir):
-    watcher_started = threading.Event()
-    watcher_cancelled = threading.Event()
-    bundle_cancelled = threading.Event()
-
-    class _DevPlugin:
-        async def build(self, *, views: Path, output: Path) -> None:
-            _ = (views, output)
-
-        async def watch(self, *, views: Path, output: Path, stop_event: asyncio.Event) -> None:
-            _ = (views, output, stop_event)
-            watcher_started.set()
-            try:
-                await asyncio.sleep(999)
-            except asyncio.CancelledError:
-                watcher_cancelled.set()
-                raise
-
-    amber = Amber(mcp=mock_mcp, views=views_dir, plugins=[_DevPlugin()])
-    amber._paths.add(Path("simple/app.tsx"))
+    started = threading.Event()
 
     async def _slow_bundle(**_kwargs: object):
-        try:
-            await asyncio.sleep(999)
-        except asyncio.CancelledError:
-            bundle_cancelled.set()
-            raise
+        started.set()
+        await asyncio.sleep(999)
 
-    with patch("gdansk.core.bundle", _slow_bundle), amber(blocking=False, dev=True):
-        assert watcher_started.wait(timeout=5)
-
-    assert watcher_cancelled.wait(timeout=5)
-    assert bundle_cancelled.wait(timeout=5)
+    with patch("gdansk.core.bundle", _slow_bundle):
+        app = amber(dev=True)
+        with _lifespan(app):
+            assert started.wait(timeout=5)
+            thread_count = len([t for t in threading.enumerate() if t.daemon and t.is_alive()])
+            assert thread_count >= 1
 
 
 @pytest.mark.usefixtures("views_dir")
-def test_passes_dev_flag(amber):
+def test_passes_dev_flag_and_derived_minify(amber):
     amber._paths.add(Path("simple/app.tsx"))
-
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
         captured.append(kwargs)
 
-    with patch("gdansk.core.bundle", _fake_bundle), amber(blocking=True, dev=True):
-        pass
+    with patch("gdansk.core.bundle", _fake_bundle):
+        with _lifespan(amber(dev=True)):
+            pass
+        with _lifespan(amber(dev=False)):
+            pass
 
-    assert captured[-1]["dev"] is True
-
-    with patch("gdansk.core.bundle", _fake_bundle), amber(blocking=True, dev=False):
-        pass
-
-    assert captured[-1]["dev"] is False
+    assert captured[0]["dev"] is True
+    assert captured[0]["minify"] is False
+    assert captured[1]["dev"] is False
+    assert captured[1]["minify"] is True
 
 
 @pytest.mark.usefixtures("views_dir")
-def test_plugin_errors_propagate_in_blocking_mode(mock_mcp, views_dir):
+def test_plugin_errors_propagate_in_prod(mock_mcp, views_dir):
     class _FailingPlugin:
         async def build(self, *, views: Path, output: Path) -> None:
             _ = (views, output)
@@ -216,77 +195,22 @@ def test_plugin_errors_propagate_in_blocking_mode(mock_mcp, views_dir):
     with (
         patch("gdansk.core.bundle", _fake_bundle),
         pytest.raises(RuntimeError, match="plugin boom"),
-        amber(blocking=True),
+        _lifespan(
+            amber(dev=False),
+        ),
     ):
         pass
-
-
-@pytest.mark.usefixtures("views_dir")
-def test_default_minify_true_when_not_dev(amber):
-    amber._paths.add(Path("simple/app.tsx"))
-    captured: list[dict] = []
-
-    async def _fake_bundle(**kwargs: object):
-        captured.append(kwargs)
-
-    with patch("gdansk.core.bundle", _fake_bundle), amber(blocking=True, dev=False):
-        pass
-
-    assert captured[-1]["minify"] is True
-
-
-@pytest.mark.usefixtures("views_dir")
-def test_default_minify_false_when_dev(amber):
-    amber._paths.add(Path("simple/app.tsx"))
-    captured: list[dict] = []
-
-    async def _fake_bundle(**kwargs: object):
-        captured.append(kwargs)
-
-    with patch("gdansk.core.bundle", _fake_bundle), amber(blocking=True, dev=True):
-        pass
-
-    assert captured[-1]["minify"] is False
-
-
-@pytest.mark.usefixtures("views_dir")
-def test_explicit_minify_true_overrides_dev_default(amber):
-    amber._paths.add(Path("simple/app.tsx"))
-    captured: list[dict] = []
-
-    async def _fake_bundle(**kwargs: object):
-        captured.append(kwargs)
-
-    with patch("gdansk.core.bundle", _fake_bundle), amber(blocking=True, dev=True, minify=True):
-        pass
-
-    assert captured[-1]["minify"] is True
-
-
-@pytest.mark.usefixtures("views_dir")
-def test_explicit_minify_false_overrides_prod_default(amber):
-    amber._paths.add(Path("simple/app.tsx"))
-    captured: list[dict] = []
-
-    async def _fake_bundle(**kwargs: object):
-        captured.append(kwargs)
-
-    with patch("gdansk.core.bundle", _fake_bundle), amber(blocking=True, dev=False, minify=False):
-        pass
-
-    assert captured[-1]["minify"] is False
 
 
 def test_passes_views_dot_gdansk_as_output(mock_mcp, views_dir):
     amber = Amber(mcp=mock_mcp, views=views_dir)
     amber._paths.add(Path("simple/app.tsx"))
-
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
         captured.append(kwargs)
 
-    with patch("gdansk.core.bundle", _fake_bundle), amber(blocking=True):
+    with patch("gdansk.core.bundle", _fake_bundle), _lifespan(amber(dev=False)):
         pass
 
     assert captured[-1]["output"] == views_dir / ".gdansk"
@@ -294,13 +218,12 @@ def test_passes_views_dot_gdansk_as_output(mock_mcp, views_dir):
 
 def test_passes_views_as_cwd(amber, views_dir):
     amber._paths.add(Path("simple/app.tsx"))
-
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
         captured.append(kwargs)
 
-    with patch("gdansk.core.bundle", _fake_bundle), amber(blocking=True):
+    with patch("gdansk.core.bundle", _fake_bundle), _lifespan(amber(dev=False)):
         pass
 
     assert captured[-1]["cwd"] == views_dir
@@ -310,43 +233,86 @@ def test_passes_views_as_cwd(amber, views_dir):
 def test_passes_registered_paths(amber):
     amber._paths.add(Path("simple/app.tsx"))
     amber._paths.add(Path("nested/page/app.tsx"))
-
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
         captured.append(kwargs)
 
-    with patch("gdansk.core.bundle", _fake_bundle), amber(blocking=True):
+    with patch("gdansk.core.bundle", _fake_bundle), _lifespan(amber(dev=False)):
         pass
 
     assert captured[-1]["paths"] == {Path("apps/simple/app.tsx"), Path("apps/nested/page/app.tsx")}
 
 
 @pytest.mark.usefixtures("views_dir")
-def test_cancels_task_on_exit(amber):
-    amber._paths.add(Path("simple/app.tsx"))
+def test_plugins_watch_started_and_cancelled_on_shutdown(mock_mcp, views_dir):
+    watcher_started = threading.Event()
+    watcher_cancelled = threading.Event()
+    bundle_cancelled = threading.Event()
 
-    cancel_called = threading.Event()
+    class _DevPlugin:
+        async def build(self, *, views: Path, output: Path) -> None:
+            _ = (views, output)
+
+        async def watch(self, *, views: Path, output: Path, stop_event: asyncio.Event) -> None:
+            _ = (views, output)
+            watcher_started.set()
+            try:
+                await stop_event.wait()
+            except asyncio.CancelledError:
+                watcher_cancelled.set()
+                raise
+
+    amber = Amber(mcp=mock_mcp, views=views_dir, plugins=[_DevPlugin()])
+    amber._paths.add(Path("simple/app.tsx"))
 
     async def _slow_bundle(**_kwargs: object):
         try:
             await asyncio.sleep(999)
         except asyncio.CancelledError:
-            cancel_called.set()
+            bundle_cancelled.set()
             raise
 
-    with patch("gdansk.core.bundle", _slow_bundle), amber(blocking=False):
-        pass
+    with patch("gdansk.core.bundle", _slow_bundle), _lifespan(amber(dev=True)):
+        assert watcher_started.wait(timeout=5)
 
-    assert cancel_called.wait(timeout=5)
+    assert bundle_cancelled.wait(timeout=5)
+    assert watcher_cancelled.wait(timeout=5)
 
 
 @pytest.mark.usefixtures("views_dir")
-def test_closes_loop_on_exit(amber):
+def test_dev_watch_error_is_logged(mock_mcp, views_dir):
+    class _FailingWatchPlugin:
+        async def build(self, *, views: Path, output: Path) -> None:
+            _ = (views, output)
+
+        async def watch(self, *, views: Path, output: Path, stop_event: asyncio.Event) -> None:
+            _ = (views, output, stop_event)
+            msg = "watch failed"
+            raise RuntimeError(msg)
+
+    amber = Amber(mcp=mock_mcp, views=views_dir, plugins=[_FailingWatchPlugin()])
     amber._paths.add(Path("simple/app.tsx"))
 
-    loops: list[asyncio.AbstractEventLoop] = []
+    async def _slow_bundle(**_kwargs: object):
+        await asyncio.sleep(999)
 
+    with (
+        patch("gdansk.core.bundle", _slow_bundle),
+        patch("gdansk.core.logger.exception") as mock_log,
+        _lifespan(amber(dev=True)),
+    ):
+        deadline = time.monotonic() + 5
+        while mock_log.call_count == 0 and time.monotonic() < deadline:
+            time.sleep(0.05)
+
+    assert mock_log.call_count >= 1
+
+
+@pytest.mark.usefixtures("views_dir")
+def test_closes_loop_on_shutdown(amber):
+    amber._paths.add(Path("simple/app.tsx"))
+    loops: list[asyncio.AbstractEventLoop] = []
     original_new_event_loop = asyncio.new_event_loop
 
     def _capture_loop():
@@ -355,17 +321,40 @@ def test_closes_loop_on_exit(amber):
         return loop
 
     async def _fake_bundle(**_kwargs: object):
-        pass
+        await asyncio.sleep(999)
 
     with (
         patch("gdansk.core.asyncio.new_event_loop", _capture_loop),
-        patch("gdansk.core.bundle", _fake_bundle),
-        amber(blocking=True),
+        patch(
+            "gdansk.core.bundle",
+            _fake_bundle,
+        ),
+        _lifespan(amber(dev=True)),
     ):
         pass
 
-    assert len(loops) == 1
-    assert loops[0].is_closed()
+    assert len(loops) >= 1
+    assert all(loop.is_closed() for loop in loops)
+
+
+@pytest.mark.usefixtures("views_dir")
+def test_repeated_startup_shutdown_is_idempotent(amber):
+    amber._paths.add(Path("simple/app.tsx"))
+
+    async def _fake_bundle(**_kwargs: object):
+        await asyncio.sleep(0)
+
+    with patch("gdansk.core.bundle", _fake_bundle):
+        app = amber(dev=True)
+        with _lifespan(app):
+            pass
+        with _lifespan(app):
+            pass
+
+
+def test_with_amber_context_manager_raises_type_error(amber):
+    with pytest.raises(TypeError), amber():
+        pass
 
 
 # --- tool() decorator ---

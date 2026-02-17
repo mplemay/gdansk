@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -9,8 +10,23 @@ import pytest
 from gdansk.core import Amber
 
 
+@contextmanager
+def _lifespan(app):
+    loop = asyncio.new_event_loop()
+    context = app.router.lifespan_context(app)
+    entered = False
+    try:
+        loop.run_until_complete(context.__aenter__())
+        entered = True
+        yield
+    finally:
+        if entered:
+            loop.run_until_complete(context.__aexit__(None, None, None))
+        loop.close()
+
+
 @pytest.mark.integration
-def test_blocking_bundles_and_serves_html(mock_mcp, views_dir, tmp_path, monkeypatch):
+def test_prod_bundles_and_serves_html(mock_mcp, views_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     output = views_dir / ".gdansk"
     amber = Amber(mcp=mock_mcp, views=views_dir)
@@ -19,7 +35,8 @@ def test_blocking_bundles_and_serves_html(mock_mcp, views_dir, tmp_path, monkeyp
     def my_tool():
         return "result"
 
-    with amber(blocking=True):
+    app = amber(dev=False)
+    with _lifespan(app):
         assert (output / "apps/simple/app.js").exists()
 
     handler = mock_mcp._resource_calls[-1]["handler"]
@@ -46,7 +63,8 @@ def test_with_css_bundles_and_serves_html(mock_mcp, views_dir, tmp_path, monkeyp
     def my_tool():
         return "result"
 
-    with amber(blocking=True):
+    app = amber(dev=False)
+    with _lifespan(app):
         assert (output / "apps/with_css/app.js").exists()
         assert (output / "apps/with_css/app.css").exists()
 
@@ -62,7 +80,7 @@ def test_with_css_bundles_and_serves_html(mock_mcp, views_dir, tmp_path, monkeyp
 
 
 @pytest.mark.integration
-def test_non_blocking_bundles_in_background(mock_mcp, views_dir, tmp_path, monkeypatch):
+def test_dev_bundles_in_background(mock_mcp, views_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     output = views_dir / ".gdansk"
     amber = Amber(mcp=mock_mcp, views=views_dir)
@@ -71,7 +89,8 @@ def test_non_blocking_bundles_in_background(mock_mcp, views_dir, tmp_path, monke
     def my_tool():
         return "result"
 
-    with amber(blocking=False, dev=True):
+    app = amber(dev=True)
+    with _lifespan(app):
         # Wait for the background bundler to produce output
         deadline = time.monotonic() + 20
         while not (output / "apps/simple/app.js").exists():
@@ -96,6 +115,7 @@ def test_multiple_tools_all_bundled(mock_mcp, views_dir, tmp_path, monkeypatch):
     def tool_b():
         return "b"
 
-    with amber(blocking=True):
+    app = amber(dev=False)
+    with _lifespan(app):
         assert (output / "apps/simple/app.js").exists()
         assert (output / "apps/nested/page/app.js").exists()

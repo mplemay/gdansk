@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
+import logging
 import threading
-from contextlib import contextmanager, suppress
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
 from anyio import Path as APath
 
@@ -14,12 +16,65 @@ from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import ENV
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Generator, Sequence
+    from collections.abc import AsyncIterator, Callable, Coroutine, Sequence
 
     from mcp.server.fastmcp import FastMCP
     from mcp.types import AnyFunction, Icon, ToolAnnotations
+    from starlette.applications import Starlette
 
     from gdansk.protocol import Plugin
+
+
+logger = logging.getLogger(__name__)
+_T = TypeVar("_T")
+
+
+class _AsyncThreadRunner:
+    def __init__(self) -> None:
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._thread: threading.Thread | None = None
+        self._started = threading.Event()
+
+    def start(self) -> None:
+        if self._thread is not None and self._thread.is_alive():
+            return
+        self._started.clear()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+        self._started.wait()
+
+    def _run(self) -> None:
+        loop = asyncio.new_event_loop()
+        self._loop = loop
+        asyncio.set_event_loop(loop)
+        self._started.set()
+        try:
+            loop.run_forever()
+        finally:
+            pending = [task for task in asyncio.all_tasks(loop) if not task.done()]
+            for task in pending:
+                task.cancel()
+            if pending:
+                with suppress(asyncio.CancelledError):
+                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            loop.close()
+
+    def run(self, coro: Coroutine[Any, Any, _T]) -> _T:
+        self.start()
+        loop = self._loop
+        if loop is None:
+            msg = "Runner event loop was not started"
+            raise RuntimeError(msg)
+        future = asyncio.run_coroutine_threadsafe(coro, loop)
+        return future.result()
+
+    def stop(self) -> None:
+        if self._loop is None or self._thread is None:
+            return
+        self._loop.call_soon_threadsafe(self._loop.stop)
+        self._thread.join()
+        self._loop = None
+        self._thread = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,7 +104,6 @@ class Amber:
     def _schedule_watcher_tasks(
         self,
         *,
-        loop: asyncio.AbstractEventLoop,
         dev: bool,
     ) -> tuple[asyncio.Event | None, list[asyncio.Task[None]]]:
         if not dev or not self.plugins:
@@ -57,7 +111,7 @@ class Amber:
 
         stop_event = asyncio.Event()
         watcher_tasks: list[asyncio.Task[None]] = [
-            loop.create_task(
+            asyncio.create_task(
                 plugin.watch(
                     views=self.views,
                     output=self.output,
@@ -69,45 +123,44 @@ class Amber:
 
         return stop_event, watcher_tasks
 
+    async def _run_build_pipeline(self, *, paths: set[Path], dev: bool) -> None:
+        await bundle(
+            paths=paths,
+            dev=dev,
+            minify=not dev,
+            output=self.output,
+            cwd=self.views,
+        )
+        if dev:
+            return
+        for plugin in self.plugins:
+            await plugin.build(views=self.views, output=self.output)
+
     @staticmethod
-    def _set_stop_event(
+    def _log_background_task_error(task: asyncio.Task[None]) -> None:
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is None:
+            return
+        logger.exception("Amber background task failed", exc_info=exc)
+
+    @staticmethod
+    async def _shutdown_dev_tasks(
         *,
-        loop: asyncio.AbstractEventLoop,
         stop_event: asyncio.Event | None,
-        thread: threading.Thread | None,
+        bundle_task: asyncio.Task[None] | None,
+        watcher_tasks: list[asyncio.Task[None]],
     ) -> None:
-        if stop_event is None:
-            return
-        if thread is None:
+        if stop_event is not None:
             stop_event.set()
-            return
-        loop.call_soon_threadsafe(stop_event.set)
-
-    @staticmethod
-    def _cancel_task(
-        *,
-        loop: asyncio.AbstractEventLoop,
-        task: asyncio.Task[None],
-        thread: threading.Thread | None,
-    ) -> None:
-        if task.done():
-            return
-        if thread is None:
-            task.cancel()
-            return
-        loop.call_soon_threadsafe(task.cancel)
-
-    @staticmethod
-    def _drain_tasks(
-        *,
-        loop: asyncio.AbstractEventLoop,
-        tasks: list[asyncio.Task[None]],
-    ) -> None:
-        pending_tasks = [candidate for candidate in tasks if not candidate.done()]
-        if not pending_tasks:
-            return
-        with suppress(asyncio.CancelledError):
-            loop.run_until_complete(asyncio.gather(*pending_tasks, return_exceptions=True))
+        tasks = [candidate for candidate in [bundle_task, *watcher_tasks] if candidate is not None]
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        if tasks:
+            with suppress(asyncio.CancelledError):
+                await asyncio.gather(*tasks, return_exceptions=True)
 
     @staticmethod
     def _normalize_ui_path_and_uri(ui: Path) -> tuple[Path, Path, str]:
@@ -137,52 +190,52 @@ class Amber:
         uri = f"ui://{PurePosixPath(*ui_posix.parts[:-1])}"
         return normalized_ui, bundle_ui, uri
 
-    @contextmanager
-    def __call__(self, *, dev: bool = False, minify: bool | None = None, blocking: bool = False) -> Generator[None]:
+    def __call__(self, *, dev: bool = False) -> Starlette:
+        app = self.mcp.streamable_http_app()
         if not self._paths:
-            yield
-            return
+            return app
 
-        loop = asyncio.new_event_loop()
-        bundle_paths = {Path("apps", *path.parts) for path in self._paths}
-        resolved_minify = (not dev) if minify is None else minify
+        paths = {Path("apps", *path.parts) for path in self._paths}
+        runner = _AsyncThreadRunner()
+        stop_event: asyncio.Event | None = None
+        watcher_tasks: list[asyncio.Task[None]] = []
+        bundle_task: asyncio.Task[None] | None = None
+        original_lifespan = app.router.lifespan_context
 
-        async def _bundle() -> None:
-            await bundle(
-                paths=bundle_paths,
-                dev=dev,
-                minify=resolved_minify,
-                output=self.output,
-                cwd=self.views,
-            )
-            if dev:
-                return
-            for plugin in self.plugins:
-                await plugin.build(views=self.views, output=self.output)
-
-        stop_event, watcher_tasks = self._schedule_watcher_tasks(loop=loop, dev=dev)
-
-        task = loop.create_task(_bundle())
-        thread: threading.Thread | None = None
-
-        try:
-            if blocking:
-                loop.run_until_complete(task)
-            else:
-                thread = threading.Thread(target=loop.run_forever, daemon=True)
-                thread.start()
-
-            yield
-        finally:
-            self._set_stop_event(loop=loop, stop_event=stop_event, thread=thread)
+        async def _start_dev() -> None:
+            nonlocal stop_event
+            nonlocal watcher_tasks
+            nonlocal bundle_task
+            stop_event, watcher_tasks = self._schedule_watcher_tasks(dev=True)
+            bundle_task = asyncio.create_task(self._run_build_pipeline(paths=paths, dev=True))
+            bundle_task.add_done_callback(self._log_background_task_error)
             for watcher_task in watcher_tasks:
-                self._cancel_task(loop=loop, task=watcher_task, thread=thread)
-            self._cancel_task(loop=loop, task=task, thread=thread)
-            if thread is not None:
-                loop.call_soon_threadsafe(loop.stop)
-                thread.join()
-            self._drain_tasks(loop=loop, tasks=[task, *watcher_tasks])
-            loop.close()
+                watcher_task.add_done_callback(self._log_background_task_error)
+
+        @asynccontextmanager
+        async def _lifespan(starlette_app: Starlette) -> AsyncIterator[None]:
+            if dev:
+                runner.run(_start_dev())
+            else:
+                runner.run(self._run_build_pipeline(paths=paths, dev=False))
+
+            async with original_lifespan(starlette_app):
+                try:
+                    yield
+                finally:
+                    if dev:
+                        with suppress(concurrent.futures.CancelledError):
+                            runner.run(
+                                Amber._shutdown_dev_tasks(
+                                    stop_event=stop_event,
+                                    bundle_task=bundle_task,
+                                    watcher_tasks=watcher_tasks,
+                                ),
+                            )
+                    runner.stop()
+
+        app.router.lifespan_context = _lifespan
+        return app
 
     def tool(  # noqa: PLR0913
         self,

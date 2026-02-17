@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from starlette.applications import Starlette
 
 from gdansk.core import Amber
 
@@ -17,6 +18,7 @@ def fixture_views_path():
 @pytest.fixture
 def mock_mcp():
     mcp = MagicMock()
+    app = Starlette()
 
     tool_calls = []
     resource_calls = []
@@ -40,6 +42,7 @@ def mock_mcp():
 
     mcp.tool = MagicMock(side_effect=_tool_decorator)
     mcp.resource = MagicMock(side_effect=_resource_decorator)
+    mcp.streamable_http_app = MagicMock(return_value=app)
     mcp._tool_calls = tool_calls
     mcp._resource_calls = resource_calls
 
