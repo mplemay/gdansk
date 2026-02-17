@@ -9,9 +9,10 @@ from mcp.types import TextContent
 from starlette.middleware.cors import CORSMiddleware
 
 from gdansk import Amber
+from gdansk.experimental.postcss import PostCSS
 
 mcp = FastMCP("Get Time Server")
-amber = Amber(mcp=mcp, views=Path(__file__).parent / "views")
+amber = Amber(mcp=mcp, views=Path(__file__).parent / "views", plugins=[PostCSS()])
 
 
 @amber.tool(name="get-time", ui=Path("todo/app.tsx"))
