@@ -24,7 +24,7 @@ def test_valid_construction(mock_mcp, views_dir):
 
 
 def test_raises_when_views_not_directory(mock_mcp, views_dir):
-    file_path = views_dir / "simple.tsx"
+    file_path = views_dir / "apps/simple/app.tsx"
     with pytest.raises(ValueError, match="does not exist"):
         Amber(mcp=mock_mcp, views=file_path)
 
@@ -65,7 +65,7 @@ def test_noop_when_no_paths_registered(amber):
 
 @pytest.mark.usefixtures("views_dir")
 def test_blocking_calls_bundle(amber):
-    amber._paths.add(Path("simple.tsx"))
+    amber._paths.add(Path("simple/app.tsx"))
 
     called = False
 
@@ -81,7 +81,7 @@ def test_blocking_calls_bundle(amber):
 
 @pytest.mark.usefixtures("views_dir")
 def test_non_blocking_runs_in_background_thread(amber):
-    amber._paths.add(Path("simple.tsx"))
+    amber._paths.add(Path("simple/app.tsx"))
     threads_during: list[list[threading.Thread]] = []
 
     async def _fake_bundle(**_kwargs: object):
@@ -97,7 +97,7 @@ def test_non_blocking_runs_in_background_thread(amber):
 
 @pytest.mark.usefixtures("views_dir")
 def test_passes_dev_flag(amber):
-    amber._paths.add(Path("simple.tsx"))
+    amber._paths.add(Path("simple/app.tsx"))
 
     captured: list[dict] = []
 
@@ -118,7 +118,7 @@ def test_passes_dev_flag(amber):
 def test_resolves_relative_output_to_absolute(mock_mcp, views_dir, monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     amber = Amber(mcp=mock_mcp, views=views_dir, output=Path("rel-out"))
-    amber._paths.add(Path("simple.tsx"))
+    amber._paths.add(Path("simple/app.tsx"))
 
     captured: list[dict] = []
 
@@ -135,7 +135,7 @@ def test_resolves_relative_output_to_absolute(mock_mcp, views_dir, monkeypatch, 
 def test_absolute_output_unchanged(mock_mcp, views_dir, tmp_path):
     abs_output = tmp_path / "abs-out"
     amber = Amber(mcp=mock_mcp, views=views_dir, output=abs_output)
-    amber._paths.add(Path("simple.tsx"))
+    amber._paths.add(Path("simple/app.tsx"))
 
     captured: list[dict] = []
 
@@ -149,7 +149,7 @@ def test_absolute_output_unchanged(mock_mcp, views_dir, tmp_path):
 
 
 def test_passes_views_as_cwd(amber, views_dir):
-    amber._paths.add(Path("simple.tsx"))
+    amber._paths.add(Path("simple/app.tsx"))
 
     captured: list[dict] = []
 
@@ -164,8 +164,8 @@ def test_passes_views_as_cwd(amber, views_dir):
 
 @pytest.mark.usefixtures("views_dir")
 def test_passes_registered_paths(amber):
-    amber._paths.add(Path("simple.tsx"))
-    amber._paths.add(Path("nested/page.tsx"))
+    amber._paths.add(Path("simple/app.tsx"))
+    amber._paths.add(Path("nested/page/app.tsx"))
 
     captured: list[dict] = []
 
@@ -175,12 +175,12 @@ def test_passes_registered_paths(amber):
     with patch("gdansk.core.bundle", _fake_bundle), amber(blocking=True):
         pass
 
-    assert captured[-1]["paths"] == {Path("simple.tsx"), Path("nested/page.tsx")}
+    assert captured[-1]["paths"] == {Path("apps/simple/app.tsx"), Path("apps/nested/page/app.tsx")}
 
 
 @pytest.mark.usefixtures("views_dir")
 def test_cancels_task_on_exit(amber):
-    amber._paths.add(Path("simple.tsx"))
+    amber._paths.add(Path("simple/app.tsx"))
 
     cancel_called = threading.Event()
 
@@ -199,7 +199,7 @@ def test_cancels_task_on_exit(amber):
 
 @pytest.mark.usefixtures("views_dir")
 def test_closes_loop_on_exit(amber):
-    amber._paths.add(Path("simple.tsx"))
+    amber._paths.add(Path("simple/app.tsx"))
 
     loops: list[asyncio.AbstractEventLoop] = []
 
@@ -236,34 +236,67 @@ def test_rejects_non_tsx_jsx(amber):
 
 
 def test_accepts_tsx(amber):
-    decorator = amber.tool(Path("simple.tsx"))
+    decorator = amber.tool(Path("simple/app.tsx"))
     assert callable(decorator)
 
 
-def test_accepts_jsx(mock_mcp, views_dir):
-    (views_dir / "app.jsx").write_text("export const app = 1;\n", encoding="utf-8")
+def test_rejects_non_apps_path(amber):
+    with pytest.raises(ValueError, match=r"must match \*\*/app\.tsx or \*\*/app\.jsx"):
+        amber.tool(Path("simple.tsx"))
+
+
+def test_rejects_apps_prefixed_path(amber):
+    with pytest.raises(ValueError, match="must not start with apps/"):
+        amber.tool(Path("apps/simple/app.tsx"))
+
+
+def test_rejects_non_app_entry_filename(mock_mcp, views_dir):
+    wrong_entry = views_dir / "apps" / "wrong" / "page.tsx"
+    wrong_entry.parent.mkdir(parents=True, exist_ok=True)
+    wrong_entry.write_text("export const page = 1;\n", encoding="utf-8")
+
     amber = Amber(mcp=mock_mcp, views=views_dir)
-    decorator = amber.tool(Path("app.jsx"))
+    with pytest.raises(ValueError, match=r"must match \*\*/app\.tsx or \*\*/app\.jsx"):
+        amber.tool(Path("wrong/page.tsx"))
+
+
+def test_rejects_absolute_ui_path(amber, views_dir):
+    with pytest.raises(ValueError, match="must be a relative path"):
+        amber.tool(views_dir / "apps/simple/app.tsx")
+
+
+def test_rejects_traversal_segments(amber):
+    with pytest.raises(ValueError, match="must not contain traversal segments"):
+        amber.tool(Path("simple/../simple/app.tsx"))
+
+
+def test_accepts_jsx(mock_mcp, views_dir):
+    jsx_path = views_dir / "apps" / "jsx" / "app.jsx"
+    jsx_path.parent.mkdir(parents=True, exist_ok=True)
+    jsx_path.write_text("export const app = 1;\n", encoding="utf-8")
+
+    amber = Amber(mcp=mock_mcp, views=views_dir)
+    decorator = amber.tool(Path("jsx/app.jsx"))
     assert callable(decorator)
 
 
 def test_raises_when_file_not_found(amber):
     with pytest.raises(FileNotFoundError, match="was not found"):
-        amber.tool(Path("missing.tsx"))
+        amber.tool(Path("missing/app.tsx"))
 
 
 def test_adds_path_to_paths(amber):
-    assert Path("simple.tsx") not in amber.paths
+    assert Path("simple/app.tsx") not in amber.paths
 
-    @amber.tool(Path("simple.tsx"))
+    @amber.tool(Path("simple/app.tsx"))
     def my_tool():
         pass
 
-    assert Path("simple.tsx") in amber.paths
+    assert Path("simple/app.tsx") in amber.paths
 
 
 def test_uri_top_level(amber, mock_mcp):
-    @amber.tool(Path("simple.tsx"))
+    @amber.tool(Path("simple/app.tsx"))
     def my_tool():
         pass
 
@@ -272,7 +305,7 @@ def test_uri_top_level(amber, mock_mcp):
 
 
 def test_uri_nested(amber, mock_mcp):
-    @amber.tool(Path("nested/page.tsx"))
+    @amber.tool(Path("nested/page/app.tsx"))
     def my_tool():
         pass
 
@@ -281,7 +314,7 @@ def test_uri_nested(amber, mock_mcp):
 
 
 def test_sets_meta_ui(amber, mock_mcp):
-    @amber.tool(Path("simple.tsx"))
+    @amber.tool(Path("simple/app.tsx"))
     def my_tool():
         pass
 
@@ -291,7 +324,7 @@ def test_sets_meta_ui(amber, mock_mcp):
 
 
 def test_preserves_existing_meta(amber, mock_mcp):
-    @amber.tool(Path("simple.tsx"), meta={"custom": "value"})
+    @amber.tool(Path("simple/app.tsx"), meta={"custom": "value"})
     def my_tool():
         pass
 
@@ -301,7 +334,7 @@ def test_preserves_existing_meta(amber, mock_mcp):
 
 
 def test_registers_mcp_tool(amber, mock_mcp):
-    @amber.tool(Path("simple.tsx"), name="my_tool", title="My Tool", description="desc")
+    @amber.tool(Path("simple/app.tsx"), name="my_tool", title="My Tool", description="desc")
     def my_tool():
         pass
 
@@ -313,7 +346,7 @@ def test_registers_mcp_tool(amber, mock_mcp):
 
 
 def test_registers_mcp_resource(amber, mock_mcp):
-    @amber.tool(Path("simple.tsx"), name="my_tool", title="My Tool", description="desc")
+    @amber.tool(Path("simple/app.tsx"), name="my_tool", title="My Tool", description="desc")
     def my_tool():
         pass
 
@@ -328,11 +361,11 @@ async def test_resource_reads_js(amber, mock_mcp, tmp_path):
     amber_output = tmp_path / "output"
     object.__setattr__(amber, "output", amber_output)
 
-    @amber.tool(Path("simple.tsx"))
+    @amber.tool(Path("simple/app.tsx"))
     def my_tool():
         pass
 
-    js_path = amber_output / "simple.js"
+    js_path = amber_output / "apps/simple/app.js"
     js_path.parent.mkdir(parents=True, exist_ok=True)
     js_path.write_text("console.log('hello');", encoding="utf-8")
 
@@ -348,14 +381,14 @@ async def test_resource_includes_css_when_present(amber, mock_mcp, tmp_path):
     amber_output = tmp_path / "output"
     object.__setattr__(amber, "output", amber_output)
 
-    @amber.tool(Path("simple.tsx"))
+    @amber.tool(Path("simple/app.tsx"))
     def my_tool():
         pass
 
-    out = amber_output / "simple.js"
+    out = amber_output / "apps/simple/app.js"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("console.log('hello');", encoding="utf-8")
-    (amber_output / "simple.css").write_text("body { color: red; }", encoding="utf-8")
+    (amber_output / "apps/simple/app.css").write_text("body { color: red; }", encoding="utf-8")
 
     handler = mock_mcp._resource_calls[-1]["handler"]
     html = await handler()
@@ -369,11 +402,11 @@ async def test_resource_omits_css_when_absent(amber, mock_mcp, tmp_path):
     amber_output = tmp_path / "output"
     object.__setattr__(amber, "output", amber_output)
 
-    @amber.tool(Path("simple.tsx"))
+    @amber.tool(Path("simple/app.tsx"))
     def my_tool():
         pass
 
-    js_path = amber_output / "simple.js"
+    js_path = amber_output / "apps/simple/app.js"
     js_path.parent.mkdir(parents=True, exist_ok=True)
     js_path.write_text("console.log('hello');", encoding="utf-8")
 
@@ -391,12 +424,12 @@ async def test_resource_uses_resolved_output(mock_mcp, views_dir, monkeypatch, t
     # output should have been resolved to absolute at construction time
     assert amber.output == tmp_path / "rel-out"
 
-    @amber.tool(Path("simple.tsx"))
+    @amber.tool(Path("simple/app.tsx"))
     def my_tool():
         pass
 
     # Write the JS file at the resolved absolute path
-    js_path = tmp_path / "rel-out" / "simple.js"
+    js_path = tmp_path / "rel-out" / "apps/simple/app.js"
     js_path.parent.mkdir(parents=True, exist_ok=True)
     js_path.write_text("console.log('resolved');", encoding="utf-8")
 
@@ -411,7 +444,7 @@ async def test_resource_raises_friendly_error_when_js_missing(amber, mock_mcp, t
     amber_output = tmp_path / "output"
     object.__setattr__(amber, "output", amber_output)
 
-    @amber.tool(Path("simple.tsx"))
+    @amber.tool(Path("simple/app.tsx"))
     def my_tool():
         pass
 
@@ -434,11 +467,11 @@ async def test_constructor_metadata_applies_to_tool_resource(mock_mcp, views_dir
     )
     object.__setattr__(amber, "output", tmp_path / "output")
 
-    @amber.tool(Path("simple.tsx"))
+    @amber.tool(Path("simple/app.tsx"))
     def my_tool():
         pass
 
-    js_path = amber.output / "simple.js"
+    js_path = amber.output / "apps/simple/app.js"
     js_path.parent.mkdir(parents=True, exist_ok=True)
     js_path.write_text("console.log('hello');", encoding="utf-8")
 
@@ -463,13 +496,13 @@ async def test_tool_metadata_overrides_constructor_metadata_shallowly(mock_mcp, 
     object.__setattr__(amber, "output", tmp_path / "output")
 
     @amber.tool(
-        Path("simple.tsx"),
+        Path("simple/app.tsx"),
         metadata={"title": "Tool Title", "openGraph": {"title": "Tool OG"}},
     )
     def my_tool():
         pass
 
-    js_path = amber.output / "simple.js"
+    js_path = amber.output / "apps/simple/app.js"
     js_path.parent.mkdir(parents=True, exist_ok=True)
     js_path.write_text("console.log('hello');", encoding="utf-8")
 
@@ -489,11 +522,11 @@ async def test_metadata_merge_is_non_mutating(mock_mcp, views_dir, tmp_path):
     amber = Amber(mcp=mock_mcp, views=views_dir, metadata=base_metadata)
     object.__setattr__(amber, "output", tmp_path / "output")
 
-    @amber.tool(Path("simple.tsx"), metadata=tool_metadata)
+    @amber.tool(Path("simple/app.tsx"), metadata=tool_metadata)
     def my_tool():
         pass
 
-    js_path = amber.output / "simple.js"
+    js_path = amber.output / "apps/simple/app.js"
     js_path.parent.mkdir(parents=True, exist_ok=True)
     js_path.write_text("console.log('hello');", encoding="utf-8")
 
@@ -508,7 +541,7 @@ def test_returns_original_function(amber):
     def my_tool():
         return "original"
 
-    result = amber.tool(Path("simple.tsx"))(my_tool)
+    result = amber.tool(Path("simple/app.tsx"))(my_tool)
     assert result is my_tool
     assert result() == "original"
 

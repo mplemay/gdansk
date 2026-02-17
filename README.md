@@ -62,7 +62,10 @@ Here's a complete example showing how to build a simple greeting tool with a Rea
 my-mcp-server/
 ├── server.py
 └── views/
-    └── hello.tsx
+    ├── package.json
+    └── apps/
+        └── hello/
+            └── app.tsx
 ```
 
 **server.py:**
@@ -77,7 +80,7 @@ import uvicorn
 mcp = FastMCP("Hello World Server")
 amber = Amber(mcp=mcp, views=Path(__file__).parent / "views")
 
-@amber.tool(name="greet", ui=Path("hello.tsx"))
+@amber.tool(name="greet", ui=Path("hello/app.tsx"))
 def greet(name: str) -> list[TextContent]:
     """Greet someone by name."""
     return [TextContent(type="text", text=f"Hello, {name}!")]
@@ -88,7 +91,7 @@ if __name__ == "__main__":
         uvicorn.run(app, port=3000)
 ```
 
-**views/hello.tsx:**
+**views/apps/hello/app.tsx:**
 
 ```tsx
 import { useApp } from "@modelcontextprotocol/ext-apps/react";
@@ -183,7 +186,7 @@ from pathlib import Path
 
 amber = Amber(
     mcp=mcp,                           # Your FastMCP server instance
-    views=Path("./views"),             # Directory containing TSX/JSX files
+    views=Path("./views"),             # Directory containing package.json and apps/
     output=Path(".gdansk"),            # Optional: bundled output directory (default: .gdansk)
     metadata={"title": "My MCP App"},  # Optional: static HTML metadata for all tools
 )
@@ -203,7 +206,7 @@ The `@amber.tool()` decorator registers both a tool and its UI resource:
 ```python
 @amber.tool(
     name="my-tool",           # Tool name (optional, defaults to function name)
-    ui=Path("my-ui.tsx"),     # Path to UI file relative to views directory
+    ui=Path("my-tool/app.tsx"),  # Path to UI file relative to views/apps directory
     title="My Tool",          # Optional: display title
     description="...",        # Optional: tool description
     annotations=...,          # Optional: MCP tool annotations
@@ -217,7 +220,7 @@ def my_tool(arg: str) -> list[TextContent]:
     return [TextContent(type="text", text=f"Result: {arg}")]
 ```
 
-The UI file must be a `.tsx` or `.jsx` file in your views directory.
+The UI file must match `**/app.tsx` or `**/app.jsx`, relative to your `views/apps` directory.
 
 ### React Integration
 
@@ -269,12 +272,14 @@ mkdir my-mcp-server && cd my-mcp-server
 uv init
 uv add gdansk mcp uvicorn
 
-# Install frontend dependencies
+# Create views directory
+mkdir -p views/apps/hello
+
+# Install frontend dependencies inside views/
+cd views
 npm install @modelcontextprotocol/ext-apps react react-dom
 npm install -D @types/react @types/react-dom typescript
-
-# Create views directory
-mkdir views
+cd ..
 ```
 
 **Development mode:**

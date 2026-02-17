@@ -2,7 +2,7 @@ import { useApp } from "@modelcontextprotocol/ext-apps/react";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
-import styles from "./global.css";
+import styles from "../../global.css";
 
 function GetTimeApp() {
   const [toolResult, setToolResult] = useState<CallToolResult | null>(null);

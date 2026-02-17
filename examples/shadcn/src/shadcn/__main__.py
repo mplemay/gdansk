@@ -11,10 +11,10 @@ from starlette.middleware.cors import CORSMiddleware
 from gdansk import Amber
 
 mcp = FastMCP("Get Time Server")
-amber = Amber(mcp=mcp, views=Path(__file__).parent)
+amber = Amber(mcp=mcp, views=Path(__file__).parent / "views")
 
 
-@amber.tool(name="get-time", ui=Path("page.tsx"))
+@amber.tool(name="get-time", ui=Path("todo/app.tsx"))
 def get_time() -> list[TextContent]:
     """Get the current server time in ISO 8601 format."""
     time_str = datetime.now(tz=UTC).isoformat()

@@ -25,6 +25,7 @@ class Amber:
     _paths: set[Path] = field(default_factory=set, init=False)
     _template: ClassVar[str] = "template.html"
     _env: ClassVar = ENV
+    _ui_min_parts: ClassVar[int] = 2
 
     mcp: FastMCP
     views: Path
@@ -47,6 +48,34 @@ class Amber:
     def paths(self) -> frozenset[Path]:
         return frozenset(self._paths)
 
+    @staticmethod
+    def _normalize_ui_path_and_uri(ui: Path) -> tuple[Path, Path, str]:
+        if ui.suffix not in {".tsx", ".jsx"}:
+            msg = f"The ui (i.e. {ui}) must be a .tsx or .jsx file"
+            raise ValueError(msg)
+
+        if ui.is_absolute():
+            msg = f"The ui (i.e. {ui}) must be a relative path"
+            raise ValueError(msg)
+
+        ui_posix = PurePosixPath(ui.as_posix())
+        if any(part in {"", ".", ".."} for part in ui_posix.parts):
+            msg = f"The ui (i.e. {ui}) must not contain traversal segments"
+            raise ValueError(msg)
+
+        if (
+            len(ui_posix.parts) < Amber._ui_min_parts
+            or ui_posix.parts[0] == "apps"
+            or ui_posix.name not in {"app.tsx", "app.jsx"}
+        ):
+            msg = f"The ui (i.e. {ui}) must match **/app.tsx or **/app.jsx and must not start with apps/"
+            raise ValueError(msg)
+
+        normalized_ui = Path(*ui_posix.parts)
+        bundle_ui = Path("apps", *ui_posix.parts)
+        uri = f"ui://{PurePosixPath(*ui_posix.parts[:-1])}"
+        return normalized_ui, bundle_ui, uri
+
     @contextmanager
     def __call__(self, *, dev: bool = False, blocking: bool = False) -> Generator[None]:
         if not self._paths:
@@ -54,9 +83,10 @@ class Amber:
             return
 
         loop = asyncio.new_event_loop()
+        bundle_paths = {Path("apps", *path.parts) for path in self._paths}
 
         async def _bundle() -> None:
-            await bundle(paths=self._paths, dev=dev, output=self.output, cwd=self.views)
+            await bundle(paths=bundle_paths, dev=dev, output=self.output, cwd=self.views)
 
         task = loop.create_task(_bundle())
         thread: threading.Thread | None = None
@@ -93,18 +123,13 @@ class Amber:
         metadata: Metadata | None = None,
         structured_output: bool | None = None,
     ) -> Callable[[AnyFunction], AnyFunction]:
-        if ui.suffix not in {".tsx", ".jsx"}:
-            msg = f"The ui (i.e. {ui}) must be a .tsx or .jsx file"
-            raise ValueError(msg)
+        normalized_ui, bundle_ui, uri = self._normalize_ui_path_and_uri(ui)
 
-        if not (self.views / ui).is_file():
+        if not (self.views / bundle_ui).is_file():
             msg = f"The ui (i.e. {ui}) was not found"
             raise FileNotFoundError(msg)
 
-        self._paths.add(ui)
-
-        # my/page.tsx -> ui://my/page
-        uri = f"ui://{PurePosixPath(ui.parent, ui.stem)}"
+        self._paths.add(normalized_ui)
 
         # add the ui to the metadata
         meta = meta or {}
@@ -130,13 +155,13 @@ class Amber:
             )
             async def _() -> str:
                 try:
-                    js = await APath(self.output / ui.with_suffix(".js")).read_text(encoding="utf-8")
+                    js = await APath(self.output / bundle_ui.with_suffix(".js")).read_text(encoding="utf-8")
                 except FileNotFoundError:
                     msg = f"Bundled output for {ui} not found. Has the bundler been run?"
                     raise FileNotFoundError(msg) from None
                 css = (
                     None
-                    if not await (path := APath(self.output / ui.with_suffix(".css"))).exists()
+                    if not await (path := APath(self.output / bundle_ui.with_suffix(".css"))).exists()
                     else await path.read_text(encoding="utf-8")
                 )
 
