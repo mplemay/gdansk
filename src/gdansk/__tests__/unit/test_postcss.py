@@ -118,7 +118,7 @@ async def test_watch_processes_changed_css_and_skips_unchanged(tmp_path, monkeyp
     css_path.write_text("body { color: red; }\n", encoding="utf-8")
     views.mkdir(parents=True, exist_ok=True)
 
-    def _resolve_cli(self, *, views: Path) -> Path:
+    async def _resolve_cli(self, *, views: Path) -> Path:
         _ = self
         return views / "postcss"
 
@@ -157,7 +157,7 @@ async def test_watch_handles_file_removed_between_scan_and_process(tmp_path, mon
     css_path.write_text("body { color: red; }\n", encoding="utf-8")
     views.mkdir(parents=True, exist_ok=True)
 
-    def _resolve_cli(self, *, views: Path) -> Path:
+    async def _resolve_cli(self, *, views: Path) -> Path:
         _ = self
         return views / "postcss"
 

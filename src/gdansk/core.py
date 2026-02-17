@@ -5,7 +5,7 @@ import threading
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Any, ClassVar, Protocol
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from anyio import Path as APath
 
@@ -14,14 +14,12 @@ from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import ENV
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Generator, Sequence
+    from collections.abc import Callable, Generator, Sequence
 
     from mcp.server.fastmcp import FastMCP
     from mcp.types import AnyFunction, Icon, ToolAnnotations
 
-
-class AmberPlugin(Protocol):
-    def build(self, *, views: Path, output: Path) -> Awaitable[None]: ...
+    from gdansk.protocol import Plugin
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,7 +33,7 @@ class Amber:
     views: Path
     output: Path = field(init=False)
     metadata: Metadata | None = field(default=None, kw_only=True)
-    plugins: Sequence[AmberPlugin] = field(default=(), kw_only=True)
+    plugins: Sequence[Plugin] = field(default=(), kw_only=True)
 
     def __post_init__(self) -> None:
         if not self.views.is_dir():
@@ -43,7 +41,6 @@ class Amber:
             raise ValueError(msg)
 
         object.__setattr__(self, "output", self.views / ".gdansk")
-        object.__setattr__(self, "plugins", tuple(self.plugins))
 
     @property
     def paths(self) -> frozenset[Path]:
@@ -59,20 +56,16 @@ class Amber:
             return None, []
 
         stop_event = asyncio.Event()
-        watcher_tasks: list[asyncio.Task[None]] = []
-        for plugin in self.plugins:
-            watch = getattr(plugin, "watch", None)
-            if not callable(watch):
-                continue
-            watcher_tasks.append(
-                loop.create_task(
-                    watch(
-                        views=self.views,
-                        output=self.output,
-                        stop_event=stop_event,
-                    ),
+        watcher_tasks: list[asyncio.Task[None]] = [
+            loop.create_task(
+                plugin.watch(
+                    views=self.views,
+                    output=self.output,
+                    stop_event=stop_event,
                 ),
             )
+            for plugin in self.plugins
+        ]
 
         return stop_event, watcher_tasks
 

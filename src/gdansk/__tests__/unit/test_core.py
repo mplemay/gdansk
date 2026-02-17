@@ -73,6 +73,9 @@ def test_no_plugins_called_when_no_paths_registered(mock_mcp, views_dir):
             nonlocal called
             called = True
 
+        async def watch(self, *, views: Path, output: Path, stop_event: asyncio.Event) -> None:
+            _ = (views, output, stop_event)
+
     amber = Amber(mcp=mock_mcp, views=views_dir, plugins=[_TestPlugin()])
     with patch("gdansk.core.bundle") as mock_bundle, amber():
         pass
@@ -105,6 +108,9 @@ def test_plugins_run_after_bundle(mock_mcp, views_dir):
         async def build(self, *, views: Path, output: Path) -> None:
             _ = (views, output)
             calls.append("plugin")
+
+        async def watch(self, *, views: Path, output: Path, stop_event: asyncio.Event) -> None:
+            _ = (views, output, stop_event)
 
     amber = Amber(mcp=mock_mcp, views=views_dir, plugins=[_TestPlugin()])
     amber._paths.add(Path("simple/app.tsx"))
@@ -197,6 +203,9 @@ def test_plugin_errors_propagate_in_blocking_mode(mock_mcp, views_dir):
             _ = (views, output)
             msg = "plugin boom"
             raise RuntimeError(msg)
+
+        async def watch(self, *, views: Path, output: Path, stop_event: asyncio.Event) -> None:
+            _ = (views, output, stop_event)
 
     amber = Amber(mcp=mock_mcp, views=views_dir, plugins=[_FailingPlugin()])
     amber._paths.add(Path("simple/app.tsx"))

@@ -19,19 +19,19 @@ class PostCSS:
     poll_interval_seconds: float = 0.1
 
     async def build(self, *, views: Path, output: Path) -> None:
-        css_files = self._collect_css_files(output=output)
+        css_files = await self._collect_css_files(output=output)
         if not css_files:
             return
-        cli_path = self._resolve_cli(views=views)
+        cli_path = await self._resolve_cli(views=views)
         for css_path in css_files:
             await self._process_css_file(css_path=css_path, cli_path=cli_path, views=views)
 
     async def watch(self, *, views: Path, output: Path, stop_event: asyncio.Event) -> None:
-        cli_path = self._resolve_cli(views=views)
+        cli_path = await self._resolve_cli(views=views)
         known_mtimes: dict[Path, int] = {}
 
         while not stop_event.is_set():
-            for css_path in self._collect_css_files(output=output):
+            for css_path in await self._collect_css_files(output=output):
                 css_apath = APath(css_path)
                 try:
                     current_mtime = (await css_apath.stat()).st_mtime_ns
@@ -99,19 +99,23 @@ class PostCSS:
             compiled_css = await output_apath.read_text(encoding="utf-8")
             await css_apath.write_text(compiled_css, encoding="utf-8")
 
-    def _collect_css_files(self, *, output: Path) -> list[Path]:
-        if not output.exists():
+    async def _collect_css_files(self, *, output: Path) -> list[Path]:
+        output_apath = APath(output)
+        if not await output_apath.exists():
             return []
-        return sorted(path for path in output.rglob("*.css") if path.is_file())
 
-    def _resolve_cli(self, *, views: Path) -> Path:
+        css_files = [Path(str(path)) async for path in output_apath.rglob("*.css") if await path.is_file()]
+
+        return sorted(css_files)
+
+    async def _resolve_cli(self, *, views: Path) -> Path:
         bin_dir = views / "node_modules" / ".bin"
         candidates = [bin_dir / "postcss"]
         if name == "nt":
             candidates = [bin_dir / "postcss.cmd", bin_dir / "postcss.exe", *candidates]
 
         for candidate in candidates:
-            if candidate.exists() and candidate.is_file():
+            if await APath(candidate).is_file():
                 return candidate
 
         msg = (
