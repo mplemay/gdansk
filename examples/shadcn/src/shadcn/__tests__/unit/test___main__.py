@@ -1,4 +1,3 @@
-import json
 import sys
 from pathlib import Path
 
@@ -16,24 +15,24 @@ def reset_todos():
     todo_main.TODOS.clear()
 
 
-def _todos_from_response(response):
-    assert len(response) == 1
-    assert response[0].type == "text"
-    payload = json.loads(response[0].text)
-    return payload["todos"]
+def _structured_from_call_result(result: object) -> dict[str, object]:
+    assert isinstance(result, tuple)
+    assert len(result) == 2
+    assert isinstance(result[1], dict)
+    return result[1]
 
 
 def test_list_todos_returns_empty_list_initially():
-    assert _todos_from_response(todo_main.list_todos()) == []
+    assert todo_main.list_todos() == []
 
 
 def test_add_todo_adds_item():
-    todos = _todos_from_response(todo_main.add_todo("Buy milk"))
+    todos = todo_main.add_todo("Buy milk")
     assert len(todos) == 1
-    assert todos[0]["title"] == "Buy milk"
-    assert todos[0]["completed"] is False
-    assert isinstance(todos[0]["id"], str)
-    assert todos[0]["id"]
+    assert todos[0].title == "Buy milk"
+    assert todos[0].completed is False
+    assert isinstance(todos[0].id, str)
+    assert todos[0].id
 
 
 def test_add_todo_rejects_empty_title():
@@ -43,9 +42,9 @@ def test_add_todo_rejects_empty_title():
 
 def test_toggle_todo_flips_completed_state():
     todo_main.add_todo("Buy milk")
-    todo_id = _todos_from_response(todo_main.list_todos())[0]["id"]
-    todos = _todos_from_response(todo_main.toggle_todo(todo_id))
-    assert todos[0]["completed"] is True
+    todo_id = todo_main.list_todos()[0].id
+    todos = todo_main.toggle_todo(todo_id)
+    assert todos[0].completed is True
 
 
 def test_toggle_todo_errors_when_todo_not_found():
@@ -55,10 +54,40 @@ def test_toggle_todo_errors_when_todo_not_found():
 
 def test_delete_todo_removes_item():
     todo_main.add_todo("Buy milk")
-    todo_id = _todos_from_response(todo_main.list_todos())[0]["id"]
-    assert _todos_from_response(todo_main.delete_todo(todo_id)) == []
+    todo_id = todo_main.list_todos()[0].id
+    assert todo_main.delete_todo(todo_id) == []
 
 
 def test_delete_todo_errors_when_todo_not_found():
     with pytest.raises(ValueError, match="not found"):
         todo_main.delete_todo("missing")
+
+
+@pytest.mark.asyncio
+async def test_list_tools_exposes_todo_output_schema():
+    tools = await todo_main.mcp.list_tools()
+    schemas = {tool.name: tool.outputSchema for tool in tools}
+
+    for tool_name in ("list-todos", "add-todo", "toggle-todo", "delete-todo"):
+        schema = schemas[tool_name]
+        assert schema is not None
+        assert schema["type"] == "object"
+        assert "result" in schema["properties"]
+
+
+@pytest.mark.asyncio
+async def test_mcp_call_tool_returns_structured_todos():
+    structured = _structured_from_call_result(await todo_main.mcp.call_tool("list-todos", {}))
+    assert structured == {"result": []}
+
+    structured = _structured_from_call_result(await todo_main.mcp.call_tool("add-todo", {"title": "Buy milk"}))
+    assert len(structured["result"]) == 1
+    assert structured["result"][0]["title"] == "Buy milk"
+    assert structured["result"][0]["completed"] is False
+
+    todo_id = structured["result"][0]["id"]
+    structured = _structured_from_call_result(await todo_main.mcp.call_tool("toggle-todo", {"todo_id": todo_id}))
+    assert structured["result"][0]["completed"] is True
+
+    structured = _structured_from_call_result(await todo_main.mcp.call_tool("delete-todo", {"todo_id": todo_id}))
+    assert structured == {"result": []}

@@ -1,11 +1,9 @@
-import json
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
 import uvicorn
 from mcp.server.fastmcp import FastMCP
-from mcp.types import TextContent
 from starlette.middleware.cors import CORSMiddleware
 
 from gdansk import Amber
@@ -25,9 +23,8 @@ class Todo:
 TODOS: list[Todo] = []
 
 
-def _serialize_todos() -> list[TextContent]:
-    payload = {"todos": [asdict(todo) for todo in TODOS]}
-    return [TextContent(type="text", text=json.dumps(payload))]
+def _serialize_todos() -> list[Todo]:
+    return list(TODOS)
 
 
 def _get_todo(todo_id: str) -> Todo:
@@ -39,13 +36,13 @@ def _get_todo(todo_id: str) -> Todo:
     raise ValueError(msg)
 
 
-@amber.tool(name="list-todos", ui=Path("todo/app.tsx"))
-def list_todos() -> list[TextContent]:
+@amber.tool(name="list-todos", ui=Path("todo/app.tsx"), structured_output=True)
+def list_todos() -> list[Todo]:
     return _serialize_todos()
 
 
-@mcp.tool(name="add-todo")
-def add_todo(title: str) -> list[TextContent]:
+@mcp.tool(name="add-todo", structured_output=True)
+def add_todo(title: str) -> list[Todo]:
     cleaned_title = title.strip()
     if not cleaned_title:
         msg = "Title cannot be empty."
@@ -55,15 +52,15 @@ def add_todo(title: str) -> list[TextContent]:
     return _serialize_todos()
 
 
-@mcp.tool(name="toggle-todo")
-def toggle_todo(todo_id: str) -> list[TextContent]:
+@mcp.tool(name="toggle-todo", structured_output=True)
+def toggle_todo(todo_id: str) -> list[Todo]:
     todo = _get_todo(todo_id)
     todo.completed = not todo.completed
     return _serialize_todos()
 
 
-@mcp.tool(name="delete-todo")
-def delete_todo(todo_id: str) -> list[TextContent]:
+@mcp.tool(name="delete-todo", structured_output=True)
+def delete_todo(todo_id: str) -> list[Todo]:
     todo = _get_todo(todo_id)
     TODOS.remove(todo)
     return _serialize_todos()

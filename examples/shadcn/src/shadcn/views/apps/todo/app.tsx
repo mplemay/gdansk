@@ -24,12 +24,17 @@ function getFirstTextContent(result: CallToolResult): string {
 }
 
 function parseTodos(result: CallToolResult): Todo[] {
-  const parsedPayload = JSON.parse(getFirstTextContent(result)) as { todos?: unknown };
-  if (!Array.isArray(parsedPayload.todos)) {
-    throw new Error("Tool response is missing a valid todos array.");
+  const payload = result.structuredContent;
+  if (!payload || typeof payload !== "object") {
+    throw new Error("Tool response is missing structured content.");
   }
 
-  return parsedPayload.todos.map((todo, index) => {
+  const parsedPayload = payload as { result?: unknown };
+  if (!Array.isArray(parsedPayload.result)) {
+    throw new Error("Tool response is missing a valid result array.");
+  }
+
+  return parsedPayload.result.map((todo, index) => {
     if (!todo || typeof todo !== "object") {
       throw new Error(`Todo at index ${index} is not an object.`);
     }
