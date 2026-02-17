@@ -37,7 +37,7 @@ def test_add_todo_adds_item():
 
 
 def test_add_todo_rejects_empty_title():
-    with pytest.raises(ValueError, match="Title cannot be empty."):
+    with pytest.raises(ValueError, match=r"Title cannot be empty\."):
         todo_main.add_todo("   ")
 
 

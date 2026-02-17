@@ -10,7 +10,7 @@ use pyo3::{
     prelude::*,
 };
 #[cfg(not(test))]
-use rolldown::{Bundler, BundlerOptions, ExperimentalOptions, InputItem};
+use rolldown::{Bundler, BundlerOptions, ExperimentalOptions, InputItem, ResolveOptions};
 #[cfg(not(test))]
 use rolldown_dev::{BundlerConfig, DevEngine, DevOptions, RebuildStrategy};
 #[cfg(not(test))]
@@ -257,6 +257,10 @@ mod _core {
                 entry_filenames: Some("[name].js".to_string().into()),
                 css_entry_filenames: Some("[name].css".to_string().into()),
                 minify: Some(minify.into()),
+                resolve: Some(ResolveOptions {
+                    condition_names: Some(vec!["module".to_string(), "style".to_string()]),
+                    ..Default::default()
+                }),
                 ..Default::default()
             };
 

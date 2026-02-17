@@ -129,6 +129,45 @@ async def test_bundle_outputs_css_file(tmp_path, monkeypatch):
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+async def test_bundle_resolves_css_package_style_exports(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    package_dir = tmp_path / "node_modules" / "tw-animate-css"
+    (package_dir / "dist").mkdir(parents=True, exist_ok=True)
+    (package_dir / "package.json").write_text(
+        """
+{
+  "name": "tw-animate-css",
+  "exports": {
+    ".": {
+      "style": "./dist/tw-animate.css"
+    }
+  }
+}
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    (package_dir / "dist" / "tw-animate.css").write_text(
+        "body { color: green; }\n",
+        encoding="utf-8",
+    )
+
+    (tmp_path / "page.css").write_text('@import "tw-animate-css";\n', encoding="utf-8")
+    (tmp_path / "page.tsx").write_text(
+        'import "./page.css";\nexport const page = 1;\n',
+        encoding="utf-8",
+    )
+
+    await bundle({Path("page.tsx")})
+
+    css_output = tmp_path / ".gdansk" / "page.css"
+    assert css_output.exists()
+    assert "green" in css_output.read_text(encoding="utf-8")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 async def test_bundle_accepts_minify_false(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "main.tsx").write_text("export const value = 1;\n", encoding="utf-8")
