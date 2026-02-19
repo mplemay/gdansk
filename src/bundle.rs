@@ -9,7 +9,6 @@ use std::{
 use pyo3::{
     exceptions::{PyAttributeError, PyKeyError, PyRuntimeError, PyValueError},
     prelude::*,
-    types::PyDict,
 };
 #[cfg(not(test))]
 use rolldown::plugin::{
@@ -36,14 +35,10 @@ struct BundleView {
 #[derive(Debug, Clone)]
 struct NormalizedView {
     import: String,
-    key: String,
     app: bool,
     ssr: bool,
     client_name: String,
-    client_js: String,
-    client_css: String,
     server_name: Option<String>,
-    server_js: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -491,9 +486,8 @@ fn normalize_views(
         let client_js_path = client_stem_path.with_extension("js");
         let client_css_path = client_stem_path.with_extension("css");
         let client_name = normalize_relative_for_rolldown(&client_stem_path, "entry name")?;
-        let client_js = normalize_relative_for_rolldown(&client_js_path, "client output path")?;
-        let client_css =
-            normalize_relative_for_rolldown(&client_css_path, "client css output path")?;
+        let _ = normalize_relative_for_rolldown(&client_js_path, "client output path")?;
+        let _ = normalize_relative_for_rolldown(&client_css_path, "client css output path")?;
 
         if let Some(previous_view) = output_collisions.insert(client_js_path.clone(), key.clone()) {
             return Err(BundleError::validation(format!(
@@ -504,7 +498,7 @@ fn normalize_views(
             )));
         }
 
-        let (server_name, server_js) = if let Some(server_stem_path) = server_stem_path {
+        let server_name = if let Some(server_stem_path) = server_stem_path {
             let server_js_path = server_stem_path.with_extension("js");
             if let Some(previous_view) =
                 output_collisions.insert(server_js_path.clone(), key.clone())
@@ -516,30 +510,21 @@ fn normalize_views(
                     key
                 )));
             }
-            (
-                Some(normalize_relative_for_rolldown(
-                    &server_stem_path,
-                    "server entry name",
-                )?),
-                Some(normalize_relative_for_rolldown(
-                    &server_js_path,
-                    "server output path",
-                )?),
-            )
+            let _ = normalize_relative_for_rolldown(&server_js_path, "server output path")?;
+            Some(normalize_relative_for_rolldown(
+                &server_stem_path,
+                "server entry name",
+            )?)
         } else {
-            (None, None)
+            None
         };
 
         normalized_views.push(NormalizedView {
             import,
-            key,
             app: provided_view.app,
             ssr: provided_view.ssr,
             client_name,
-            client_js,
-            client_css,
             server_name,
-            server_js,
         });
     }
 
@@ -614,23 +599,6 @@ fn parse_views_from_python(py: Python<'_>, views: Vec<Py<PyAny>>) -> PyResult<Ve
             Ok(BundleView { path, app, ssr })
         })
         .collect()
-}
-
-#[cfg(not(test))]
-fn build_manifest(py: Python<'_>, views: &[NormalizedView]) -> PyResult<Py<PyAny>> {
-    let manifest = PyDict::new(py);
-    for view in views {
-        let record = PyDict::new(py);
-        record.set_item("client_js", &view.client_js)?;
-        record.set_item("client_css", &view.client_css)?;
-        if let Some(server_js) = &view.server_js {
-            record.set_item("server_js", server_js)?;
-        } else {
-            record.set_item("server_js", py.None())?;
-        }
-        manifest.set_item(&view.key, record)?;
-    }
-    Ok(manifest.into_any().unbind())
 }
 
 #[cfg(not(test))]
@@ -738,13 +706,6 @@ pub(crate) fn bundle(
             path_to_utf8(&output_dir, "output path").map_err(map_bundle_error)?;
         let normalized =
             normalize_views(parsed_views, &cwd, &output_dir).map_err(map_bundle_error)?;
-        let manifest =
-            Python::try_attach(|py| build_manifest(py, &normalized)).ok_or_else(|| {
-                py_runtime_error(
-                    "failed to acquire Python context",
-                    "interpreter is not attached",
-                )
-            })??;
 
         let client_items = build_input_items(build_client_input_item_fields(&normalized));
         let server_items = build_input_items(build_server_input_item_fields(&normalized));
@@ -784,7 +745,7 @@ pub(crate) fn bundle(
                     ),
                 )?;
             }
-            return Ok(manifest);
+            return Python::attach(|py| Ok(py.None()));
         }
 
         run_bundler(
@@ -809,7 +770,7 @@ pub(crate) fn bundle(
             )
             .await?;
         }
-        Ok(manifest)
+        Python::attach(|py| Ok(py.None()))
     })
 }
 
@@ -941,19 +902,17 @@ mod tests {
             .get("main.tsx")
             .expect("expected main.tsx mapping");
         assert_eq!(main.client_name, "main");
-        assert_eq!(main.client_js, "main.js");
-        assert_eq!(main.client_css, "main.css");
+        assert_eq!(format!("{}.js", main.client_name), "main.js");
+        assert_eq!(format!("{}.css", main.client_name), "main.css");
         assert_eq!(main.server_name, None);
-        assert_eq!(main.server_js, None);
 
         let nested = by_import
             .get("home/page.tsx")
             .expect("expected home/page.tsx mapping");
         assert_eq!(nested.client_name, "home/page");
-        assert_eq!(nested.client_js, "home/page.js");
-        assert_eq!(nested.client_css, "home/page.css");
+        assert_eq!(format!("{}.js", nested.client_name), "home/page.js");
+        assert_eq!(format!("{}.css", nested.client_name), "home/page.css");
         assert_eq!(nested.server_name, None);
-        assert_eq!(nested.server_js, None);
     }
 
     #[test]
@@ -970,10 +929,13 @@ mod tests {
 
         let entry = &normalized[0];
         assert_eq!(entry.client_name, "get-time/client");
-        assert_eq!(entry.client_js, "get-time/client.js");
-        assert_eq!(entry.client_css, "get-time/client.css");
+        assert_eq!(format!("{}.js", entry.client_name), "get-time/client.js");
+        assert_eq!(format!("{}.css", entry.client_name), "get-time/client.css");
         assert_eq!(entry.server_name, Some("get-time/server".to_string()));
-        assert_eq!(entry.server_js, Some("get-time/server.js".to_string()));
+        assert_eq!(
+            entry.server_name.as_ref().map(|name| format!("{name}.js")),
+            Some("get-time/server.js".to_string())
+        );
     }
 
     #[test]

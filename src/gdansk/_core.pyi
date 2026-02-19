@@ -1,16 +1,11 @@
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Protocol, TypedDict
+from typing import Protocol
 
 class BundleView(Protocol):
     path: Path
     app: bool
     ssr: bool
-
-class BundleManifestEntry(TypedDict):
-    client_js: str
-    client_css: str
-    server_js: str | None
 
 async def bundle(
     views: Sequence[BundleView],
@@ -18,5 +13,5 @@ async def bundle(
     minify: bool = True,
     output: Path = ...,
     cwd: Path = ...,
-) -> dict[str, BundleManifestEntry]: ...
+) -> None: ...
 async def run(code: str, /) -> object: ...

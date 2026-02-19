@@ -87,7 +87,6 @@ class View:
 @dataclass(frozen=True, slots=True)
 class Amber:
     _view_ssr: dict[Path, bool] = field(default_factory=dict, init=False)
-    _bundle_manifest: dict[str, dict[str, str | None]] = field(default_factory=dict, init=False)
     _template: ClassVar[str] = "template.html"
     _ui_min_parts: ClassVar[int] = 2
 
@@ -108,33 +107,6 @@ class Amber:
     @property
     def paths(self) -> frozenset[Path]:
         return frozenset(self._view_ssr)
-
-    @staticmethod
-    def _manifest_key(path: Path) -> str:
-        return PurePosixPath(path.as_posix()).as_posix()
-
-    @staticmethod
-    def _build_fallback_manifest(views: list[View]) -> dict[str, dict[str, str | None]]:
-        manifest: dict[str, dict[str, str | None]] = {}
-        for view in views:
-            key = Amber._manifest_key(view.path)
-            path_posix = PurePosixPath(view.path.as_posix())
-            if view.app:
-                if len(path_posix.parts) < 3 or path_posix.parts[0] != "apps":  # noqa: PLR2004
-                    msg = f"App view path must be inside apps/**/app.tsx: {view.path}"
-                    raise ValueError(msg)
-                tool_path = PurePosixPath(*path_posix.parts[1:-1])
-                client_stem = tool_path / "client"
-                server_stem = tool_path / "server"
-            else:
-                client_stem = path_posix.with_suffix("")
-                server_stem = client_stem
-            manifest[key] = {
-                "client_js": f"{client_stem}.js",
-                "client_css": f"{client_stem}.css",
-                "server_js": f"{server_stem}.js" if view.ssr else None,
-            }
-        return manifest
 
     def _build_registered_views(self) -> list[View]:
         return [
@@ -165,15 +137,13 @@ class Amber:
         return stop_event, watcher_tasks
 
     async def _run_build_pipeline(self, *, views: list[View], dev: bool) -> None:
-        object.__setattr__(self, "_bundle_manifest", Amber._build_fallback_manifest(views))
-        manifest = await bundle(
+        await bundle(
             views=views,
             dev=dev,
             minify=not dev,
             output=self.output,
             cwd=self.views,
         )
-        object.__setattr__(self, "_bundle_manifest", manifest)
         if dev:
             return
         for plugin in self.plugins:
@@ -280,7 +250,7 @@ class Amber:
         app.router.lifespan_context = _lifespan
         return app
 
-    def tool(  # noqa: C901, PLR0913
+    def tool(  # noqa: PLR0913
         self,
         ui: Path,
         name: str | None = None,
@@ -302,7 +272,12 @@ class Amber:
 
         ssr = self.ssr if ssr is None else ssr
         self._view_ssr[normalized_ui] = ssr
-        bundle_key = Amber._manifest_key(bundle_ui)
+        bundle_ui_posix = PurePosixPath(bundle_ui.as_posix())
+        tool_path = PurePosixPath(*bundle_ui_posix.parts[1:-1])
+        client_stem = tool_path / "client"
+        client_js_path = self.output / Path(f"{client_stem}.js")
+        client_css_path = self.output / Path(f"{client_stem}.css")
+        server_js_path = self.output / Path(f"{tool_path / 'server'}.js")
 
         # add the ui to the metadata
         meta = meta or {}
@@ -327,28 +302,15 @@ class Amber:
                 mime_type="text/html;profile=mcp-app",
             )
             async def _() -> str:
-                manifest_entry = self._bundle_manifest.get(bundle_key)
-                if manifest_entry is None:
-                    fallback_manifest = Amber._build_fallback_manifest([View(path=bundle_ui, app=True, ssr=ssr)])
-                    manifest_entry = fallback_manifest[bundle_key]
-                    self._bundle_manifest[bundle_key] = manifest_entry
-                js_relative = manifest_entry.get("client_js")
-                if not isinstance(js_relative, str):
-                    msg = f"Bundled output for {ui} not found. Has the bundler been run?"
-                    raise FileNotFoundError(msg)
                 try:
-                    js = await APath(self.output / js_relative).read_text(encoding="utf-8")
+                    js = await APath(client_js_path).read_text(encoding="utf-8")
                 except FileNotFoundError:
                     msg = f"Bundled output for {ui} not found. Has the bundler been run?"
                     raise FileNotFoundError(msg) from None
                 ssr_html: str | None = None
                 if ssr:
-                    server_js_relative = manifest_entry.get("server_js")
-                    if not isinstance(server_js_relative, str):
-                        msg = f"SSR bundled output for {ui} not found. Has the bundler been run?"
-                        raise FileNotFoundError(msg)
                     try:
-                        server_js = await APath(self.output / server_js_relative).read_text(
+                        server_js = await APath(server_js_path).read_text(
                             encoding="utf-8",
                         )
                     except FileNotFoundError:
@@ -359,9 +321,8 @@ class Amber:
                         msg = f"SSR output for {ui} must be a string"
                         raise TypeError(msg)
                     ssr_html = runtime_output
-                css_relative = manifest_entry.get("client_css")
                 css = None
-                if isinstance(css_relative, str) and await (path := APath(self.output / css_relative)).exists():
+                if await (path := APath(client_css_path)).exists():
                     css = await path.read_text(encoding="utf-8")
 
                 return ENV.render_template(

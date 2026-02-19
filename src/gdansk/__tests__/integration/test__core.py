@@ -117,11 +117,10 @@ async def test_bundle_writes_default_output(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "main.tsx").write_text("export const value = 1;\n", encoding="utf-8")
 
-    manifest = await bundle([View(path=Path("main.tsx"))])
+    result = await bundle([View(path=Path("main.tsx"))])
 
     assert (tmp_path / ".gdansk" / "main.js").exists()
-    assert manifest["main.tsx"]["client_js"] == "main.js"
-    assert manifest["main.tsx"]["server_js"] is None
+    assert result is None
 
 
 @pytest.mark.integration
@@ -132,10 +131,10 @@ async def test_bundle_writes_nested_output_in_custom_dir(tmp_path, monkeypatch):
     source.parent.mkdir(parents=True, exist_ok=True)
     source.write_text("export const home = 1;\n", encoding="utf-8")
 
-    manifest = await bundle([View(path=Path("home/page.tsx"))], output=Path("custom-out"))
+    result = await bundle([View(path=Path("home/page.tsx"))], output=Path("custom-out"))
 
     assert (tmp_path / "custom-out" / "home" / "page.js").exists()
-    assert manifest["home/page.tsx"]["client_js"] == "home/page.js"
+    assert result is None
 
 
 @pytest.mark.integration
@@ -274,12 +273,13 @@ async def test_bundle_app_ssr_view_writes_executable_server_output(tmp_path, mon
         encoding="utf-8",
     )
 
-    manifest = await bundle([View(path=Path("apps/simple/app.tsx"), app=True, ssr=True)])
+    result = await bundle([View(path=Path("apps/simple/app.tsx"), app=True, ssr=True)])
 
+    client_output_js = tmp_path / ".gdansk" / "simple" / "client.js"
     output_js = tmp_path / ".gdansk" / "simple" / "server.js"
+    assert client_output_js.exists()
     assert output_js.exists()
-    assert manifest["apps/simple/app.tsx"]["client_js"] == "simple/client.js"
-    assert manifest["apps/simple/app.tsx"]["server_js"] == "simple/server.js"
+    assert result is None
 
     ssr_html = await run(output_js.read_text(encoding="utf-8"))
     assert ssr_html == "<div>ok</div>"
