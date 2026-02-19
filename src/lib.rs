@@ -10,11 +10,17 @@ use pyo3::{
     prelude::*,
 };
 #[cfg(not(test))]
+use rolldown::plugin::{
+    __inner::SharedPluginable, HookLoadArgs, HookLoadOutput, HookLoadReturn, HookResolveIdArgs,
+    HookResolveIdOutput, HookResolveIdReturn, HookUsage, Plugin, PluginContext,
+    SharedLoadPluginContext,
+};
+#[cfg(not(test))]
 use rolldown::{Bundler, BundlerOptions, ExperimentalOptions, InputItem, ResolveOptions};
 #[cfg(not(test))]
 use rolldown_dev::{BundlerConfig, DevEngine, DevOptions, RebuildStrategy};
 #[cfg(not(test))]
-use std::sync::Arc;
+use std::{borrow::Cow, sync::Arc};
 
 #[derive(Debug, Clone)]
 struct NormalizedInput {
@@ -29,6 +35,8 @@ enum BundleError {
     Validation(String),
     Runtime(String),
 }
+
+const APP_ENTRYPOINT_QUERY: &str = "?gdansk-app-entry";
 
 impl BundleError {
     fn validation(message: impl Into<String>) -> Self {
@@ -48,9 +56,102 @@ impl fmt::Display for BundleError {
     }
 }
 
+fn entry_import_for_mode(import: &str, app_entrypoint_mode: bool) -> String {
+    if app_entrypoint_mode {
+        format!("{import}{APP_ENTRYPOINT_QUERY}")
+    } else {
+        import.to_owned()
+    }
+}
+
+fn build_input_item_fields(
+    normalized: &[NormalizedInput],
+    app_entrypoint_mode: bool,
+) -> Vec<(String, String)> {
+    normalized
+        .iter()
+        .map(|item| {
+            (
+                item.name.clone(),
+                entry_import_for_mode(&item.import, app_entrypoint_mode),
+            )
+        })
+        .collect()
+}
+
 #[cfg(not(test))]
 struct DevEngineCloseGuard {
     engine: Option<Arc<DevEngine>>,
+}
+
+#[cfg(not(test))]
+#[derive(Debug, Default)]
+struct GdanskAppEntrypointPlugin;
+
+#[cfg(not(test))]
+impl GdanskAppEntrypointPlugin {
+    fn source_id(id: &str) -> Option<&str> {
+        id.strip_suffix(APP_ENTRYPOINT_QUERY)
+    }
+
+    fn wrapper_source(source_id: &str) -> Option<String> {
+        let file_name = Path::new(source_id).file_name()?.to_str()?;
+        let import_path = format!("./{file_name}");
+        Some(format!(
+            r#"import {{ StrictMode, createElement }} from "react";
+import {{ createRoot }} from "react-dom/client";
+import App from "{import_path}";
+
+const root = document.getElementById("root");
+if (!root) throw new Error("Expected #root element");
+createRoot(root).render(createElement(StrictMode, null, createElement(App)));
+"#
+        ))
+    }
+}
+
+#[cfg(not(test))]
+impl Plugin for GdanskAppEntrypointPlugin {
+    fn name(&self) -> Cow<'static, str> {
+        Cow::Borrowed("gdansk:app-entrypoint")
+    }
+
+    async fn resolve_id(
+        &self,
+        _ctx: &PluginContext,
+        args: &HookResolveIdArgs<'_>,
+    ) -> HookResolveIdReturn {
+        if args.specifier.ends_with(APP_ENTRYPOINT_QUERY) {
+            return Ok(Some(HookResolveIdOutput::from_id(args.specifier)));
+        }
+        Ok(None)
+    }
+
+    async fn load(&self, _ctx: SharedLoadPluginContext, args: &HookLoadArgs<'_>) -> HookLoadReturn {
+        let Some(source_id) = Self::source_id(args.id) else {
+            return Ok(None);
+        };
+        let Some(wrapper_source) = Self::wrapper_source(source_id) else {
+            return Ok(None);
+        };
+        Ok(Some(HookLoadOutput {
+            code: wrapper_source.into(),
+            ..Default::default()
+        }))
+    }
+
+    fn register_hook_usage(&self) -> HookUsage {
+        HookUsage::ResolveId | HookUsage::Load
+    }
+}
+
+#[cfg(not(test))]
+fn app_entrypoint_plugins(app_entrypoint_mode: bool) -> Vec<SharedPluginable> {
+    if app_entrypoint_mode {
+        vec![Arc::new(GdanskAppEntrypointPlugin)]
+    } else {
+        vec![]
+    }
 }
 
 #[cfg(not(test))]
@@ -216,7 +317,16 @@ fn map_bundle_error(err: BundleError) -> PyErr {
 mod _core {
     use super::*;
 
-    #[pyfunction(signature = (paths, dev = false, minify = true, output = None, cwd = None))]
+    #[pyfunction(
+        signature = (
+            paths,
+            dev = false,
+            minify = true,
+            output = None,
+            cwd = None,
+            app_entrypoint_mode = false
+        )
+    )]
     fn bundle(
         py: Python<'_>,
         paths: HashSet<PathBuf>,
@@ -224,6 +334,7 @@ mod _core {
         minify: bool,
         output: Option<PathBuf>,
         cwd: Option<PathBuf>,
+        app_entrypoint_mode: bool,
     ) -> PyResult<Bound<'_, PyAny>> {
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let cwd = match cwd {
@@ -242,13 +353,14 @@ mod _core {
 
             let normalized =
                 normalize_inputs(paths, &cwd, &output_dir).map_err(map_bundle_error)?;
-            let input_items = normalized
+            let input_items = build_input_item_fields(&normalized, app_entrypoint_mode)
                 .into_iter()
-                .map(|item| InputItem {
-                    name: Some(item.name),
-                    import: item.import,
+                .map(|(name, import)| InputItem {
+                    name: Some(name),
+                    import,
                 })
                 .collect::<Vec<_>>();
+            let plugins = app_entrypoint_plugins(app_entrypoint_mode);
 
             let mut options = BundlerOptions {
                 input: Some(input_items),
@@ -272,7 +384,7 @@ mod _core {
             }
 
             if dev {
-                let bundler_config = BundlerConfig::new(options, vec![]);
+                let bundler_config = BundlerConfig::new(options, plugins);
                 let dev_engine = Arc::new(
                     DevEngine::new(
                         bundler_config,
@@ -298,7 +410,7 @@ mod _core {
                 close_guard.disarm();
                 Ok(())
             } else {
-                let mut bundler = Bundler::new(options)
+                let mut bundler = Bundler::with_plugins(options, plugins)
                     .map_err(|err| py_runtime_error("failed to initialize Bundler", err))?;
                 bundler
                     .write()
@@ -418,5 +530,35 @@ mod tests {
             .expect("expected home/page.tsx mapping");
         assert_eq!(nested.name, "home/page");
         assert_eq!(nested.output_relative_js, PathBuf::from("home/page.js"));
+    }
+
+    #[test]
+    fn app_entrypoint_mode_rewrites_import_and_preserves_name() {
+        let project = TempProject::new();
+        project.create_file("apps/simple/app.tsx");
+
+        let paths = HashSet::from([PathBuf::from("apps/simple/app.tsx")]);
+        let normalized = normalize_inputs(paths, &project.root, Path::new(".gdansk"))
+            .expect("expected normalized input set");
+
+        let input_fields = build_input_item_fields(&normalized, true);
+        assert_eq!(input_fields.len(), 1);
+        assert_eq!(input_fields[0].0, "apps/simple/app");
+        assert_eq!(input_fields[0].1, "apps/simple/app.tsx?gdansk-app-entry");
+    }
+
+    #[test]
+    fn default_mode_keeps_original_entry_import() {
+        let project = TempProject::new();
+        project.create_file("apps/simple/app.tsx");
+
+        let paths = HashSet::from([PathBuf::from("apps/simple/app.tsx")]);
+        let normalized = normalize_inputs(paths, &project.root, Path::new(".gdansk"))
+            .expect("expected normalized input set");
+
+        let input_fields = build_input_item_fields(&normalized, false);
+        assert_eq!(input_fields.len(), 1);
+        assert_eq!(input_fields[0].0, "apps/simple/app");
+        assert_eq!(input_fields[0].1, "apps/simple/app.tsx");
     }
 }

@@ -130,6 +130,7 @@ class Amber:
             minify=not dev,
             output=self.output,
             cwd=self.views,
+            app_entrypoint_mode=True,
         )
         if dev:
             return

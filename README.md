@@ -95,9 +95,8 @@ if __name__ == "__main__":
 ```tsx
 import { useApp } from "@modelcontextprotocol/ext-apps/react";
 import { useState } from "react";
-import { createRoot } from "react-dom/client";
 
-function GreetingApp() {
+export default function App() {
   const [name, setName] = useState("");
   const [greeting, setGreeting] = useState("");
 
@@ -133,9 +132,9 @@ function GreetingApp() {
     </main>
   );
 }
-
-createRoot(document.getElementById("root")!).render(<GreetingApp />);
 ```
+
+Gdansk mounts your default export into `#root` automatically and wraps it with `React.StrictMode`.
 
 Run the server with `python server.py`, configure it in your MCP client (like Claude Desktop), and you'll have an
 interactive greeting tool ready to use.
@@ -160,7 +159,7 @@ The get-time example provides a working template you can clone and adapt for you
    parameter.
 
 2. **Bundling** — Gdansk automatically bundles your TypeScript/JSX files using Rolldown (a fast Rust-based bundler) into
-   browser-ready JavaScript.
+   browser-ready JavaScript. For Amber tool UIs, Gdansk auto-mounts your default-exported app component.
 
 3. **Resource registration** — Bundled UIs are served as MCP resources with the `text/html;profile=mcp-app` MIME type,
    which MCP clients recognize as interactive apps.

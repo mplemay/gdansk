@@ -119,3 +119,18 @@ def test_multiple_tools_all_bundled(mock_mcp, views_dir, tmp_path, monkeypatch):
     with _lifespan(app):
         assert (output / "apps/simple/app.js").exists()
         assert (output / "apps/nested/page/app.js").exists()
+
+
+@pytest.mark.integration
+def test_prod_fails_when_ui_has_no_default_export(mock_mcp, views_dir, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (views_dir / "apps/simple/app.tsx").write_text("export const value = 1;\n", encoding="utf-8")
+    amber = Amber(mcp=mock_mcp, views=views_dir)
+
+    @amber.tool(Path("simple/app.tsx"))
+    def my_tool():
+        return "result"
+
+    app = amber(dev=False)
+    with pytest.raises(RuntimeError, match="default"), _lifespan(app):
+        pass

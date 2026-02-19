@@ -1,1 +1,3 @@
-export const nested = 1;
+export default function App() {
+    return null;
+}

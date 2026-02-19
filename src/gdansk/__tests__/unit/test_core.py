@@ -230,6 +230,20 @@ def test_passes_views_as_cwd(amber, views_dir):
 
 
 @pytest.mark.usefixtures("views_dir")
+def test_passes_app_entrypoint_mode_for_amber_ui_entries(amber):
+    amber._paths.add(Path("simple/app.tsx"))
+    captured: list[dict] = []
+
+    async def _fake_bundle(**kwargs: object):
+        captured.append(kwargs)
+
+    with patch("gdansk.core.bundle", _fake_bundle), _lifespan(amber(dev=False)):
+        pass
+
+    assert captured[-1]["app_entrypoint_mode"] is True
+
+
+@pytest.mark.usefixtures("views_dir")
 def test_passes_registered_paths(amber):
     amber._paths.add(Path("simple/app.tsx"))
     amber._paths.add(Path("nested/page/app.tsx"))

@@ -1,2 +1,5 @@
 import "./simple.css";
-export const page = 1;
+
+export default function App() {
+    return null;
+}
