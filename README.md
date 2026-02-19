@@ -150,6 +150,7 @@ this repository. It demonstrates:
 - **Multiple UI interactions** — Build rich, multi-action interfaces
 
 The get-time example provides a working template you can clone and adapt for your own MCP tools.
+For a minimal server-side rendering setup, see the [ssr example](examples/ssr).
 
 ## Key Concepts
 
@@ -307,6 +308,7 @@ Restart Claude Desktop to load your server.
 
 - **[FastAPI](examples/fastapi):** FastAPI-based MCP server integration with mounted app routes.
 - **[get-time](examples/get-time):** Feature-rich MCP app covering tool calls, messaging, logging, and links.
+- **[ssr](examples/ssr):** Minimal SSR example using `Amber(ssr=True)` with a single tool UI.
 - **[shadcn](examples/shadcn):** Todo app example using `shadcn/ui` components with Gdansk.
 
 ### Resources
