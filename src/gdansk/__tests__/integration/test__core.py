@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from anyio import Path as APath
 
-from gdansk._core import bundle
+from gdansk._core import Runtime, bundle
 
 
 async def _wait_for_file_or_task_failure(
@@ -175,3 +175,39 @@ async def test_bundle_accepts_minify_false(tmp_path, monkeypatch):
     await bundle({Path("main.tsx")}, minify=False)
 
     assert (tmp_path / ".gdansk" / "main.js").exists()
+
+
+@pytest.mark.integration
+def test_runtime_constructs_and_evaluates_expression():
+    runtime = Runtime()
+    assert runtime("1 + 2") == 3
+
+
+@pytest.mark.integration
+def test_runtime_preserves_state_across_calls():
+    runtime = Runtime()
+    runtime("globalThis.counter = 1")
+    assert runtime("counter += 2; counter") == 3
+
+
+@pytest.mark.integration
+def test_runtime_converts_nested_json_like_values():
+    runtime = Runtime()
+    assert runtime('({ ok: true, values: [1, { name: "gdansk" }, null] })') == {
+        "ok": True,
+        "values": [1, {"name": "gdansk"}, None],
+    }
+
+
+@pytest.mark.integration
+def test_runtime_reports_execution_errors():
+    runtime = Runtime()
+    with pytest.raises(RuntimeError, match="Execution error"):
+        runtime("throw new Error('boom')")
+
+
+@pytest.mark.integration
+def test_runtime_rejects_unsupported_values():
+    runtime = Runtime()
+    with pytest.raises(ValueError, match="Cannot deserialize value"):
+        runtime("undefined")
