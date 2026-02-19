@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from anyio import Path as APath
 
-from gdansk._core import bundle
+from gdansk._core import Runtime, bundle
 
 
 async def _wait_for_file_or_task_failure(
@@ -175,3 +175,50 @@ async def test_bundle_accepts_minify_false(tmp_path, monkeypatch):
     await bundle({Path("main.tsx")}, minify=False)
 
     assert (tmp_path / ".gdansk" / "main.js").exists()
+
+
+@pytest.mark.integration
+def test_runtime_evaluates_basic_expression():
+    runtime = Runtime()
+    assert runtime("1 + 2") == 3
+
+
+@pytest.mark.integration
+def test_runtime_persists_state_across_calls():
+    runtime = Runtime()
+    first = runtime("globalThis.counter = (globalThis.counter ?? 0) + 1; globalThis.counter")
+    second = runtime("globalThis.counter = (globalThis.counter ?? 0) + 1; globalThis.counter")
+    assert first == 1
+    assert second == 2
+
+
+@pytest.mark.integration
+def test_runtime_maps_json_compatible_values():
+    runtime = Runtime()
+    assert runtime("({ ok: true, values: [1, 2, 3], nothing: null })") == {
+        "ok": True,
+        "values": [1, 2, 3],
+        "nothing": None,
+    }
+    assert runtime("undefined") is None
+
+
+@pytest.mark.integration
+def test_runtime_rejects_promises():
+    runtime = Runtime()
+    with pytest.raises(RuntimeError, match="Promise"):
+        runtime("Promise.resolve(1)")
+
+
+@pytest.mark.integration
+def test_runtime_surfaces_javascript_errors():
+    runtime = Runtime()
+    with pytest.raises(RuntimeError, match="failed to execute javascript"):
+        runtime("let a = ;")
+
+
+@pytest.mark.integration
+def test_runtime_rejects_non_json_values():
+    runtime = Runtime()
+    with pytest.raises(TypeError, match="JSON-compatible output"):
+        runtime("(() => 1)")
