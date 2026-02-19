@@ -44,6 +44,18 @@ impl BasicRuntime {
 
         deno_core::scope!(scope, &mut self.runtime);
         let local = v8::Local::new(scope, output);
+        if local.is_number() {
+            let Some(number) = local.number_value(scope) else {
+                return Err(RuntimeError::deserialize(
+                    "Cannot deserialize value: unsupported JavaScript value".to_string(),
+                ));
+            };
+            if !number.is_finite() {
+                return Err(RuntimeError::deserialize(
+                    "Cannot deserialize value: unsupported JavaScript value".to_string(),
+                ));
+            }
+        }
         if local.is_undefined()
             || local.is_function()
             || local.is_symbol()
@@ -210,5 +222,103 @@ mod tests {
         let result = runtime.eval_json_value("(() => 42)");
         let err = result.expect_err("expected deserialize error for function value");
         assert!(matches!(err, RuntimeError::Deserialize(_)));
+    }
+
+    #[test]
+    fn rejects_symbol_results() {
+        let mut runtime = BasicRuntime::new();
+        let result = runtime.eval_json_value("Symbol('x')");
+        let err = result.expect_err("expected deserialize error for symbol value");
+        assert!(matches!(err, RuntimeError::Deserialize(_)));
+    }
+
+    #[test]
+    fn rejects_bigint_results() {
+        let mut runtime = BasicRuntime::new();
+        let result = runtime.eval_json_value("1n");
+        let err = result.expect_err("expected deserialize error for bigint value");
+        assert!(matches!(err, RuntimeError::Deserialize(_)));
+    }
+
+    #[test]
+    fn rejects_promise_results() {
+        let mut runtime = BasicRuntime::new();
+        let result = runtime.eval_json_value("Promise.resolve(1)");
+        let err = result.expect_err("expected deserialize error for promise value");
+        assert!(matches!(err, RuntimeError::Deserialize(_)));
+    }
+
+    #[test]
+    fn rejects_nan_results() {
+        let mut runtime = BasicRuntime::new();
+        let result = runtime.eval_json_value("0/0");
+        let err = result.expect_err("expected deserialize error for NaN");
+        assert!(matches!(err, RuntimeError::Deserialize(_)));
+    }
+
+    #[test]
+    fn rejects_positive_infinity_results() {
+        let mut runtime = BasicRuntime::new();
+        let result = runtime.eval_json_value("1/0");
+        let err = result.expect_err("expected deserialize error for Infinity");
+        assert!(matches!(err, RuntimeError::Deserialize(_)));
+    }
+
+    #[test]
+    fn rejects_negative_infinity_results() {
+        let mut runtime = BasicRuntime::new();
+        let result = runtime.eval_json_value("-1/0");
+        let err = result.expect_err("expected deserialize error for -Infinity");
+        assert!(matches!(err, RuntimeError::Deserialize(_)));
+    }
+
+    #[test]
+    fn execution_error_does_not_poison_runtime() {
+        let mut runtime = BasicRuntime::new();
+        let result = runtime.eval_json_value("throw new Error('boom')");
+        let err = result.expect_err("expected execution error");
+        assert!(matches!(err, RuntimeError::Execution(_)));
+
+        let recovered = runtime
+            .eval_json_value("40 + 2")
+            .expect("expected runtime to recover after execution error");
+        assert_eq!(recovered, json!(42));
+    }
+
+    #[test]
+    fn deserialize_error_does_not_poison_runtime() {
+        let mut runtime = BasicRuntime::new();
+        let result = runtime.eval_json_value("Symbol('x')");
+        let err = result.expect_err("expected deserialize error");
+        assert!(matches!(err, RuntimeError::Deserialize(_)));
+
+        let recovered = runtime
+            .eval_json_value("50 + 2")
+            .expect("expected runtime to recover after deserialize error");
+        assert_eq!(recovered, json!(52));
+    }
+
+    #[test]
+    fn supports_empty_object_and_array() {
+        let mut runtime = BasicRuntime::new();
+
+        let object = runtime
+            .eval_json_value("({})")
+            .expect("expected empty object to deserialize");
+        assert_eq!(object, json!({}));
+
+        let array = runtime
+            .eval_json_value("[]")
+            .expect("expected empty array to deserialize");
+        assert_eq!(array, json!([]));
+    }
+
+    #[test]
+    fn supports_unicode_string_values() {
+        let mut runtime = BasicRuntime::new();
+        let result = runtime
+            .eval_json_value(r#""café 👋""#)
+            .expect("expected unicode string to deserialize");
+        assert_eq!(result, json!("café 👋"));
     }
 }

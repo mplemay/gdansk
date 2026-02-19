@@ -211,3 +211,53 @@ def test_runtime_rejects_unsupported_values():
     runtime = Runtime()
     with pytest.raises(ValueError, match="Cannot deserialize value"):
         runtime("undefined")
+
+
+@pytest.mark.integration
+def test_runtime_returns_expected_python_types():
+    runtime = Runtime()
+
+    assert type(runtime("true")) is bool
+    assert type(runtime("123")) is int
+    assert type(runtime("1.25")) is float
+    assert type(runtime("'hello'")) is str
+    assert type(runtime("[1, 2, 3]")) is list
+    assert type(runtime("({ ok: true })")) is dict
+    assert runtime("null") is None
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("code", ["Symbol('x')", "1n", "Promise.resolve(1)", "0/0", "1/0"])
+def test_runtime_rejects_additional_unsupported_values(code):
+    runtime = Runtime()
+    with pytest.raises(ValueError, match="Cannot deserialize value"):
+        runtime(code)
+
+
+@pytest.mark.integration
+def test_runtime_recovers_after_execution_error():
+    runtime = Runtime()
+    with pytest.raises(RuntimeError, match="Execution error"):
+        runtime("throw new Error('boom')")
+    assert runtime("1 + 1") == 2
+
+
+@pytest.mark.integration
+def test_runtime_recovers_after_deserialize_error():
+    runtime = Runtime()
+    with pytest.raises(ValueError, match="Cannot deserialize value"):
+        runtime("Symbol('x')")
+    assert runtime("1 + 2") == 3
+
+
+@pytest.mark.integration
+def test_runtime_supports_empty_containers():
+    runtime = Runtime()
+    assert runtime("({})") == {}
+    assert runtime("[]") == []
+
+
+@pytest.mark.integration
+def test_runtime_supports_unicode_strings():
+    runtime = Runtime()
+    assert runtime("'café 👋'") == "café 👋"
