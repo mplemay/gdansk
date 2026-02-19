@@ -2,6 +2,7 @@
 name = "gdansk"
 version = "0.1.0"
 edition = "2024"
+build = "build.rs"
 
 [lib]
 name = "_core"
@@ -20,3 +21,6 @@ pyo3-async-runtimes = { version = "0.28", features = ["tokio-runtime"] }
 deno_core = "0.385.0"
 rolldown = { git = "https://github.com/rolldown/rolldown.git", tag="v1.0.0-rc.5", features = ["experimental"] }
 rolldown_dev = { git = "https://github.com/rolldown/rolldown.git", tag="v1.0.0-rc.5" }
+
+[build-dependencies]
+deno_core = "0.385.0"

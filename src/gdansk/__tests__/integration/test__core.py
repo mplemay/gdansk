@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from anyio import Path as APath
 
-from gdansk._core import Runtime, bundle
+from gdansk._core import bundle, run
 
 
 def _write_ssr_modules(root: Path, *, throw_on_render: bool = False) -> None:
@@ -257,8 +257,7 @@ async def test_bundle_server_entrypoint_mode_writes_executable_ssr_output(tmp_pa
     output_js = tmp_path / ".gdansk" / ".ssr" / "apps" / "simple" / "app.js"
     assert output_js.exists()
 
-    runtime = Runtime()
-    ssr_html = runtime.render_ssr(output_js.read_text(encoding="utf-8"))
+    ssr_html = await run(output_js.read_text(encoding="utf-8"))
     assert ssr_html == "<div>ok</div>"
 
 
@@ -281,100 +280,98 @@ async def test_bundle_server_entrypoint_mode_runtime_error_surfaces(tmp_path, mo
     )
 
     output_js = tmp_path / ".gdansk" / ".ssr" / "apps" / "simple" / "app.js"
-    runtime = Runtime()
     with pytest.raises(RuntimeError, match="Execution error"):
-        runtime.render_ssr(output_js.read_text(encoding="utf-8"))
+        await run(output_js.read_text(encoding="utf-8"))
 
 
 @pytest.mark.integration
-def test_runtime_render_ssr_clears_stale_output_between_calls():
-    runtime = Runtime()
-    assert runtime.render_ssr('Deno.core.ops.op_gdansk_set_ssr_html("<div>ok</div>");') == "<div>ok</div>"
-    with pytest.raises(ValueError, match="SSR output was not produced"):
-        runtime.render_ssr("1 + 1")
+@pytest.mark.asyncio
+async def test_runtime_ssr_capture_takes_precedence_and_does_not_leak_between_calls():
+    assert await run('Deno.core.ops.op_gdansk_set_ssr_html("<div>ok</div>"); 1 + 1') == "<div>ok</div>"
+    assert await run("1 + 1") == 2
 
 
 @pytest.mark.integration
-def test_runtime_constructs_and_evaluates_expression():
-    runtime = Runtime()
-    assert runtime("1 + 2") == 3
+@pytest.mark.asyncio
+async def test_runtime_constructs_and_evaluates_expression():
+    assert await run("1 + 2") == 3
 
 
 @pytest.mark.integration
-def test_runtime_preserves_state_across_calls():
-    runtime = Runtime()
-    runtime("globalThis.counter = 1")
-    assert runtime("counter += 2; counter") == 3
+@pytest.mark.asyncio
+async def test_runtime_is_stateless_across_calls():
+    await run("globalThis.counter = 1")
+    with pytest.raises(RuntimeError, match="Execution error"):
+        await run("counter += 2; counter")
 
 
 @pytest.mark.integration
-def test_runtime_converts_nested_json_like_values():
-    runtime = Runtime()
-    assert runtime('({ ok: true, values: [1, { name: "gdansk" }, null] })') == {
+@pytest.mark.asyncio
+async def test_runtime_converts_nested_json_like_values():
+    assert await run('({ ok: true, values: [1, { name: "gdansk" }, null] })') == {
         "ok": True,
         "values": [1, {"name": "gdansk"}, None],
     }
 
 
 @pytest.mark.integration
-def test_runtime_reports_execution_errors():
-    runtime = Runtime()
+@pytest.mark.asyncio
+async def test_runtime_reports_execution_errors():
     with pytest.raises(RuntimeError, match="Execution error"):
-        runtime("throw new Error('boom')")
+        await run("throw new Error('boom')")
 
 
 @pytest.mark.integration
-def test_runtime_rejects_unsupported_values():
-    runtime = Runtime()
+@pytest.mark.asyncio
+async def test_runtime_rejects_unsupported_values():
     with pytest.raises(ValueError, match="Cannot deserialize value"):
-        runtime("undefined")
+        await run("undefined")
 
 
 @pytest.mark.integration
-def test_runtime_returns_expected_python_types():
-    runtime = Runtime()
-
-    assert type(runtime("true")) is bool
-    assert type(runtime("123")) is int
-    assert type(runtime("1.25")) is float
-    assert type(runtime("'hello'")) is str
-    assert type(runtime("[1, 2, 3]")) is list
-    assert type(runtime("({ ok: true })")) is dict
-    assert runtime("null") is None
+@pytest.mark.asyncio
+async def test_runtime_returns_expected_python_types():
+    assert type(await run("true")) is bool
+    assert type(await run("123")) is int
+    assert type(await run("1.25")) is float
+    assert type(await run("'hello'")) is str
+    assert type(await run("[1, 2, 3]")) is list
+    assert type(await run("({ ok: true })")) is dict
+    assert await run("null") is None
 
 
 @pytest.mark.integration
 @pytest.mark.parametrize("code", ["Symbol('x')", "1n", "Promise.resolve(1)", "0/0", "1/0"])
-def test_runtime_rejects_additional_unsupported_values(code):
-    runtime = Runtime()
+@pytest.mark.asyncio
+async def test_runtime_rejects_additional_unsupported_values(code):
     with pytest.raises(ValueError, match="Cannot deserialize value"):
-        runtime(code)
+        await run(code)
 
 
 @pytest.mark.integration
-def test_runtime_recovers_after_execution_error():
-    runtime = Runtime()
+@pytest.mark.asyncio
+async def test_runtime_recovers_after_execution_error():
     with pytest.raises(RuntimeError, match="Execution error"):
-        runtime("throw new Error('boom')")
-    assert runtime("1 + 1") == 2
+        await run("throw new Error('boom')")
+    assert await run("1 + 1") == 2
 
 
 @pytest.mark.integration
-def test_runtime_recovers_after_deserialize_error():
-    runtime = Runtime()
+@pytest.mark.asyncio
+async def test_runtime_recovers_after_deserialize_error():
     with pytest.raises(ValueError, match="Cannot deserialize value"):
-        runtime("Symbol('x')")
-    assert runtime("1 + 2") == 3
+        await run("Symbol('x')")
+    assert await run("1 + 2") == 3
 
 
 @pytest.mark.integration
-def test_runtime_supports_empty_containers():
-    runtime = Runtime()
-    assert runtime("({})") == {}
-    assert runtime("[]") == []
+@pytest.mark.asyncio
+async def test_runtime_supports_empty_containers():
+    assert await run("({})") == {}
+    assert await run("[]") == []
 
 
 @pytest.mark.integration
-def test_runtime_supports_unicode_strings():
-    runtime = Runtime()
-    assert runtime("'café 👋'") == "café 👋"
+@pytest.mark.asyncio
+async def test_runtime_supports_unicode_strings():
+    assert await run("'café 👋'") == "café 👋"

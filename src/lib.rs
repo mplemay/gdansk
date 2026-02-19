@@ -10,5 +10,5 @@ mod _core {
     #[pymodule_export]
     use super::bundle::bundle;
     #[pymodule_export]
-    use super::runtime::Runtime;
+    use super::runtime::run;
 }

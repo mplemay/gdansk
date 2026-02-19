@@ -7,7 +7,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -681,8 +681,8 @@ async def test_resource_injects_ssr_html_when_effective_ssr_true(mock_mcp, views
     server_js_path.write_text('Deno.core.ops.op_gdansk_set_ssr_html("<p>server</p>");', encoding="utf-8")
 
     handler = mock_mcp._resource_calls[-1]["handler"]
-    with patch("gdansk.core._render_ssr_html") as mock_render_ssr_html:
-        mock_render_ssr_html.return_value = "<p>server</p>"
+    with patch("gdansk.core.run", new_callable=AsyncMock) as mock_run:
+        mock_run.return_value = "<p>server</p>"
         html = await handler()
 
     assert '<div id="root"><p>server</p></div>' in html
@@ -702,11 +702,11 @@ async def test_resource_skips_runtime_and_ssr_html_when_effective_ssr_false(ambe
     js_path.write_text("console.log('hello');", encoding="utf-8")
 
     handler = mock_mcp._resource_calls[-1]["handler"]
-    with patch("gdansk.core._render_ssr_html") as mock_render_ssr_html:
+    with patch("gdansk.core.run", new_callable=AsyncMock) as mock_run:
         html = await handler()
 
     assert '<div id="root"></div>' in html
-    mock_render_ssr_html.assert_not_called()
+    mock_run.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -746,8 +746,8 @@ async def test_resource_propagates_runtime_error_fail_fast(mock_mcp, views_dir, 
     server_js_path.write_text('Deno.core.ops.op_gdansk_set_ssr_html("<p>server</p>");', encoding="utf-8")
 
     handler = mock_mcp._resource_calls[-1]["handler"]
-    with patch("gdansk.core._render_ssr_html") as mock_render_ssr_html:
-        mock_render_ssr_html.side_effect = RuntimeError("boom")
+    with patch("gdansk.core.run", new_callable=AsyncMock) as mock_run:
+        mock_run.side_effect = RuntimeError("boom")
         with pytest.raises(RuntimeError, match="boom"):
             await handler()
 

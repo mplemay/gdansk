@@ -6,13 +6,12 @@ import logging
 import threading
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
-from functools import cache
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
 from anyio import Path as APath
 
-from gdansk._core import Runtime, bundle
+from gdansk._core import bundle, run
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import ENV
 
@@ -28,21 +27,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 _T = TypeVar("_T")
-_SSR_RUNTIME_LOCK = threading.Lock()
-
-
-@cache
-def _get_ssr_runtime() -> Runtime:
-    return Runtime()
-
-
-def _render_ssr_html(server_js: str, ui: Path) -> str:
-    with _SSR_RUNTIME_LOCK:
-        runtime_output = _get_ssr_runtime().render_ssr(server_js)
-    if not isinstance(runtime_output, str):
-        msg = f"SSR output for {ui} must be a string"
-        raise TypeError(msg)
-    return runtime_output
 
 
 class _AsyncThreadRunner:
@@ -314,8 +298,7 @@ class Amber:
             raise FileNotFoundError(msg)
 
         self._paths.add(normalized_ui)
-        effective_ssr = self.ssr if ssr is None else ssr
-        if effective_ssr:
+        if ssr := self.ssr if ssr is None else ssr:
             self._ssr_paths.add(normalized_ui)
         else:
             self._ssr_paths.discard(normalized_ui)
@@ -349,7 +332,7 @@ class Amber:
                     msg = f"Bundled output for {ui} not found. Has the bundler been run?"
                     raise FileNotFoundError(msg) from None
                 ssr_html: str | None = None
-                if effective_ssr:
+                if ssr:
                     try:
                         server_js = await APath(self.output / ".ssr" / bundle_ui.with_suffix(".js")).read_text(
                             encoding="utf-8",
@@ -357,7 +340,11 @@ class Amber:
                     except FileNotFoundError:
                         msg = f"SSR bundled output for {ui} not found. Has the bundler been run?"
                         raise FileNotFoundError(msg) from None
-                    ssr_html = _render_ssr_html(server_js, ui)
+                    runtime_output = await run(server_js)
+                    if not isinstance(runtime_output, str):
+                        msg = f"SSR output for {ui} must be a string"
+                        raise TypeError(msg)
+                    ssr_html = runtime_output
                 css = (
                     None
                     if not await (path := APath(self.output / bundle_ui.with_suffix(".css"))).exists()
