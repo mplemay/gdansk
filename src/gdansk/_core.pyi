@@ -1,12 +1,22 @@
+from collections.abc import Sequence
 from pathlib import Path
+from typing import Protocol, TypedDict
+
+class BundleView(Protocol):
+    path: Path
+    app: bool
+    ssr: bool
+
+class BundleManifestEntry(TypedDict):
+    client_js: str
+    client_css: str
+    server_js: str | None
 
 async def bundle(
-    paths: set[Path],
+    views: Sequence[BundleView],
     dev: bool = False,
     minify: bool = True,
     output: Path = ...,
     cwd: Path = ...,
-    app_entrypoint_mode: bool = False,
-    server_entrypoint_mode: bool = False,
-) -> None: ...
+) -> dict[str, BundleManifestEntry]: ...
 async def run(code: str, /) -> object: ...

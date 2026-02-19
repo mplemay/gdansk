@@ -170,6 +170,9 @@ amber = Amber(
 ```
 
 Bundled assets are always written to `views/.gdansk` and this output path is not configurable on `Amber`.
+For app views, each tool gets its own directory. For example, `apps/get-time/app.tsx` emits
+`views/.gdansk/get-time/client.js`, `views/.gdansk/get-time/client.css` (when present), and
+`views/.gdansk/get-time/server.js` when SSR is enabled.
 
 Create your app with Amber to bundle and serve your UIs:
 

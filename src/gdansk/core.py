@@ -77,10 +77,17 @@ class _AsyncThreadRunner:
         self._thread = None
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class View:
+    path: Path
+    app: bool = False
+    ssr: bool = False
+
+
 @dataclass(frozen=True, slots=True)
 class Amber:
-    _paths: set[Path] = field(default_factory=set, init=False)
-    _ssr_paths: set[Path] = field(default_factory=set, init=False)
+    _view_ssr: dict[Path, bool] = field(default_factory=dict, init=False)
+    _bundle_manifest: dict[str, dict[str, str | None]] = field(default_factory=dict, init=False)
     _template: ClassVar[str] = "template.html"
     _ui_min_parts: ClassVar[int] = 2
 
@@ -100,7 +107,40 @@ class Amber:
 
     @property
     def paths(self) -> frozenset[Path]:
-        return frozenset(self._paths)
+        return frozenset(self._view_ssr)
+
+    @staticmethod
+    def _manifest_key(path: Path) -> str:
+        return PurePosixPath(path.as_posix()).as_posix()
+
+    @staticmethod
+    def _build_fallback_manifest(views: list[View]) -> dict[str, dict[str, str | None]]:
+        manifest: dict[str, dict[str, str | None]] = {}
+        for view in views:
+            key = Amber._manifest_key(view.path)
+            path_posix = PurePosixPath(view.path.as_posix())
+            if view.app:
+                if len(path_posix.parts) < 3 or path_posix.parts[0] != "apps":  # noqa: PLR2004
+                    msg = f"App view path must be inside apps/**/app.tsx: {view.path}"
+                    raise ValueError(msg)
+                tool_path = PurePosixPath(*path_posix.parts[1:-1])
+                client_stem = tool_path / "client"
+                server_stem = tool_path / "server"
+            else:
+                client_stem = path_posix.with_suffix("")
+                server_stem = client_stem
+            manifest[key] = {
+                "client_js": f"{client_stem}.js",
+                "client_css": f"{client_stem}.css",
+                "server_js": f"{server_stem}.js" if view.ssr else None,
+            }
+        return manifest
+
+    def _build_registered_views(self) -> list[View]:
+        return [
+            View(path=Path("apps", *path.parts), app=True, ssr=ssr)
+            for path, ssr in sorted(self._view_ssr.items(), key=lambda item: item[0].as_posix())
+        ]
 
     def _schedule_watcher_tasks(
         self,
@@ -124,53 +164,18 @@ class Amber:
 
         return stop_event, watcher_tasks
 
-    async def _run_build_pipeline(self, *, paths: set[Path], ssr_paths: set[Path], dev: bool) -> None:
-        if dev:
-            await asyncio.gather(
-                bundle(
-                    paths=paths,
-                    dev=dev,
-                    minify=not dev,
-                    output=self.output,
-                    cwd=self.views,
-                    app_entrypoint_mode=True,
-                ),
-                *(
-                    [
-                        bundle(
-                            paths=ssr_paths,
-                            dev=dev,
-                            minify=not dev,
-                            output=self.output / ".ssr",
-                            cwd=self.views,
-                            app_entrypoint_mode=True,
-                            server_entrypoint_mode=True,
-                        ),
-                    ]
-                    if ssr_paths
-                    else []
-                ),
-            )
-            return
-
-        await bundle(
-            paths=paths,
+    async def _run_build_pipeline(self, *, views: list[View], dev: bool) -> None:
+        object.__setattr__(self, "_bundle_manifest", Amber._build_fallback_manifest(views))
+        manifest = await bundle(
+            views=views,
             dev=dev,
             minify=not dev,
             output=self.output,
             cwd=self.views,
-            app_entrypoint_mode=True,
         )
-        if ssr_paths:
-            await bundle(
-                paths=ssr_paths,
-                dev=dev,
-                minify=not dev,
-                output=self.output / ".ssr",
-                cwd=self.views,
-                app_entrypoint_mode=True,
-                server_entrypoint_mode=True,
-            )
+        object.__setattr__(self, "_bundle_manifest", manifest)
+        if dev:
+            return
         for plugin in self.plugins:
             await plugin.build(views=self.views, output=self.output)
 
@@ -230,11 +235,10 @@ class Amber:
 
     def __call__(self, *, dev: bool = False) -> Starlette:
         app = self.mcp.streamable_http_app()
-        if not self._paths:
+        if not self._view_ssr:
             return app
 
-        paths = {Path("apps", *path.parts) for path in self._paths}
-        ssr_paths = {Path("apps", *path.parts) for path in self._ssr_paths}
+        views = self._build_registered_views()
         runner = _AsyncThreadRunner()
         stop_event: asyncio.Event | None = None
         watcher_tasks: list[asyncio.Task[None]] = []
@@ -246,7 +250,7 @@ class Amber:
             nonlocal watcher_tasks
             nonlocal bundle_task
             stop_event, watcher_tasks = self._schedule_watcher_tasks(dev=True)
-            bundle_task = asyncio.create_task(self._run_build_pipeline(paths=paths, ssr_paths=ssr_paths, dev=True))
+            bundle_task = asyncio.create_task(self._run_build_pipeline(views=views, dev=True))
             bundle_task.add_done_callback(self._log_background_task_error)
             for watcher_task in watcher_tasks:
                 watcher_task.add_done_callback(self._log_background_task_error)
@@ -256,7 +260,7 @@ class Amber:
             if dev:
                 runner.run(_start_dev())
             else:
-                runner.run(self._run_build_pipeline(paths=paths, ssr_paths=ssr_paths, dev=False))
+                runner.run(self._run_build_pipeline(views=views, dev=False))
 
             async with original_lifespan(starlette_app):
                 try:
@@ -276,7 +280,7 @@ class Amber:
         app.router.lifespan_context = _lifespan
         return app
 
-    def tool(  # noqa: PLR0913
+    def tool(  # noqa: C901, PLR0913
         self,
         ui: Path,
         name: str | None = None,
@@ -296,11 +300,9 @@ class Amber:
             msg = f"The ui (i.e. {ui}) was not found"
             raise FileNotFoundError(msg)
 
-        self._paths.add(normalized_ui)
-        if ssr := self.ssr if ssr is None else ssr:
-            self._ssr_paths.add(normalized_ui)
-        else:
-            self._ssr_paths.discard(normalized_ui)
+        ssr = self.ssr if ssr is None else ssr
+        self._view_ssr[normalized_ui] = ssr
+        bundle_key = Amber._manifest_key(bundle_ui)
 
         # add the ui to the metadata
         meta = meta or {}
@@ -325,15 +327,28 @@ class Amber:
                 mime_type="text/html;profile=mcp-app",
             )
             async def _() -> str:
+                manifest_entry = self._bundle_manifest.get(bundle_key)
+                if manifest_entry is None:
+                    fallback_manifest = Amber._build_fallback_manifest([View(path=bundle_ui, app=True, ssr=ssr)])
+                    manifest_entry = fallback_manifest[bundle_key]
+                    self._bundle_manifest[bundle_key] = manifest_entry
+                js_relative = manifest_entry.get("client_js")
+                if not isinstance(js_relative, str):
+                    msg = f"Bundled output for {ui} not found. Has the bundler been run?"
+                    raise FileNotFoundError(msg)
                 try:
-                    js = await APath(self.output / bundle_ui.with_suffix(".js")).read_text(encoding="utf-8")
+                    js = await APath(self.output / js_relative).read_text(encoding="utf-8")
                 except FileNotFoundError:
                     msg = f"Bundled output for {ui} not found. Has the bundler been run?"
                     raise FileNotFoundError(msg) from None
                 ssr_html: str | None = None
                 if ssr:
+                    server_js_relative = manifest_entry.get("server_js")
+                    if not isinstance(server_js_relative, str):
+                        msg = f"SSR bundled output for {ui} not found. Has the bundler been run?"
+                        raise FileNotFoundError(msg)
                     try:
-                        server_js = await APath(self.output / ".ssr" / bundle_ui.with_suffix(".js")).read_text(
+                        server_js = await APath(self.output / server_js_relative).read_text(
                             encoding="utf-8",
                         )
                     except FileNotFoundError:
@@ -344,11 +359,10 @@ class Amber:
                         msg = f"SSR output for {ui} must be a string"
                         raise TypeError(msg)
                     ssr_html = runtime_output
-                css = (
-                    None
-                    if not await (path := APath(self.output / bundle_ui.with_suffix(".css"))).exists()
-                    else await path.read_text(encoding="utf-8")
-                )
+                css_relative = manifest_entry.get("client_css")
+                css = None
+                if isinstance(css_relative, str) and await (path := APath(self.output / css_relative)).exists():
+                    css = await path.read_text(encoding="utf-8")
 
                 return ENV.render_template(
                     Amber._template,

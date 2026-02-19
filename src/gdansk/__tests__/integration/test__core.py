@@ -7,9 +7,15 @@ import pytest
 from anyio import Path as APath
 
 from gdansk._core import bundle, run
+from gdansk.core import View
 
 
-def _write_ssr_modules(root: Path, *, throw_on_render: bool = False) -> None:
+def _write_ssr_modules(
+    root: Path,
+    *,
+    throw_on_render: bool = False,
+    use_message_channel_at_import: bool = False,
+) -> None:
     react_dir = root / "node_modules" / "react"
     react_dir.mkdir(parents=True, exist_ok=True)
     (react_dir / "package.json").write_text(
@@ -26,6 +32,7 @@ def _write_ssr_modules(root: Path, *, throw_on_render: bool = False) -> None:
         encoding="utf-8",
     )
     (react_dir / "index.js").write_text(
+        "export const StrictMode = Symbol.for('react.strict_mode');\n"
         "export function createElement(type, props, ...children) {\n"
         "  return { type, props: { ...(props ?? {}), children } };\n"
         "}\n",
@@ -41,10 +48,20 @@ def _write_ssr_modules(root: Path, *, throw_on_render: bool = False) -> None:
             '  "private": true,\n'
             '  "type": "module",\n'
             '  "exports": {\n'
+            '    "./client": "./client.js",\n'
             '    "./server": "./server.js"\n'
             "  }\n"
             "}\n"
         ),
+        encoding="utf-8",
+    )
+    (react_dom_dir / "client.js").write_text(
+        "export function createRoot() {\n"
+        "  return { render() {} };\n"
+        "}\n"
+        "export function hydrateRoot() {\n"
+        "  return null;\n"
+        "}\n",
         encoding="utf-8",
     )
     if throw_on_render:
@@ -53,8 +70,15 @@ def _write_ssr_modules(root: Path, *, throw_on_render: bool = False) -> None:
             encoding="utf-8",
         )
         return
+    message_channel_setup = (
+        "const channel = new MessageChannel();\n"
+        "channel.port1.onmessage = () => {};\n"
+        "channel.port2.postMessage(undefined);\n"
+        if use_message_channel_at_import
+        else ""
+    )
     (react_dom_dir / "server.js").write_text(
-        "export function renderToString(node) {\n"
+        message_channel_setup + "export function renderToString(node) {\n"
         "  if (typeof node?.type === 'function') {\n"
         "    return renderToString(node.type(node.props ?? {}));\n"
         "  }\n"
@@ -66,7 +90,7 @@ def _write_ssr_modules(root: Path, *, throw_on_render: bool = False) -> None:
 
 
 async def _wait_for_file_or_task_failure(
-    task: asyncio.Task[None],
+    task: asyncio.Task[object],
     output_path: Path,
     *,
     timeout_seconds: float = 20.0,
@@ -93,9 +117,11 @@ async def test_bundle_writes_default_output(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "main.tsx").write_text("export const value = 1;\n", encoding="utf-8")
 
-    await bundle({Path("main.tsx")})
+    manifest = await bundle([View(path=Path("main.tsx"))])
 
     assert (tmp_path / ".gdansk" / "main.js").exists()
+    assert manifest["main.tsx"]["client_js"] == "main.js"
+    assert manifest["main.tsx"]["server_js"] is None
 
 
 @pytest.mark.integration
@@ -106,9 +132,10 @@ async def test_bundle_writes_nested_output_in_custom_dir(tmp_path, monkeypatch):
     source.parent.mkdir(parents=True, exist_ok=True)
     source.write_text("export const home = 1;\n", encoding="utf-8")
 
-    await bundle({Path("home/page.tsx")}, output=Path("custom-out"))
+    manifest = await bundle([View(path=Path("home/page.tsx"))], output=Path("custom-out"))
 
     assert (tmp_path / "custom-out" / "home" / "page.js").exists()
+    assert manifest["home/page.tsx"]["client_js"] == "home/page.js"
 
 
 @pytest.mark.integration
@@ -117,7 +144,7 @@ async def test_bundle_rejects_empty_input(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
     with pytest.raises(ValueError, match="must not be empty"):
-        await bundle(set())
+        await bundle([])
 
 
 @pytest.mark.integration
@@ -127,7 +154,7 @@ async def test_bundle_rejects_non_jsx_or_tsx(tmp_path, monkeypatch):
     (tmp_path / "main.ts").write_text("export const value = 1;\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match=r"\.tsx or \.jsx"):
-        await bundle({Path("main.ts")})
+        await bundle([View(path=Path("main.ts"))])
 
 
 @pytest.mark.integration
@@ -139,7 +166,7 @@ async def test_bundle_rejects_input_outside_cwd(tmp_path, tmp_path_factory, monk
     outside_file.write_text("export const value = 1;\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match="inside cwd"):
-        await bundle({outside_file})
+        await bundle([View(path=outside_file)])
 
 
 @pytest.mark.integration
@@ -150,7 +177,7 @@ async def test_bundle_rejects_output_collisions(tmp_path, monkeypatch):
     (tmp_path / "a.jsx").write_text("export const b = 2;\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match="same output"):
-        await bundle({Path("a.tsx"), Path("a.jsx")})
+        await bundle([View(path=Path("a.tsx")), View(path=Path("a.jsx"))])
 
 
 @pytest.mark.integration
@@ -159,7 +186,7 @@ async def test_bundle_dev_mode_can_run_in_background_and_cancel(tmp_path, monkey
     monkeypatch.chdir(tmp_path)
     (tmp_path / "main.tsx").write_text("export const value = 1;\n", encoding="utf-8")
 
-    task = asyncio.ensure_future(bundle({Path("main.tsx")}, dev=True))
+    task = asyncio.ensure_future(bundle([View(path=Path("main.tsx"))], dev=True))
     await _wait_for_file_or_task_failure(task, tmp_path / ".gdansk" / "main.js")
 
     task.cancel()
@@ -177,7 +204,7 @@ async def test_bundle_outputs_css_file(tmp_path, monkeypatch):
         encoding="utf-8",
     )
 
-    await bundle({Path("page.tsx")})
+    await bundle([View(path=Path("page.tsx"))])
 
     assert (tmp_path / ".gdansk" / "page.js").exists()
     assert (tmp_path / ".gdansk" / "page.css").exists()
@@ -215,7 +242,7 @@ async def test_bundle_resolves_css_package_style_exports(tmp_path, monkeypatch):
         encoding="utf-8",
     )
 
-    await bundle({Path("page.tsx")})
+    await bundle([View(path=Path("page.tsx"))])
 
     css_output = tmp_path / ".gdansk" / "page.css"
     assert css_output.exists()
@@ -228,14 +255,14 @@ async def test_bundle_accepts_minify_false(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "main.tsx").write_text("export const value = 1;\n", encoding="utf-8")
 
-    await bundle({Path("main.tsx")}, minify=False)
+    await bundle([View(path=Path("main.tsx"))], minify=False)
 
     assert (tmp_path / ".gdansk" / "main.js").exists()
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_bundle_server_entrypoint_mode_writes_executable_ssr_output(tmp_path, monkeypatch):
+async def test_bundle_app_ssr_view_writes_executable_server_output(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _write_ssr_modules(tmp_path)
     (tmp_path / "apps" / "simple").mkdir(parents=True, exist_ok=True)
@@ -247,14 +274,34 @@ async def test_bundle_server_entrypoint_mode_writes_executable_ssr_output(tmp_pa
         encoding="utf-8",
     )
 
-    await bundle(
-        {Path("apps/simple/app.tsx")},
-        output=Path(".gdansk/.ssr"),
-        app_entrypoint_mode=True,
-        server_entrypoint_mode=True,
+    manifest = await bundle([View(path=Path("apps/simple/app.tsx"), app=True, ssr=True)])
+
+    output_js = tmp_path / ".gdansk" / "simple" / "server.js"
+    assert output_js.exists()
+    assert manifest["apps/simple/app.tsx"]["client_js"] == "simple/client.js"
+    assert manifest["apps/simple/app.tsx"]["server_js"] == "simple/server.js"
+
+    ssr_html = await run(output_js.read_text(encoding="utf-8"))
+    assert ssr_html == "<div>ok</div>"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_bundle_app_ssr_view_supports_message_channel_at_import(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _write_ssr_modules(tmp_path, use_message_channel_at_import=True)
+    (tmp_path / "apps" / "simple").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "apps" / "simple" / "app.tsx").write_text(
+        'import { createElement } from "react";\n'
+        "export default function App() {\n"
+        "  return createElement('div', null, 'ok');\n"
+        "}\n",
+        encoding="utf-8",
     )
 
-    output_js = tmp_path / ".gdansk" / ".ssr" / "apps" / "simple" / "app.js"
+    await bundle([View(path=Path("apps/simple/app.tsx"), app=True, ssr=True)])
+
+    output_js = tmp_path / ".gdansk" / "simple" / "server.js"
     assert output_js.exists()
 
     ssr_html = await run(output_js.read_text(encoding="utf-8"))
@@ -263,7 +310,7 @@ async def test_bundle_server_entrypoint_mode_writes_executable_ssr_output(tmp_pa
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_bundle_server_entrypoint_mode_runtime_error_surfaces(tmp_path, monkeypatch):
+async def test_bundle_app_ssr_view_runtime_error_surfaces(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _write_ssr_modules(tmp_path, throw_on_render=True)
     (tmp_path / "apps" / "simple").mkdir(parents=True, exist_ok=True)
@@ -272,14 +319,9 @@ async def test_bundle_server_entrypoint_mode_runtime_error_surfaces(tmp_path, mo
         encoding="utf-8",
     )
 
-    await bundle(
-        {Path("apps/simple/app.tsx")},
-        output=Path(".gdansk/.ssr"),
-        app_entrypoint_mode=True,
-        server_entrypoint_mode=True,
-    )
+    await bundle([View(path=Path("apps/simple/app.tsx"), app=True, ssr=True)])
 
-    output_js = tmp_path / ".gdansk" / ".ssr" / "apps" / "simple" / "app.js"
+    output_js = tmp_path / ".gdansk" / "simple" / "server.js"
     with pytest.raises(RuntimeError, match="Execution error"):
         await run(output_js.read_text(encoding="utf-8"))
 
@@ -295,6 +337,12 @@ async def test_runtime_ssr_capture_takes_precedence_and_does_not_leak_between_ca
 @pytest.mark.asyncio
 async def test_runtime_constructs_and_evaluates_expression():
     assert await run("1 + 2") == 3
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_runtime_exposes_message_channel_shim():
+    assert await run("typeof MessageChannel") == "function"
 
 
 @pytest.mark.integration

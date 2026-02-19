@@ -11,7 +11,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from gdansk.core import Amber
+from gdansk.core import Amber, View
+from gdansk.render import ENV
 
 if TYPE_CHECKING:
     from gdansk.metadata import Metadata
@@ -106,7 +107,7 @@ def test_no_plugins_called_when_no_paths_registered(mock_mcp, views_dir):
 
 @pytest.mark.usefixtures("views_dir")
 def test_dev_false_blocks_until_bundle_done(amber):
-    amber._paths.add(Path("simple/app.tsx"))
+    amber._view_ssr[Path("simple/app.tsx")] = False
     called = False
 
     async def _fake_bundle(**_kwargs: object):
@@ -132,7 +133,7 @@ def test_plugins_run_after_bundle_in_prod(mock_mcp, views_dir):
             _ = (views, output, stop_event)
 
     amber = Amber(mcp=mock_mcp, views=views_dir, plugins=[_TestPlugin()])
-    amber._paths.add(Path("simple/app.tsx"))
+    amber._view_ssr[Path("simple/app.tsx")] = False
 
     async def _fake_bundle(**_kwargs: object):
         calls.append("bundle")
@@ -145,7 +146,7 @@ def test_plugins_run_after_bundle_in_prod(mock_mcp, views_dir):
 
 @pytest.mark.usefixtures("views_dir")
 def test_dev_true_starts_background_runner(amber):
-    amber._paths.add(Path("simple/app.tsx"))
+    amber._view_ssr[Path("simple/app.tsx")] = False
     started = threading.Event()
 
     async def _slow_bundle(**_kwargs: object):
@@ -162,7 +163,7 @@ def test_dev_true_starts_background_runner(amber):
 
 @pytest.mark.usefixtures("views_dir")
 def test_passes_dev_flag_and_derived_minify(amber):
-    amber._paths.add(Path("simple/app.tsx"))
+    amber._view_ssr[Path("simple/app.tsx")] = False
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
@@ -192,7 +193,7 @@ def test_plugin_errors_propagate_in_prod(mock_mcp, views_dir):
             _ = (views, output, stop_event)
 
     amber = Amber(mcp=mock_mcp, views=views_dir, plugins=[_FailingPlugin()])
-    amber._paths.add(Path("simple/app.tsx"))
+    amber._view_ssr[Path("simple/app.tsx")] = False
 
     async def _fake_bundle(**_kwargs: object):
         return
@@ -209,7 +210,7 @@ def test_plugin_errors_propagate_in_prod(mock_mcp, views_dir):
 
 def test_passes_views_dot_gdansk_as_output(mock_mcp, views_dir):
     amber = Amber(mcp=mock_mcp, views=views_dir)
-    amber._paths.add(Path("simple/app.tsx"))
+    amber._view_ssr[Path("simple/app.tsx")] = False
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
@@ -222,7 +223,7 @@ def test_passes_views_dot_gdansk_as_output(mock_mcp, views_dir):
 
 
 def test_passes_views_as_cwd(amber, views_dir):
-    amber._paths.add(Path("simple/app.tsx"))
+    amber._view_ssr[Path("simple/app.tsx")] = False
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
@@ -235,8 +236,8 @@ def test_passes_views_as_cwd(amber, views_dir):
 
 
 @pytest.mark.usefixtures("views_dir")
-def test_passes_app_entrypoint_mode_for_amber_ui_entries(amber):
-    amber._paths.add(Path("simple/app.tsx"))
+def test_passes_view_specs_for_amber_ui_entries(amber):
+    amber._view_ssr[Path("simple/app.tsx")] = False
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
@@ -245,13 +246,13 @@ def test_passes_app_entrypoint_mode_for_amber_ui_entries(amber):
     with patch("gdansk.core.bundle", _fake_bundle), _lifespan(amber(dev=False)):
         pass
 
-    assert captured[-1]["app_entrypoint_mode"] is True
+    assert captured[-1]["views"] == [View(path=Path("apps/simple/app.tsx"), app=True, ssr=False)]
 
 
 @pytest.mark.usefixtures("views_dir")
 def test_passes_registered_paths(amber):
-    amber._paths.add(Path("simple/app.tsx"))
-    amber._paths.add(Path("nested/page/app.tsx"))
+    amber._view_ssr[Path("simple/app.tsx")] = False
+    amber._view_ssr[Path("nested/page/app.tsx")] = False
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
@@ -260,7 +261,10 @@ def test_passes_registered_paths(amber):
     with patch("gdansk.core.bundle", _fake_bundle), _lifespan(amber(dev=False)):
         pass
 
-    assert captured[-1]["paths"] == {Path("apps/simple/app.tsx"), Path("apps/nested/page/app.tsx")}
+    assert {(view.path, view.app, view.ssr) for view in captured[-1]["views"]} == {
+        (Path("apps/simple/app.tsx"), True, False),
+        (Path("apps/nested/page/app.tsx"), True, False),
+    }
 
 
 @pytest.mark.usefixtures("views_dir")
@@ -283,12 +287,12 @@ def test_run_build_pipeline_invokes_server_bundle_only_for_ssr_paths(mock_mcp, v
     with patch("gdansk.core.bundle", _fake_bundle), _lifespan(amber(dev=False)):
         pass
 
-    assert len(captured) == 2
-    assert captured[0]["paths"] == {Path("apps/simple/app.tsx"), Path("apps/nested/page/app.tsx")}
+    assert len(captured) == 1
     assert captured[0]["output"] == views_dir / ".gdansk"
-    assert captured[1]["paths"] == {Path("apps/nested/page/app.tsx")}
-    assert captured[1]["output"] == views_dir / ".gdansk" / ".ssr"
-    assert captured[1]["server_entrypoint_mode"] is True
+    assert {(view.path, view.app, view.ssr) for view in captured[0]["views"]} == {
+        (Path("apps/simple/app.tsx"), True, False),
+        (Path("apps/nested/page/app.tsx"), True, True),
+    }
 
 
 @pytest.mark.usefixtures("views_dir")
@@ -311,7 +315,7 @@ def test_plugins_watch_started_and_cancelled_on_shutdown(mock_mcp, views_dir):
                 raise
 
     amber = Amber(mcp=mock_mcp, views=views_dir, plugins=[_DevPlugin()])
-    amber._paths.add(Path("simple/app.tsx"))
+    amber._view_ssr[Path("simple/app.tsx")] = False
 
     async def _slow_bundle(**_kwargs: object):
         try:
@@ -339,7 +343,7 @@ def test_dev_watch_error_is_logged(mock_mcp, views_dir):
             raise RuntimeError(msg)
 
     amber = Amber(mcp=mock_mcp, views=views_dir, plugins=[_FailingWatchPlugin()])
-    amber._paths.add(Path("simple/app.tsx"))
+    amber._view_ssr[Path("simple/app.tsx")] = False
 
     async def _slow_bundle(**_kwargs: object):
         await asyncio.sleep(999)
@@ -358,7 +362,7 @@ def test_dev_watch_error_is_logged(mock_mcp, views_dir):
 
 @pytest.mark.usefixtures("views_dir")
 def test_closes_loop_on_shutdown(amber):
-    amber._paths.add(Path("simple/app.tsx"))
+    amber._view_ssr[Path("simple/app.tsx")] = False
     loops: list[asyncio.AbstractEventLoop] = []
     original_new_event_loop = asyncio.new_event_loop
 
@@ -386,7 +390,7 @@ def test_closes_loop_on_shutdown(amber):
 
 @pytest.mark.usefixtures("views_dir")
 def test_repeated_startup_shutdown_is_idempotent(amber):
-    amber._paths.add(Path("simple/app.tsx"))
+    amber._view_ssr[Path("simple/app.tsx")] = False
 
     async def _fake_bundle(**_kwargs: object):
         await asyncio.sleep(0)
@@ -483,7 +487,7 @@ def test_tool_ssr_none_inherits_amber_value(mock_mcp, views_dir):
         pass
 
     _ = my_tool
-    assert Path("simple/app.tsx") in amber._ssr_paths
+    assert amber._view_ssr[Path("simple/app.tsx")] is True
 
 
 def test_tool_ssr_true_overrides_amber_false(mock_mcp, views_dir):
@@ -494,7 +498,7 @@ def test_tool_ssr_true_overrides_amber_false(mock_mcp, views_dir):
         pass
 
     _ = my_tool
-    assert Path("simple/app.tsx") in amber._ssr_paths
+    assert amber._view_ssr[Path("simple/app.tsx")] is True
 
 
 def test_tool_ssr_false_overrides_amber_true(mock_mcp, views_dir):
@@ -505,7 +509,7 @@ def test_tool_ssr_false_overrides_amber_true(mock_mcp, views_dir):
         pass
 
     _ = my_tool
-    assert Path("simple/app.tsx") not in amber._ssr_paths
+    assert amber._view_ssr[Path("simple/app.tsx")] is False
 
 
 def test_uri_top_level(amber, mock_mcp):
@@ -578,7 +582,7 @@ async def test_resource_reads_js(amber, mock_mcp, tmp_path):
     def my_tool():
         pass
 
-    js_path = amber_output / "apps/simple/app.js"
+    js_path = amber_output / "simple/client.js"
     js_path.parent.mkdir(parents=True, exist_ok=True)
     js_path.write_text("console.log('hello');", encoding="utf-8")
 
@@ -598,10 +602,10 @@ async def test_resource_includes_css_when_present(amber, mock_mcp, tmp_path):
     def my_tool():
         pass
 
-    out = amber_output / "apps/simple/app.js"
+    out = amber_output / "simple/client.js"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("console.log('hello');", encoding="utf-8")
-    (amber_output / "apps/simple/app.css").write_text("body { color: red; }", encoding="utf-8")
+    (amber_output / "simple/client.css").write_text("body { color: red; }", encoding="utf-8")
 
     handler = mock_mcp._resource_calls[-1]["handler"]
     html = await handler()
@@ -619,7 +623,7 @@ async def test_resource_omits_css_when_absent(amber, mock_mcp, tmp_path):
     def my_tool():
         pass
 
-    js_path = amber_output / "apps/simple/app.js"
+    js_path = amber_output / "simple/client.js"
     js_path.parent.mkdir(parents=True, exist_ok=True)
     js_path.write_text("console.log('hello');", encoding="utf-8")
 
@@ -638,7 +642,7 @@ async def test_resource_uses_views_dot_gdansk_output(mock_mcp, views_dir):
     def my_tool():
         pass
 
-    js_path = views_dir / ".gdansk" / "apps/simple/app.js"
+    js_path = views_dir / ".gdansk" / "simple/client.js"
     js_path.parent.mkdir(parents=True, exist_ok=True)
     js_path.write_text("console.log('resolved');", encoding="utf-8")
 
@@ -673,10 +677,10 @@ async def test_resource_injects_ssr_html_when_effective_ssr_true(mock_mcp, views
     def my_tool():
         pass
 
-    js_path = amber_output / "apps/simple/app.js"
+    js_path = amber_output / "simple/client.js"
     js_path.parent.mkdir(parents=True, exist_ok=True)
     js_path.write_text("console.log('hello');", encoding="utf-8")
-    server_js_path = amber_output / ".ssr/apps/simple/app.js"
+    server_js_path = amber_output / "simple/server.js"
     server_js_path.parent.mkdir(parents=True, exist_ok=True)
     server_js_path.write_text('Deno.core.ops.op_gdansk_set_ssr_html("<p>server</p>");', encoding="utf-8")
 
@@ -697,7 +701,7 @@ async def test_resource_skips_runtime_and_ssr_html_when_effective_ssr_false(ambe
     def my_tool():
         pass
 
-    js_path = amber_output / "apps/simple/app.js"
+    js_path = amber_output / "simple/client.js"
     js_path.parent.mkdir(parents=True, exist_ok=True)
     js_path.write_text("console.log('hello');", encoding="utf-8")
 
@@ -719,7 +723,7 @@ async def test_resource_raises_when_ssr_bundle_missing(mock_mcp, views_dir, tmp_
     def my_tool():
         pass
 
-    js_path = amber_output / "apps/simple/app.js"
+    js_path = amber_output / "simple/client.js"
     js_path.parent.mkdir(parents=True, exist_ok=True)
     js_path.write_text("console.log('hello');", encoding="utf-8")
 
@@ -738,10 +742,10 @@ async def test_resource_propagates_runtime_error_fail_fast(mock_mcp, views_dir, 
     def my_tool():
         pass
 
-    js_path = amber_output / "apps/simple/app.js"
+    js_path = amber_output / "simple/client.js"
     js_path.parent.mkdir(parents=True, exist_ok=True)
     js_path.write_text("console.log('hello');", encoding="utf-8")
-    server_js_path = amber_output / ".ssr/apps/simple/app.js"
+    server_js_path = amber_output / "simple/server.js"
     server_js_path.parent.mkdir(parents=True, exist_ok=True)
     server_js_path.write_text('Deno.core.ops.op_gdansk_set_ssr_html("<p>server</p>");', encoding="utf-8")
 
@@ -769,7 +773,7 @@ async def test_constructor_metadata_applies_to_tool_resource(mock_mcp, views_dir
     def my_tool():
         pass
 
-    js_path = amber.output / "apps/simple/app.js"
+    js_path = amber.output / "simple/client.js"
     js_path.parent.mkdir(parents=True, exist_ok=True)
     js_path.write_text("console.log('hello');", encoding="utf-8")
 
@@ -800,7 +804,7 @@ async def test_tool_metadata_overrides_constructor_metadata_shallowly(mock_mcp, 
     def my_tool():
         pass
 
-    js_path = amber.output / "apps/simple/app.js"
+    js_path = amber.output / "simple/client.js"
     js_path.parent.mkdir(parents=True, exist_ok=True)
     js_path.write_text("console.log('hello');", encoding="utf-8")
 
@@ -824,7 +828,7 @@ async def test_metadata_merge_is_non_mutating(mock_mcp, views_dir, tmp_path):
     def my_tool():
         pass
 
-    js_path = amber.output / "apps/simple/app.js"
+    js_path = amber.output / "simple/client.js"
     js_path.parent.mkdir(parents=True, exist_ok=True)
     js_path.write_text("console.log('hello');", encoding="utf-8")
 
@@ -850,7 +854,7 @@ def test_returns_original_function(amber):
 def test_inlines_css():
     js = "console.log('hello');"
     css = "body { color: red; }"
-    html = Amber._env.render_template(Amber._template, js=js, css=css, metadata=None)
+    html = ENV.render_template(Amber._template, js=js, css=css, metadata=None)
 
     assert "<style>" in html
     assert css in html
@@ -859,7 +863,7 @@ def test_inlines_css():
 
 def test_no_css():
     js = "console.log('hello');"
-    html = Amber._env.render_template(Amber._template, js=js, css="", metadata=None)
+    html = ENV.render_template(Amber._template, js=js, css="", metadata=None)
 
     assert "<style>" not in html
     assert js in html
@@ -867,7 +871,7 @@ def test_no_css():
 
 def test_html_structure():
     js = "console.log('test');"
-    html = Amber._env.render_template(Amber._template, js=js, css="", metadata=None)
+    html = ENV.render_template(Amber._template, js=js, css="", metadata=None)
 
     assert html.startswith("<!DOCTYPE html>")
     assert '<meta charset="utf-8" />' in html
@@ -878,7 +882,7 @@ def test_html_structure():
 
 def test_js_injected_in_script_tag():
     js = "const x = 42;"
-    html = Amber._env.render_template(Amber._template, js=js, css="", metadata=None)
+    html = ENV.render_template(Amber._template, js=js, css="", metadata=None)
 
     script_start = html.index('<script type="module">')
     script_end = html.index("</script>")
@@ -888,6 +892,6 @@ def test_js_injected_in_script_tag():
 
 def test_ssr_html_rendered_in_root():
     js = "const x = 42;"
-    html = Amber._env.render_template(Amber._template, js=js, css="", ssr_html="<span>server</span>", metadata=None)
+    html = ENV.render_template(Amber._template, js=js, css="", ssr_html="<span>server</span>", metadata=None)
 
     assert '<div id="root"><span>server</span></div>' in html

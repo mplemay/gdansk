@@ -1,13 +1,15 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
+    ffi::OsStr,
     fmt,
     path::{Path, PathBuf},
 };
 
 #[cfg(not(test))]
 use pyo3::{
-    exceptions::{PyRuntimeError, PyValueError},
+    exceptions::{PyAttributeError, PyKeyError, PyRuntimeError, PyValueError},
     prelude::*,
+    types::PyDict,
 };
 #[cfg(not(test))]
 use rolldown::plugin::{
@@ -25,11 +27,23 @@ use rolldown_dev::{BundlerConfig, DevEngine, DevOptions, RebuildStrategy};
 use std::{borrow::Cow, sync::Arc};
 
 #[derive(Debug, Clone)]
-struct NormalizedInput {
+struct BundleView {
+    path: PathBuf,
+    app: bool,
+    ssr: bool,
+}
+
+#[derive(Debug, Clone)]
+struct NormalizedView {
     import: String,
-    name: String,
-    #[cfg_attr(not(test), allow(dead_code))]
-    output_relative_js: PathBuf,
+    key: String,
+    app: bool,
+    ssr: bool,
+    client_name: String,
+    client_js: String,
+    client_css: String,
+    server_name: Option<String>,
+    server_js: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -43,13 +57,6 @@ const SERVER_ENTRYPOINT_QUERY: &str = "?gdansk-server-entry";
 const GDANSK_RUNTIME_SPECIFIER: &str = "gdansk:runtime";
 #[cfg(not(test))]
 const GDANSK_RUNTIME_MODULE_SOURCE: &str = include_str!("runtime.js");
-
-#[derive(Debug, Clone, Copy)]
-enum EntrypointMode {
-    Default,
-    App,
-    Server,
-}
 
 impl BundleError {
     fn validation(message: impl Into<String>) -> Self {
@@ -69,24 +76,40 @@ impl fmt::Display for BundleError {
     }
 }
 
-fn entry_import_for_mode(import: &str, entrypoint_mode: EntrypointMode) -> String {
-    match entrypoint_mode {
-        EntrypointMode::Default => import.to_owned(),
-        EntrypointMode::App => format!("{import}{APP_ENTRYPOINT_QUERY}"),
-        EntrypointMode::Server => format!("{import}{SERVER_ENTRYPOINT_QUERY}"),
+fn entry_import_for_client(import: &str, app: bool) -> String {
+    if app {
+        format!("{import}{APP_ENTRYPOINT_QUERY}")
+    } else {
+        import.to_owned()
     }
 }
 
-fn build_input_item_fields(
-    normalized: &[NormalizedInput],
-    entrypoint_mode: EntrypointMode,
-) -> Vec<(String, String)> {
+fn entry_import_for_server(import: &str) -> String {
+    format!("{import}{SERVER_ENTRYPOINT_QUERY}")
+}
+
+fn build_client_input_item_fields(normalized: &[NormalizedView]) -> Vec<(String, String)> {
     normalized
         .iter()
         .map(|item| {
             (
-                item.name.clone(),
-                entry_import_for_mode(&item.import, entrypoint_mode),
+                item.client_name.clone(),
+                entry_import_for_client(&item.import, item.app),
+            )
+        })
+        .collect()
+}
+
+fn build_server_input_item_fields(normalized: &[NormalizedView]) -> Vec<(String, String)> {
+    normalized
+        .iter()
+        .filter(|item| item.ssr)
+        .map(|item| {
+            (
+                item.server_name
+                    .clone()
+                    .expect("ssr view must have server name"),
+                entry_import_for_server(&item.import),
             )
         })
         .collect()
@@ -264,15 +287,20 @@ impl Plugin for GdanskServerEntrypointPlugin {
 }
 
 #[cfg(not(test))]
-fn entrypoint_plugins(entrypoint_mode: EntrypointMode) -> Vec<SharedPluginable> {
-    match entrypoint_mode {
-        EntrypointMode::Default => vec![],
-        EntrypointMode::App => vec![Arc::new(GdanskAppEntrypointPlugin)],
-        EntrypointMode::Server => vec![
-            Arc::new(GdanskRuntimeModulePlugin),
-            Arc::new(GdanskServerEntrypointPlugin),
-        ],
+fn client_entrypoint_plugins(include_app_entrypoint_plugin: bool) -> Vec<SharedPluginable> {
+    if include_app_entrypoint_plugin {
+        vec![Arc::new(GdanskAppEntrypointPlugin)]
+    } else {
+        vec![]
     }
+}
+
+#[cfg(not(test))]
+fn server_entrypoint_plugins() -> Vec<SharedPluginable> {
+    vec![
+        Arc::new(GdanskRuntimeModulePlugin),
+        Arc::new(GdanskServerEntrypointPlugin),
+    ]
 }
 
 #[cfg(not(test))]
@@ -330,14 +358,14 @@ fn is_supported_jsx_extension(path: &Path) -> bool {
         .is_some_and(|ext| ext.eq_ignore_ascii_case("tsx") || ext.eq_ignore_ascii_case("jsx"))
 }
 
-fn normalize_inputs(
-    paths: HashSet<PathBuf>,
+fn normalize_views(
+    views: Vec<BundleView>,
     cwd: &Path,
     output_dir: &Path,
-) -> Result<Vec<NormalizedInput>, BundleError> {
-    if paths.is_empty() {
+) -> Result<Vec<NormalizedView>, BundleError> {
+    if views.is_empty() {
         return Err(BundleError::validation(
-            "`paths` must not be empty; expected at least one .tsx or .jsx file",
+            "`views` must not be empty; expected at least one .tsx or .jsx file",
         ));
     }
 
@@ -349,10 +377,11 @@ fn normalize_inputs(
     })?)
     .to_path_buf();
 
-    let mut normalized_inputs = Vec::with_capacity(paths.len());
+    let mut normalized_views = Vec::with_capacity(views.len());
     let mut output_collisions: HashMap<PathBuf, String> = HashMap::new();
 
-    for provided_path in paths {
+    for provided_view in views {
+        let provided_path = provided_view.path;
         let absolute_candidate = if provided_path.is_absolute() {
             provided_path.clone()
         } else {
@@ -397,32 +426,125 @@ fn normalize_inputs(
             ))
         })?;
 
-        let relative_without_ext = relative_path.with_extension("");
-        let output_relative_js = relative_without_ext.with_extension("js");
-
         let import = normalize_relative_for_rolldown(relative_path, "input path")?;
-        let name = normalize_relative_for_rolldown(&relative_without_ext, "entry name")?;
+        let key = import.clone();
 
-        if let Some(previous_input) =
-            output_collisions.insert(output_relative_js.clone(), import.clone())
-        {
+        if provided_view.ssr && !provided_view.app {
             return Err(BundleError::validation(format!(
-                "multiple inputs map to the same output {}: {} and {}",
-                output_dir.join(&output_relative_js).display(),
-                previous_input,
-                import
+                "view cannot set ssr=true when app=false: {}",
+                provided_path.display()
             )));
         }
 
-        normalized_inputs.push(NormalizedInput {
+        let (client_stem_path, server_stem_path) = if provided_view.app {
+            let file_name = relative_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .ok_or_else(|| {
+                    BundleError::validation(format!(
+                        "app views must target app.tsx or app.jsx: {}",
+                        provided_path.display()
+                    ))
+                })?;
+            if file_name != "app.tsx" && file_name != "app.jsx" {
+                return Err(BundleError::validation(format!(
+                    "app views must target app.tsx or app.jsx: {}",
+                    provided_path.display()
+                )));
+            }
+
+            let mut relative_components = relative_path.components();
+            let starts_with_apps = relative_components
+                .next()
+                .is_some_and(|component| component.as_os_str() == OsStr::new("apps"));
+            if !starts_with_apps {
+                return Err(BundleError::validation(format!(
+                    "app views must be inside an apps/ directory: {}",
+                    provided_path.display()
+                )));
+            }
+
+            let mut tool_directory = PathBuf::new();
+            if let Some(parent) = relative_path.parent() {
+                for component in parent.components().skip(1) {
+                    tool_directory.push(component.as_os_str());
+                }
+            }
+            if tool_directory.as_os_str().is_empty() {
+                return Err(BundleError::validation(format!(
+                    "app views must include at least one segment below apps/: {}",
+                    provided_path.display()
+                )));
+            }
+
+            let client_stem = tool_directory.join("client");
+            let server_stem = if provided_view.ssr {
+                Some(tool_directory.join("server"))
+            } else {
+                None
+            };
+            (client_stem, server_stem)
+        } else {
+            (relative_path.with_extension(""), None)
+        };
+
+        let client_js_path = client_stem_path.with_extension("js");
+        let client_css_path = client_stem_path.with_extension("css");
+        let client_name = normalize_relative_for_rolldown(&client_stem_path, "entry name")?;
+        let client_js = normalize_relative_for_rolldown(&client_js_path, "client output path")?;
+        let client_css =
+            normalize_relative_for_rolldown(&client_css_path, "client css output path")?;
+
+        if let Some(previous_view) = output_collisions.insert(client_js_path.clone(), key.clone()) {
+            return Err(BundleError::validation(format!(
+                "multiple views map to the same output {}: {} and {}",
+                output_dir.join(&client_js_path).display(),
+                previous_view,
+                key
+            )));
+        }
+
+        let (server_name, server_js) = if let Some(server_stem_path) = server_stem_path {
+            let server_js_path = server_stem_path.with_extension("js");
+            if let Some(previous_view) =
+                output_collisions.insert(server_js_path.clone(), key.clone())
+            {
+                return Err(BundleError::validation(format!(
+                    "multiple views map to the same output {}: {} and {}",
+                    output_dir.join(&server_js_path).display(),
+                    previous_view,
+                    key
+                )));
+            }
+            (
+                Some(normalize_relative_for_rolldown(
+                    &server_stem_path,
+                    "server entry name",
+                )?),
+                Some(normalize_relative_for_rolldown(
+                    &server_js_path,
+                    "server output path",
+                )?),
+            )
+        } else {
+            (None, None)
+        };
+
+        normalized_views.push(NormalizedView {
             import,
-            name,
-            output_relative_js,
+            key,
+            app: provided_view.app,
+            ssr: provided_view.ssr,
+            client_name,
+            client_js,
+            client_css,
+            server_name,
+            server_js,
         });
     }
 
-    normalized_inputs.sort_unstable_by(|left, right| left.import.cmp(&right.import));
-    Ok(normalized_inputs)
+    normalized_views.sort_unstable_by(|left, right| left.import.cmp(&right.import));
+    Ok(normalized_views)
 }
 
 #[cfg(not(test))]
@@ -434,28 +556,173 @@ fn map_bundle_error(err: BundleError) -> PyErr {
 }
 
 #[cfg(not(test))]
-#[pyfunction(
-    signature = (
-        paths,
-        dev = false,
-        minify = true,
-        output = None,
-        cwd = None,
-        app_entrypoint_mode = false,
-        server_entrypoint_mode = false
-    )
-)]
-#[allow(clippy::too_many_arguments)]
+fn map_extract_error(error: PyErr, index: usize, field: &str, expected: &str) -> PyErr {
+    PyValueError::new_err(format!(
+        "views[{index}].{field} must be {expected}: {error}"
+    ))
+}
+
+#[cfg(not(test))]
+fn get_attribute_or_item<'py>(
+    view: &Bound<'py, PyAny>,
+    key: &str,
+) -> PyResult<Option<Bound<'py, PyAny>>> {
+    if let Ok(value) = view.getattr(key) {
+        return Ok(Some(value));
+    }
+    match view.get_item(key) {
+        Ok(value) => Ok(Some(value)),
+        Err(error)
+            if error.is_instance_of::<PyAttributeError>(view.py())
+                || error.is_instance_of::<PyKeyError>(view.py()) =>
+        {
+            Ok(None)
+        }
+        Err(error) => Err(error),
+    }
+}
+
+#[cfg(not(test))]
+fn parse_views_from_python(py: Python<'_>, views: Vec<Py<PyAny>>) -> PyResult<Vec<BundleView>> {
+    views
+        .into_iter()
+        .enumerate()
+        .map(|(index, view)| {
+            let bound = view.bind(py);
+            let path_obj = get_attribute_or_item(bound, "path")?.ok_or_else(|| {
+                PyValueError::new_err(format!("views[{index}] is missing required field `path`"))
+            })?;
+            let path = path_obj.extract::<PathBuf>().map_err(|error| {
+                map_extract_error(error, index, "path", "a pathlib.Path or path string")
+            })?;
+
+            let app = if let Some(value) = get_attribute_or_item(bound, "app")? {
+                value
+                    .extract::<bool>()
+                    .map_err(|error| map_extract_error(error, index, "app", "a bool"))?
+            } else {
+                false
+            };
+            let ssr = if let Some(value) = get_attribute_or_item(bound, "ssr")? {
+                value
+                    .extract::<bool>()
+                    .map_err(|error| map_extract_error(error, index, "ssr", "a bool"))?
+            } else {
+                false
+            };
+
+            Ok(BundleView { path, app, ssr })
+        })
+        .collect()
+}
+
+#[cfg(not(test))]
+fn build_manifest(py: Python<'_>, views: &[NormalizedView]) -> PyResult<Py<PyAny>> {
+    let manifest = PyDict::new(py);
+    for view in views {
+        let record = PyDict::new(py);
+        record.set_item("client_js", &view.client_js)?;
+        record.set_item("client_css", &view.client_css)?;
+        if let Some(server_js) = &view.server_js {
+            record.set_item("server_js", server_js)?;
+        } else {
+            record.set_item("server_js", py.None())?;
+        }
+        manifest.set_item(&view.key, record)?;
+    }
+    Ok(manifest.into_any().unbind())
+}
+
+#[cfg(not(test))]
+fn build_input_items(fields: Vec<(String, String)>) -> Vec<InputItem> {
+    fields
+        .into_iter()
+        .map(|(name, import)| InputItem {
+            name: Some(name),
+            import,
+        })
+        .collect()
+}
+
+#[cfg(not(test))]
+async fn run_bundler(
+    input_items: Vec<InputItem>,
+    cwd: PathBuf,
+    output_dir_string: String,
+    minify: bool,
+    dev: bool,
+    format: Option<OutputFormat>,
+    plugins: Vec<SharedPluginable>,
+) -> Result<(), PyErr> {
+    let mut options = BundlerOptions {
+        input: Some(input_items),
+        cwd: Some(cwd),
+        dir: Some(output_dir_string),
+        entry_filenames: Some("[name].js".to_string().into()),
+        css_entry_filenames: Some("[name].css".to_string().into()),
+        minify: Some(minify.into()),
+        format,
+        resolve: Some(ResolveOptions {
+            condition_names: Some(vec!["module".to_string(), "style".to_string()]),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    if dev {
+        options.experimental = Some(ExperimentalOptions {
+            incremental_build: Some(true),
+            ..Default::default()
+        });
+
+        let bundler_config = BundlerConfig::new(options, plugins);
+        let dev_engine = Arc::new(
+            DevEngine::new(
+                bundler_config,
+                DevOptions {
+                    rebuild_strategy: Some(RebuildStrategy::Always),
+                    ..Default::default()
+                },
+            )
+            .map_err(|err| py_runtime_error("failed to initialize DevEngine", err))?,
+        );
+
+        let mut close_guard = DevEngineCloseGuard::new(Arc::clone(&dev_engine));
+
+        dev_engine
+            .run()
+            .await
+            .map_err(|err| py_runtime_error("failed to start DevEngine", err))?;
+        dev_engine
+            .wait_for_close()
+            .await
+            .map_err(|err| py_runtime_error("DevEngine exited with an error", err))?;
+
+        close_guard.disarm();
+        return Ok(());
+    }
+
+    let mut bundler = Bundler::with_plugins(options, plugins)
+        .map_err(|err| py_runtime_error("failed to initialize Bundler", err))?;
+    bundler
+        .write()
+        .await
+        .map_err(|err| py_runtime_error("bundling failed", err))?;
+    Ok(())
+}
+
+#[cfg(not(test))]
+#[pyfunction(signature = (views, dev = false, minify = true, output = None, cwd = None))]
 pub(crate) fn bundle(
     py: Python<'_>,
-    paths: HashSet<PathBuf>,
+    views: Vec<Py<PyAny>>,
     dev: bool,
     minify: bool,
     output: Option<PathBuf>,
     cwd: Option<PathBuf>,
-    app_entrypoint_mode: bool,
-    server_entrypoint_mode: bool,
 ) -> PyResult<Bound<'_, PyAny>> {
+    let parsed_views = parse_views_from_python(py, views)?;
+
     pyo3_async_runtimes::tokio::future_into_py(py, async move {
         let cwd = match cwd {
             Some(dir) => dunce::simplified(
@@ -469,85 +736,80 @@ pub(crate) fn bundle(
         let output_dir = output.unwrap_or_else(|| PathBuf::from(".gdansk"));
         let output_dir_string =
             path_to_utf8(&output_dir, "output path").map_err(map_bundle_error)?;
-
-        let normalized = normalize_inputs(paths, &cwd, &output_dir).map_err(map_bundle_error)?;
-        let entrypoint_mode = if server_entrypoint_mode {
-            EntrypointMode::Server
-        } else if app_entrypoint_mode {
-            EntrypointMode::App
-        } else {
-            EntrypointMode::Default
-        };
-        let input_items = build_input_item_fields(&normalized, entrypoint_mode)
-            .into_iter()
-            .map(|(name, import)| InputItem {
-                name: Some(name),
-                import,
-            })
-            .collect::<Vec<_>>();
-        let plugins = entrypoint_plugins(entrypoint_mode);
-
-        let mut options = BundlerOptions {
-            input: Some(input_items),
-            cwd: Some(cwd),
-            dir: Some(output_dir_string),
-            entry_filenames: Some("[name].js".to_string().into()),
-            css_entry_filenames: Some("[name].css".to_string().into()),
-            minify: Some(minify.into()),
-            format: if server_entrypoint_mode {
-                Some(OutputFormat::Iife)
-            } else {
-                None
-            },
-            resolve: Some(ResolveOptions {
-                condition_names: Some(vec!["module".to_string(), "style".to_string()]),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-
-        if dev {
-            options.experimental = Some(ExperimentalOptions {
-                incremental_build: Some(true),
-                ..Default::default()
-            });
-        }
-
-        if dev {
-            let bundler_config = BundlerConfig::new(options, plugins);
-            let dev_engine = Arc::new(
-                DevEngine::new(
-                    bundler_config,
-                    DevOptions {
-                        rebuild_strategy: Some(RebuildStrategy::Always),
-                        ..Default::default()
-                    },
+        let normalized =
+            normalize_views(parsed_views, &cwd, &output_dir).map_err(map_bundle_error)?;
+        let manifest =
+            Python::try_attach(|py| build_manifest(py, &normalized)).ok_or_else(|| {
+                py_runtime_error(
+                    "failed to acquire Python context",
+                    "interpreter is not attached",
                 )
-                .map_err(|err| py_runtime_error("failed to initialize DevEngine", err))?,
-            );
+            })??;
 
-            let mut close_guard = DevEngineCloseGuard::new(Arc::clone(&dev_engine));
+        let client_items = build_input_items(build_client_input_item_fields(&normalized));
+        let server_items = build_input_items(build_server_input_item_fields(&normalized));
+        let has_app_entries = normalized.iter().any(|view| view.app);
 
-            dev_engine
-                .run()
-                .await
-                .map_err(|err| py_runtime_error("failed to start DevEngine", err))?;
-            dev_engine
-                .wait_for_close()
-                .await
-                .map_err(|err| py_runtime_error("DevEngine exited with an error", err))?;
-
-            close_guard.disarm();
-            Ok(())
-        } else {
-            let mut bundler = Bundler::with_plugins(options, plugins)
-                .map_err(|err| py_runtime_error("failed to initialize Bundler", err))?;
-            bundler
-                .write()
-                .await
-                .map_err(|err| py_runtime_error("bundling failed", err))?;
-            Ok(())
+        if dev {
+            if server_items.is_empty() {
+                run_bundler(
+                    client_items,
+                    cwd,
+                    output_dir_string,
+                    minify,
+                    dev,
+                    None,
+                    client_entrypoint_plugins(has_app_entries),
+                )
+                .await?;
+            } else {
+                tokio::try_join!(
+                    run_bundler(
+                        client_items,
+                        cwd.clone(),
+                        output_dir_string.clone(),
+                        minify,
+                        dev,
+                        None,
+                        client_entrypoint_plugins(has_app_entries),
+                    ),
+                    run_bundler(
+                        server_items,
+                        cwd,
+                        output_dir_string,
+                        minify,
+                        dev,
+                        Some(OutputFormat::Iife),
+                        server_entrypoint_plugins(),
+                    ),
+                )?;
+            }
+            return Ok(manifest);
         }
+
+        run_bundler(
+            client_items,
+            cwd.clone(),
+            output_dir_string.clone(),
+            minify,
+            dev,
+            None,
+            client_entrypoint_plugins(has_app_entries),
+        )
+        .await?;
+        if !server_items.is_empty() {
+            run_bundler(
+                server_items,
+                cwd,
+                output_dir_string,
+                minify,
+                dev,
+                Some(OutputFormat::Iife),
+                server_entrypoint_plugins(),
+            )
+            .await?;
+        }
+        Ok(manifest)
     })
 }
 
@@ -590,10 +852,18 @@ mod tests {
         }
     }
 
+    fn view(path: &str, app: bool, ssr: bool) -> BundleView {
+        BundleView {
+            path: PathBuf::from(path),
+            app,
+            ssr,
+        }
+    }
+
     #[test]
-    fn rejects_empty_input_set() {
+    fn rejects_empty_view_set() {
         let project = TempProject::new();
-        let result = normalize_inputs(HashSet::new(), &project.root, Path::new(".gdansk"));
+        let result = normalize_views(vec![], &project.root, Path::new(".gdansk"));
         let err = result.expect_err("expected empty-set validation error");
         assert!(err.to_string().contains("must not be empty"));
     }
@@ -603,8 +873,11 @@ mod tests {
         let project = TempProject::new();
         project.create_file("main.ts");
 
-        let paths = HashSet::from([PathBuf::from("main.ts")]);
-        let result = normalize_inputs(paths, &project.root, Path::new(".gdansk"));
+        let result = normalize_views(
+            vec![view("main.ts", false, false)],
+            &project.root,
+            Path::new(".gdansk"),
+        );
         let err = result.expect_err("expected extension validation error");
         assert!(err.to_string().contains(".tsx or .jsx"));
     }
@@ -615,8 +888,15 @@ mod tests {
         let outside = TempProject::new();
         outside.create_file("outside.tsx");
 
-        let paths = HashSet::from([outside.root.join("outside.tsx")]);
-        let result = normalize_inputs(paths, &project.root, Path::new(".gdansk"));
+        let result = normalize_views(
+            vec![BundleView {
+                path: outside.root.join("outside.tsx"),
+                app: false,
+                ssr: false,
+            }],
+            &project.root,
+            Path::new(".gdansk"),
+        );
         let err = result.expect_err("expected outside-cwd validation error");
         assert!(err.to_string().contains("inside cwd"));
     }
@@ -627,21 +907,30 @@ mod tests {
         project.create_file("a.tsx");
         project.create_file("a.jsx");
 
-        let paths = HashSet::from([PathBuf::from("a.tsx"), PathBuf::from("a.jsx")]);
-        let result = normalize_inputs(paths, &project.root, Path::new(".gdansk"));
+        let result = normalize_views(
+            vec![view("a.tsx", false, false), view("a.jsx", false, false)],
+            &project.root,
+            Path::new(".gdansk"),
+        );
         let err = result.expect_err("expected output collision validation error");
         assert!(err.to_string().contains("same output"));
     }
 
     #[test]
-    fn preserves_relative_structure_for_output_mapping() {
+    fn preserves_non_app_relative_structure_for_output_mapping() {
         let project = TempProject::new();
         project.create_file("main.tsx");
         project.create_file("home/page.tsx");
 
-        let paths = HashSet::from([PathBuf::from("main.tsx"), PathBuf::from("home/page.tsx")]);
-        let normalized = normalize_inputs(paths, &project.root, Path::new(".gdansk"))
-            .expect("expected normalized input set");
+        let normalized = normalize_views(
+            vec![
+                view("main.tsx", false, false),
+                view("home/page.tsx", false, false),
+            ],
+            &project.root,
+            Path::new(".gdansk"),
+        )
+        .expect("expected normalized input set");
 
         let by_import = normalized
             .into_iter()
@@ -651,59 +940,116 @@ mod tests {
         let main = by_import
             .get("main.tsx")
             .expect("expected main.tsx mapping");
-        assert_eq!(main.name, "main");
-        assert_eq!(main.output_relative_js, PathBuf::from("main.js"));
+        assert_eq!(main.client_name, "main");
+        assert_eq!(main.client_js, "main.js");
+        assert_eq!(main.client_css, "main.css");
+        assert_eq!(main.server_name, None);
+        assert_eq!(main.server_js, None);
 
         let nested = by_import
             .get("home/page.tsx")
             .expect("expected home/page.tsx mapping");
-        assert_eq!(nested.name, "home/page");
-        assert_eq!(nested.output_relative_js, PathBuf::from("home/page.js"));
+        assert_eq!(nested.client_name, "home/page");
+        assert_eq!(nested.client_js, "home/page.js");
+        assert_eq!(nested.client_css, "home/page.css");
+        assert_eq!(nested.server_name, None);
+        assert_eq!(nested.server_js, None);
     }
 
     #[test]
-    fn app_entrypoint_mode_rewrites_import_and_preserves_name() {
+    fn app_view_maps_to_per_tool_client_and_server_outputs() {
         let project = TempProject::new();
-        project.create_file("apps/simple/app.tsx");
+        project.create_file("apps/get-time/app.tsx");
 
-        let paths = HashSet::from([PathBuf::from("apps/simple/app.tsx")]);
-        let normalized = normalize_inputs(paths, &project.root, Path::new(".gdansk"))
-            .expect("expected normalized input set");
+        let normalized = normalize_views(
+            vec![view("apps/get-time/app.tsx", true, true)],
+            &project.root,
+            Path::new(".gdansk"),
+        )
+        .expect("expected normalized input set");
 
-        let input_fields = build_input_item_fields(&normalized, EntrypointMode::App);
-        assert_eq!(input_fields.len(), 1);
-        assert_eq!(input_fields[0].0, "apps/simple/app");
-        assert_eq!(input_fields[0].1, "apps/simple/app.tsx?gdansk-app-entry");
+        let entry = &normalized[0];
+        assert_eq!(entry.client_name, "get-time/client");
+        assert_eq!(entry.client_js, "get-time/client.js");
+        assert_eq!(entry.client_css, "get-time/client.css");
+        assert_eq!(entry.server_name, Some("get-time/server".to_string()));
+        assert_eq!(entry.server_js, Some("get-time/server.js".to_string()));
     }
 
     #[test]
-    fn default_mode_keeps_original_entry_import() {
+    fn rejects_ssr_when_app_is_false() {
         let project = TempProject::new();
-        project.create_file("apps/simple/app.tsx");
+        project.create_file("main.tsx");
 
-        let paths = HashSet::from([PathBuf::from("apps/simple/app.tsx")]);
-        let normalized = normalize_inputs(paths, &project.root, Path::new(".gdansk"))
-            .expect("expected normalized input set");
-
-        let input_fields = build_input_item_fields(&normalized, EntrypointMode::Default);
-        assert_eq!(input_fields.len(), 1);
-        assert_eq!(input_fields[0].0, "apps/simple/app");
-        assert_eq!(input_fields[0].1, "apps/simple/app.tsx");
+        let result = normalize_views(
+            vec![view("main.tsx", false, true)],
+            &project.root,
+            Path::new(".gdansk"),
+        );
+        let err = result.expect_err("expected ssr validation error");
+        assert!(err.to_string().contains("ssr=true"));
     }
 
     #[test]
-    fn server_entrypoint_mode_rewrites_import_and_preserves_name() {
+    fn rejects_app_view_that_is_not_under_apps() {
+        let project = TempProject::new();
+        project.create_file("simple/app.tsx");
+
+        let result = normalize_views(
+            vec![view("simple/app.tsx", true, false)],
+            &project.root,
+            Path::new(".gdansk"),
+        );
+        let err = result.expect_err("expected app path validation error");
+        assert!(err.to_string().contains("inside an apps/ directory"));
+    }
+
+    #[test]
+    fn client_input_fields_rewrite_only_app_views() {
         let project = TempProject::new();
         project.create_file("apps/simple/app.tsx");
+        project.create_file("main.tsx");
 
-        let paths = HashSet::from([PathBuf::from("apps/simple/app.tsx")]);
-        let normalized = normalize_inputs(paths, &project.root, Path::new(".gdansk"))
-            .expect("expected normalized input set");
+        let normalized = normalize_views(
+            vec![
+                view("apps/simple/app.tsx", true, false),
+                view("main.tsx", false, false),
+            ],
+            &project.root,
+            Path::new(".gdansk"),
+        )
+        .expect("expected normalized views");
 
-        let input_fields = build_input_item_fields(&normalized, EntrypointMode::Server);
-        assert_eq!(input_fields.len(), 1);
-        assert_eq!(input_fields[0].0, "apps/simple/app");
-        assert_eq!(input_fields[0].1, "apps/simple/app.tsx?gdansk-server-entry");
+        let fields = build_client_input_item_fields(&normalized)
+            .into_iter()
+            .collect::<HashMap<_, _>>();
+        assert_eq!(
+            fields.get("simple/client"),
+            Some(&"apps/simple/app.tsx?gdansk-app-entry".to_string())
+        );
+        assert_eq!(fields.get("main"), Some(&"main.tsx".to_string()));
+    }
+
+    #[test]
+    fn server_input_fields_include_only_ssr_views() {
+        let project = TempProject::new();
+        project.create_file("apps/simple/app.tsx");
+        project.create_file("apps/other/app.tsx");
+
+        let normalized = normalize_views(
+            vec![
+                view("apps/simple/app.tsx", true, true),
+                view("apps/other/app.tsx", true, false),
+            ],
+            &project.root,
+            Path::new(".gdansk"),
+        )
+        .expect("expected normalized views");
+
+        let fields = build_server_input_item_fields(&normalized);
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].0, "simple/server");
+        assert_eq!(fields[0].1, "apps/simple/app.tsx?gdansk-server-entry");
     }
 
     #[test]

@@ -50,6 +50,78 @@ fn snapshot() -> &'static [u8] {
     include_bytes!(concat!(env!("OUT_DIR"), "/GDANSK_RUNTIME_SNAPSHOT.bin"))
 }
 
+const RUNTIME_SHIMS_SOURCE: &str = r#"
+(() => {
+  const global = globalThis;
+  const scheduleMicrotask =
+    typeof global.queueMicrotask === "function"
+      ? global.queueMicrotask.bind(global)
+      : (callback) => Promise.resolve().then(callback);
+
+  if (typeof global.MessagePort === "undefined") {
+    class MessagePort {
+      constructor() {
+        this._target = null;
+        this._listeners = new Set();
+        this.onmessage = null;
+        this._closed = false;
+      }
+
+      postMessage(data) {
+        if (this._closed || !this._target || this._target._closed) {
+          return;
+        }
+        const target = this._target;
+        scheduleMicrotask(() => {
+          if (target._closed) {
+            return;
+          }
+          const event = { data };
+          if (typeof target.onmessage === "function") {
+            target.onmessage(event);
+          }
+          for (const listener of target._listeners) {
+            listener(event);
+          }
+        });
+      }
+
+      addEventListener(type, callback) {
+        if (type !== "message" || typeof callback !== "function") {
+          return;
+        }
+        this._listeners.add(callback);
+      }
+
+      removeEventListener(type, callback) {
+        if (type !== "message" || typeof callback !== "function") {
+          return;
+        }
+        this._listeners.delete(callback);
+      }
+
+      start() {}
+
+      close() {
+        this._closed = true;
+      }
+    }
+
+    class MessageChannel {
+      constructor() {
+        this.port1 = new MessagePort();
+        this.port2 = new MessagePort();
+        this.port1._target = this.port2;
+        this.port2._target = this.port1;
+      }
+    }
+
+    global.MessagePort = MessagePort;
+    global.MessageChannel = MessageChannel;
+  }
+})();
+"#;
+
 fn read_json_value(
     runtime: &mut JsRuntime,
     output: v8::Global<v8::Value>,
@@ -94,6 +166,10 @@ async fn evaluate(code: &str) -> Result<Value, RuntimeError> {
         let mut op_state = op_state.borrow_mut();
         op_state.borrow_mut::<SsrCapture>().html = None;
     }
+
+    runtime
+        .execute_script("<gdansk-runtime-shims>", RUNTIME_SHIMS_SOURCE)
+        .map_err(execution_error)?;
 
     let module_specifier =
         deno_core::resolve_url("file:///gdansk/runtime_eval.js").map_err(execution_error)?;
