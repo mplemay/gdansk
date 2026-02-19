@@ -14,6 +14,8 @@ bundling automatically. Whether you're building data visualization tools, form-b
 dashboards for Claude Desktop and other MCP clients, Gdansk provides a straightforward path from Python functions to
 polished UIs.
 
+Contributing: see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 The name "Gdansk" (pronounced "guh-DANSK") is a nod to the city's historical role as a bridge between cultures and trade
 routes—much like this framework bridges Python backends and React frontends.
 
@@ -40,17 +42,13 @@ routes—much like this framework bridges Python backends and React frontends.
 ## Installation
 
 ```bash
-# Using uv (recommended)
 uv add gdansk
-
-# Or using pip
-pip install gdansk
 ```
 
 **Requirements:**
 
 - Python 3.11 or later
-- Node.js (for frontend dependencies, installed automatically)
+- Node.js (for frontend dependencies)
 
 ## Quick Start
 
@@ -152,25 +150,6 @@ this repository. It demonstrates:
 - **Multiple UI interactions** — Build rich, multi-action interfaces
 
 The get-time example provides a working template you can clone and adapt for your own MCP tools.
-
-## How It Works
-
-1. **Define tools** — Use the `@amber.tool()` decorator on your Python functions, specifying the UI file with the `ui`
-   parameter.
-
-2. **Bundling** — Gdansk automatically bundles your TypeScript/JSX files using Rolldown (a fast Rust-based bundler) into
-   browser-ready JavaScript. For Amber tool UIs, Gdansk auto-mounts your default-exported app component.
-
-3. **Resource registration** — Bundled UIs are served as MCP resources with the `text/html;profile=mcp-app` MIME type,
-   which MCP clients recognize as interactive apps.
-
-4. **Rendering** — MCP clients (like Claude Desktop) render the UI in their interface when the tool is invoked.
-
-5. **Communication** — Your React UI calls back to Python tools via the MCP protocol using the `useApp()` hook and
-   methods like `app.callServerTool()`.
-
-**Development mode:** Use `app = amber(dev=True)` to enable hot-reload. Changes to your TSX/JSX files are automatically
-rebundled, and you can refresh the UI in your MCP client to see updates instantly.
 
 ## Key Concepts
 
@@ -324,37 +303,21 @@ Restart Claude Desktop to load your server.
 
 ## Examples & Resources
 
-- **[get-time example](examples/get-time)** — Complete working example showcasing all Gdansk features
+### Examples
+
+- **[FastAPI](examples/fastapi):** FastAPI-based MCP server integration with mounted app routes.
+- **[get-time](examples/get-time):** Feature-rich MCP app covering tool calls, messaging, logging, and links.
+- **[shadcn](examples/shadcn):** Todo app example using `shadcn/ui` components with Gdansk.
+
+### Resources
+
 - **[Model Context Protocol](https://modelcontextprotocol.io/)** — Official MCP documentation
-- **[FastMCP](https://github.com/jlowin/fastmcp)** — Python framework for building MCP servers
+- **[mcp/python-sdk](https://github.com/modelcontextprotocol/python-sdk)** — Python SDK for building MCP servers
 - **[@modelcontextprotocol/ext-apps](https://www.npmjs.com/package/@modelcontextprotocol/ext-apps)** — React hooks for
   MCP apps
 - **[Rolldown](https://rolldown.rs/)** — Rust-powered JavaScript bundler
-
-## Contributing
-
-Contributions are welcome! To set up a development environment:
-
-```bash
-# Clone the repository
-git clone https://github.com/mattlemay/gdansk.git
-cd gdansk
-
-# Install dependencies
-uv sync --all-extras
-
-# Run tests
-uv run pytest
-
-# Run linters
-uv run ruff check .
-uv run ruff format .
-
-# Run type checker
-uv run ty check src
-```
-
-For more details, see [CONTRIBUTING.md](CONTRIBUTING.md).
+- **[Deno Core](https://docs.rs/deno_core/latest/deno_core/)** — JavaScript runtime foundation used in Gdansk's Rust
+  runtime layer
 
 ## License
 
@@ -366,8 +329,8 @@ Gdansk builds on the shoulders of giants:
 
 - **[Rolldown](https://rolldown.rs/)** — Fast Rust-based JavaScript bundler
 - **[PyO3](https://github.com/PyO3/pyo3)** — Rust bindings for Python
-- **[FastMCP](https://github.com/jlowin/fastmcp)** — Python MCP server framework
-- **[maturin](https://github.com/PyO3/maturin)** — Build tool for Rust/Python hybrid projects
+- **[mcp/python-sdk](https://github.com/modelcontextprotocol/python-sdk)** — Python SDK for MCP server development
+- **[Deno Core](https://docs.rs/deno_core/latest/deno_core/)** — JavaScript runtime that powers Gdansk's Rust runtime
 
 Special thanks to the Model Context Protocol team at Anthropic for creating the MCP standard and the
 `@modelcontextprotocol/ext-apps` package.
