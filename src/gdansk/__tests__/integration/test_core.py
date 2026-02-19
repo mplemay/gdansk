@@ -54,6 +54,32 @@ def test_prod_bundles_and_serves_html(mock_mcp, views_dir, tmp_path, monkeypatch
 
 
 @pytest.mark.integration
+def test_prod_ssr_bundles_and_serves_ssr_html(mock_mcp, views_dir, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    output = views_dir / ".gdansk"
+    amber = Amber(mcp=mock_mcp, views=views_dir, ssr=True)
+
+    @amber.tool(Path("simple/app.tsx"))
+    def my_tool():
+        return "result"
+
+    app = amber(dev=False)
+    with _lifespan(app):
+        assert (output / "apps/simple/app.js").exists()
+        assert (output / ".ssr/apps/simple/app.js").exists()
+
+    handler = mock_mcp._resource_calls[-1]["handler"]
+    loop = asyncio.new_event_loop()
+    try:
+        html = loop.run_until_complete(handler())
+    finally:
+        loop.close()
+
+    assert '<div id="root"><div data-ssr="1"></div></div>' in html
+    assert "hasChildNodes()?" in html
+
+
+@pytest.mark.integration
 def test_with_css_bundles_and_serves_html(mock_mcp, views_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     output = views_dir / ".gdansk"
@@ -134,3 +160,76 @@ def test_prod_fails_when_ui_has_no_default_export(mock_mcp, views_dir, tmp_path,
     app = amber(dev=False)
     with pytest.raises(RuntimeError, match="default"), _lifespan(app):
         pass
+
+
+@pytest.mark.integration
+def test_tool_ssr_true_overrides_amber_false(mock_mcp, views_dir, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    output = views_dir / ".gdansk"
+    amber = Amber(mcp=mock_mcp, views=views_dir, ssr=False)
+
+    @amber.tool(Path("simple/app.tsx"), ssr=True)
+    def my_tool():
+        return "result"
+
+    app = amber(dev=False)
+    with _lifespan(app):
+        assert (output / ".ssr/apps/simple/app.js").exists()
+
+    handler = mock_mcp._resource_calls[-1]["handler"]
+    loop = asyncio.new_event_loop()
+    try:
+        html = loop.run_until_complete(handler())
+    finally:
+        loop.close()
+
+    assert '<div id="root"><div data-ssr="1"></div></div>' in html
+
+
+@pytest.mark.integration
+def test_tool_ssr_false_overrides_amber_true(mock_mcp, views_dir, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    output = views_dir / ".gdansk"
+    amber = Amber(mcp=mock_mcp, views=views_dir, ssr=True)
+
+    @amber.tool(Path("simple/app.tsx"), ssr=False)
+    def my_tool():
+        return "result"
+
+    app = amber(dev=False)
+    with _lifespan(app):
+        assert not (output / ".ssr/apps/simple/app.js").exists()
+
+    handler = mock_mcp._resource_calls[-1]["handler"]
+    loop = asyncio.new_event_loop()
+    try:
+        html = loop.run_until_complete(handler())
+    finally:
+        loop.close()
+
+    assert '<div id="root"></div>' in html
+
+
+@pytest.mark.integration
+def test_ssr_runtime_failure_fails_fast(mock_mcp, views_dir, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    output = views_dir / ".gdansk"
+    amber = Amber(mcp=mock_mcp, views=views_dir, ssr=True)
+
+    @amber.tool(Path("simple/app.tsx"))
+    def my_tool():
+        return "result"
+
+    app = amber(dev=False)
+    with _lifespan(app):
+        assert (output / ".ssr/apps/simple/app.js").exists()
+
+    (output / ".ssr/apps/simple/app.js").write_text("throw new Error('ssr boom');", encoding="utf-8")
+
+    handler = mock_mcp._resource_calls[-1]["handler"]
+    loop = asyncio.new_event_loop()
+    try:
+        with pytest.raises(RuntimeError, match="Execution error"):
+            loop.run_until_complete(handler())
+    finally:
+        loop.close()

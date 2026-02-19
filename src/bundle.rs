@@ -16,7 +16,9 @@ use rolldown::plugin::{
     SharedLoadPluginContext,
 };
 #[cfg(not(test))]
-use rolldown::{Bundler, BundlerOptions, ExperimentalOptions, InputItem, ResolveOptions};
+use rolldown::{
+    Bundler, BundlerOptions, ExperimentalOptions, InputItem, OutputFormat, ResolveOptions,
+};
 #[cfg(not(test))]
 use rolldown_dev::{BundlerConfig, DevEngine, DevOptions, RebuildStrategy};
 #[cfg(not(test))]
@@ -37,6 +39,14 @@ enum BundleError {
 }
 
 const APP_ENTRYPOINT_QUERY: &str = "?gdansk-app-entry";
+const SERVER_ENTRYPOINT_QUERY: &str = "?gdansk-server-entry";
+
+#[derive(Debug, Clone, Copy)]
+enum EntrypointMode {
+    Default,
+    App,
+    Server,
+}
 
 impl BundleError {
     fn validation(message: impl Into<String>) -> Self {
@@ -56,24 +66,24 @@ impl fmt::Display for BundleError {
     }
 }
 
-fn entry_import_for_mode(import: &str, app_entrypoint_mode: bool) -> String {
-    if app_entrypoint_mode {
-        format!("{import}{APP_ENTRYPOINT_QUERY}")
-    } else {
-        import.to_owned()
+fn entry_import_for_mode(import: &str, entrypoint_mode: EntrypointMode) -> String {
+    match entrypoint_mode {
+        EntrypointMode::Default => import.to_owned(),
+        EntrypointMode::App => format!("{import}{APP_ENTRYPOINT_QUERY}"),
+        EntrypointMode::Server => format!("{import}{SERVER_ENTRYPOINT_QUERY}"),
     }
 }
 
 fn build_input_item_fields(
     normalized: &[NormalizedInput],
-    app_entrypoint_mode: bool,
+    entrypoint_mode: EntrypointMode,
 ) -> Vec<(String, String)> {
     normalized
         .iter()
         .map(|item| {
             (
                 item.name.clone(),
-                entry_import_for_mode(&item.import, app_entrypoint_mode),
+                entry_import_for_mode(&item.import, entrypoint_mode),
             )
         })
         .collect()
@@ -99,12 +109,17 @@ impl GdanskAppEntrypointPlugin {
         let import_path = format!("./{file_name}");
         Some(format!(
             r#"import {{ StrictMode, createElement }} from "react";
-import {{ createRoot }} from "react-dom/client";
+import {{ createRoot, hydrateRoot }} from "react-dom/client";
 import App from "{import_path}";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Expected #root element");
-createRoot(root).render(createElement(StrictMode, null, createElement(App)));
+const element = createElement(StrictMode, null, createElement(App));
+if (root.hasChildNodes()) {{
+  hydrateRoot(root, element);
+}} else {{
+  createRoot(root).render(element);
+}}
 "#
         ))
     }
@@ -146,11 +161,70 @@ impl Plugin for GdanskAppEntrypointPlugin {
 }
 
 #[cfg(not(test))]
-fn app_entrypoint_plugins(app_entrypoint_mode: bool) -> Vec<SharedPluginable> {
-    if app_entrypoint_mode {
-        vec![Arc::new(GdanskAppEntrypointPlugin)]
-    } else {
-        vec![]
+#[derive(Debug, Default)]
+struct GdanskServerEntrypointPlugin;
+
+#[cfg(not(test))]
+impl GdanskServerEntrypointPlugin {
+    fn source_id(id: &str) -> Option<&str> {
+        id.strip_suffix(SERVER_ENTRYPOINT_QUERY)
+    }
+
+    fn wrapper_source(source_id: &str) -> Option<String> {
+        let file_name = Path::new(source_id).file_name()?.to_str()?;
+        let import_path = format!("./{file_name}");
+        Some(format!(
+            r#"import {{ createElement }} from "react";
+import {{ renderToString }} from "react-dom/server";
+import App from "{import_path}";
+
+globalThis.__gdansk_ssr_html = renderToString(createElement(App));
+"#
+        ))
+    }
+}
+
+#[cfg(not(test))]
+impl Plugin for GdanskServerEntrypointPlugin {
+    fn name(&self) -> Cow<'static, str> {
+        Cow::Borrowed("gdansk:server-entrypoint")
+    }
+
+    async fn resolve_id(
+        &self,
+        _ctx: &PluginContext,
+        args: &HookResolveIdArgs<'_>,
+    ) -> HookResolveIdReturn {
+        if args.specifier.ends_with(SERVER_ENTRYPOINT_QUERY) {
+            return Ok(Some(HookResolveIdOutput::from_id(args.specifier)));
+        }
+        Ok(None)
+    }
+
+    async fn load(&self, _ctx: SharedLoadPluginContext, args: &HookLoadArgs<'_>) -> HookLoadReturn {
+        let Some(source_id) = Self::source_id(args.id) else {
+            return Ok(None);
+        };
+        let Some(wrapper_source) = Self::wrapper_source(source_id) else {
+            return Ok(None);
+        };
+        Ok(Some(HookLoadOutput {
+            code: wrapper_source.into(),
+            ..Default::default()
+        }))
+    }
+
+    fn register_hook_usage(&self) -> HookUsage {
+        HookUsage::ResolveId | HookUsage::Load
+    }
+}
+
+#[cfg(not(test))]
+fn entrypoint_plugins(entrypoint_mode: EntrypointMode) -> Vec<SharedPluginable> {
+    match entrypoint_mode {
+        EntrypointMode::Default => vec![],
+        EntrypointMode::App => vec![Arc::new(GdanskAppEntrypointPlugin)],
+        EntrypointMode::Server => vec![Arc::new(GdanskServerEntrypointPlugin)],
     }
 }
 
@@ -320,9 +394,11 @@ fn map_bundle_error(err: BundleError) -> PyErr {
         minify = true,
         output = None,
         cwd = None,
-        app_entrypoint_mode = false
+        app_entrypoint_mode = false,
+        server_entrypoint_mode = false
     )
 )]
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn bundle(
     py: Python<'_>,
     paths: HashSet<PathBuf>,
@@ -331,6 +407,7 @@ pub(crate) fn bundle(
     output: Option<PathBuf>,
     cwd: Option<PathBuf>,
     app_entrypoint_mode: bool,
+    server_entrypoint_mode: bool,
 ) -> PyResult<Bound<'_, PyAny>> {
     pyo3_async_runtimes::tokio::future_into_py(py, async move {
         let cwd = match cwd {
@@ -347,14 +424,21 @@ pub(crate) fn bundle(
             path_to_utf8(&output_dir, "output path").map_err(map_bundle_error)?;
 
         let normalized = normalize_inputs(paths, &cwd, &output_dir).map_err(map_bundle_error)?;
-        let input_items = build_input_item_fields(&normalized, app_entrypoint_mode)
+        let entrypoint_mode = if server_entrypoint_mode {
+            EntrypointMode::Server
+        } else if app_entrypoint_mode {
+            EntrypointMode::App
+        } else {
+            EntrypointMode::Default
+        };
+        let input_items = build_input_item_fields(&normalized, entrypoint_mode)
             .into_iter()
             .map(|(name, import)| InputItem {
                 name: Some(name),
                 import,
             })
             .collect::<Vec<_>>();
-        let plugins = app_entrypoint_plugins(app_entrypoint_mode);
+        let plugins = entrypoint_plugins(entrypoint_mode);
 
         let mut options = BundlerOptions {
             input: Some(input_items),
@@ -363,6 +447,11 @@ pub(crate) fn bundle(
             entry_filenames: Some("[name].js".to_string().into()),
             css_entry_filenames: Some("[name].css".to_string().into()),
             minify: Some(minify.into()),
+            format: if server_entrypoint_mode {
+                Some(OutputFormat::Iife)
+            } else {
+                None
+            },
             resolve: Some(ResolveOptions {
                 condition_names: Some(vec!["module".to_string(), "style".to_string()]),
                 ..Default::default()
@@ -534,7 +623,7 @@ mod tests {
         let normalized = normalize_inputs(paths, &project.root, Path::new(".gdansk"))
             .expect("expected normalized input set");
 
-        let input_fields = build_input_item_fields(&normalized, true);
+        let input_fields = build_input_item_fields(&normalized, EntrypointMode::App);
         assert_eq!(input_fields.len(), 1);
         assert_eq!(input_fields[0].0, "apps/simple/app");
         assert_eq!(input_fields[0].1, "apps/simple/app.tsx?gdansk-app-entry");
@@ -549,9 +638,24 @@ mod tests {
         let normalized = normalize_inputs(paths, &project.root, Path::new(".gdansk"))
             .expect("expected normalized input set");
 
-        let input_fields = build_input_item_fields(&normalized, false);
+        let input_fields = build_input_item_fields(&normalized, EntrypointMode::Default);
         assert_eq!(input_fields.len(), 1);
         assert_eq!(input_fields[0].0, "apps/simple/app");
         assert_eq!(input_fields[0].1, "apps/simple/app.tsx");
+    }
+
+    #[test]
+    fn server_entrypoint_mode_rewrites_import_and_preserves_name() {
+        let project = TempProject::new();
+        project.create_file("apps/simple/app.tsx");
+
+        let paths = HashSet::from([PathBuf::from("apps/simple/app.tsx")]);
+        let normalized = normalize_inputs(paths, &project.root, Path::new(".gdansk"))
+            .expect("expected normalized input set");
+
+        let input_fields = build_input_item_fields(&normalized, EntrypointMode::Server);
+        assert_eq!(input_fields.len(), 1);
+        assert_eq!(input_fields[0].0, "apps/simple/app");
+        assert_eq!(input_fields[0].1, "apps/simple/app.tsx?gdansk-server-entry");
     }
 }

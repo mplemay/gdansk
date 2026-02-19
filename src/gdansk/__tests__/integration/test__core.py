@@ -9,6 +9,62 @@ from anyio import Path as APath
 from gdansk._core import Runtime, bundle
 
 
+def _write_ssr_modules(root: Path, *, throw_on_render: bool = False) -> None:
+    react_dir = root / "node_modules" / "react"
+    react_dir.mkdir(parents=True, exist_ok=True)
+    (react_dir / "package.json").write_text(
+        (
+            "{\n"
+            '  "name": "react",\n'
+            '  "private": true,\n'
+            '  "type": "module",\n'
+            '  "exports": {\n'
+            '    ".": "./index.js"\n'
+            "  }\n"
+            "}\n"
+        ),
+        encoding="utf-8",
+    )
+    (react_dir / "index.js").write_text(
+        "export function createElement(type, props, ...children) {\n"
+        "  return { type, props: { ...(props ?? {}), children } };\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    react_dom_dir = root / "node_modules" / "react-dom"
+    react_dom_dir.mkdir(parents=True, exist_ok=True)
+    (react_dom_dir / "package.json").write_text(
+        (
+            "{\n"
+            '  "name": "react-dom",\n'
+            '  "private": true,\n'
+            '  "type": "module",\n'
+            '  "exports": {\n'
+            '    "./server": "./server.js"\n'
+            "  }\n"
+            "}\n"
+        ),
+        encoding="utf-8",
+    )
+    if throw_on_render:
+        (react_dom_dir / "server.js").write_text(
+            "export function renderToString() {\n  throw new Error('ssr boom');\n}\n",
+            encoding="utf-8",
+        )
+        return
+    (react_dom_dir / "server.js").write_text(
+        "export function renderToString(node) {\n"
+        "  if (typeof node?.type === 'function') {\n"
+        "    return renderToString(node.type(node.props ?? {}));\n"
+        "  }\n"
+        "  const children = Array.isArray(node?.props?.children) ? node.props.children.join('') : '';\n"
+        "  return `<${node.type}>${children}</${node.type}>`;\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+
 async def _wait_for_file_or_task_failure(
     task: asyncio.Task[None],
     output_path: Path,
@@ -175,6 +231,59 @@ async def test_bundle_accepts_minify_false(tmp_path, monkeypatch):
     await bundle({Path("main.tsx")}, minify=False)
 
     assert (tmp_path / ".gdansk" / "main.js").exists()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_bundle_server_entrypoint_mode_writes_executable_ssr_output(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _write_ssr_modules(tmp_path)
+    (tmp_path / "apps" / "simple").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "apps" / "simple" / "app.tsx").write_text(
+        'import { createElement } from "react";\n'
+        "export default function App() {\n"
+        "  return createElement('div', null, 'ok');\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    await bundle(
+        {Path("apps/simple/app.tsx")},
+        output=Path(".gdansk/.ssr"),
+        app_entrypoint_mode=True,
+        server_entrypoint_mode=True,
+    )
+
+    output_js = tmp_path / ".gdansk" / ".ssr" / "apps" / "simple" / "app.js"
+    assert output_js.exists()
+
+    runtime = Runtime()
+    ssr_html = runtime(f"{output_js.read_text(encoding='utf-8')}\n;globalThis.__gdansk_ssr_html")
+    assert ssr_html == "<div>ok</div>"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_bundle_server_entrypoint_mode_runtime_error_surfaces(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _write_ssr_modules(tmp_path, throw_on_render=True)
+    (tmp_path / "apps" / "simple").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "apps" / "simple" / "app.tsx").write_text(
+        "export default function App() {\n  return null;\n}\n",
+        encoding="utf-8",
+    )
+
+    await bundle(
+        {Path("apps/simple/app.tsx")},
+        output=Path(".gdansk/.ssr"),
+        app_entrypoint_mode=True,
+        server_entrypoint_mode=True,
+    )
+
+    output_js = tmp_path / ".gdansk" / ".ssr" / "apps" / "simple" / "app.js"
+    runtime = Runtime()
+    with pytest.raises(RuntimeError, match="Execution error"):
+        runtime(f"{output_js.read_text(encoding='utf-8')}\n;globalThis.__gdansk_ssr_html")
 
 
 @pytest.mark.integration

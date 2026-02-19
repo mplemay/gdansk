@@ -7,6 +7,7 @@ async def bundle(
     output: Path = ...,
     cwd: Path = ...,
     app_entrypoint_mode: bool = False,
+    server_entrypoint_mode: bool = False,
 ) -> None: ...
 
 class Runtime:

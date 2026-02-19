@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
 from anyio import Path as APath
 
-from gdansk._core import bundle
+from gdansk._core import Runtime, bundle
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import ENV
 
@@ -80,6 +80,7 @@ class _AsyncThreadRunner:
 @dataclass(frozen=True, slots=True)
 class Amber:
     _paths: set[Path] = field(default_factory=set, init=False)
+    _ssr_paths: set[Path] = field(default_factory=set, init=False)
     _template: ClassVar[str] = "template.html"
     _env: ClassVar = ENV
     _ui_min_parts: ClassVar[int] = 2
@@ -87,6 +88,7 @@ class Amber:
     mcp: FastMCP
     views: Path
     output: Path = field(init=False)
+    ssr: bool = field(default=False, kw_only=True)
     metadata: Metadata | None = field(default=None, kw_only=True)
     plugins: Sequence[Plugin] = field(default=(), kw_only=True)
 
@@ -123,7 +125,35 @@ class Amber:
 
         return stop_event, watcher_tasks
 
-    async def _run_build_pipeline(self, *, paths: set[Path], dev: bool) -> None:
+    async def _run_build_pipeline(self, *, paths: set[Path], ssr_paths: set[Path], dev: bool) -> None:
+        if dev:
+            await asyncio.gather(
+                bundle(
+                    paths=paths,
+                    dev=dev,
+                    minify=not dev,
+                    output=self.output,
+                    cwd=self.views,
+                    app_entrypoint_mode=True,
+                ),
+                *(
+                    [
+                        bundle(
+                            paths=ssr_paths,
+                            dev=dev,
+                            minify=not dev,
+                            output=self.output / ".ssr",
+                            cwd=self.views,
+                            app_entrypoint_mode=True,
+                            server_entrypoint_mode=True,
+                        ),
+                    ]
+                    if ssr_paths
+                    else []
+                ),
+            )
+            return
+
         await bundle(
             paths=paths,
             dev=dev,
@@ -132,8 +162,16 @@ class Amber:
             cwd=self.views,
             app_entrypoint_mode=True,
         )
-        if dev:
-            return
+        if ssr_paths:
+            await bundle(
+                paths=ssr_paths,
+                dev=dev,
+                minify=not dev,
+                output=self.output / ".ssr",
+                cwd=self.views,
+                app_entrypoint_mode=True,
+                server_entrypoint_mode=True,
+            )
         for plugin in self.plugins:
             await plugin.build(views=self.views, output=self.output)
 
@@ -197,6 +235,7 @@ class Amber:
             return app
 
         paths = {Path("apps", *path.parts) for path in self._paths}
+        ssr_paths = {Path("apps", *path.parts) for path in self._ssr_paths}
         runner = _AsyncThreadRunner()
         stop_event: asyncio.Event | None = None
         watcher_tasks: list[asyncio.Task[None]] = []
@@ -208,7 +247,7 @@ class Amber:
             nonlocal watcher_tasks
             nonlocal bundle_task
             stop_event, watcher_tasks = self._schedule_watcher_tasks(dev=True)
-            bundle_task = asyncio.create_task(self._run_build_pipeline(paths=paths, dev=True))
+            bundle_task = asyncio.create_task(self._run_build_pipeline(paths=paths, ssr_paths=ssr_paths, dev=True))
             bundle_task.add_done_callback(self._log_background_task_error)
             for watcher_task in watcher_tasks:
                 watcher_task.add_done_callback(self._log_background_task_error)
@@ -218,7 +257,7 @@ class Amber:
             if dev:
                 runner.run(_start_dev())
             else:
-                runner.run(self._run_build_pipeline(paths=paths, dev=False))
+                runner.run(self._run_build_pipeline(paths=paths, ssr_paths=ssr_paths, dev=False))
 
             async with original_lifespan(starlette_app):
                 try:
@@ -249,6 +288,7 @@ class Amber:
         icons: list[Icon] | None = None,
         meta: dict[str, Any] | None = None,
         metadata: Metadata | None = None,
+        ssr: bool | None = None,
         structured_output: bool | None = None,
     ) -> Callable[[AnyFunction], AnyFunction]:
         normalized_ui, bundle_ui, uri = self._normalize_ui_path_and_uri(ui)
@@ -258,6 +298,11 @@ class Amber:
             raise FileNotFoundError(msg)
 
         self._paths.add(normalized_ui)
+        effective_ssr = self.ssr if ssr is None else ssr
+        if effective_ssr:
+            self._ssr_paths.add(normalized_ui)
+        else:
+            self._ssr_paths.discard(normalized_ui)
 
         # add the ui to the metadata
         meta = meta or {}
@@ -287,6 +332,20 @@ class Amber:
                 except FileNotFoundError:
                     msg = f"Bundled output for {ui} not found. Has the bundler been run?"
                     raise FileNotFoundError(msg) from None
+                ssr_html: str | None = None
+                if effective_ssr:
+                    try:
+                        server_js = await APath(self.output / ".ssr" / bundle_ui.with_suffix(".js")).read_text(
+                            encoding="utf-8",
+                        )
+                    except FileNotFoundError:
+                        msg = f"SSR bundled output for {ui} not found. Has the bundler been run?"
+                        raise FileNotFoundError(msg) from None
+                    runtime_output = Runtime()(f"{server_js}\n;globalThis.__gdansk_ssr_html")
+                    if not isinstance(runtime_output, str):
+                        msg = f"SSR output for {ui} must be a string"
+                        raise ValueError(msg)
+                    ssr_html = runtime_output
                 css = (
                     None
                     if not await (path := APath(self.output / bundle_ui.with_suffix(".css"))).exists()
@@ -297,6 +356,7 @@ class Amber:
                     Amber._template,
                     js=js,
                     css=css,
+                    ssr_html=ssr_html,
                     metadata=merge_metadata(self.metadata, metadata),
                 )
 

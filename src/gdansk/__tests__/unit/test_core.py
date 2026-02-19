@@ -47,6 +47,11 @@ def test_default_output(mock_mcp, views_dir):
     assert amber.output == views_dir / ".gdansk"
 
 
+def test_amber_defaults_ssr_false(mock_mcp, views_dir):
+    amber = Amber(mcp=mock_mcp, views=views_dir)
+    assert amber.ssr is False
+
+
 def test_paths_empty_initially(amber):
     assert amber.paths == frozenset()
 
@@ -259,6 +264,34 @@ def test_passes_registered_paths(amber):
 
 
 @pytest.mark.usefixtures("views_dir")
+def test_run_build_pipeline_invokes_server_bundle_only_for_ssr_paths(mock_mcp, views_dir):
+    amber = Amber(mcp=mock_mcp, views=views_dir)
+
+    @amber.tool(Path("simple/app.tsx"))
+    def tool_a():
+        pass
+
+    @amber.tool(Path("nested/page/app.tsx"), ssr=True)
+    def tool_b():
+        pass
+
+    captured: list[dict] = []
+
+    async def _fake_bundle(**kwargs: object):
+        captured.append(kwargs)
+
+    with patch("gdansk.core.bundle", _fake_bundle), _lifespan(amber(dev=False)):
+        pass
+
+    assert len(captured) == 2
+    assert captured[0]["paths"] == {Path("apps/simple/app.tsx"), Path("apps/nested/page/app.tsx")}
+    assert captured[0]["output"] == views_dir / ".gdansk"
+    assert captured[1]["paths"] == {Path("apps/nested/page/app.tsx")}
+    assert captured[1]["output"] == views_dir / ".gdansk" / ".ssr"
+    assert captured[1]["server_entrypoint_mode"] is True
+
+
+@pytest.mark.usefixtures("views_dir")
 def test_plugins_watch_started_and_cancelled_on_shutdown(mock_mcp, views_dir):
     watcher_started = threading.Event()
     watcher_cancelled = threading.Event()
@@ -442,6 +475,39 @@ def test_adds_path_to_paths(amber):
     assert Path("simple/app.tsx") in amber.paths
 
 
+def test_tool_ssr_none_inherits_amber_value(mock_mcp, views_dir):
+    amber = Amber(mcp=mock_mcp, views=views_dir, ssr=True)
+
+    @amber.tool(Path("simple/app.tsx"))
+    def my_tool():
+        pass
+
+    _ = my_tool
+    assert Path("simple/app.tsx") in amber._ssr_paths
+
+
+def test_tool_ssr_true_overrides_amber_false(mock_mcp, views_dir):
+    amber = Amber(mcp=mock_mcp, views=views_dir, ssr=False)
+
+    @amber.tool(Path("simple/app.tsx"), ssr=True)
+    def my_tool():
+        pass
+
+    _ = my_tool
+    assert Path("simple/app.tsx") in amber._ssr_paths
+
+
+def test_tool_ssr_false_overrides_amber_true(mock_mcp, views_dir):
+    amber = Amber(mcp=mock_mcp, views=views_dir, ssr=True)
+
+    @amber.tool(Path("simple/app.tsx"), ssr=False)
+    def my_tool():
+        pass
+
+    _ = my_tool
+    assert Path("simple/app.tsx") not in amber._ssr_paths
+
+
 def test_uri_top_level(amber, mock_mcp):
     @amber.tool(Path("simple/app.tsx"))
     def my_tool():
@@ -598,6 +664,95 @@ async def test_resource_raises_friendly_error_when_js_missing(amber, mock_mcp, t
 
 
 @pytest.mark.asyncio
+async def test_resource_injects_ssr_html_when_effective_ssr_true(mock_mcp, views_dir, tmp_path):
+    amber = Amber(mcp=mock_mcp, views=views_dir, ssr=True)
+    amber_output = tmp_path / "output"
+    object.__setattr__(amber, "output", amber_output)
+
+    @amber.tool(Path("simple/app.tsx"))
+    def my_tool():
+        pass
+
+    js_path = amber_output / "apps/simple/app.js"
+    js_path.parent.mkdir(parents=True, exist_ok=True)
+    js_path.write_text("console.log('hello');", encoding="utf-8")
+    server_js_path = amber_output / ".ssr/apps/simple/app.js"
+    server_js_path.parent.mkdir(parents=True, exist_ok=True)
+    server_js_path.write_text("globalThis.__gdansk_ssr_html = '<p>server</p>';", encoding="utf-8")
+
+    handler = mock_mcp._resource_calls[-1]["handler"]
+    with patch("gdansk.core.Runtime") as mock_runtime:
+        mock_runtime.return_value.return_value = "<p>server</p>"
+        html = await handler()
+
+    assert '<div id="root"><p>server</p></div>' in html
+
+
+@pytest.mark.asyncio
+async def test_resource_skips_runtime_and_ssr_html_when_effective_ssr_false(amber, mock_mcp, tmp_path):
+    amber_output = tmp_path / "output"
+    object.__setattr__(amber, "output", amber_output)
+
+    @amber.tool(Path("simple/app.tsx"))
+    def my_tool():
+        pass
+
+    js_path = amber_output / "apps/simple/app.js"
+    js_path.parent.mkdir(parents=True, exist_ok=True)
+    js_path.write_text("console.log('hello');", encoding="utf-8")
+
+    handler = mock_mcp._resource_calls[-1]["handler"]
+    with patch("gdansk.core.Runtime") as mock_runtime:
+        html = await handler()
+
+    assert '<div id="root"></div>' in html
+    mock_runtime.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_resource_raises_when_ssr_bundle_missing(mock_mcp, views_dir, tmp_path):
+    amber = Amber(mcp=mock_mcp, views=views_dir, ssr=True)
+    amber_output = tmp_path / "output"
+    object.__setattr__(amber, "output", amber_output)
+
+    @amber.tool(Path("simple/app.tsx"))
+    def my_tool():
+        pass
+
+    js_path = amber_output / "apps/simple/app.js"
+    js_path.parent.mkdir(parents=True, exist_ok=True)
+    js_path.write_text("console.log('hello');", encoding="utf-8")
+
+    handler = mock_mcp._resource_calls[-1]["handler"]
+    with pytest.raises(FileNotFoundError, match="SSR bundled output"):
+        await handler()
+
+
+@pytest.mark.asyncio
+async def test_resource_propagates_runtime_error_fail_fast(mock_mcp, views_dir, tmp_path):
+    amber = Amber(mcp=mock_mcp, views=views_dir, ssr=True)
+    amber_output = tmp_path / "output"
+    object.__setattr__(amber, "output", amber_output)
+
+    @amber.tool(Path("simple/app.tsx"))
+    def my_tool():
+        pass
+
+    js_path = amber_output / "apps/simple/app.js"
+    js_path.parent.mkdir(parents=True, exist_ok=True)
+    js_path.write_text("console.log('hello');", encoding="utf-8")
+    server_js_path = amber_output / ".ssr/apps/simple/app.js"
+    server_js_path.parent.mkdir(parents=True, exist_ok=True)
+    server_js_path.write_text("globalThis.__gdansk_ssr_html = '<p>server</p>';", encoding="utf-8")
+
+    handler = mock_mcp._resource_calls[-1]["handler"]
+    with patch("gdansk.core.Runtime") as mock_runtime:
+        mock_runtime.return_value.side_effect = RuntimeError("boom")
+        with pytest.raises(RuntimeError, match="boom"):
+            await handler()
+
+
+@pytest.mark.asyncio
 async def test_constructor_metadata_applies_to_tool_resource(mock_mcp, views_dir, tmp_path):
     amber = Amber(
         mcp=mock_mcp,
@@ -729,3 +884,10 @@ def test_js_injected_in_script_tag():
     script_end = html.index("</script>")
     script_content = html[script_start:script_end]
     assert js in script_content
+
+
+def test_ssr_html_rendered_in_root():
+    js = "const x = 42;"
+    html = Amber._env.render_template(Amber._template, js=js, css="", ssr_html="<span>server</span>", metadata=None)
+
+    assert '<div id="root"><span>server</span></div>' in html
