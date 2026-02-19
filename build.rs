@@ -7,10 +7,10 @@ use std::path::PathBuf;
 
 extension!(
     gdansk_runtime_ext,
-    esm_entry_point = "ext:gdansk/runtime.js",
+    esm_entry_point = "gdansk:runtime",
     esm = [
       dir "src",
-      "ext:gdansk/runtime.js" = "runtime.js",
+      "gdansk:runtime" = "runtime.js",
     ],
 );
 

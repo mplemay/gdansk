@@ -40,6 +40,9 @@ enum BundleError {
 
 const APP_ENTRYPOINT_QUERY: &str = "?gdansk-app-entry";
 const SERVER_ENTRYPOINT_QUERY: &str = "?gdansk-server-entry";
+const GDANSK_RUNTIME_SPECIFIER: &str = "gdansk:runtime";
+#[cfg(not(test))]
+const GDANSK_RUNTIME_MODULE_SOURCE: &str = include_str!("runtime.js");
 
 #[derive(Debug, Clone, Copy)]
 enum EntrypointMode {
@@ -95,9 +98,10 @@ fn server_entrypoint_wrapper_source(source_id: &str) -> Option<String> {
     Some(format!(
         r#"import {{ createElement }} from "react";
 import {{ renderToString }} from "react-dom/server";
+import {{ setSsrHtml }} from "gdansk:runtime";
 import App from "{import_path}";
 
-Deno.core.ops.op_gdansk_set_ssr_html(renderToString(createElement(App)));
+setSsrHtml(renderToString(createElement(App)));
 "#
     ))
 }
@@ -178,6 +182,10 @@ impl Plugin for GdanskAppEntrypointPlugin {
 struct GdanskServerEntrypointPlugin;
 
 #[cfg(not(test))]
+#[derive(Debug, Default)]
+struct GdanskRuntimeModulePlugin;
+
+#[cfg(not(test))]
 impl GdanskServerEntrypointPlugin {
     fn source_id(id: &str) -> Option<&str> {
         id.strip_suffix(SERVER_ENTRYPOINT_QUERY)
@@ -185,6 +193,38 @@ impl GdanskServerEntrypointPlugin {
 
     fn wrapper_source(source_id: &str) -> Option<String> {
         server_entrypoint_wrapper_source(source_id)
+    }
+}
+
+#[cfg(not(test))]
+impl Plugin for GdanskRuntimeModulePlugin {
+    fn name(&self) -> Cow<'static, str> {
+        Cow::Borrowed("gdansk:runtime-module")
+    }
+
+    async fn resolve_id(
+        &self,
+        _ctx: &PluginContext,
+        args: &HookResolveIdArgs<'_>,
+    ) -> HookResolveIdReturn {
+        if args.specifier == GDANSK_RUNTIME_SPECIFIER {
+            return Ok(Some(HookResolveIdOutput::from_id(GDANSK_RUNTIME_SPECIFIER)));
+        }
+        Ok(None)
+    }
+
+    async fn load(&self, _ctx: SharedLoadPluginContext, args: &HookLoadArgs<'_>) -> HookLoadReturn {
+        if args.id != GDANSK_RUNTIME_SPECIFIER {
+            return Ok(None);
+        }
+        Ok(Some(HookLoadOutput {
+            code: GDANSK_RUNTIME_MODULE_SOURCE.into(),
+            ..Default::default()
+        }))
+    }
+
+    fn register_hook_usage(&self) -> HookUsage {
+        HookUsage::ResolveId | HookUsage::Load
     }
 }
 
@@ -228,7 +268,10 @@ fn entrypoint_plugins(entrypoint_mode: EntrypointMode) -> Vec<SharedPluginable> 
     match entrypoint_mode {
         EntrypointMode::Default => vec![],
         EntrypointMode::App => vec![Arc::new(GdanskAppEntrypointPlugin)],
-        EntrypointMode::Server => vec![Arc::new(GdanskServerEntrypointPlugin)],
+        EntrypointMode::Server => vec![
+            Arc::new(GdanskRuntimeModulePlugin),
+            Arc::new(GdanskServerEntrypointPlugin),
+        ],
     }
 }
 
@@ -664,10 +707,19 @@ mod tests {
     }
 
     #[test]
-    fn server_entrypoint_wrapper_uses_ssr_op_capture() {
+    fn server_entrypoint_wrapper_imports_runtime_module() {
         let wrapper = server_entrypoint_wrapper_source("apps/simple/app.tsx")
             .expect("expected server wrapper");
-        assert!(wrapper.contains("Deno.core.ops.op_gdansk_set_ssr_html"));
+        assert!(wrapper.contains(&format!(
+            r#"import {{ setSsrHtml }} from "{GDANSK_RUNTIME_SPECIFIER}";"#
+        )));
+    }
+
+    #[test]
+    fn server_entrypoint_wrapper_does_not_call_deno_ops_directly() {
+        let wrapper = server_entrypoint_wrapper_source("apps/simple/app.tsx")
+            .expect("expected server wrapper");
+        assert!(!wrapper.contains("Deno.core.ops.op_gdansk_set_ssr_html"));
     }
 
     #[test]

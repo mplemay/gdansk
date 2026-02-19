@@ -82,7 +82,6 @@ class Amber:
     _paths: set[Path] = field(default_factory=set, init=False)
     _ssr_paths: set[Path] = field(default_factory=set, init=False)
     _template: ClassVar[str] = "template.html"
-    _env: ClassVar = ENV
     _ui_min_parts: ClassVar[int] = 2
 
     mcp: FastMCP
@@ -351,7 +350,7 @@ class Amber:
                     else await path.read_text(encoding="utf-8")
                 )
 
-                return Amber._env.render_template(
+                return ENV.render_template(
                     Amber._template,
                     js=js,
                     css=css,

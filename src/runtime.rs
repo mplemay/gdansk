@@ -98,8 +98,9 @@ async fn evaluate(code: &str) -> Result<Value, RuntimeError> {
     let module_specifier =
         deno_core::resolve_url("file:///gdansk/runtime_eval.js").map_err(execution_error)?;
     let code_json = deno_core::serde_json::to_string(code).map_err(execution_error)?;
-    let module_code =
-        format!("globalThis.__gdansk_last_result = globalThis.__gdansk_run({code_json});");
+    let module_code = format!(
+        "import {{ runCode }} from \"gdansk:runtime\";\nglobalThis.__gdansk_last_result = runCode({code_json});"
+    );
 
     let mod_id = runtime
         .load_main_es_module_from_code(&module_specifier, module_code)
