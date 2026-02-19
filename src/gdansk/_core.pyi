@@ -6,4 +6,5 @@ async def bundle(
     minify: bool = True,
     output: Path = ...,
     cwd: Path = ...,
+    app_entrypoint_mode: bool = False,
 ) -> None: ...

@@ -1,7 +1,6 @@
 import { useApp } from "@modelcontextprotocol/ext-apps/react";
-import { createRoot } from "react-dom/client";
 
-function HelloApp() {
+export default function App() {
   const { app, error } = useApp({
     appInfo: { name: "Hello", version: "1.0.0" },
     capabilities: {},
@@ -23,5 +22,3 @@ function HelloApp() {
     </main>
   );
 }
-
-createRoot(document.getElementById("root")!).render(<HelloApp />);

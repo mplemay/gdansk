@@ -1,7 +1,6 @@
 import { useApp } from "@modelcontextprotocol/ext-apps/react";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { StrictMode, useCallback, useEffect, useState } from "react";
-import { createRoot } from "react-dom/client";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -56,7 +55,7 @@ function parseTodos(result: CallToolResult): Todo[] {
   });
 }
 
-function TodoApp() {
+export default function App() {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [newTitle, setNewTitle] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -196,9 +195,3 @@ function TodoApp() {
     </main>
   );
 }
-
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <TodoApp />
-  </StrictMode>,
-);

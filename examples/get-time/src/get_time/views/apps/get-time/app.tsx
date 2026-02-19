@@ -1,10 +1,9 @@
 import { useApp } from "@modelcontextprotocol/ext-apps/react";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { StrictMode, useState } from "react";
-import { createRoot } from "react-dom/client";
+import { useState } from "react";
 import styles from "./global.css";
 
-function GetTimeApp() {
+export default function App() {
   const [toolResult, setToolResult] = useState<CallToolResult | null>(null);
   const [message, setMessage] = useState("");
   const [logMessage, setLogMessage] = useState("");
@@ -107,9 +106,3 @@ function GetTimeApp() {
     </main>
   );
 }
-
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <GetTimeApp />
-  </StrictMode>,
-);
