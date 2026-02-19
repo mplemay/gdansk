@@ -12,10 +12,11 @@ crate-type = ["cdylib"]
 tokio = "1.40"
 dunce = "1.0"
 
-# "extension-module" tells pyo3 we want to build an extension module (skips linking against libpython.so)
-# "abi3-py311" tells pyo3 (and maturin) to build using the stable ABI with minimum Python version 3.11
+# python
 pyo3 = { version = "0.28", features = ["extension-module", "abi3-py311"] }
 pyo3-async-runtimes = { version = "0.28", features = ["tokio-runtime"] }
 
+# javascript
+deno_core = "0.385.0"
 rolldown = { git = "https://github.com/rolldown/rolldown.git", tag="v1.0.0-rc.5", features = ["experimental"] }
 rolldown_dev = { git = "https://github.com/rolldown/rolldown.git", tag="v1.0.0-rc.5" }
