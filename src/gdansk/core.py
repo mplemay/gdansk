@@ -332,34 +332,38 @@ class Amber:
                 mime_type="text/html;profile=mcp-app",
             )
             async def _() -> str:
-                try:
-                    js = await APath(client_js_path).read_text(encoding="utf-8")
-                except FileNotFoundError:
+                client = (
+                    None
+                    if not await (path := APath(client_js_path)).exists()
+                    else await path.read_text(encoding="utf-8")
+                )
+
+                if not client:
                     msg = f"Bundled output for {ui} not found. Has the bundler been run?"
-                    raise FileNotFoundError(msg) from None
-                ssr_html: str | None = None
-                if ssr:
-                    try:
-                        server_js = await APath(server_js_path).read_text(
-                            encoding="utf-8",
-                        )
-                    except FileNotFoundError:
-                        msg = f"SSR bundled output for {ui} not found. Has the bundler been run?"
-                        raise FileNotFoundError(msg) from None
-                    runtime_output = await run(server_js)
-                    if not isinstance(runtime_output, str):
-                        msg = f"SSR output for {ui} must be a string"
-                        raise TypeError(msg)
-                    ssr_html = runtime_output
-                css = None
-                if await (path := APath(client_css_path)).exists():
-                    css = await path.read_text(encoding="utf-8")
+                    raise FileNotFoundError(msg)
+
+                server = (
+                    None
+                    if not await (path := APath(server_js_path)).exists()
+                    else await path.read_text(encoding="utf-8")
+                )
+                html = await run(server) if server else None
+
+                if (not html) and ssr:
+                    msg = f"Bundled output for {ui} not found. Has the bundler been run?"
+                    raise FileNotFoundError(msg)
+
+                css = (
+                    None
+                    if not await (path := APath(client_css_path)).exists()
+                    else await path.read_text(encoding="utf-8")
+                )
 
                 return ENV.render_template(
                     Amber._template,
-                    js=js,
+                    js=client,
                     css=css,
-                    ssr_html=ssr_html,
+                    ssr_html=html,
                     metadata=merge_metadata(self.metadata, metadata),
                 )
 
