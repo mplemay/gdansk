@@ -6,6 +6,7 @@ import logging
 import threading
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
+from functools import cache
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
@@ -27,6 +28,21 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 _T = TypeVar("_T")
+_SSR_RUNTIME_LOCK = threading.Lock()
+
+
+@cache
+def _get_ssr_runtime() -> Runtime:
+    return Runtime()
+
+
+def _render_ssr_html(server_js: str, ui: Path) -> str:
+    with _SSR_RUNTIME_LOCK:
+        runtime_output = _get_ssr_runtime().render_ssr(server_js)
+    if not isinstance(runtime_output, str):
+        msg = f"SSR output for {ui} must be a string"
+        raise TypeError(msg)
+    return runtime_output
 
 
 class _AsyncThreadRunner:
@@ -341,11 +357,7 @@ class Amber:
                     except FileNotFoundError:
                         msg = f"SSR bundled output for {ui} not found. Has the bundler been run?"
                         raise FileNotFoundError(msg) from None
-                    runtime_output = Runtime()(f"{server_js}\n;globalThis.__gdansk_ssr_html")
-                    if not isinstance(runtime_output, str):
-                        msg = f"SSR output for {ui} must be a string"
-                        raise ValueError(msg)
-                    ssr_html = runtime_output
+                    ssr_html = _render_ssr_html(server_js, ui)
                 css = (
                     None
                     if not await (path := APath(self.output / bundle_ui.with_suffix(".css"))).exists()

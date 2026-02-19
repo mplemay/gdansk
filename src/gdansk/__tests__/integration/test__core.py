@@ -258,7 +258,7 @@ async def test_bundle_server_entrypoint_mode_writes_executable_ssr_output(tmp_pa
     assert output_js.exists()
 
     runtime = Runtime()
-    ssr_html = runtime(f"{output_js.read_text(encoding='utf-8')}\n;globalThis.__gdansk_ssr_html")
+    ssr_html = runtime.render_ssr(output_js.read_text(encoding="utf-8"))
     assert ssr_html == "<div>ok</div>"
 
 
@@ -283,7 +283,15 @@ async def test_bundle_server_entrypoint_mode_runtime_error_surfaces(tmp_path, mo
     output_js = tmp_path / ".gdansk" / ".ssr" / "apps" / "simple" / "app.js"
     runtime = Runtime()
     with pytest.raises(RuntimeError, match="Execution error"):
-        runtime(f"{output_js.read_text(encoding='utf-8')}\n;globalThis.__gdansk_ssr_html")
+        runtime.render_ssr(output_js.read_text(encoding="utf-8"))
+
+
+@pytest.mark.integration
+def test_runtime_render_ssr_clears_stale_output_between_calls():
+    runtime = Runtime()
+    assert runtime.render_ssr('Deno.core.ops.op_gdansk_set_ssr_html("<div>ok</div>");') == "<div>ok</div>"
+    with pytest.raises(ValueError, match="SSR output was not produced"):
+        runtime.render_ssr("1 + 1")
 
 
 @pytest.mark.integration

@@ -678,11 +678,11 @@ async def test_resource_injects_ssr_html_when_effective_ssr_true(mock_mcp, views
     js_path.write_text("console.log('hello');", encoding="utf-8")
     server_js_path = amber_output / ".ssr/apps/simple/app.js"
     server_js_path.parent.mkdir(parents=True, exist_ok=True)
-    server_js_path.write_text("globalThis.__gdansk_ssr_html = '<p>server</p>';", encoding="utf-8")
+    server_js_path.write_text('Deno.core.ops.op_gdansk_set_ssr_html("<p>server</p>");', encoding="utf-8")
 
     handler = mock_mcp._resource_calls[-1]["handler"]
-    with patch("gdansk.core.Runtime") as mock_runtime:
-        mock_runtime.return_value.return_value = "<p>server</p>"
+    with patch("gdansk.core._render_ssr_html") as mock_render_ssr_html:
+        mock_render_ssr_html.return_value = "<p>server</p>"
         html = await handler()
 
     assert '<div id="root"><p>server</p></div>' in html
@@ -702,11 +702,11 @@ async def test_resource_skips_runtime_and_ssr_html_when_effective_ssr_false(ambe
     js_path.write_text("console.log('hello');", encoding="utf-8")
 
     handler = mock_mcp._resource_calls[-1]["handler"]
-    with patch("gdansk.core.Runtime") as mock_runtime:
+    with patch("gdansk.core._render_ssr_html") as mock_render_ssr_html:
         html = await handler()
 
     assert '<div id="root"></div>' in html
-    mock_runtime.assert_not_called()
+    mock_render_ssr_html.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -743,11 +743,11 @@ async def test_resource_propagates_runtime_error_fail_fast(mock_mcp, views_dir, 
     js_path.write_text("console.log('hello');", encoding="utf-8")
     server_js_path = amber_output / ".ssr/apps/simple/app.js"
     server_js_path.parent.mkdir(parents=True, exist_ok=True)
-    server_js_path.write_text("globalThis.__gdansk_ssr_html = '<p>server</p>';", encoding="utf-8")
+    server_js_path.write_text('Deno.core.ops.op_gdansk_set_ssr_html("<p>server</p>");', encoding="utf-8")
 
     handler = mock_mcp._resource_calls[-1]["handler"]
-    with patch("gdansk.core.Runtime") as mock_runtime:
-        mock_runtime.return_value.side_effect = RuntimeError("boom")
+    with patch("gdansk.core._render_ssr_html") as mock_render_ssr_html:
+        mock_render_ssr_html.side_effect = RuntimeError("boom")
         with pytest.raises(RuntimeError, match="boom"):
             await handler()
 

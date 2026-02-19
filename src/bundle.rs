@@ -89,6 +89,19 @@ fn build_input_item_fields(
         .collect()
 }
 
+fn server_entrypoint_wrapper_source(source_id: &str) -> Option<String> {
+    let file_name = Path::new(source_id).file_name()?.to_str()?;
+    let import_path = format!("./{file_name}");
+    Some(format!(
+        r#"import {{ createElement }} from "react";
+import {{ renderToString }} from "react-dom/server";
+import App from "{import_path}";
+
+Deno.core.ops.op_gdansk_set_ssr_html(renderToString(createElement(App)));
+"#
+    ))
+}
+
 #[cfg(not(test))]
 struct DevEngineCloseGuard {
     engine: Option<Arc<DevEngine>>,
@@ -171,16 +184,7 @@ impl GdanskServerEntrypointPlugin {
     }
 
     fn wrapper_source(source_id: &str) -> Option<String> {
-        let file_name = Path::new(source_id).file_name()?.to_str()?;
-        let import_path = format!("./{file_name}");
-        Some(format!(
-            r#"import {{ createElement }} from "react";
-import {{ renderToString }} from "react-dom/server";
-import App from "{import_path}";
-
-globalThis.__gdansk_ssr_html = renderToString(createElement(App));
-"#
-        ))
+        server_entrypoint_wrapper_source(source_id)
     }
 }
 
@@ -657,5 +661,19 @@ mod tests {
         assert_eq!(input_fields.len(), 1);
         assert_eq!(input_fields[0].0, "apps/simple/app");
         assert_eq!(input_fields[0].1, "apps/simple/app.tsx?gdansk-server-entry");
+    }
+
+    #[test]
+    fn server_entrypoint_wrapper_uses_ssr_op_capture() {
+        let wrapper = server_entrypoint_wrapper_source("apps/simple/app.tsx")
+            .expect("expected server wrapper");
+        assert!(wrapper.contains("Deno.core.ops.op_gdansk_set_ssr_html"));
+    }
+
+    #[test]
+    fn server_entrypoint_wrapper_does_not_use_global_marker() {
+        let wrapper = server_entrypoint_wrapper_source("apps/simple/app.tsx")
+            .expect("expected server wrapper");
+        assert!(!wrapper.contains("globalThis.__gdansk_ssr_html"));
     }
 }

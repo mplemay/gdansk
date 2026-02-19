@@ -1,4 +1,4 @@
-use deno_core::{JsRuntime, RuntimeOptions, serde_json::Value, v8};
+use deno_core::{JsRuntime, OpState, RuntimeOptions, op2, serde_json::Value, v8};
 
 #[cfg(not(test))]
 use pyo3::{
@@ -28,10 +28,29 @@ struct BasicRuntime {
     runtime: JsRuntime,
 }
 
+#[derive(Default)]
+struct SsrCapture {
+    html: Option<String>,
+}
+
+#[op2(fast)]
+fn op_gdansk_set_ssr_html(state: &mut OpState, #[string] html: String) {
+    state.borrow_mut::<SsrCapture>().html = Some(html);
+}
+
+deno_core::extension!(
+    gdansk_runtime_ext,
+    ops = [op_gdansk_set_ssr_html],
+    state = |state| state.put(SsrCapture::default())
+);
+
 impl BasicRuntime {
     fn new() -> Self {
         Self {
-            runtime: JsRuntime::new(RuntimeOptions::default()),
+            runtime: JsRuntime::new(RuntimeOptions {
+                extensions: vec![gdansk_runtime_ext::init()],
+                ..Default::default()
+            }),
         }
     }
 
@@ -68,6 +87,26 @@ impl BasicRuntime {
         }
         deno_core::serde_v8::from_v8::<Value>(scope, local)
             .map_err(|err| RuntimeError::deserialize(format!("Cannot deserialize value: {err:?}")))
+    }
+
+    fn eval_ssr_html(&mut self, code: &str) -> Result<String, RuntimeError> {
+        {
+            let op_state = self.runtime.op_state();
+            let mut op_state = op_state.borrow_mut();
+            op_state.borrow_mut::<SsrCapture>().html = None;
+        }
+
+        self.runtime
+            .execute_script("<gdansk-runtime-ssr>", code.to_owned())
+            .map_err(|err| RuntimeError::execution(format!("Execution error: {err:?}")))?;
+
+        let op_state = self.runtime.op_state();
+        let mut op_state = op_state.borrow_mut();
+        op_state
+            .borrow_mut::<SsrCapture>()
+            .html
+            .take()
+            .ok_or_else(|| RuntimeError::deserialize("SSR output was not produced".to_string()))
     }
 }
 
@@ -140,6 +179,10 @@ impl Runtime {
             .eval_json_value(code)
             .map_err(map_runtime_error)?;
         json_to_py(py, &value)
+    }
+
+    fn render_ssr(&mut self, code: &str) -> PyResult<String> {
+        self.inner.eval_ssr_html(code).map_err(map_runtime_error)
     }
 }
 
@@ -320,5 +363,43 @@ mod tests {
             .eval_json_value(r#""café 👋""#)
             .expect("expected unicode string to deserialize");
         assert_eq!(result, json!("café 👋"));
+    }
+
+    #[test]
+    fn evaluates_ssr_html_from_op_capture() {
+        let mut runtime = BasicRuntime::new();
+        let result = runtime
+            .eval_ssr_html(r#"Deno.core.ops.op_gdansk_set_ssr_html("<div>ok</div>");"#)
+            .expect("expected SSR output");
+        assert_eq!(result, "<div>ok</div>");
+    }
+
+    #[test]
+    fn reports_missing_ssr_output_as_deserialize_error() {
+        let mut runtime = BasicRuntime::new();
+        let result = runtime.eval_ssr_html("1 + 1");
+        let err = result.expect_err("expected missing SSR output error");
+        assert!(matches!(err, RuntimeError::Deserialize(_)));
+    }
+
+    #[test]
+    fn reports_ssr_execution_failures_as_execution_errors() {
+        let mut runtime = BasicRuntime::new();
+        let result = runtime.eval_ssr_html("throw new Error('ssr boom')");
+        let err = result.expect_err("expected SSR execution error");
+        assert!(matches!(err, RuntimeError::Execution(_)));
+    }
+
+    #[test]
+    fn clears_ssr_capture_between_calls() {
+        let mut runtime = BasicRuntime::new();
+        let first = runtime
+            .eval_ssr_html(r#"Deno.core.ops.op_gdansk_set_ssr_html("<div>ok</div>");"#)
+            .expect("expected first SSR output");
+        assert_eq!(first, "<div>ok</div>");
+
+        let second = runtime.eval_ssr_html("2 + 2");
+        let err = second.expect_err("expected missing SSR output after reset");
+        assert!(matches!(err, RuntimeError::Deserialize(_)));
     }
 }
