@@ -53,8 +53,8 @@ def test_amber_defaults_ssr_false(mock_mcp, views_dir):
     assert amber.ssr is False
 
 
-def test_paths_empty_initially(amber):
-    assert amber.paths == frozenset()
+def test_registered_views_empty_initially(amber):
+    assert amber._apps == set()
 
 
 def test_frozen_dataclass(amber):
@@ -107,7 +107,7 @@ def test_no_plugins_called_when_no_paths_registered(mock_mcp, views_dir):
 
 @pytest.mark.usefixtures("views_dir")
 def test_dev_false_blocks_until_bundle_done(amber):
-    amber._apps.add(View(path=Path("simple/app.tsx"), app=True, ssr=False))
+    amber._apps.add(View(path=Path("apps/simple/app.tsx"), app=True, ssr=False))
     called = False
 
     async def _fake_bundle(**_kwargs: object):
@@ -133,7 +133,7 @@ def test_plugins_run_after_bundle_in_prod(mock_mcp, views_dir):
             _ = (views, output, stop_event)
 
     amber = Amber(mcp=mock_mcp, views=views_dir, plugins=[_TestPlugin()])
-    amber._apps.add(View(path=Path("simple/app.tsx"), app=True, ssr=False))
+    amber._apps.add(View(path=Path("apps/simple/app.tsx"), app=True, ssr=False))
 
     async def _fake_bundle(**_kwargs: object):
         calls.append("bundle")
@@ -146,7 +146,7 @@ def test_plugins_run_after_bundle_in_prod(mock_mcp, views_dir):
 
 @pytest.mark.usefixtures("views_dir")
 def test_dev_true_starts_background_runner(amber):
-    amber._apps.add(View(path=Path("simple/app.tsx"), app=True, ssr=False))
+    amber._apps.add(View(path=Path("apps/simple/app.tsx"), app=True, ssr=False))
     started = threading.Event()
 
     async def _slow_bundle(**_kwargs: object):
@@ -163,7 +163,7 @@ def test_dev_true_starts_background_runner(amber):
 
 @pytest.mark.usefixtures("views_dir")
 def test_passes_dev_flag_and_derived_minify(amber):
-    amber._apps.add(View(path=Path("simple/app.tsx"), app=True, ssr=False))
+    amber._apps.add(View(path=Path("apps/simple/app.tsx"), app=True, ssr=False))
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
@@ -193,7 +193,7 @@ def test_plugin_errors_propagate_in_prod(mock_mcp, views_dir):
             _ = (views, output, stop_event)
 
     amber = Amber(mcp=mock_mcp, views=views_dir, plugins=[_FailingPlugin()])
-    amber._apps.add(View(path=Path("simple/app.tsx"), app=True, ssr=False))
+    amber._apps.add(View(path=Path("apps/simple/app.tsx"), app=True, ssr=False))
 
     async def _fake_bundle(**_kwargs: object):
         return
@@ -210,7 +210,7 @@ def test_plugin_errors_propagate_in_prod(mock_mcp, views_dir):
 
 def test_passes_views_dot_gdansk_as_output(mock_mcp, views_dir):
     amber = Amber(mcp=mock_mcp, views=views_dir)
-    amber._apps.add(View(path=Path("simple/app.tsx"), app=True, ssr=False))
+    amber._apps.add(View(path=Path("apps/simple/app.tsx"), app=True, ssr=False))
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
@@ -223,7 +223,7 @@ def test_passes_views_dot_gdansk_as_output(mock_mcp, views_dir):
 
 
 def test_passes_views_as_cwd(amber, views_dir):
-    amber._apps.add(View(path=Path("simple/app.tsx"), app=True, ssr=False))
+    amber._apps.add(View(path=Path("apps/simple/app.tsx"), app=True, ssr=False))
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
@@ -237,7 +237,7 @@ def test_passes_views_as_cwd(amber, views_dir):
 
 @pytest.mark.usefixtures("views_dir")
 def test_passes_view_specs_for_amber_ui_entries(amber):
-    amber._apps.add(View(path=Path("simple/app.tsx"), app=True, ssr=False))
+    amber._apps.add(View(path=Path("apps/simple/app.tsx"), app=True, ssr=False))
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
@@ -251,8 +251,8 @@ def test_passes_view_specs_for_amber_ui_entries(amber):
 
 @pytest.mark.usefixtures("views_dir")
 def test_passes_registered_paths(amber):
-    amber._apps.add(View(path=Path("simple/app.tsx"), app=True, ssr=False))
-    amber._apps.add(View(path=Path("nested/page/app.tsx"), app=True, ssr=False))
+    amber._apps.add(View(path=Path("apps/simple/app.tsx"), app=True, ssr=False))
+    amber._apps.add(View(path=Path("apps/nested/page/app.tsx"), app=True, ssr=False))
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
@@ -315,7 +315,7 @@ def test_plugins_watch_started_and_cancelled_on_shutdown(mock_mcp, views_dir):
                 raise
 
     amber = Amber(mcp=mock_mcp, views=views_dir, plugins=[_DevPlugin()])
-    amber._apps.add(View(path=Path("simple/app.tsx"), app=True, ssr=False))
+    amber._apps.add(View(path=Path("apps/simple/app.tsx"), app=True, ssr=False))
 
     async def _slow_bundle(**_kwargs: object):
         try:
@@ -343,7 +343,7 @@ def test_dev_watch_error_is_logged(mock_mcp, views_dir):
             raise RuntimeError(msg)
 
     amber = Amber(mcp=mock_mcp, views=views_dir, plugins=[_FailingWatchPlugin()])
-    amber._apps.add(View(path=Path("simple/app.tsx"), app=True, ssr=False))
+    amber._apps.add(View(path=Path("apps/simple/app.tsx"), app=True, ssr=False))
 
     async def _slow_bundle(**_kwargs: object):
         await asyncio.sleep(999)
@@ -362,7 +362,7 @@ def test_dev_watch_error_is_logged(mock_mcp, views_dir):
 
 @pytest.mark.usefixtures("views_dir")
 def test_closes_loop_on_shutdown(amber):
-    amber._apps.add(View(path=Path("simple/app.tsx"), app=True, ssr=False))
+    amber._apps.add(View(path=Path("apps/simple/app.tsx"), app=True, ssr=False))
     loops: list[asyncio.AbstractEventLoop] = []
     original_new_event_loop = asyncio.new_event_loop
 
@@ -390,7 +390,7 @@ def test_closes_loop_on_shutdown(amber):
 
 @pytest.mark.usefixtures("views_dir")
 def test_repeated_startup_shutdown_is_idempotent(amber):
-    amber._apps.add(View(path=Path("simple/app.tsx"), app=True, ssr=False))
+    amber._apps.add(View(path=Path("apps/simple/app.tsx"), app=True, ssr=False))
 
     async def _fake_bundle(**_kwargs: object):
         await asyncio.sleep(0)
@@ -469,14 +469,14 @@ def test_raises_when_file_not_found(amber):
         amber.tool(Path("missing/app.tsx"))
 
 
-def test_adds_path_to_paths(amber):
-    assert Path("simple/app.tsx") not in amber.paths
+def test_adds_bundle_path_to_registered_views(amber):
+    assert View(path=Path("apps/simple/app.tsx"), app=True, ssr=False) not in amber._apps
 
     @amber.tool(Path("simple/app.tsx"))
     def my_tool():
         pass
 
-    assert Path("simple/app.tsx") in amber.paths
+    assert View(path=Path("apps/simple/app.tsx"), app=True, ssr=False) in amber._apps
 
 
 def test_tool_ssr_none_inherits_amber_value(mock_mcp, views_dir):
@@ -487,7 +487,7 @@ def test_tool_ssr_none_inherits_amber_value(mock_mcp, views_dir):
         pass
 
     _ = my_tool
-    assert View(path=Path("simple/app.tsx"), app=True, ssr=True) in amber._apps
+    assert View(path=Path("apps/simple/app.tsx"), app=True, ssr=True) in amber._apps
 
 
 def test_tool_ssr_true_overrides_amber_false(mock_mcp, views_dir):
@@ -498,7 +498,7 @@ def test_tool_ssr_true_overrides_amber_false(mock_mcp, views_dir):
         pass
 
     _ = my_tool
-    assert View(path=Path("simple/app.tsx"), app=True, ssr=True) in amber._apps
+    assert View(path=Path("apps/simple/app.tsx"), app=True, ssr=True) in amber._apps
 
 
 def test_tool_ssr_false_overrides_amber_true(mock_mcp, views_dir):
@@ -509,7 +509,7 @@ def test_tool_ssr_false_overrides_amber_true(mock_mcp, views_dir):
         pass
 
     _ = my_tool
-    assert View(path=Path("simple/app.tsx"), app=True, ssr=False) in amber._apps
+    assert View(path=Path("apps/simple/app.tsx"), app=True, ssr=False) in amber._apps
 
 
 def test_tool_reregistration_overwrites_ssr_for_same_path(mock_mcp, views_dir):
@@ -524,8 +524,8 @@ def test_tool_reregistration_overwrites_ssr_for_same_path(mock_mcp, views_dir):
         pass
 
     _ = (first_tool, second_tool)
-    assert View(path=Path("simple/app.tsx"), app=True, ssr=True) in amber._apps
-    assert sum(1 for view in amber._apps if view.path == Path("simple/app.tsx")) == 1
+    assert View(path=Path("apps/simple/app.tsx"), app=True, ssr=True) in amber._apps
+    assert sum(1 for view in amber._apps if view.path == Path("apps/simple/app.tsx")) == 1
 
 
 def test_uri_top_level(amber, mock_mcp):

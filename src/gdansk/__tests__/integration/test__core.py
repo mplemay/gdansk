@@ -111,6 +111,31 @@ async def _wait_for_file_or_task_failure(
     pytest.fail(message)
 
 
+def test_view_requires_keyword_only_arguments():
+    with pytest.raises(TypeError, match="positional"):
+        View(Path("main.tsx"))  # ty: ignore[missing-argument,too-many-positional-arguments]
+
+
+def test_view_is_hashable_and_equatable():
+    first = View(path=Path("apps/simple/app.tsx"), app=True, ssr=True)
+    second = View(path=Path("apps/simple/app.tsx"), app=True, ssr=True)
+
+    assert first == second
+    assert len({first, second}) == 1
+
+
+def test_view_exposes_derived_bundle_paths():
+    app_view = View(path=Path("apps/simple/app.tsx"), app=True, ssr=True)
+    assert app_view.client == Path("simple/client.js")
+    assert app_view.css == Path("simple/client.css")
+    assert app_view.server == Path("simple/server.js")
+
+    plain_view = View(path=Path("main.tsx"))
+    assert plain_view.client == Path("main.js")
+    assert plain_view.css == Path("main.css")
+    assert plain_view.server is None
+
+
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_bundle_writes_default_output(tmp_path, monkeypatch):

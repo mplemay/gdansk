@@ -1,14 +1,17 @@
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Protocol
 
-class BundleView(Protocol):
+class View:
+    def __init__(self, *, path: Path, app: bool = False, ssr: bool = False) -> None: ...
     path: Path
     app: bool
     ssr: bool
+    client: Path
+    server: Path | None
+    css: Path
 
 async def bundle(
-    views: Sequence[BundleView],
+    views: Sequence[View],
     dev: bool = False,
     minify: bool = True,
     output: Path = ...,

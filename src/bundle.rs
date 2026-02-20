@@ -2,13 +2,16 @@ use std::{
     collections::HashMap,
     ffi::OsStr,
     fmt,
+    hash::{Hash, Hasher},
     path::{Path, PathBuf},
 };
 
 #[cfg(not(test))]
 use pyo3::{
-    exceptions::{PyAttributeError, PyKeyError, PyRuntimeError, PyValueError},
+    basic::CompareOp,
+    exceptions::{PyRuntimeError, PyValueError},
     prelude::*,
+    types::PyModule,
 };
 #[cfg(not(test))]
 use rolldown::plugin::{
@@ -26,10 +29,22 @@ use rolldown_dev::{BundlerConfig, DevEngine, DevOptions, RebuildStrategy};
 use std::{borrow::Cow, sync::Arc};
 
 #[derive(Debug, Clone)]
-struct BundleView {
+struct ViewSpec {
     path: PathBuf,
     app: bool,
     ssr: bool,
+}
+
+#[cfg(not(test))]
+#[pyclass(module = "gdansk._core", frozen, skip_from_py_object)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct View {
+    path: PathBuf,
+    app: bool,
+    ssr: bool,
+    client: PathBuf,
+    server: Option<PathBuf>,
+    css: PathBuf,
 }
 
 #[derive(Debug, Clone)]
@@ -52,6 +67,121 @@ const SERVER_ENTRYPOINT_QUERY: &str = "?gdansk-server-entry";
 const GDANSK_RUNTIME_SPECIFIER: &str = "gdansk:runtime";
 #[cfg(not(test))]
 const GDANSK_RUNTIME_MODULE_SOURCE: &str = include_str!("runtime.js");
+
+fn derive_output_stems(path: &Path, app: bool, ssr: bool) -> (PathBuf, Option<PathBuf>) {
+    if !app {
+        let stem = path.with_extension("");
+        let server = if ssr { Some(stem.clone()) } else { None };
+        return (stem, server);
+    }
+
+    let mut tool_directory = PathBuf::new();
+    if let Some(parent) = path.parent() {
+        for component in parent.components().skip(1) {
+            tool_directory.push(component.as_os_str());
+        }
+    }
+    if tool_directory.as_os_str().is_empty() {
+        tool_directory.push("client");
+    }
+
+    let client_stem = tool_directory.join("client");
+    let server_stem = if ssr {
+        Some(tool_directory.join("server"))
+    } else {
+        None
+    };
+    (client_stem, server_stem)
+}
+
+#[cfg(not(test))]
+fn to_py_path<'py>(py: Python<'py>, path: &Path) -> PyResult<Bound<'py, PyAny>> {
+    let pathlib = PyModule::import(py, "pathlib")?;
+    pathlib.getattr("Path")?.call1((path,))
+}
+
+#[cfg(not(test))]
+#[pymethods]
+impl View {
+    #[new]
+    #[pyo3(signature = (*, path, app = false, ssr = false))]
+    fn new(path: PathBuf, app: bool, ssr: bool) -> Self {
+        let (client_stem, server_stem) = derive_output_stems(&path, app, ssr);
+        Self {
+            path,
+            app,
+            ssr,
+            client: client_stem.with_extension("js"),
+            server: server_stem.map(|stem| stem.with_extension("js")),
+            css: client_stem.with_extension("css"),
+        }
+    }
+
+    #[getter]
+    fn path<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        to_py_path(py, &self.path)
+    }
+
+    #[getter]
+    fn app(&self) -> bool {
+        self.app
+    }
+
+    #[getter]
+    fn ssr(&self) -> bool {
+        self.ssr
+    }
+
+    #[getter]
+    fn client<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        to_py_path(py, &self.client)
+    }
+
+    #[getter]
+    fn server<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyAny>>> {
+        self.server
+            .as_deref()
+            .map(|path| to_py_path(py, path))
+            .transpose()
+    }
+
+    #[getter]
+    fn css<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        to_py_path(py, &self.css)
+    }
+
+    fn __richcmp__(&self, other: PyRef<'_, Self>, op: CompareOp) -> bool {
+        match op {
+            CompareOp::Eq => *self == *other,
+            CompareOp::Ne => *self != *other,
+            _ => false,
+        }
+    }
+
+    fn __hash__(&self) -> isize {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        self.hash(&mut hasher);
+        hasher.finish() as isize
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "View(path={:?}, app={}, ssr={}, client={:?}, server={:?}, css={:?})",
+            self.path, self.app, self.ssr, self.client, self.server, self.css
+        )
+    }
+}
+
+#[cfg(not(test))]
+impl View {
+    fn as_spec(&self) -> ViewSpec {
+        ViewSpec {
+            path: self.path.clone(),
+            app: self.app,
+            ssr: self.ssr,
+        }
+    }
+}
 
 impl BundleError {
     fn validation(message: impl Into<String>) -> Self {
@@ -354,7 +484,7 @@ fn is_supported_jsx_extension(path: &Path) -> bool {
 }
 
 fn normalize_views(
-    views: Vec<BundleView>,
+    views: Vec<ViewSpec>,
     cwd: &Path,
     output_dir: &Path,
 ) -> Result<Vec<NormalizedView>, BundleError> {
@@ -541,63 +671,10 @@ fn map_bundle_error(err: BundleError) -> PyErr {
 }
 
 #[cfg(not(test))]
-fn map_extract_error(error: PyErr, index: usize, field: &str, expected: &str) -> PyErr {
-    PyValueError::new_err(format!(
-        "views[{index}].{field} must be {expected}: {error}"
-    ))
-}
-
-#[cfg(not(test))]
-fn get_attribute_or_item<'py>(
-    view: &Bound<'py, PyAny>,
-    key: &str,
-) -> PyResult<Option<Bound<'py, PyAny>>> {
-    if let Ok(value) = view.getattr(key) {
-        return Ok(Some(value));
-    }
-    match view.get_item(key) {
-        Ok(value) => Ok(Some(value)),
-        Err(error)
-            if error.is_instance_of::<PyAttributeError>(view.py())
-                || error.is_instance_of::<PyKeyError>(view.py()) =>
-        {
-            Ok(None)
-        }
-        Err(error) => Err(error),
-    }
-}
-
-#[cfg(not(test))]
-fn parse_views_from_python(py: Python<'_>, views: Vec<Py<PyAny>>) -> PyResult<Vec<BundleView>> {
+fn parse_views_from_python(py: Python<'_>, views: Vec<Py<View>>) -> Vec<ViewSpec> {
     views
         .into_iter()
-        .enumerate()
-        .map(|(index, view)| {
-            let bound = view.bind(py);
-            let path_obj = get_attribute_or_item(bound, "path")?.ok_or_else(|| {
-                PyValueError::new_err(format!("views[{index}] is missing required field `path`"))
-            })?;
-            let path = path_obj.extract::<PathBuf>().map_err(|error| {
-                map_extract_error(error, index, "path", "a pathlib.Path or path string")
-            })?;
-
-            let app = if let Some(value) = get_attribute_or_item(bound, "app")? {
-                value
-                    .extract::<bool>()
-                    .map_err(|error| map_extract_error(error, index, "app", "a bool"))?
-            } else {
-                false
-            };
-            let ssr = if let Some(value) = get_attribute_or_item(bound, "ssr")? {
-                value
-                    .extract::<bool>()
-                    .map_err(|error| map_extract_error(error, index, "ssr", "a bool"))?
-            } else {
-                false
-            };
-
-            Ok(BundleView { path, app, ssr })
-        })
+        .map(|view| view.borrow(py).as_spec())
         .collect()
 }
 
@@ -683,13 +760,13 @@ async fn run_bundler(
 #[pyfunction(signature = (views, dev = false, minify = true, output = None, cwd = None))]
 pub(crate) fn bundle(
     py: Python<'_>,
-    views: Vec<Py<PyAny>>,
+    views: Vec<Py<View>>,
     dev: bool,
     minify: bool,
     output: Option<PathBuf>,
     cwd: Option<PathBuf>,
 ) -> PyResult<Bound<'_, PyAny>> {
-    let parsed_views = parse_views_from_python(py, views)?;
+    let parsed_views = parse_views_from_python(py, views);
 
     pyo3_async_runtimes::tokio::future_into_py(py, async move {
         let cwd = match cwd {
@@ -813,8 +890,8 @@ mod tests {
         }
     }
 
-    fn view(path: &str, app: bool, ssr: bool) -> BundleView {
-        BundleView {
+    fn view(path: &str, app: bool, ssr: bool) -> ViewSpec {
+        ViewSpec {
             path: PathBuf::from(path),
             app,
             ssr,
@@ -850,7 +927,7 @@ mod tests {
         outside.create_file("outside.tsx");
 
         let result = normalize_views(
-            vec![BundleView {
+            vec![ViewSpec {
                 path: outside.root.join("outside.tsx"),
                 app: false,
                 ssr: false,
