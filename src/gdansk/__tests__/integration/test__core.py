@@ -6,11 +6,91 @@ from pathlib import Path
 import pytest
 from anyio import Path as APath
 
-from gdansk._core import Runtime, bundle
+from gdansk._core import bundle, run
+from gdansk.core import View
+
+
+def _write_ssr_modules(
+    root: Path,
+    *,
+    throw_on_render: bool = False,
+    use_message_channel_at_import: bool = False,
+) -> None:
+    react_dir = root / "node_modules" / "react"
+    react_dir.mkdir(parents=True, exist_ok=True)
+    (react_dir / "package.json").write_text(
+        (
+            "{\n"
+            '  "name": "react",\n'
+            '  "private": true,\n'
+            '  "type": "module",\n'
+            '  "exports": {\n'
+            '    ".": "./index.js"\n'
+            "  }\n"
+            "}\n"
+        ),
+        encoding="utf-8",
+    )
+    (react_dir / "index.js").write_text(
+        "export const StrictMode = Symbol.for('react.strict_mode');\n"
+        "export function createElement(type, props, ...children) {\n"
+        "  return { type, props: { ...(props ?? {}), children } };\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    react_dom_dir = root / "node_modules" / "react-dom"
+    react_dom_dir.mkdir(parents=True, exist_ok=True)
+    (react_dom_dir / "package.json").write_text(
+        (
+            "{\n"
+            '  "name": "react-dom",\n'
+            '  "private": true,\n'
+            '  "type": "module",\n'
+            '  "exports": {\n'
+            '    "./client": "./client.js",\n'
+            '    "./server": "./server.js"\n'
+            "  }\n"
+            "}\n"
+        ),
+        encoding="utf-8",
+    )
+    (react_dom_dir / "client.js").write_text(
+        "export function createRoot() {\n"
+        "  return { render() {} };\n"
+        "}\n"
+        "export function hydrateRoot() {\n"
+        "  return null;\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    if throw_on_render:
+        (react_dom_dir / "server.js").write_text(
+            "export function renderToString() {\n  throw new Error('ssr boom');\n}\n",
+            encoding="utf-8",
+        )
+        return
+    message_channel_setup = (
+        "const channel = new MessageChannel();\n"
+        "channel.port1.onmessage = () => {};\n"
+        "channel.port2.postMessage(undefined);\n"
+        if use_message_channel_at_import
+        else ""
+    )
+    (react_dom_dir / "server.js").write_text(
+        message_channel_setup + "export function renderToString(node) {\n"
+        "  if (typeof node?.type === 'function') {\n"
+        "    return renderToString(node.type(node.props ?? {}));\n"
+        "  }\n"
+        "  const children = Array.isArray(node?.props?.children) ? node.props.children.join('') : '';\n"
+        "  return `<${node.type}>${children}</${node.type}>`;\n"
+        "}\n",
+        encoding="utf-8",
+    )
 
 
 async def _wait_for_file_or_task_failure(
-    task: asyncio.Task[None],
+    task: asyncio.Task[object],
     output_path: Path,
     *,
     timeout_seconds: float = 20.0,
@@ -31,15 +111,41 @@ async def _wait_for_file_or_task_failure(
     pytest.fail(message)
 
 
+def test_view_requires_keyword_only_arguments():
+    with pytest.raises(TypeError, match="positional"):
+        View(Path("main.tsx"))  # ty: ignore[missing-argument,too-many-positional-arguments]
+
+
+def test_view_is_hashable_and_equatable():
+    first = View(path=Path("apps/simple/app.tsx"), app=True, ssr=True)
+    second = View(path=Path("apps/simple/app.tsx"), app=True, ssr=True)
+
+    assert first == second
+    assert len({first, second}) == 1
+
+
+def test_view_exposes_derived_bundle_paths():
+    app_view = View(path=Path("apps/simple/app.tsx"), app=True, ssr=True)
+    assert app_view.client == Path("simple/client.js")
+    assert app_view.css == Path("simple/client.css")
+    assert app_view.server == Path("simple/server.js")
+
+    plain_view = View(path=Path("main.tsx"))
+    assert plain_view.client == Path("main.js")
+    assert plain_view.css == Path("main.css")
+    assert plain_view.server is None
+
+
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_bundle_writes_default_output(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "main.tsx").write_text("export const value = 1;\n", encoding="utf-8")
 
-    await bundle({Path("main.tsx")})
+    result = await bundle([View(path=Path("main.tsx"))])
 
     assert (tmp_path / ".gdansk" / "main.js").exists()
+    assert result is None
 
 
 @pytest.mark.integration
@@ -50,9 +156,10 @@ async def test_bundle_writes_nested_output_in_custom_dir(tmp_path, monkeypatch):
     source.parent.mkdir(parents=True, exist_ok=True)
     source.write_text("export const home = 1;\n", encoding="utf-8")
 
-    await bundle({Path("home/page.tsx")}, output=Path("custom-out"))
+    result = await bundle([View(path=Path("home/page.tsx"))], output=Path("custom-out"))
 
     assert (tmp_path / "custom-out" / "home" / "page.js").exists()
+    assert result is None
 
 
 @pytest.mark.integration
@@ -61,7 +168,7 @@ async def test_bundle_rejects_empty_input(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
     with pytest.raises(ValueError, match="must not be empty"):
-        await bundle(set())
+        await bundle([])
 
 
 @pytest.mark.integration
@@ -71,7 +178,7 @@ async def test_bundle_rejects_non_jsx_or_tsx(tmp_path, monkeypatch):
     (tmp_path / "main.ts").write_text("export const value = 1;\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match=r"\.tsx or \.jsx"):
-        await bundle({Path("main.ts")})
+        await bundle([View(path=Path("main.ts"))])
 
 
 @pytest.mark.integration
@@ -83,7 +190,7 @@ async def test_bundle_rejects_input_outside_cwd(tmp_path, tmp_path_factory, monk
     outside_file.write_text("export const value = 1;\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match="inside cwd"):
-        await bundle({outside_file})
+        await bundle([View(path=outside_file)])
 
 
 @pytest.mark.integration
@@ -94,7 +201,7 @@ async def test_bundle_rejects_output_collisions(tmp_path, monkeypatch):
     (tmp_path / "a.jsx").write_text("export const b = 2;\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match="same output"):
-        await bundle({Path("a.tsx"), Path("a.jsx")})
+        await bundle([View(path=Path("a.tsx")), View(path=Path("a.jsx"))])
 
 
 @pytest.mark.integration
@@ -103,7 +210,7 @@ async def test_bundle_dev_mode_can_run_in_background_and_cancel(tmp_path, monkey
     monkeypatch.chdir(tmp_path)
     (tmp_path / "main.tsx").write_text("export const value = 1;\n", encoding="utf-8")
 
-    task = asyncio.ensure_future(bundle({Path("main.tsx")}, dev=True))
+    task = asyncio.ensure_future(bundle([View(path=Path("main.tsx"))], dev=True))
     await _wait_for_file_or_task_failure(task, tmp_path / ".gdansk" / "main.js")
 
     task.cancel()
@@ -121,7 +228,7 @@ async def test_bundle_outputs_css_file(tmp_path, monkeypatch):
         encoding="utf-8",
     )
 
-    await bundle({Path("page.tsx")})
+    await bundle([View(path=Path("page.tsx"))])
 
     assert (tmp_path / ".gdansk" / "page.js").exists()
     assert (tmp_path / ".gdansk" / "page.css").exists()
@@ -159,7 +266,7 @@ async def test_bundle_resolves_css_package_style_exports(tmp_path, monkeypatch):
         encoding="utf-8",
     )
 
-    await bundle({Path("page.tsx")})
+    await bundle([View(path=Path("page.tsx"))])
 
     css_output = tmp_path / ".gdansk" / "page.css"
     assert css_output.exists()
@@ -172,92 +279,178 @@ async def test_bundle_accepts_minify_false(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "main.tsx").write_text("export const value = 1;\n", encoding="utf-8")
 
-    await bundle({Path("main.tsx")}, minify=False)
+    await bundle([View(path=Path("main.tsx"))], minify=False)
 
     assert (tmp_path / ".gdansk" / "main.js").exists()
 
 
 @pytest.mark.integration
-def test_runtime_constructs_and_evaluates_expression():
-    runtime = Runtime()
-    assert runtime("1 + 2") == 3
+@pytest.mark.asyncio
+async def test_bundle_app_ssr_view_writes_executable_server_output(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _write_ssr_modules(tmp_path)
+    (tmp_path / "apps" / "simple").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "apps" / "simple" / "app.tsx").write_text(
+        'import { createElement } from "react";\n'
+        "export default function App() {\n"
+        "  return createElement('div', null, 'ok');\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    result = await bundle([View(path=Path("apps/simple/app.tsx"), app=True, ssr=True)])
+
+    client_output_js = tmp_path / ".gdansk" / "simple" / "client.js"
+    output_js = tmp_path / ".gdansk" / "simple" / "server.js"
+    assert client_output_js.exists()
+    assert output_js.exists()
+    assert result is None
+
+    html = await run(output_js.read_text(encoding="utf-8"))
+    assert html == "<div>ok</div>"
 
 
 @pytest.mark.integration
-def test_runtime_preserves_state_across_calls():
-    runtime = Runtime()
-    runtime("globalThis.counter = 1")
-    assert runtime("counter += 2; counter") == 3
+@pytest.mark.asyncio
+async def test_bundle_app_ssr_view_supports_message_channel_at_import(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _write_ssr_modules(tmp_path, use_message_channel_at_import=True)
+    (tmp_path / "apps" / "simple").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "apps" / "simple" / "app.tsx").write_text(
+        'import { createElement } from "react";\n'
+        "export default function App() {\n"
+        "  return createElement('div', null, 'ok');\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    await bundle([View(path=Path("apps/simple/app.tsx"), app=True, ssr=True)])
+
+    output_js = tmp_path / ".gdansk" / "simple" / "server.js"
+    assert output_js.exists()
+
+    html = await run(output_js.read_text(encoding="utf-8"))
+    assert html == "<div>ok</div>"
 
 
 @pytest.mark.integration
-def test_runtime_converts_nested_json_like_values():
-    runtime = Runtime()
-    assert runtime('({ ok: true, values: [1, { name: "gdansk" }, null] })') == {
+@pytest.mark.asyncio
+async def test_bundle_app_ssr_view_runtime_error_surfaces(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _write_ssr_modules(tmp_path, throw_on_render=True)
+    (tmp_path / "apps" / "simple").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "apps" / "simple" / "app.tsx").write_text(
+        "export default function App() {\n  return null;\n}\n",
+        encoding="utf-8",
+    )
+
+    await bundle([View(path=Path("apps/simple/app.tsx"), app=True, ssr=True)])
+
+    output_js = tmp_path / ".gdansk" / "simple" / "server.js"
+    with pytest.raises(RuntimeError, match="Execution error"):
+        await run(output_js.read_text(encoding="utf-8"))
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_runtime_ssr_capture_takes_precedence_and_does_not_leak_between_calls():
+    assert await run('Deno.core.ops.op_gdansk_set_html("<div>ok</div>"); 1 + 1') == "<div>ok</div>"
+    assert await run("1 + 1") == 2
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_runtime_constructs_and_evaluates_expression():
+    assert await run("1 + 2") == 3
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_runtime_exposes_message_channel_shim():
+    assert await run("typeof MessageChannel") == "function"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_runtime_exposes_text_encoder_shim():
+    assert await run("Array.from(new TextEncoder().encode('hé'))") == [104, 195, 169]
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_runtime_is_stateless_across_calls():
+    await run("globalThis.counter = 1")
+    with pytest.raises(RuntimeError, match="Execution error"):
+        await run("counter += 2; counter")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_runtime_converts_nested_json_like_values():
+    assert await run('({ ok: true, values: [1, { name: "gdansk" }, null] })') == {
         "ok": True,
         "values": [1, {"name": "gdansk"}, None],
     }
 
 
 @pytest.mark.integration
-def test_runtime_reports_execution_errors():
-    runtime = Runtime()
+@pytest.mark.asyncio
+async def test_runtime_reports_execution_errors():
     with pytest.raises(RuntimeError, match="Execution error"):
-        runtime("throw new Error('boom')")
+        await run("throw new Error('boom')")
 
 
 @pytest.mark.integration
-def test_runtime_rejects_unsupported_values():
-    runtime = Runtime()
+@pytest.mark.asyncio
+async def test_runtime_rejects_unsupported_values():
     with pytest.raises(ValueError, match="Cannot deserialize value"):
-        runtime("undefined")
+        await run("undefined")
 
 
 @pytest.mark.integration
-def test_runtime_returns_expected_python_types():
-    runtime = Runtime()
-
-    assert type(runtime("true")) is bool
-    assert type(runtime("123")) is int
-    assert type(runtime("1.25")) is float
-    assert type(runtime("'hello'")) is str
-    assert type(runtime("[1, 2, 3]")) is list
-    assert type(runtime("({ ok: true })")) is dict
-    assert runtime("null") is None
+@pytest.mark.asyncio
+async def test_runtime_returns_expected_python_types():
+    assert type(await run("true")) is bool
+    assert type(await run("123")) is int
+    assert type(await run("1.25")) is float
+    assert type(await run("'hello'")) is str
+    assert type(await run("[1, 2, 3]")) is list
+    assert type(await run("({ ok: true })")) is dict
+    assert await run("null") is None
 
 
 @pytest.mark.integration
 @pytest.mark.parametrize("code", ["Symbol('x')", "1n", "Promise.resolve(1)", "0/0", "1/0"])
-def test_runtime_rejects_additional_unsupported_values(code):
-    runtime = Runtime()
+@pytest.mark.asyncio
+async def test_runtime_rejects_additional_unsupported_values(code):
     with pytest.raises(ValueError, match="Cannot deserialize value"):
-        runtime(code)
+        await run(code)
 
 
 @pytest.mark.integration
-def test_runtime_recovers_after_execution_error():
-    runtime = Runtime()
+@pytest.mark.asyncio
+async def test_runtime_recovers_after_execution_error():
     with pytest.raises(RuntimeError, match="Execution error"):
-        runtime("throw new Error('boom')")
-    assert runtime("1 + 1") == 2
+        await run("throw new Error('boom')")
+    assert await run("1 + 1") == 2
 
 
 @pytest.mark.integration
-def test_runtime_recovers_after_deserialize_error():
-    runtime = Runtime()
+@pytest.mark.asyncio
+async def test_runtime_recovers_after_deserialize_error():
     with pytest.raises(ValueError, match="Cannot deserialize value"):
-        runtime("Symbol('x')")
-    assert runtime("1 + 2") == 3
+        await run("Symbol('x')")
+    assert await run("1 + 2") == 3
 
 
 @pytest.mark.integration
-def test_runtime_supports_empty_containers():
-    runtime = Runtime()
-    assert runtime("({})") == {}
-    assert runtime("[]") == []
+@pytest.mark.asyncio
+async def test_runtime_supports_empty_containers():
+    assert await run("({})") == {}
+    assert await run("[]") == []
 
 
 @pytest.mark.integration
-def test_runtime_supports_unicode_strings():
-    runtime = Runtime()
-    assert runtime("'café 👋'") == "café 👋"
+@pytest.mark.asyncio
+async def test_runtime_supports_unicode_strings():
+    assert await run("'café 👋'") == "café 👋"

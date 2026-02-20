@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
 from anyio import Path as APath
 
-from gdansk._core import bundle
+from gdansk._core import View, bundle, run
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import ENV
 
@@ -79,14 +79,14 @@ class _AsyncThreadRunner:
 
 @dataclass(frozen=True, slots=True)
 class Amber:
-    _paths: set[Path] = field(default_factory=set, init=False)
+    _apps: set[View] = field(default_factory=set, init=False)
     _template: ClassVar[str] = "template.html"
-    _env: ClassVar = ENV
     _ui_min_parts: ClassVar[int] = 2
 
     mcp: FastMCP
     views: Path
     output: Path = field(init=False)
+    ssr: bool = field(default=False, kw_only=True)
     metadata: Metadata | None = field(default=None, kw_only=True)
     plugins: Sequence[Plugin] = field(default=(), kw_only=True)
 
@@ -96,10 +96,6 @@ class Amber:
             raise ValueError(msg)
 
         object.__setattr__(self, "output", self.views / ".gdansk")
-
-    @property
-    def paths(self) -> frozenset[Path]:
-        return frozenset(self._paths)
 
     def _schedule_watcher_tasks(
         self,
@@ -123,14 +119,13 @@ class Amber:
 
         return stop_event, watcher_tasks
 
-    async def _run_build_pipeline(self, *, paths: set[Path], dev: bool) -> None:
+    async def _run_build_pipeline(self, *, dev: bool) -> None:
         await bundle(
-            paths=paths,
+            views=sorted(self._apps, key=lambda view: view.path.as_posix()),
             dev=dev,
             minify=not dev,
             output=self.output,
             cwd=self.views,
-            app_entrypoint_mode=True,
         )
         if dev:
             return
@@ -193,10 +188,9 @@ class Amber:
 
     def __call__(self, *, dev: bool = False) -> Starlette:
         app = self.mcp.streamable_http_app()
-        if not self._paths:
+        if not self._apps:
             return app
 
-        paths = {Path("apps", *path.parts) for path in self._paths}
         runner = _AsyncThreadRunner()
         stop_event: asyncio.Event | None = None
         watcher_tasks: list[asyncio.Task[None]] = []
@@ -208,7 +202,7 @@ class Amber:
             nonlocal watcher_tasks
             nonlocal bundle_task
             stop_event, watcher_tasks = self._schedule_watcher_tasks(dev=True)
-            bundle_task = asyncio.create_task(self._run_build_pipeline(paths=paths, dev=True))
+            bundle_task = asyncio.create_task(self._run_build_pipeline(dev=True))
             bundle_task.add_done_callback(self._log_background_task_error)
             for watcher_task in watcher_tasks:
                 watcher_task.add_done_callback(self._log_background_task_error)
@@ -218,7 +212,7 @@ class Amber:
             if dev:
                 runner.run(_start_dev())
             else:
-                runner.run(self._run_build_pipeline(paths=paths, dev=False))
+                runner.run(self._run_build_pipeline(dev=False))
 
             async with original_lifespan(starlette_app):
                 try:
@@ -249,15 +243,20 @@ class Amber:
         icons: list[Icon] | None = None,
         meta: dict[str, Any] | None = None,
         metadata: Metadata | None = None,
+        ssr: bool | None = None,
         structured_output: bool | None = None,
     ) -> Callable[[AnyFunction], AnyFunction]:
-        normalized_ui, bundle_ui, uri = self._normalize_ui_path_and_uri(ui)
+        _, bundle_ui, uri = self._normalize_ui_path_and_uri(ui)
 
         if not (self.views / bundle_ui).is_file():
             msg = f"The ui (i.e. {ui}) was not found"
             raise FileNotFoundError(msg)
 
-        self._paths.add(normalized_ui)
+        ssr = self.ssr if ssr is None else ssr
+        view = View(path=bundle_ui, app=True, ssr=ssr)
+        stale_views = {registered for registered in self._apps if registered.path == view.path}
+        self._apps.difference_update(stale_views)
+        self._apps.add(view)
 
         # add the ui to the metadata
         meta = meta or {}
@@ -282,21 +281,36 @@ class Amber:
                 mime_type="text/html;profile=mcp-app",
             )
             async def _() -> str:
-                try:
-                    js = await APath(self.output / bundle_ui.with_suffix(".js")).read_text(encoding="utf-8")
-                except FileNotFoundError:
-                    msg = f"Bundled output for {ui} not found. Has the bundler been run?"
-                    raise FileNotFoundError(msg) from None
-                css = (
+                client = (
                     None
-                    if not await (path := APath(self.output / bundle_ui.with_suffix(".css"))).exists()
+                    if not await (path := APath(self.output / view.client)).exists()
                     else await path.read_text(encoding="utf-8")
                 )
 
-                return Amber._env.render_template(
-                    Amber._template,
-                    js=js,
+                if not client:
+                    msg = f"Client bundled output for {ui} not found. Has the bundler been run?"
+                    raise FileNotFoundError(msg)
+
+                server = None
+                if view.server and await (path := APath(self.output / view.server)).exists():
+                    server = await path.read_text(encoding="utf-8")
+                html = await run(server) if server else None
+
+                if (not html) and ssr:
+                    msg = f"SSR bundled output for {ui} not found. Has the bundler been run?"
+                    raise FileNotFoundError(msg)
+
+                css = (
+                    None
+                    if not await (path := APath(self.output / view.css)).exists()
+                    else await path.read_text(encoding="utf-8")
+                )
+
+                return ENV.render_template(
+                    "template.html",
+                    js=client,
                     css=css,
+                    html=html,
                     metadata=merge_metadata(self.metadata, metadata),
                 )
 

@@ -56,7 +56,7 @@ def test_postcss_plugin_transforms_bundled_css(mock_mcp, views_dir, tmp_path, mo
     monkeypatch.setattr(PostCSS, "_process_css_file", _transform_css)
 
     with _lifespan(amber(dev=False)):
-        css_output = output / "apps/with_css/app.css"
+        css_output = output / "with_css/client.css"
         assert css_output.exists()
         assert "/* transformed */" in css_output.read_text(encoding="utf-8")
 
