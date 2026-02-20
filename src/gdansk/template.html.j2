@@ -8,7 +8,7 @@
 </style>
 {% endif %}</head>
 <body>
-<div id="root">{{ ssr_html|safe if ssr_html else "" }}</div>
+<div id="root">{{ html|safe if html else "" }}</div>
 <script type="module">
 {{ js|safe }}
 </script>

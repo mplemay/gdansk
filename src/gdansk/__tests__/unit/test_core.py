@@ -684,7 +684,7 @@ async def test_resource_raises_friendly_error_when_js_missing(amber, mock_mcp, t
 
 
 @pytest.mark.asyncio
-async def test_resource_injects_ssr_html_when_effective_ssr_true(mock_mcp, views_dir, tmp_path):
+async def test_resource_injects_html_when_effective_ssr_true(mock_mcp, views_dir, tmp_path):
     amber = Amber(mcp=mock_mcp, views=views_dir, ssr=True)
     amber_output = tmp_path / "output"
     object.__setattr__(amber, "output", amber_output)
@@ -698,7 +698,7 @@ async def test_resource_injects_ssr_html_when_effective_ssr_true(mock_mcp, views
     js_path.write_text("console.log('hello');", encoding="utf-8")
     server_js_path = amber_output / "simple/server.js"
     server_js_path.parent.mkdir(parents=True, exist_ok=True)
-    server_js_path.write_text('Deno.core.ops.op_gdansk_set_ssr_html("<p>server</p>");', encoding="utf-8")
+    server_js_path.write_text('Deno.core.ops.op_gdansk_set_html("<p>server</p>");', encoding="utf-8")
 
     handler = mock_mcp._resource_calls[-1]["handler"]
     with patch("gdansk.core.run", new_callable=AsyncMock) as mock_run:
@@ -709,7 +709,7 @@ async def test_resource_injects_ssr_html_when_effective_ssr_true(mock_mcp, views
 
 
 @pytest.mark.asyncio
-async def test_resource_skips_runtime_and_ssr_html_when_effective_ssr_false(amber, mock_mcp, tmp_path):
+async def test_resource_skips_runtime_and_html_when_effective_ssr_false(amber, mock_mcp, tmp_path):
     amber_output = tmp_path / "output"
     object.__setattr__(amber, "output", amber_output)
 
@@ -763,7 +763,7 @@ async def test_resource_propagates_runtime_error_fail_fast(mock_mcp, views_dir, 
     js_path.write_text("console.log('hello');", encoding="utf-8")
     server_js_path = amber_output / "simple/server.js"
     server_js_path.parent.mkdir(parents=True, exist_ok=True)
-    server_js_path.write_text('Deno.core.ops.op_gdansk_set_ssr_html("<p>server</p>");', encoding="utf-8")
+    server_js_path.write_text('Deno.core.ops.op_gdansk_set_html("<p>server</p>");', encoding="utf-8")
 
     handler = mock_mcp._resource_calls[-1]["handler"]
     with patch("gdansk.core.run", new_callable=AsyncMock) as mock_run:
@@ -906,8 +906,8 @@ def test_js_injected_in_script_tag():
     assert js in script_content
 
 
-def test_ssr_html_rendered_in_root():
+def test_html_rendered_in_root():
     js = "const x = 42;"
-    html = ENV.render_template(Amber._template, js=js, css="", ssr_html="<span>server</span>", metadata=None)
+    html = ENV.render_template(Amber._template, js=js, css="", html="<span>server</span>", metadata=None)
 
     assert '<div id="root"><span>server</span></div>' in html

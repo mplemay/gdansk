@@ -54,7 +54,7 @@ def test_prod_bundles_and_serves_html(mock_mcp, views_dir, tmp_path, monkeypatch
 
 
 @pytest.mark.integration
-def test_prod_ssr_bundles_and_serves_ssr_html(mock_mcp, views_dir, tmp_path, monkeypatch):
+def test_prod_ssr_bundles_and_serves_html(mock_mcp, views_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     output = views_dir / ".gdansk"
     amber = Amber(mcp=mock_mcp, views=views_dir, ssr=True)

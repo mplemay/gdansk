@@ -32,13 +32,13 @@ struct SsrCapture {
 }
 
 #[op2(fast)]
-fn op_gdansk_set_ssr_html(state: &mut OpState, #[string] html: String) {
+fn op_gdansk_set_html(state: &mut OpState, #[string] html: String) {
     state.borrow_mut::<SsrCapture>().html = Some(html);
 }
 
 deno_core::extension!(
     gdansk_runtime_ext,
-    ops = [op_gdansk_set_ssr_html],
+    ops = [op_gdansk_set_html],
     state = |state| state.put(SsrCapture::default())
 );
 
@@ -190,13 +190,13 @@ async fn evaluate(code: &str) -> Result<Value, RuntimeError> {
         .map_err(execution_error)?;
     result.await.map_err(execution_error)?;
 
-    let ssr_html = {
+    let html = {
         let op_state = runtime.op_state();
         let mut op_state = op_state.borrow_mut();
         op_state.borrow_mut::<SsrCapture>().html.take()
     };
 
-    if let Some(html) = ssr_html {
+    if let Some(html) = html {
         return Ok(Value::String(html));
     }
 
@@ -429,8 +429,8 @@ mod tests {
     }
 
     #[test]
-    fn evaluates_ssr_html_from_op_capture() {
-        let result = run_value(r#"Deno.core.ops.op_gdansk_set_ssr_html("<div>ok</div>");"#)
+    fn evaluates_html_from_op_capture() {
+        let result = run_value(r#"Deno.core.ops.op_gdansk_set_html("<div>ok</div>");"#)
             .expect("expected SSR output");
         assert_eq!(result, json!("<div>ok</div>"));
     }
@@ -443,7 +443,7 @@ mod tests {
 
     #[test]
     fn ssr_capture_takes_precedence_over_eval_result() {
-        let result = run_value(r#"Deno.core.ops.op_gdansk_set_ssr_html("<div>ok</div>"); 1 + 1"#)
+        let result = run_value(r#"Deno.core.ops.op_gdansk_set_html("<div>ok</div>"); 1 + 1"#)
             .expect("expected SSR output");
         assert_eq!(result, json!("<div>ok</div>"));
     }
@@ -457,7 +457,7 @@ mod tests {
 
     #[test]
     fn ssr_output_does_not_leak_between_calls() {
-        let first = run_value(r#"Deno.core.ops.op_gdansk_set_ssr_html("<div>ok</div>");"#)
+        let first = run_value(r#"Deno.core.ops.op_gdansk_set_html("<div>ok</div>");"#)
             .expect("expected first SSR output");
         assert_eq!(first, json!("<div>ok</div>"));
 

@@ -1104,13 +1104,13 @@ mod tests {
     fn server_entrypoint_wrapper_does_not_call_deno_ops_directly() {
         let wrapper = server_entrypoint_wrapper_source("apps/simple/app.tsx")
             .expect("expected server wrapper");
-        assert!(!wrapper.contains("Deno.core.ops.op_gdansk_set_ssr_html"));
+        assert!(!wrapper.contains("Deno.core.ops.op_gdansk_set_html"));
     }
 
     #[test]
     fn server_entrypoint_wrapper_does_not_use_global_marker() {
         let wrapper = server_entrypoint_wrapper_source("apps/simple/app.tsx")
             .expect("expected server wrapper");
-        assert!(!wrapper.contains("globalThis.__gdansk_ssr_html"));
+        assert!(!wrapper.contains("globalThis.__gdansk_html"));
     }
 }

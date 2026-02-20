@@ -310,7 +310,7 @@ class Amber:
                     "template.html",
                     js=client,
                     css=css,
-                    ssr_html=html,
+                    html=html,
                     metadata=merge_metadata(self.metadata, metadata),
                 )
 

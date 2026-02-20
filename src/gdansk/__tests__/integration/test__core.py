@@ -306,8 +306,8 @@ async def test_bundle_app_ssr_view_writes_executable_server_output(tmp_path, mon
     assert output_js.exists()
     assert result is None
 
-    ssr_html = await run(output_js.read_text(encoding="utf-8"))
-    assert ssr_html == "<div>ok</div>"
+    html = await run(output_js.read_text(encoding="utf-8"))
+    assert html == "<div>ok</div>"
 
 
 @pytest.mark.integration
@@ -329,8 +329,8 @@ async def test_bundle_app_ssr_view_supports_message_channel_at_import(tmp_path, 
     output_js = tmp_path / ".gdansk" / "simple" / "server.js"
     assert output_js.exists()
 
-    ssr_html = await run(output_js.read_text(encoding="utf-8"))
-    assert ssr_html == "<div>ok</div>"
+    html = await run(output_js.read_text(encoding="utf-8"))
+    assert html == "<div>ok</div>"
 
 
 @pytest.mark.integration
@@ -354,7 +354,7 @@ async def test_bundle_app_ssr_view_runtime_error_surfaces(tmp_path, monkeypatch)
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_runtime_ssr_capture_takes_precedence_and_does_not_leak_between_calls():
-    assert await run('Deno.core.ops.op_gdansk_set_ssr_html("<div>ok</div>"); 1 + 1') == "<div>ok</div>"
+    assert await run('Deno.core.ops.op_gdansk_set_html("<div>ok</div>"); 1 + 1') == "<div>ok</div>"
     assert await run("1 + 1") == 2
 
 
@@ -368,6 +368,12 @@ async def test_runtime_constructs_and_evaluates_expression():
 @pytest.mark.asyncio
 async def test_runtime_exposes_message_channel_shim():
     assert await run("typeof MessageChannel") == "function"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_runtime_exposes_text_encoder_shim():
+    assert await run("Array.from(new TextEncoder().encode('hé'))") == [104, 195, 169]
 
 
 @pytest.mark.integration
