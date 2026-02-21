@@ -1,3 +1,5 @@
+"""FastAPI integration example for Gdansk."""
+
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -11,6 +13,8 @@ from gdansk import Amber
 
 
 class Settings(BaseSettings):
+    """Runtime settings for this example."""
+
     production: bool = False
 
 
@@ -22,6 +26,7 @@ amber = Amber(mcp=mcp, views=Path(__file__).parent / "src/mount/views")
 
 @amber.tool(name="hello", ui=Path("hello/app.tsx"))
 def hello(name: str = "world") -> list[TextContent]:
+    """Return a greeting message."""
     return [TextContent(type="text", text=f"Hello, {name}!")]
 
 
@@ -30,6 +35,7 @@ mcp_app = amber(dev=not SETTINGS.production)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """Run the MCP app lifespan with the FastAPI app."""
     async with mcp_app.router.lifespan_context(mcp_app):
         yield
 

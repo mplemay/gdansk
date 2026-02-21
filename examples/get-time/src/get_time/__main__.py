@@ -22,6 +22,7 @@ def get_time() -> list[TextContent]:
 
 
 def main() -> None:
+    """Run the development server for the get-time example."""
     app = amber(dev=True)
     app.add_middleware(
         CORSMiddleware,

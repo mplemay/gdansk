@@ -1,3 +1,5 @@
+"""Shared protocol definitions for gdansk plugins."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol
@@ -8,6 +10,10 @@ if TYPE_CHECKING:
 
 
 class Plugin(Protocol):
-    async def build(self, *, views: Path, output: Path) -> None: ...
+    """Plugin interface for build and watch hooks."""
 
-    async def watch(self, *, views: Path, output: Path, stop_event: asyncio.Event) -> None: ...
+    async def build(self, *, views: Path, output: Path) -> None:
+        """Build plugin outputs into the generated assets directory."""
+
+    async def watch(self, *, views: Path, output: Path, stop_event: asyncio.Event) -> None:
+        """Watch for source changes and update generated assets until stopped."""

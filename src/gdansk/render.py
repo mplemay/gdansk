@@ -1,3 +1,5 @@
+"""Template environment setup for rendering gdansk app resources."""
+
 from pathlib import Path
 from typing import Final
 

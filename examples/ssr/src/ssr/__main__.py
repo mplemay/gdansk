@@ -1,3 +1,5 @@
+"""Server-side rendering example server."""
+
 from pathlib import Path
 
 import uvicorn
@@ -13,10 +15,12 @@ amber = Amber(mcp=mcp, views=Path(__file__).parent / "views", ssr=True)
 
 @amber.tool(name="hello-ssr", ui=Path("hello-ssr/app.tsx"))
 def hello_ssr() -> list[TextContent]:
+    """Return a static greeting rendered from the SSR example."""
     return [TextContent(type="text", text="Hello from the SSR example")]
 
 
 def main() -> None:
+    """Run the development server for the SSR example."""
     app = amber(dev=True)
     app.add_middleware(
         CORSMiddleware,

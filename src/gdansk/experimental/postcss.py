@@ -1,3 +1,5 @@
+"""PostCSS plugin support for css assets in gdansk views."""
+
 from __future__ import annotations
 
 import asyncio
@@ -11,14 +13,17 @@ from anyio import Path as APath
 
 
 class PostCSSError(RuntimeError):
-    pass
+    """Raised when PostCSS compilation fails."""
 
 
 @dataclass(slots=True, kw_only=True)
 class PostCSS:
+    """Builds and watches CSS files using postcss-cli."""
+
     poll_interval_seconds: float = 0.1
 
     async def build(self, *, views: Path, output: Path) -> None:
+        """Compile all discovered CSS files once."""
         css_files = await self._collect_css_files(output=output)
         if not css_files:
             return
@@ -27,6 +32,7 @@ class PostCSS:
             await self._process_css_file(css_path=css_path, cli_path=cli_path, views=views)
 
     async def watch(self, *, views: Path, output: Path, stop_event: asyncio.Event) -> None:
+        """Watch CSS files and recompile when they change."""
         cli_path = await self._resolve_cli(views=views)
         known_mtimes: dict[Path, int] = {}
 
