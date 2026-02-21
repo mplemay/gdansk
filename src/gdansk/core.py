@@ -1,4 +1,4 @@
-"""Core integration between FastMCP tools and gdansk UI resources."""
+"""Core integration between FastMCP tools and gdansk page resources."""
 
 from __future__ import annotations
 
@@ -13,12 +13,13 @@ from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
 from anyio import Path as APath
 
-from gdansk._core import View, bundle, run
+from gdansk._core import Page, bundle, run
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import ENV
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable, Coroutine, Sequence
+    from os import PathLike
 
     from mcp.server.fastmcp import FastMCP
     from mcp.types import AnyFunction, Icon, ToolAnnotations
@@ -81,11 +82,11 @@ class _AsyncThreadRunner:
 
 @dataclass(frozen=True, slots=True)
 class Amber:
-    """Registers UI-backed MCP tools and serves their bundled assets."""
+    """Registers page-backed MCP tools and serves their bundled assets."""
 
-    _apps: set[View] = field(default_factory=set, init=False)
+    _apps: set[Page] = field(default_factory=set, init=False)
     _template: ClassVar[str] = "template.html"
-    _ui_min_parts: ClassVar[int] = 2
+    _page_min_parts: ClassVar[int] = 2
 
     mcp: FastMCP
     views: Path
@@ -114,7 +115,7 @@ class Amber:
         watcher_tasks: list[asyncio.Task[None]] = [
             asyncio.create_task(
                 plugin.watch(
-                    views=self.views,
+                    pages=self.views,
                     output=self.output,
                     stop_event=stop_event,
                 ),
@@ -126,7 +127,7 @@ class Amber:
 
     async def _run_build_pipeline(self, *, dev: bool) -> None:
         await bundle(
-            views=sorted(self._apps, key=lambda view: view.path.as_posix()),
+            pages=sorted(self._apps, key=lambda page: page.path.as_posix()),
             dev=dev,
             minify=not dev,
             output=self.output,
@@ -135,7 +136,7 @@ class Amber:
         if dev:
             return
         for plugin in self.plugins:
-            await plugin.build(views=self.views, output=self.output)
+            await plugin.build(pages=self.views, output=self.output)
 
     @staticmethod
     def _log_background_task_error(task: asyncio.Task[None]) -> None:
@@ -164,32 +165,52 @@ class Amber:
                 await asyncio.gather(*tasks, return_exceptions=True)
 
     @staticmethod
-    def _normalize_ui_path_and_uri(ui: Path) -> tuple[Path, Path, str]:
-        if ui.suffix not in {".tsx", ".jsx"}:
-            msg = f"The ui (i.e. {ui}) must be a .tsx or .jsx file"
+    def _normalize_page_input(page: str | PathLike[str]) -> Path:
+        page_path = Path(page)
+        if page_path.is_absolute():
+            msg = f"The page (i.e. {page}) must be a relative path"
             raise ValueError(msg)
 
-        if ui.is_absolute():
-            msg = f"The ui (i.e. {ui}) must be a relative path"
+        page_posix = PurePosixPath(page_path.as_posix())
+        if any(part in {"", ".", ".."} for part in page_posix.parts):
+            msg = f"The page (i.e. {page}) must not contain traversal segments"
             raise ValueError(msg)
 
-        ui_posix = PurePosixPath(ui.as_posix())
-        if any(part in {"", ".", ".."} for part in ui_posix.parts):
-            msg = f"The ui (i.e. {ui}) must not contain traversal segments"
+        if page_posix.parts and page_posix.parts[0] == "apps":
+            msg = f"The page (i.e. {page}) must not start with apps/"
             raise ValueError(msg)
+
+        return Path(*page_posix.parts)
+
+    @staticmethod
+    def _resolve_page_candidates(page: Path) -> tuple[Path, ...]:
+        if page.suffix:
+            if page.suffix not in {".tsx", ".jsx"}:
+                msg = f"The page (i.e. {page}) must be a .tsx or .jsx file"
+                raise ValueError(msg)
+            if page.name not in {"page.tsx", "page.jsx"}:
+                msg = f"The page (i.e. {page}) must match **/page.tsx or **/page.jsx and must not start with apps/"
+                raise ValueError(msg)
+            return (page,)
+
+        return (page / "page.tsx", page / "page.jsx")
+
+    @staticmethod
+    def _normalize_page_path_and_uri(page: Path) -> tuple[Path, Path, str]:
+        page_posix = PurePosixPath(page.as_posix())
 
         if (
-            len(ui_posix.parts) < Amber._ui_min_parts
-            or ui_posix.parts[0] == "apps"
-            or ui_posix.name not in {"app.tsx", "app.jsx"}
+            len(page_posix.parts) < Amber._page_min_parts
+            or page_posix.parts[0] == "apps"
+            or page_posix.name not in {"page.tsx", "page.jsx"}
         ):
-            msg = f"The ui (i.e. {ui}) must match **/app.tsx or **/app.jsx and must not start with apps/"
+            msg = f"The page (i.e. {page}) must match **/page.tsx or **/page.jsx and must not start with apps/"
             raise ValueError(msg)
 
-        normalized_ui = Path(*ui_posix.parts)
-        bundle_ui = Path("apps", *ui_posix.parts)
-        uri = f"ui://{PurePosixPath(*ui_posix.parts[:-1])}"
-        return normalized_ui, bundle_ui, uri
+        normalized_page = Path(*page_posix.parts)
+        bundle_page = Path("apps", *page_posix.parts)
+        uri = f"ui://{PurePosixPath(*page_posix.parts[:-1])}"
+        return normalized_page, bundle_page, uri
 
     def __call__(self, *, dev: bool = False) -> Starlette:
         """Build and return the Starlette app that serves registered resources."""
@@ -240,7 +261,7 @@ class Amber:
 
     def tool(  # noqa: PLR0913
         self,
-        ui: Path,
+        page: str | PathLike[str],
         name: str | None = None,
         *,
         title: str | None = None,
@@ -252,20 +273,37 @@ class Amber:
         ssr: bool | None = None,
         structured_output: bool | None = None,
     ) -> Callable[[AnyFunction], AnyFunction]:
-        """Register a tool and bind its UI resource into the MCP server."""
-        _, bundle_ui, uri = self._normalize_ui_path_and_uri(ui)
+        """Register a tool and bind its page resource into the MCP server."""
+        page_path = self._normalize_page_input(page)
+        page_candidates = self._resolve_page_candidates(page_path)
 
-        if not (self.views / bundle_ui).is_file():
-            msg = f"The ui (i.e. {ui}) was not found"
+        bundle_page: Path | None = None
+        uri: str | None = None
+
+        for page_candidate in page_candidates:
+            _, candidate_bundle_page, candidate_uri = self._normalize_page_path_and_uri(page_candidate)
+            if (self.views / candidate_bundle_page).is_file():
+                bundle_page = candidate_bundle_page
+                uri = candidate_uri
+                break
+
+        if bundle_page is None or uri is None:
+            if len(page_candidates) == 1:
+                msg = f"The page (i.e. {page_path}) was not found"
+            else:
+                msg = (
+                    f"The page (i.e. {page_path}) was not found. "
+                    f"Expected one of: {page_candidates[0]}, {page_candidates[1]}"
+                )
             raise FileNotFoundError(msg)
 
         ssr = self.ssr if ssr is None else ssr
-        view = View(path=bundle_ui, app=True, ssr=ssr)
-        stale_views = {registered for registered in self._apps if registered.path == view.path}
-        self._apps.difference_update(stale_views)
-        self._apps.add(view)
+        page_spec = Page(path=bundle_page, app=True, ssr=ssr)
+        stale_pages = {registered for registered in self._apps if registered.path == page_spec.path}
+        self._apps.difference_update(stale_pages)
+        self._apps.add(page_spec)
 
-        # add the ui to the metadata
+        # Preserve protocol metadata key/scheme for MCP compatibility.
         meta = meta or {}
         meta["ui"] = {"resourceUri": uri}
 
@@ -290,26 +328,26 @@ class Amber:
             async def _() -> str:
                 client = (
                     None
-                    if not await (path := APath(self.output / view.client)).exists()
+                    if not await (path := APath(self.output / page_spec.client)).exists()
                     else await path.read_text(encoding="utf-8")
                 )
 
                 if not client:
-                    msg = f"Client bundled output for {ui} not found. Has the bundler been run?"
+                    msg = f"Client bundled output for {page} not found. Has the bundler been run?"
                     raise FileNotFoundError(msg)
 
                 server = None
-                if view.server and await (path := APath(self.output / view.server)).exists():
+                if page_spec.server and await (path := APath(self.output / page_spec.server)).exists():
                     server = await path.read_text(encoding="utf-8")
                 html = await run(server) if server else None
 
                 if (not html) and ssr:
-                    msg = f"SSR bundled output for {ui} not found. Has the bundler been run?"
+                    msg = f"SSR bundled output for {page} not found. Has the bundler been run?"
                     raise FileNotFoundError(msg)
 
                 css = (
                     None
-                    if not await (path := APath(self.output / view.css)).exists()
+                    if not await (path := APath(self.output / page_spec.css)).exists()
                     else await path.read_text(encoding="utf-8")
                 )
 

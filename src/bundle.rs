@@ -29,7 +29,7 @@ use rolldown_dev::{BundlerConfig, DevEngine, DevOptions, RebuildStrategy};
 use std::{borrow::Cow, sync::Arc};
 
 #[derive(Debug, Clone)]
-struct ViewSpec {
+struct PageSpec {
     path: PathBuf,
     app: bool,
     ssr: bool,
@@ -38,7 +38,7 @@ struct ViewSpec {
 #[cfg(not(test))]
 #[pyclass(module = "gdansk._core", frozen, skip_from_py_object)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) struct View {
+pub(crate) struct Page {
     path: PathBuf,
     app: bool,
     ssr: bool,
@@ -48,7 +48,7 @@ pub(crate) struct View {
 }
 
 #[derive(Debug, Clone)]
-struct NormalizedView {
+struct NormalizedPage {
     import: String,
     app: bool,
     ssr: bool,
@@ -102,7 +102,7 @@ fn to_py_path<'py>(py: Python<'py>, path: &Path) -> PyResult<Bound<'py, PyAny>> 
 
 #[cfg(not(test))]
 #[pymethods]
-impl View {
+impl Page {
     #[new]
     #[pyo3(signature = (*, path, app = false, ssr = false))]
     fn new(path: PathBuf, app: bool, ssr: bool) -> Self {
@@ -166,16 +166,16 @@ impl View {
 
     fn __repr__(&self) -> String {
         format!(
-            "View(path={:?}, app={}, ssr={}, client={:?}, server={:?}, css={:?})",
+            "Page(path={:?}, app={}, ssr={}, client={:?}, server={:?}, css={:?})",
             self.path, self.app, self.ssr, self.client, self.server, self.css
         )
     }
 }
 
 #[cfg(not(test))]
-impl View {
-    fn as_spec(&self) -> ViewSpec {
-        ViewSpec {
+impl Page {
+    fn as_spec(&self) -> PageSpec {
+        PageSpec {
             path: self.path.clone(),
             app: self.app,
             ssr: self.ssr,
@@ -213,7 +213,7 @@ fn entry_import_for_server(import: &str) -> String {
     format!("{import}{SERVER_ENTRYPOINT_QUERY}")
 }
 
-fn build_client_input_item_fields(normalized: &[NormalizedView]) -> Vec<(String, String)> {
+fn build_client_input_item_fields(normalized: &[NormalizedPage]) -> Vec<(String, String)> {
     normalized
         .iter()
         .map(|item| {
@@ -225,7 +225,7 @@ fn build_client_input_item_fields(normalized: &[NormalizedView]) -> Vec<(String,
         .collect()
 }
 
-fn build_server_input_item_fields(normalized: &[NormalizedView]) -> Vec<(String, String)> {
+fn build_server_input_item_fields(normalized: &[NormalizedPage]) -> Vec<(String, String)> {
     normalized
         .iter()
         .filter(|item| item.ssr)
@@ -233,7 +233,7 @@ fn build_server_input_item_fields(normalized: &[NormalizedView]) -> Vec<(String,
             (
                 item.server_name
                     .clone()
-                    .expect("ssr view must have server name"),
+                    .expect("ssr page must have server name"),
                 entry_import_for_server(&item.import),
             )
         })
@@ -483,14 +483,14 @@ fn is_supported_jsx_extension(path: &Path) -> bool {
         .is_some_and(|ext| ext.eq_ignore_ascii_case("tsx") || ext.eq_ignore_ascii_case("jsx"))
 }
 
-fn normalize_views(
-    views: Vec<ViewSpec>,
+fn normalize_pages(
+    pages: Vec<PageSpec>,
     cwd: &Path,
     output_dir: &Path,
-) -> Result<Vec<NormalizedView>, BundleError> {
-    if views.is_empty() {
+) -> Result<Vec<NormalizedPage>, BundleError> {
+    if pages.is_empty() {
         return Err(BundleError::validation(
-            "`views` must not be empty; expected at least one .tsx or .jsx file",
+            "`pages` must not be empty; expected at least one .tsx or .jsx file",
         ));
     }
 
@@ -502,11 +502,11 @@ fn normalize_views(
     })?)
     .to_path_buf();
 
-    let mut normalized_views = Vec::with_capacity(views.len());
+    let mut normalized_pages = Vec::with_capacity(pages.len());
     let mut output_collisions: HashMap<PathBuf, String> = HashMap::new();
 
-    for provided_view in views {
-        let provided_path = provided_view.path;
+    for provided_page in pages {
+        let provided_path = provided_page.path;
         let absolute_candidate = if provided_path.is_absolute() {
             provided_path.clone()
         } else {
@@ -554,26 +554,26 @@ fn normalize_views(
         let import = normalize_relative_for_rolldown(relative_path, "input path")?;
         let key = import.clone();
 
-        if provided_view.ssr && !provided_view.app {
+        if provided_page.ssr && !provided_page.app {
             return Err(BundleError::validation(format!(
-                "view cannot set ssr=true when app=false: {}",
+                "page cannot set ssr=true when app=false: {}",
                 provided_path.display()
             )));
         }
 
-        let (client_stem_path, server_stem_path) = if provided_view.app {
+        let (client_stem_path, server_stem_path) = if provided_page.app {
             let file_name = relative_path
                 .file_name()
                 .and_then(|name| name.to_str())
                 .ok_or_else(|| {
                     BundleError::validation(format!(
-                        "app views must target app.tsx or app.jsx: {}",
+                        "app pages must target page.tsx or page.jsx: {}",
                         provided_path.display()
                     ))
                 })?;
-            if file_name != "app.tsx" && file_name != "app.jsx" {
+            if file_name != "page.tsx" && file_name != "page.jsx" {
                 return Err(BundleError::validation(format!(
-                    "app views must target app.tsx or app.jsx: {}",
+                    "app pages must target page.tsx or page.jsx: {}",
                     provided_path.display()
                 )));
             }
@@ -584,7 +584,7 @@ fn normalize_views(
                 .is_some_and(|component| component.as_os_str() == OsStr::new("apps"));
             if !starts_with_apps {
                 return Err(BundleError::validation(format!(
-                    "app views must be inside an apps/ directory: {}",
+                    "app pages must be inside an apps/ directory: {}",
                     provided_path.display()
                 )));
             }
@@ -597,13 +597,13 @@ fn normalize_views(
             }
             if tool_directory.as_os_str().is_empty() {
                 return Err(BundleError::validation(format!(
-                    "app views must include at least one segment below apps/: {}",
+                    "app pages must include at least one segment below apps/: {}",
                     provided_path.display()
                 )));
             }
 
             let client_stem = tool_directory.join("client");
-            let server_stem = if provided_view.ssr {
+            let server_stem = if provided_page.ssr {
                 Some(tool_directory.join("server"))
             } else {
                 None
@@ -619,24 +619,24 @@ fn normalize_views(
         let _ = normalize_relative_for_rolldown(&client_js_path, "client output path")?;
         let _ = normalize_relative_for_rolldown(&client_css_path, "client css output path")?;
 
-        if let Some(previous_view) = output_collisions.insert(client_js_path.clone(), key.clone()) {
+        if let Some(previous_page) = output_collisions.insert(client_js_path.clone(), key.clone()) {
             return Err(BundleError::validation(format!(
-                "multiple views map to the same output {}: {} and {}",
+                "multiple pages map to the same output {}: {} and {}",
                 output_dir.join(&client_js_path).display(),
-                previous_view,
+                previous_page,
                 key
             )));
         }
 
         let server_name = if let Some(server_stem_path) = server_stem_path {
             let server_js_path = server_stem_path.with_extension("js");
-            if let Some(previous_view) =
+            if let Some(previous_page) =
                 output_collisions.insert(server_js_path.clone(), key.clone())
             {
                 return Err(BundleError::validation(format!(
-                    "multiple views map to the same output {}: {} and {}",
+                    "multiple pages map to the same output {}: {} and {}",
                     output_dir.join(&server_js_path).display(),
-                    previous_view,
+                    previous_page,
                     key
                 )));
             }
@@ -649,17 +649,17 @@ fn normalize_views(
             None
         };
 
-        normalized_views.push(NormalizedView {
+        normalized_pages.push(NormalizedPage {
             import,
-            app: provided_view.app,
-            ssr: provided_view.ssr,
+            app: provided_page.app,
+            ssr: provided_page.ssr,
             client_name,
             server_name,
         });
     }
 
-    normalized_views.sort_unstable_by(|left, right| left.import.cmp(&right.import));
-    Ok(normalized_views)
+    normalized_pages.sort_unstable_by(|left, right| left.import.cmp(&right.import));
+    Ok(normalized_pages)
 }
 
 #[cfg(not(test))]
@@ -671,10 +671,10 @@ fn map_bundle_error(err: BundleError) -> PyErr {
 }
 
 #[cfg(not(test))]
-fn parse_views_from_python(py: Python<'_>, views: Vec<Py<View>>) -> Vec<ViewSpec> {
-    views
+fn parse_pages_from_python(py: Python<'_>, pages: Vec<Py<Page>>) -> Vec<PageSpec> {
+    pages
         .into_iter()
-        .map(|view| view.borrow(py).as_spec())
+        .map(|page| page.borrow(py).as_spec())
         .collect()
 }
 
@@ -757,16 +757,16 @@ async fn run_bundler(
 }
 
 #[cfg(not(test))]
-#[pyfunction(signature = (views, dev = false, minify = true, output = None, cwd = None))]
+#[pyfunction(signature = (pages, dev = false, minify = true, output = None, cwd = None))]
 pub(crate) fn bundle(
     py: Python<'_>,
-    views: Vec<Py<View>>,
+    pages: Vec<Py<Page>>,
     dev: bool,
     minify: bool,
     output: Option<PathBuf>,
     cwd: Option<PathBuf>,
 ) -> PyResult<Bound<'_, PyAny>> {
-    let parsed_views = parse_views_from_python(py, views);
+    let parsed_pages = parse_pages_from_python(py, pages);
 
     pyo3_async_runtimes::tokio::future_into_py(py, async move {
         let cwd = match cwd {
@@ -782,11 +782,11 @@ pub(crate) fn bundle(
         let output_dir_string =
             path_to_utf8(&output_dir, "output path").map_err(map_bundle_error)?;
         let normalized =
-            normalize_views(parsed_views, &cwd, &output_dir).map_err(map_bundle_error)?;
+            normalize_pages(parsed_pages, &cwd, &output_dir).map_err(map_bundle_error)?;
 
         let client_items = build_input_items(build_client_input_item_fields(&normalized));
         let server_items = build_input_items(build_server_input_item_fields(&normalized));
-        let has_app_entries = normalized.iter().any(|view| view.app);
+        let has_app_entries = normalized.iter().any(|page| page.app);
 
         if dev {
             if server_items.is_empty() {
@@ -890,8 +890,8 @@ mod tests {
         }
     }
 
-    fn view(path: &str, app: bool, ssr: bool) -> ViewSpec {
-        ViewSpec {
+    fn page(path: &str, app: bool, ssr: bool) -> PageSpec {
+        PageSpec {
             path: PathBuf::from(path),
             app,
             ssr,
@@ -901,7 +901,7 @@ mod tests {
     #[test]
     fn rejects_empty_view_set() {
         let project = TempProject::new();
-        let result = normalize_views(vec![], &project.root, Path::new(".gdansk"));
+        let result = normalize_pages(vec![], &project.root, Path::new(".gdansk"));
         let err = result.expect_err("expected empty-set validation error");
         assert!(err.to_string().contains("must not be empty"));
     }
@@ -911,8 +911,8 @@ mod tests {
         let project = TempProject::new();
         project.create_file("main.ts");
 
-        let result = normalize_views(
-            vec![view("main.ts", false, false)],
+        let result = normalize_pages(
+            vec![page("main.ts", false, false)],
             &project.root,
             Path::new(".gdansk"),
         );
@@ -926,8 +926,8 @@ mod tests {
         let outside = TempProject::new();
         outside.create_file("outside.tsx");
 
-        let result = normalize_views(
-            vec![ViewSpec {
+        let result = normalize_pages(
+            vec![PageSpec {
                 path: outside.root.join("outside.tsx"),
                 app: false,
                 ssr: false,
@@ -945,8 +945,8 @@ mod tests {
         project.create_file("a.tsx");
         project.create_file("a.jsx");
 
-        let result = normalize_views(
-            vec![view("a.tsx", false, false), view("a.jsx", false, false)],
+        let result = normalize_pages(
+            vec![page("a.tsx", false, false), page("a.jsx", false, false)],
             &project.root,
             Path::new(".gdansk"),
         );
@@ -960,10 +960,10 @@ mod tests {
         project.create_file("main.tsx");
         project.create_file("home/page.tsx");
 
-        let normalized = normalize_views(
+        let normalized = normalize_pages(
             vec![
-                view("main.tsx", false, false),
-                view("home/page.tsx", false, false),
+                page("main.tsx", false, false),
+                page("home/page.tsx", false, false),
             ],
             &project.root,
             Path::new(".gdansk"),
@@ -995,10 +995,10 @@ mod tests {
     #[test]
     fn app_view_maps_to_per_tool_client_and_server_outputs() {
         let project = TempProject::new();
-        project.create_file("apps/get-time/app.tsx");
+        project.create_file("apps/get-time/page.tsx");
 
-        let normalized = normalize_views(
-            vec![view("apps/get-time/app.tsx", true, true)],
+        let normalized = normalize_pages(
+            vec![page("apps/get-time/page.tsx", true, true)],
             &project.root,
             Path::new(".gdansk"),
         )
@@ -1020,8 +1020,8 @@ mod tests {
         let project = TempProject::new();
         project.create_file("main.tsx");
 
-        let result = normalize_views(
-            vec![view("main.tsx", false, true)],
+        let result = normalize_pages(
+            vec![page("main.tsx", false, true)],
             &project.root,
             Path::new(".gdansk"),
         );
@@ -1032,10 +1032,10 @@ mod tests {
     #[test]
     fn rejects_app_view_that_is_not_under_apps() {
         let project = TempProject::new();
-        project.create_file("simple/app.tsx");
+        project.create_file("simple/page.tsx");
 
-        let result = normalize_views(
-            vec![view("simple/app.tsx", true, false)],
+        let result = normalize_pages(
+            vec![page("simple/page.tsx", true, false)],
             &project.root,
             Path::new(".gdansk"),
         );
@@ -1046,25 +1046,25 @@ mod tests {
     #[test]
     fn client_input_fields_rewrite_only_app_views() {
         let project = TempProject::new();
-        project.create_file("apps/simple/app.tsx");
+        project.create_file("apps/simple/page.tsx");
         project.create_file("main.tsx");
 
-        let normalized = normalize_views(
+        let normalized = normalize_pages(
             vec![
-                view("apps/simple/app.tsx", true, false),
-                view("main.tsx", false, false),
+                page("apps/simple/page.tsx", true, false),
+                page("main.tsx", false, false),
             ],
             &project.root,
             Path::new(".gdansk"),
         )
-        .expect("expected normalized views");
+        .expect("expected normalized pages");
 
         let fields = build_client_input_item_fields(&normalized)
             .into_iter()
             .collect::<HashMap<_, _>>();
         assert_eq!(
             fields.get("simple/client"),
-            Some(&"apps/simple/app.tsx?gdansk-app-entry".to_string())
+            Some(&"apps/simple/page.tsx?gdansk-app-entry".to_string())
         );
         assert_eq!(fields.get("main"), Some(&"main.tsx".to_string()));
     }
@@ -1072,28 +1072,28 @@ mod tests {
     #[test]
     fn server_input_fields_include_only_ssr_views() {
         let project = TempProject::new();
-        project.create_file("apps/simple/app.tsx");
-        project.create_file("apps/other/app.tsx");
+        project.create_file("apps/simple/page.tsx");
+        project.create_file("apps/other/page.tsx");
 
-        let normalized = normalize_views(
+        let normalized = normalize_pages(
             vec![
-                view("apps/simple/app.tsx", true, true),
-                view("apps/other/app.tsx", true, false),
+                page("apps/simple/page.tsx", true, true),
+                page("apps/other/page.tsx", true, false),
             ],
             &project.root,
             Path::new(".gdansk"),
         )
-        .expect("expected normalized views");
+        .expect("expected normalized pages");
 
         let fields = build_server_input_item_fields(&normalized);
         assert_eq!(fields.len(), 1);
         assert_eq!(fields[0].0, "simple/server");
-        assert_eq!(fields[0].1, "apps/simple/app.tsx?gdansk-server-entry");
+        assert_eq!(fields[0].1, "apps/simple/page.tsx?gdansk-server-entry");
     }
 
     #[test]
     fn server_entrypoint_wrapper_imports_runtime_module() {
-        let wrapper = server_entrypoint_wrapper_source("apps/simple/app.tsx")
+        let wrapper = server_entrypoint_wrapper_source("apps/simple/page.tsx")
             .expect("expected server wrapper");
         assert!(wrapper.contains(&format!(
             r#"import {{ setSsrHtml }} from "{GDANSK_RUNTIME_SPECIFIER}";"#
@@ -1102,14 +1102,14 @@ mod tests {
 
     #[test]
     fn server_entrypoint_wrapper_does_not_call_deno_ops_directly() {
-        let wrapper = server_entrypoint_wrapper_source("apps/simple/app.tsx")
+        let wrapper = server_entrypoint_wrapper_source("apps/simple/page.tsx")
             .expect("expected server wrapper");
         assert!(!wrapper.contains("Deno.core.ops.op_gdansk_set_html"));
     }
 
     #[test]
     fn server_entrypoint_wrapper_does_not_use_global_marker() {
-        let wrapper = server_entrypoint_wrapper_source("apps/simple/app.tsx")
+        let wrapper = server_entrypoint_wrapper_source("apps/simple/page.tsx")
             .expect("expected server wrapper");
         assert!(!wrapper.contains("globalThis.__gdansk_html"));
     }

@@ -26,12 +26,12 @@ def _lifespan(app):
 
 
 @pytest.mark.integration
-def test_prod_bundles_and_serves_html(mock_mcp, views_dir, tmp_path, monkeypatch):
+def test_prod_bundles_and_serves_html(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    output = views_dir / ".gdansk"
-    amber = Amber(mcp=mock_mcp, views=views_dir)
+    output = pages_dir / ".gdansk"
+    amber = Amber(mcp=mock_mcp, views=pages_dir)
 
-    @amber.tool(Path("simple/app.tsx"))
+    @amber.tool(Path("simple"))
     def my_tool():
         return "result"
 
@@ -54,12 +54,12 @@ def test_prod_bundles_and_serves_html(mock_mcp, views_dir, tmp_path, monkeypatch
 
 
 @pytest.mark.integration
-def test_prod_ssr_bundles_and_serves_html(mock_mcp, views_dir, tmp_path, monkeypatch):
+def test_prod_ssr_bundles_and_serves_html(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    output = views_dir / ".gdansk"
-    amber = Amber(mcp=mock_mcp, views=views_dir, ssr=True)
+    output = pages_dir / ".gdansk"
+    amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=True)
 
-    @amber.tool(Path("simple/app.tsx"))
+    @amber.tool(Path("simple"))
     def my_tool():
         return "result"
 
@@ -80,12 +80,12 @@ def test_prod_ssr_bundles_and_serves_html(mock_mcp, views_dir, tmp_path, monkeyp
 
 
 @pytest.mark.integration
-def test_with_css_bundles_and_serves_html(mock_mcp, views_dir, tmp_path, monkeypatch):
+def test_with_css_bundles_and_serves_html(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    output = views_dir / ".gdansk"
-    amber = Amber(mcp=mock_mcp, views=views_dir)
+    output = pages_dir / ".gdansk"
+    amber = Amber(mcp=mock_mcp, views=pages_dir)
 
-    @amber.tool(Path("with_css/app.tsx"))
+    @amber.tool(Path("with_css/page.tsx"))
     def my_tool():
         return "result"
 
@@ -106,12 +106,12 @@ def test_with_css_bundles_and_serves_html(mock_mcp, views_dir, tmp_path, monkeyp
 
 
 @pytest.mark.integration
-def test_dev_bundles_in_background(mock_mcp, views_dir, tmp_path, monkeypatch):
+def test_dev_bundles_in_background(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    output = views_dir / ".gdansk"
-    amber = Amber(mcp=mock_mcp, views=views_dir)
+    output = pages_dir / ".gdansk"
+    amber = Amber(mcp=mock_mcp, views=pages_dir)
 
-    @amber.tool(Path("simple/app.tsx"))
+    @amber.tool(Path("simple/page.tsx"))
     def my_tool():
         return "result"
 
@@ -128,16 +128,16 @@ def test_dev_bundles_in_background(mock_mcp, views_dir, tmp_path, monkeypatch):
 
 
 @pytest.mark.integration
-def test_multiple_tools_all_bundled(mock_mcp, views_dir, tmp_path, monkeypatch):
+def test_multiple_tools_all_bundled(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    output = views_dir / ".gdansk"
-    amber = Amber(mcp=mock_mcp, views=views_dir)
+    output = pages_dir / ".gdansk"
+    amber = Amber(mcp=mock_mcp, views=pages_dir)
 
-    @amber.tool(Path("simple/app.tsx"))
+    @amber.tool(Path("simple/page.tsx"))
     def tool_a():
         return "a"
 
-    @amber.tool(Path("nested/page/app.tsx"))
+    @amber.tool(Path("nested/page/page.tsx"))
     def tool_b():
         return "b"
 
@@ -148,12 +148,41 @@ def test_multiple_tools_all_bundled(mock_mcp, views_dir, tmp_path, monkeypatch):
 
 
 @pytest.mark.integration
-def test_prod_fails_when_ui_has_no_default_export(mock_mcp, views_dir, tmp_path, monkeypatch):
+def test_directory_resolution_prefers_page_tsx(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    (views_dir / "apps/simple/app.tsx").write_text("export const value = 1;\n", encoding="utf-8")
-    amber = Amber(mcp=mock_mcp, views=views_dir)
+    output = pages_dir / ".gdansk"
+    preferred = pages_dir / "apps" / "preferred"
+    preferred.mkdir(parents=True, exist_ok=True)
+    (preferred / "page.tsx").write_text(
+        "export default function App() { return <div>tsx-version</div>; }\n",
+        encoding="utf-8",
+    )
+    (preferred / "page.jsx").write_text(
+        "export default function App() { return <div>jsx-version</div>; }\n",
+        encoding="utf-8",
+    )
 
-    @amber.tool(Path("simple/app.tsx"))
+    amber = Amber(mcp=mock_mcp, views=pages_dir)
+
+    @amber.tool(Path("preferred"))
+    def my_tool():
+        return "result"
+
+    app = amber(dev=False)
+    with _lifespan(app):
+        client = (output / "preferred/client.js").read_text(encoding="utf-8")
+
+    assert "tsx-version" in client
+    assert "jsx-version" not in client
+
+
+@pytest.mark.integration
+def test_prod_fails_when_ui_has_no_default_export(mock_mcp, pages_dir, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (pages_dir / "apps/simple/page.tsx").write_text("export const value = 1;\n", encoding="utf-8")
+    amber = Amber(mcp=mock_mcp, views=pages_dir)
+
+    @amber.tool(Path("simple/page.tsx"))
     def my_tool():
         return "result"
 
@@ -163,12 +192,12 @@ def test_prod_fails_when_ui_has_no_default_export(mock_mcp, views_dir, tmp_path,
 
 
 @pytest.mark.integration
-def test_tool_ssr_true_overrides_amber_false(mock_mcp, views_dir, tmp_path, monkeypatch):
+def test_tool_ssr_true_overrides_amber_false(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    output = views_dir / ".gdansk"
-    amber = Amber(mcp=mock_mcp, views=views_dir, ssr=False)
+    output = pages_dir / ".gdansk"
+    amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=False)
 
-    @amber.tool(Path("simple/app.tsx"), ssr=True)
+    @amber.tool(Path("simple/page.tsx"), ssr=True)
     def my_tool():
         return "result"
 
@@ -187,12 +216,12 @@ def test_tool_ssr_true_overrides_amber_false(mock_mcp, views_dir, tmp_path, monk
 
 
 @pytest.mark.integration
-def test_tool_ssr_false_overrides_amber_true(mock_mcp, views_dir, tmp_path, monkeypatch):
+def test_tool_ssr_false_overrides_amber_true(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    output = views_dir / ".gdansk"
-    amber = Amber(mcp=mock_mcp, views=views_dir, ssr=True)
+    output = pages_dir / ".gdansk"
+    amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=True)
 
-    @amber.tool(Path("simple/app.tsx"), ssr=False)
+    @amber.tool(Path("simple/page.tsx"), ssr=False)
     def my_tool():
         return "result"
 
@@ -211,12 +240,12 @@ def test_tool_ssr_false_overrides_amber_true(mock_mcp, views_dir, tmp_path, monk
 
 
 @pytest.mark.integration
-def test_ssr_runtime_failure_fails_fast(mock_mcp, views_dir, tmp_path, monkeypatch):
+def test_ssr_runtime_failure_fails_fast(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    output = views_dir / ".gdansk"
-    amber = Amber(mcp=mock_mcp, views=views_dir, ssr=True)
+    output = pages_dir / ".gdansk"
+    amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=True)
 
-    @amber.tool(Path("simple/app.tsx"))
+    @amber.tool(Path("simple/page.tsx"))
     def my_tool():
         return "result"
 

@@ -1,11 +1,11 @@
 # Gdansk: React Frontends for Python MCP Servers
 
 > [!WARNING]
-> This project is currently in open-beta. The APIs are subject to change leading up to v1.0. The v1.0 release will
+> This project is currently in beta. The APIs are subject to change leading up to v1.0. The v1.0 release will
 > coincide with the v2.0 release of the [python mcp sdk](https://github.com/modelcontextprotocol/python-sdk)
 
-The name "Gdansk" (pronounced "guh-DANSK") is a nod to the city's historical role as a bridge between cultures and trade
-routes—much like this framework bridges Python backends and React frontends.
+The name "Gdansk" (pronounced "guh-DANSK") is a nod to the Polish port city's historical role as a bridge between
+cultures and trade routes—much like this framework bridges Python backends and React frontends.
 
 Gdansk bridges Python backend logic with React/TypeScript UIs, letting you create rich, interactive tools for Model
 Context Protocol (MCP) servers without leaving the Python ecosystem.
@@ -43,7 +43,7 @@ my-mcp-server/
     ├── package.json
     └── apps/
         └── hello/
-            └── app.tsx
+            └── page.tsx
 ```
 
 **server.py:**
@@ -58,7 +58,7 @@ import uvicorn
 mcp = FastMCP("Hello World Server")
 amber = Amber(mcp=mcp, views=Path(__file__).parent / "views")
 
-@amber.tool(name="greet", ui=Path("hello/app.tsx"))
+@amber.tool(name="greet", page=Path("hello"))
 def greet(name: str) -> list[TextContent]:
     """Greet someone by name."""
     return [TextContent(type="text", text=f"Hello, {name}!")]
@@ -68,7 +68,7 @@ if __name__ == "__main__":
     uvicorn.run(app, port=3000)
 ```
 
-**views/apps/hello/app.tsx:**
+**views/apps/hello/page.tsx:**
 
 ```tsx
 import { useApp } from "@modelcontextprotocol/ext-apps/react";

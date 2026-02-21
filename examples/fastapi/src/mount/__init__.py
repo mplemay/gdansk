@@ -1,1 +1,1 @@
-"""View package for the FastAPI example."""
+"""Page package for the FastAPI example."""
