@@ -1,11 +1,11 @@
 # Gdansk: React Frontends for Python MCP Servers
 
 > [!WARNING]
-> This project is currently in open-beta. The APIs are subject to change leading up to v1.0. The v1.0 release will
+> This project is currently in beta. The APIs are subject to change leading up to v1.0. The v1.0 release will
 > coincide with the v2.0 release of the [python mcp sdk](https://github.com/modelcontextprotocol/python-sdk)
 
-The name "Gdansk" (pronounced "guh-DANSK") is a nod to the city's historical role as a bridge between cultures and trade
-routes—much like this framework bridges Python backends and React frontends.
+The name "Gdansk" (pronounced "guh-DANSK") is a nod to the Polish port city's historical role as a bridge between
+cultures and trade routes—much like this framework bridges Python backends and React frontends.
 
 Gdansk bridges Python backend logic with React/TypeScript UIs, letting you create rich, interactive tools for Model
 Context Protocol (MCP) servers without leaving the Python ecosystem.
