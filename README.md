@@ -159,7 +159,3 @@ Gdansk builds on the shoulders of giants:
 
 Special thanks to the Model Context Protocol team at Anthropic for creating the MCP standard and the
 `@modelcontextprotocol/ext-apps` package.
-
----
-
-Made with ❤️ by [Matt LeMay](https://github.com/mattlemay)
