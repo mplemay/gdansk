@@ -21,40 +21,40 @@ if TYPE_CHECKING:
 
 
 def test_valid_construction(mock_mcp, pages_dir):
-    amber = Amber(mcp=mock_mcp, pages=pages_dir)
+    amber = Amber(mcp=mock_mcp, views=pages_dir)
     assert amber.mcp is mock_mcp
-    assert amber.pages == pages_dir
+    assert amber.views == pages_dir
 
 
 def test_raises_when_pages_not_directory(mock_mcp, pages_dir):
     file_path = pages_dir / "apps/simple/page.tsx"
     with pytest.raises(ValueError, match="does not exist"):
-        Amber(mcp=mock_mcp, pages=file_path)
+        Amber(mcp=mock_mcp, views=file_path)
 
 
 def test_raises_when_pages_missing(mock_mcp, tmp_path):
     missing = tmp_path / "nonexistent"
     with pytest.raises(ValueError, match="does not exist"):
-        Amber(mcp=mock_mcp, pages=missing)
+        Amber(mcp=mock_mcp, views=missing)
 
 
 def test_rejects_output_argument(mock_mcp, pages_dir):
     with pytest.raises(TypeError, match="output"):
-        Amber(mcp=mock_mcp, pages=pages_dir, output=Path("out.txt"))  # ty: ignore[unknown-argument]
+        Amber(mcp=mock_mcp, views=pages_dir, output=Path("out.txt"))  # ty: ignore[unknown-argument]
 
 
-def test_rejects_views_argument(mock_mcp, pages_dir):
-    with pytest.raises(TypeError, match="views"):
-        Amber(mcp=mock_mcp, views=pages_dir)  # ty: ignore[missing-argument,unknown-argument]
+def test_rejects_pages_argument(mock_mcp, pages_dir):
+    with pytest.raises(TypeError, match="pages"):
+        Amber(mcp=mock_mcp, views=pages_dir, pages=pages_dir)  # ty: ignore[unknown-argument]
 
 
 def test_default_output(mock_mcp, pages_dir):
-    amber = Amber(mcp=mock_mcp, pages=pages_dir)
+    amber = Amber(mcp=mock_mcp, views=pages_dir)
     assert amber.output == pages_dir / ".gdansk"
 
 
 def test_amber_defaults_ssr_false(mock_mcp, pages_dir):
-    amber = Amber(mcp=mock_mcp, pages=pages_dir)
+    amber = Amber(mcp=mock_mcp, views=pages_dir)
     assert amber.ssr is False
 
 
@@ -103,7 +103,7 @@ def test_no_plugins_called_when_no_paths_registered(mock_mcp, pages_dir):
         async def watch(self, *, pages: Path, output: Path, stop_event: asyncio.Event) -> None:
             _ = (pages, output, stop_event)
 
-    amber = Amber(mcp=mock_mcp, pages=pages_dir, plugins=[_TestPlugin()])
+    amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=[_TestPlugin()])
     with patch("gdansk.core.bundle") as mock_bundle:
         amber(dev=True)
     assert called is False
@@ -137,7 +137,7 @@ def test_plugins_run_after_bundle_in_prod(mock_mcp, pages_dir):
         async def watch(self, *, pages: Path, output: Path, stop_event: asyncio.Event) -> None:
             _ = (pages, output, stop_event)
 
-    amber = Amber(mcp=mock_mcp, pages=pages_dir, plugins=[_TestPlugin()])
+    amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=[_TestPlugin()])
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
 
     async def _fake_bundle(**_kwargs: object):
@@ -197,7 +197,7 @@ def test_plugin_errors_propagate_in_prod(mock_mcp, pages_dir):
         async def watch(self, *, pages: Path, output: Path, stop_event: asyncio.Event) -> None:
             _ = (pages, output, stop_event)
 
-    amber = Amber(mcp=mock_mcp, pages=pages_dir, plugins=[_FailingPlugin()])
+    amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=[_FailingPlugin()])
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
 
     async def _fake_bundle(**_kwargs: object):
@@ -214,7 +214,7 @@ def test_plugin_errors_propagate_in_prod(mock_mcp, pages_dir):
 
 
 def test_passes_views_dot_gdansk_as_output(mock_mcp, pages_dir):
-    amber = Amber(mcp=mock_mcp, pages=pages_dir)
+    amber = Amber(mcp=mock_mcp, views=pages_dir)
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
     captured: list[dict] = []
 
@@ -274,7 +274,7 @@ def test_passes_registered_paths(amber):
 
 @pytest.mark.usefixtures("pages_dir")
 def test_run_build_pipeline_invokes_server_bundle_only_for_ssr_paths(mock_mcp, pages_dir):
-    amber = Amber(mcp=mock_mcp, pages=pages_dir)
+    amber = Amber(mcp=mock_mcp, views=pages_dir)
 
     @amber.tool(Path("simple/page.tsx"))
     def tool_a():
@@ -319,7 +319,7 @@ def test_plugins_watch_started_and_cancelled_on_shutdown(mock_mcp, pages_dir):
                 watcher_cancelled.set()
                 raise
 
-    amber = Amber(mcp=mock_mcp, pages=pages_dir, plugins=[_DevPlugin()])
+    amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=[_DevPlugin()])
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
 
     async def _slow_bundle(**_kwargs: object):
@@ -347,7 +347,7 @@ def test_dev_watch_error_is_logged(mock_mcp, pages_dir):
             msg = "watch failed"
             raise RuntimeError(msg)
 
-    amber = Amber(mcp=mock_mcp, pages=pages_dir, plugins=[_FailingWatchPlugin()])
+    amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=[_FailingWatchPlugin()])
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
 
     async def _slow_bundle(**_kwargs: object):
@@ -444,7 +444,7 @@ def test_rejects_non_app_entry_filename(mock_mcp, pages_dir):
     wrong_entry.parent.mkdir(parents=True, exist_ok=True)
     wrong_entry.write_text("export const page = 1;\n", encoding="utf-8")
 
-    amber = Amber(mcp=mock_mcp, pages=pages_dir)
+    amber = Amber(mcp=mock_mcp, views=pages_dir)
     with pytest.raises(ValueError, match=r"must match \*\*/page\.tsx or \*\*/page\.jsx"):
         amber.tool(Path("wrong/app.tsx"))
 
@@ -464,7 +464,7 @@ def test_accepts_jsx(mock_mcp, pages_dir):
     jsx_path.parent.mkdir(parents=True, exist_ok=True)
     jsx_path.write_text("export const app = 1;\n", encoding="utf-8")
 
-    amber = Amber(mcp=mock_mcp, pages=pages_dir)
+    amber = Amber(mcp=mock_mcp, views=pages_dir)
     decorator = amber.tool(Path("jsx/page.jsx"))
     assert callable(decorator)
 
@@ -490,7 +490,7 @@ def test_adds_bundle_path_to_registered_views(amber):
 
 
 def test_tool_ssr_none_inherits_amber_value(mock_mcp, pages_dir):
-    amber = Amber(mcp=mock_mcp, pages=pages_dir, ssr=True)
+    amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=True)
 
     @amber.tool(Path("simple/page.tsx"))
     def my_tool():
@@ -501,7 +501,7 @@ def test_tool_ssr_none_inherits_amber_value(mock_mcp, pages_dir):
 
 
 def test_tool_ssr_true_overrides_amber_false(mock_mcp, pages_dir):
-    amber = Amber(mcp=mock_mcp, pages=pages_dir, ssr=False)
+    amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=False)
 
     @amber.tool(Path("simple/page.tsx"), ssr=True)
     def my_tool():
@@ -512,7 +512,7 @@ def test_tool_ssr_true_overrides_amber_false(mock_mcp, pages_dir):
 
 
 def test_tool_ssr_false_overrides_amber_true(mock_mcp, pages_dir):
-    amber = Amber(mcp=mock_mcp, pages=pages_dir, ssr=True)
+    amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=True)
 
     @amber.tool(Path("simple/page.tsx"), ssr=False)
     def my_tool():
@@ -523,7 +523,7 @@ def test_tool_ssr_false_overrides_amber_true(mock_mcp, pages_dir):
 
 
 def test_tool_reregistration_overwrites_ssr_for_same_path(mock_mcp, pages_dir):
-    amber = Amber(mcp=mock_mcp, pages=pages_dir, ssr=False)
+    amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=False)
 
     @amber.tool(Path("simple/page.tsx"), ssr=False)
     def first_tool():
@@ -661,7 +661,7 @@ async def test_resource_omits_css_when_absent(amber, mock_mcp, tmp_path):
 
 @pytest.mark.asyncio
 async def test_resource_uses_views_dot_gdansk_output(mock_mcp, pages_dir):
-    amber = Amber(mcp=mock_mcp, pages=pages_dir)
+    amber = Amber(mcp=mock_mcp, views=pages_dir)
     assert amber.output == pages_dir / ".gdansk"
 
     @amber.tool(Path("simple/page.tsx"))
@@ -695,7 +695,7 @@ async def test_resource_raises_friendly_error_when_js_missing(amber, mock_mcp, t
 
 @pytest.mark.asyncio
 async def test_resource_injects_html_when_effective_ssr_true(mock_mcp, pages_dir, tmp_path):
-    amber = Amber(mcp=mock_mcp, pages=pages_dir, ssr=True)
+    amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=True)
     amber_output = tmp_path / "output"
     object.__setattr__(amber, "output", amber_output)
 
@@ -741,7 +741,7 @@ async def test_resource_skips_runtime_and_html_when_effective_ssr_false(amber, m
 
 @pytest.mark.asyncio
 async def test_resource_raises_when_ssr_bundle_missing(mock_mcp, pages_dir, tmp_path):
-    amber = Amber(mcp=mock_mcp, pages=pages_dir, ssr=True)
+    amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=True)
     amber_output = tmp_path / "output"
     object.__setattr__(amber, "output", amber_output)
 
@@ -760,7 +760,7 @@ async def test_resource_raises_when_ssr_bundle_missing(mock_mcp, pages_dir, tmp_
 
 @pytest.mark.asyncio
 async def test_resource_propagates_runtime_error_fail_fast(mock_mcp, pages_dir, tmp_path):
-    amber = Amber(mcp=mock_mcp, pages=pages_dir, ssr=True)
+    amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=True)
     amber_output = tmp_path / "output"
     object.__setattr__(amber, "output", amber_output)
 
@@ -786,7 +786,7 @@ async def test_resource_propagates_runtime_error_fail_fast(mock_mcp, pages_dir, 
 async def test_constructor_metadata_applies_to_tool_resource(mock_mcp, pages_dir, tmp_path):
     amber = Amber(
         mcp=mock_mcp,
-        pages=pages_dir,
+        views=pages_dir,
         metadata={
             "title": "Root App",
             "description": "Shared description",
@@ -815,7 +815,7 @@ async def test_constructor_metadata_applies_to_tool_resource(mock_mcp, pages_dir
 async def test_tool_metadata_overrides_constructor_metadata_shallowly(mock_mcp, pages_dir, tmp_path):
     amber = Amber(
         mcp=mock_mcp,
-        pages=pages_dir,
+        views=pages_dir,
         metadata={
             "description": "Shared description",
             "openGraph": {"title": "Shared OG", "description": "Shared OG description"},
@@ -847,7 +847,7 @@ async def test_tool_metadata_overrides_constructor_metadata_shallowly(mock_mcp, 
 async def test_metadata_merge_is_non_mutating(mock_mcp, pages_dir, tmp_path):
     base_metadata: Metadata = {"openGraph": {"title": "Shared OG"}}
     tool_metadata: Metadata = {"openGraph": {"title": "Tool OG"}}
-    amber = Amber(mcp=mock_mcp, pages=pages_dir, metadata=base_metadata)
+    amber = Amber(mcp=mock_mcp, views=pages_dir, metadata=base_metadata)
     object.__setattr__(amber, "output", tmp_path / "output")
 
     @amber.tool(Path("simple/page.tsx"), metadata=tool_metadata)

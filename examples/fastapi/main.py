@@ -21,7 +21,7 @@ class Settings(BaseSettings):
 SETTINGS = Settings()
 
 mcp = FastMCP("FastAPI Example Server", streamable_http_path="/")
-amber = Amber(mcp=mcp, pages=Path(__file__).parent / "src/mount/pages")
+amber = Amber(mcp=mcp, views=Path(__file__).parent / "src/mount/views")
 
 
 @amber.tool(name="hello", page=Path("hello/page.tsx"))

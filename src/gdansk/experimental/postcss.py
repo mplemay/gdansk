@@ -125,7 +125,7 @@ class PostCSS:
                 return candidate
 
         msg = (
-            "postcss-cli was not found in pages/node_modules/.bin. "
-            "Install it with `npm install -D postcss postcss-cli` in your pages directory."
+            "postcss-cli was not found in views/node_modules/.bin. "
+            "Install it with `npm install -D postcss postcss-cli` in your views directory."
         )
         raise OSError(msg)

@@ -29,7 +29,7 @@ def _lifespan(app):
 def test_prod_bundles_and_serves_html(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     output = pages_dir / ".gdansk"
-    amber = Amber(mcp=mock_mcp, pages=pages_dir)
+    amber = Amber(mcp=mock_mcp, views=pages_dir)
 
     @amber.tool(Path("simple/page.tsx"))
     def my_tool():
@@ -57,7 +57,7 @@ def test_prod_bundles_and_serves_html(mock_mcp, pages_dir, tmp_path, monkeypatch
 def test_prod_ssr_bundles_and_serves_html(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     output = pages_dir / ".gdansk"
-    amber = Amber(mcp=mock_mcp, pages=pages_dir, ssr=True)
+    amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=True)
 
     @amber.tool(Path("simple/page.tsx"))
     def my_tool():
@@ -83,7 +83,7 @@ def test_prod_ssr_bundles_and_serves_html(mock_mcp, pages_dir, tmp_path, monkeyp
 def test_with_css_bundles_and_serves_html(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     output = pages_dir / ".gdansk"
-    amber = Amber(mcp=mock_mcp, pages=pages_dir)
+    amber = Amber(mcp=mock_mcp, views=pages_dir)
 
     @amber.tool(Path("with_css/page.tsx"))
     def my_tool():
@@ -109,7 +109,7 @@ def test_with_css_bundles_and_serves_html(mock_mcp, pages_dir, tmp_path, monkeyp
 def test_dev_bundles_in_background(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     output = pages_dir / ".gdansk"
-    amber = Amber(mcp=mock_mcp, pages=pages_dir)
+    amber = Amber(mcp=mock_mcp, views=pages_dir)
 
     @amber.tool(Path("simple/page.tsx"))
     def my_tool():
@@ -131,7 +131,7 @@ def test_dev_bundles_in_background(mock_mcp, pages_dir, tmp_path, monkeypatch):
 def test_multiple_tools_all_bundled(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     output = pages_dir / ".gdansk"
-    amber = Amber(mcp=mock_mcp, pages=pages_dir)
+    amber = Amber(mcp=mock_mcp, views=pages_dir)
 
     @amber.tool(Path("simple/page.tsx"))
     def tool_a():
@@ -151,7 +151,7 @@ def test_multiple_tools_all_bundled(mock_mcp, pages_dir, tmp_path, monkeypatch):
 def test_prod_fails_when_ui_has_no_default_export(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (pages_dir / "apps/simple/page.tsx").write_text("export const value = 1;\n", encoding="utf-8")
-    amber = Amber(mcp=mock_mcp, pages=pages_dir)
+    amber = Amber(mcp=mock_mcp, views=pages_dir)
 
     @amber.tool(Path("simple/page.tsx"))
     def my_tool():
@@ -166,7 +166,7 @@ def test_prod_fails_when_ui_has_no_default_export(mock_mcp, pages_dir, tmp_path,
 def test_tool_ssr_true_overrides_amber_false(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     output = pages_dir / ".gdansk"
-    amber = Amber(mcp=mock_mcp, pages=pages_dir, ssr=False)
+    amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=False)
 
     @amber.tool(Path("simple/page.tsx"), ssr=True)
     def my_tool():
@@ -190,7 +190,7 @@ def test_tool_ssr_true_overrides_amber_false(mock_mcp, pages_dir, tmp_path, monk
 def test_tool_ssr_false_overrides_amber_true(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     output = pages_dir / ".gdansk"
-    amber = Amber(mcp=mock_mcp, pages=pages_dir, ssr=True)
+    amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=True)
 
     @amber.tool(Path("simple/page.tsx"), ssr=False)
     def my_tool():
@@ -214,7 +214,7 @@ def test_tool_ssr_false_overrides_amber_true(mock_mcp, pages_dir, tmp_path, monk
 def test_ssr_runtime_failure_fails_fast(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     output = pages_dir / ".gdansk"
-    amber = Amber(mcp=mock_mcp, pages=pages_dir, ssr=True)
+    amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=True)
 
     @amber.tool(Path("simple/page.tsx"))
     def my_tool():

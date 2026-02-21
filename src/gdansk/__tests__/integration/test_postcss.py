@@ -38,7 +38,7 @@ def test_postcss_plugin_transforms_bundled_css(mock_mcp, pages_dir, tmp_path, mo
     monkeypatch.chdir(tmp_path)
     output = pages_dir / ".gdansk"
     plugin = PostCSS()
-    amber = Amber(mcp=mock_mcp, pages=pages_dir, plugins=[plugin])
+    amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=[plugin])
 
     @amber.tool(Path("with_css/page.tsx"))
     def my_tool():
@@ -65,7 +65,7 @@ def test_postcss_plugin_transforms_bundled_css(mock_mcp, pages_dir, tmp_path, mo
 def test_postcss_plugin_failure_raises(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     plugin = PostCSS()
-    amber = Amber(mcp=mock_mcp, pages=pages_dir, plugins=[plugin])
+    amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=[plugin])
 
     @amber.tool(Path("with_css/page.tsx"))
     def my_tool():
@@ -91,7 +91,7 @@ def test_postcss_watch_starts_and_stops_in_dev(mock_mcp, pages_dir, tmp_path, mo
     stopped = threading.Event()
     cancelled = threading.Event()
     plugin = PostCSS()
-    amber = Amber(mcp=mock_mcp, pages=pages_dir, plugins=[plugin])
+    amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=[plugin])
 
     @amber.tool(Path("with_css/page.tsx"))
     def my_tool():

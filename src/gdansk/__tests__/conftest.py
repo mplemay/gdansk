@@ -12,7 +12,7 @@ from gdansk.core import Amber
 
 @pytest.fixture
 def fixture_pages_path():
-    return Path(__file__).parent / "fixtures" / "pages"
+    return Path(__file__).parent / "fixtures" / "views"
 
 
 @pytest.fixture
@@ -51,11 +51,11 @@ def mock_mcp():
 
 @pytest.fixture
 def pages_dir(tmp_path, fixture_pages_path):
-    dest = tmp_path / "pages"
+    dest = tmp_path / "views"
     shutil.copytree(fixture_pages_path, dest)
     return dest
 
 
 @pytest.fixture
 def amber(mock_mcp, pages_dir):
-    return Amber(mcp=mock_mcp, pages=pages_dir)
+    return Amber(mcp=mock_mcp, views=pages_dir)

@@ -39,7 +39,7 @@ Here's a complete example showing how to build a simple greeting tool with a Rea
 ```text
 my-mcp-server/
 ├── server.py
-└── pages/
+└── views/
     ├── package.json
     └── apps/
         └── hello/
@@ -56,7 +56,7 @@ from gdansk import Amber
 import uvicorn
 
 mcp = FastMCP("Hello World Server")
-amber = Amber(mcp=mcp, pages=Path(__file__).parent / "pages")
+amber = Amber(mcp=mcp, views=Path(__file__).parent / "views")
 
 @amber.tool(name="greet", page=Path("hello/page.tsx"))
 def greet(name: str) -> list[TextContent]:
@@ -68,7 +68,7 @@ if __name__ == "__main__":
     uvicorn.run(app, port=3000)
 ```
 
-**pages/apps/hello/page.tsx:**
+**views/apps/hello/page.tsx:**
 
 ```tsx
 import { useApp } from "@modelcontextprotocol/ext-apps/react";

@@ -88,7 +88,7 @@ class Amber:
     _page_min_parts: ClassVar[int] = 2
 
     mcp: FastMCP
-    pages: Path
+    views: Path
     output: Path = field(init=False)
     ssr: bool = field(default=False, kw_only=True)
     metadata: Metadata | None = field(default=None, kw_only=True)
@@ -96,11 +96,11 @@ class Amber:
 
     def __post_init__(self) -> None:
         """Validate required paths and initialize derived output paths."""
-        if not self.pages.is_dir():
-            msg = f"The pages directory {self.pages} does not exist"
+        if not self.views.is_dir():
+            msg = f"The views directory {self.views} does not exist"
             raise ValueError(msg)
 
-        object.__setattr__(self, "output", self.pages / ".gdansk")
+        object.__setattr__(self, "output", self.views / ".gdansk")
 
     def _schedule_watcher_tasks(
         self,
@@ -114,7 +114,7 @@ class Amber:
         watcher_tasks: list[asyncio.Task[None]] = [
             asyncio.create_task(
                 plugin.watch(
-                    pages=self.pages,
+                    pages=self.views,
                     output=self.output,
                     stop_event=stop_event,
                 ),
@@ -130,12 +130,12 @@ class Amber:
             dev=dev,
             minify=not dev,
             output=self.output,
-            cwd=self.pages,
+            cwd=self.views,
         )
         if dev:
             return
         for plugin in self.plugins:
-            await plugin.build(pages=self.pages, output=self.output)
+            await plugin.build(pages=self.views, output=self.output)
 
     @staticmethod
     def _log_background_task_error(task: asyncio.Task[None]) -> None:
@@ -255,7 +255,7 @@ class Amber:
         """Register a tool and bind its page resource into the MCP server."""
         _, bundle_page, uri = self._normalize_page_path_and_uri(page)
 
-        if not (self.pages / bundle_page).is_file():
+        if not (self.views / bundle_page).is_file():
             msg = f"The page (i.e. {page}) was not found"
             raise FileNotFoundError(msg)
 

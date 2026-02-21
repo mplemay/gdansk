@@ -11,7 +11,7 @@ from starlette.middleware.cors import CORSMiddleware
 from gdansk import Amber
 
 mcp = FastMCP("Get Time Server")
-amber = Amber(mcp=mcp, pages=Path(__file__).parent / "pages")
+amber = Amber(mcp=mcp, views=Path(__file__).parent / "views")
 
 
 @amber.tool(name="get-time", page=Path("get-time/page.tsx"))
