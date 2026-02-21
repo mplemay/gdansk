@@ -58,7 +58,7 @@ import uvicorn
 mcp = FastMCP("Hello World Server")
 amber = Amber(mcp=mcp, views=Path(__file__).parent / "views")
 
-@amber.tool(name="greet", page=Path("hello/page.tsx"))
+@amber.tool(name="greet", page=Path("hello"))
 def greet(name: str) -> list[TextContent]:
     """Greet someone by name."""
     return [TextContent(type="text", text=f"Hello, {name}!")]

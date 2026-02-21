@@ -31,7 +31,7 @@ def test_prod_bundles_and_serves_html(mock_mcp, pages_dir, tmp_path, monkeypatch
     output = pages_dir / ".gdansk"
     amber = Amber(mcp=mock_mcp, views=pages_dir)
 
-    @amber.tool(Path("simple/page.tsx"))
+    @amber.tool(Path("simple"))
     def my_tool():
         return "result"
 
@@ -59,7 +59,7 @@ def test_prod_ssr_bundles_and_serves_html(mock_mcp, pages_dir, tmp_path, monkeyp
     output = pages_dir / ".gdansk"
     amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=True)
 
-    @amber.tool(Path("simple/page.tsx"))
+    @amber.tool(Path("simple"))
     def my_tool():
         return "result"
 
@@ -145,6 +145,35 @@ def test_multiple_tools_all_bundled(mock_mcp, pages_dir, tmp_path, monkeypatch):
     with _lifespan(app):
         assert (output / "simple/client.js").exists()
         assert (output / "nested/page/client.js").exists()
+
+
+@pytest.mark.integration
+def test_directory_resolution_prefers_page_tsx(mock_mcp, pages_dir, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    output = pages_dir / ".gdansk"
+    preferred = pages_dir / "apps" / "preferred"
+    preferred.mkdir(parents=True, exist_ok=True)
+    (preferred / "page.tsx").write_text(
+        "export default function App() { return <div>tsx-version</div>; }\n",
+        encoding="utf-8",
+    )
+    (preferred / "page.jsx").write_text(
+        "export default function App() { return <div>jsx-version</div>; }\n",
+        encoding="utf-8",
+    )
+
+    amber = Amber(mcp=mock_mcp, views=pages_dir)
+
+    @amber.tool(Path("preferred"))
+    def my_tool():
+        return "result"
+
+    app = amber(dev=False)
+    with _lifespan(app):
+        client = (output / "preferred/client.js").read_text(encoding="utf-8")
+
+    assert "tsx-version" in client
+    assert "jsx-version" not in client
 
 
 @pytest.mark.integration

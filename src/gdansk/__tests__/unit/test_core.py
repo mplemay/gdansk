@@ -5,7 +5,7 @@ import dataclasses
 import threading
 import time
 from contextlib import contextmanager
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
@@ -429,6 +429,41 @@ def test_accepts_tsx(amber):
     assert callable(decorator)
 
 
+def test_accepts_str_page(amber):
+    decorator = amber.tool("simple/page.tsx")
+    assert callable(decorator)
+
+
+def test_accepts_pathlike_page(amber):
+    decorator = amber.tool(PurePosixPath("simple/page.tsx"))
+    assert callable(decorator)
+
+
+def test_accepts_directory_and_prefers_page_tsx(mock_mcp, pages_dir):
+    preferred_path = pages_dir / "apps" / "preferred"
+    preferred_path.mkdir(parents=True, exist_ok=True)
+    (preferred_path / "page.tsx").write_text("export const tsx = 1;\n", encoding="utf-8")
+    (preferred_path / "page.jsx").write_text("export const jsx = 1;\n", encoding="utf-8")
+    amber = Amber(mcp=mock_mcp, views=pages_dir)
+
+    decorator = amber.tool(Path("preferred"))
+
+    assert callable(decorator)
+    assert Page(path=Path("apps/preferred/page.tsx"), app=True, ssr=False) in amber._apps
+
+
+def test_accepts_directory_with_page_jsx_fallback(mock_mcp, pages_dir):
+    jsx_only_path = pages_dir / "apps" / "jsx-only"
+    jsx_only_path.mkdir(parents=True, exist_ok=True)
+    (jsx_only_path / "page.jsx").write_text("export const jsx = 1;\n", encoding="utf-8")
+    amber = Amber(mcp=mock_mcp, views=pages_dir)
+
+    decorator = amber.tool(Path("jsx-only"))
+
+    assert callable(decorator)
+    assert Page(path=Path("apps/jsx-only/page.jsx"), app=True, ssr=False) in amber._apps
+
+
 def test_rejects_non_apps_path(amber):
     with pytest.raises(ValueError, match=r"must match \*\*/page\.tsx or \*\*/page\.jsx"):
         amber.tool(Path("simple.tsx"))
@@ -472,6 +507,11 @@ def test_accepts_jsx(mock_mcp, pages_dir):
 def test_raises_when_file_not_found(amber):
     with pytest.raises(FileNotFoundError, match="was not found"):
         amber.tool(Path("missing/page.tsx"))
+
+
+def test_raises_when_directory_missing_page_files(amber):
+    with pytest.raises(FileNotFoundError, match="Expected one of"):
+        amber.tool(Path("missing"))
 
 
 def test_rejects_ui_keyword_argument(amber):

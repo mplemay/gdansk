@@ -19,6 +19,7 @@ from gdansk.render import ENV
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable, Coroutine, Sequence
+    from os import PathLike
 
     from mcp.server.fastmcp import FastMCP
     from mcp.types import AnyFunction, Icon, ToolAnnotations
@@ -164,19 +165,39 @@ class Amber:
                 await asyncio.gather(*tasks, return_exceptions=True)
 
     @staticmethod
-    def _normalize_page_path_and_uri(page: Path) -> tuple[Path, Path, str]:
-        if page.suffix not in {".tsx", ".jsx"}:
-            msg = f"The page (i.e. {page}) must be a .tsx or .jsx file"
-            raise ValueError(msg)
-
-        if page.is_absolute():
+    def _normalize_page_input(page: str | PathLike[str]) -> Path:
+        page_path = Path(page)
+        if page_path.is_absolute():
             msg = f"The page (i.e. {page}) must be a relative path"
             raise ValueError(msg)
 
-        page_posix = PurePosixPath(page.as_posix())
+        page_posix = PurePosixPath(page_path.as_posix())
         if any(part in {"", ".", ".."} for part in page_posix.parts):
             msg = f"The page (i.e. {page}) must not contain traversal segments"
             raise ValueError(msg)
+
+        if page_posix.parts and page_posix.parts[0] == "apps":
+            msg = f"The page (i.e. {page}) must not start with apps/"
+            raise ValueError(msg)
+
+        return Path(*page_posix.parts)
+
+    @staticmethod
+    def _resolve_page_candidates(page: Path) -> tuple[Path, ...]:
+        if page.suffix:
+            if page.suffix not in {".tsx", ".jsx"}:
+                msg = f"The page (i.e. {page}) must be a .tsx or .jsx file"
+                raise ValueError(msg)
+            if page.name not in {"page.tsx", "page.jsx"}:
+                msg = f"The page (i.e. {page}) must match **/page.tsx or **/page.jsx and must not start with apps/"
+                raise ValueError(msg)
+            return (page,)
+
+        return (page / "page.tsx", page / "page.jsx")
+
+    @staticmethod
+    def _normalize_page_path_and_uri(page: Path) -> tuple[Path, Path, str]:
+        page_posix = PurePosixPath(page.as_posix())
 
         if (
             len(page_posix.parts) < Amber._page_min_parts
@@ -240,7 +261,7 @@ class Amber:
 
     def tool(  # noqa: PLR0913
         self,
-        page: Path,
+        page: str | PathLike[str],
         name: str | None = None,
         *,
         title: str | None = None,
@@ -253,10 +274,27 @@ class Amber:
         structured_output: bool | None = None,
     ) -> Callable[[AnyFunction], AnyFunction]:
         """Register a tool and bind its page resource into the MCP server."""
-        _, bundle_page, uri = self._normalize_page_path_and_uri(page)
+        page_path = self._normalize_page_input(page)
+        page_candidates = self._resolve_page_candidates(page_path)
 
-        if not (self.views / bundle_page).is_file():
-            msg = f"The page (i.e. {page}) was not found"
+        bundle_page: Path | None = None
+        uri: str | None = None
+
+        for page_candidate in page_candidates:
+            _, candidate_bundle_page, candidate_uri = self._normalize_page_path_and_uri(page_candidate)
+            if (self.views / candidate_bundle_page).is_file():
+                bundle_page = candidate_bundle_page
+                uri = candidate_uri
+                break
+
+        if bundle_page is None or uri is None:
+            if len(page_candidates) == 1:
+                msg = f"The page (i.e. {page_path}) was not found"
+            else:
+                msg = (
+                    f"The page (i.e. {page_path}) was not found. "
+                    f"Expected one of: {page_candidates[0]}, {page_candidates[1]}"
+                )
             raise FileNotFoundError(msg)
 
         ssr = self.ssr if ssr is None else ssr
