@@ -1,8 +1,4 @@
-# Gdansk
-
-[![Test](https://github.com/mattlemay/gdansk/actions/workflows/test.yml/badge.svg)](https://github.com/mattlemay/gdansk/actions/workflows/test.yml)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+# Gdansk: React Frontends for Python MCP Servers
 
 > [!WARNING]
 > This project is currently in open-beta. The APIs are subject to change leading up to v1.0. The v1.0 release will
@@ -153,10 +149,6 @@ interactive greeting tool ready to use.
 - **[Rolldown](https://rolldown.rs/)** — Rust-powered JavaScript bundler
 - **[Deno Core](https://docs.rs/deno_core/latest/deno_core/)** — JavaScript runtime foundation used in Gdansk's Rust
   runtime layer
-
-## License
-
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
 
 ## Credits
 

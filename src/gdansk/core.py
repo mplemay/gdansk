@@ -1,3 +1,5 @@
+"""Core integration between FastMCP tools and gdansk UI resources."""
+
 from __future__ import annotations
 
 import asyncio
@@ -79,6 +81,8 @@ class _AsyncThreadRunner:
 
 @dataclass(frozen=True, slots=True)
 class Amber:
+    """Registers UI-backed MCP tools and serves their bundled assets."""
+
     _apps: set[View] = field(default_factory=set, init=False)
     _template: ClassVar[str] = "template.html"
     _ui_min_parts: ClassVar[int] = 2
@@ -91,6 +95,7 @@ class Amber:
     plugins: Sequence[Plugin] = field(default=(), kw_only=True)
 
     def __post_init__(self) -> None:
+        """Validate required paths and initialize derived output paths."""
         if not self.views.is_dir():
             msg = f"The views directory {self.views} does not exist"
             raise ValueError(msg)
@@ -187,6 +192,7 @@ class Amber:
         return normalized_ui, bundle_ui, uri
 
     def __call__(self, *, dev: bool = False) -> Starlette:
+        """Build and return the Starlette app that serves registered resources."""
         app = self.mcp.streamable_http_app()
         if not self._apps:
             return app
@@ -246,6 +252,7 @@ class Amber:
         ssr: bool | None = None,
         structured_output: bool | None = None,
     ) -> Callable[[AnyFunction], AnyFunction]:
+        """Register a tool and bind its UI resource into the MCP server."""
         _, bundle_ui, uri = self._normalize_ui_path_and_uri(ui)
 
         if not (self.views / bundle_ui).is_file():

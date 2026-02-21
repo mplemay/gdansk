@@ -1,3 +1,5 @@
+"""Types and helpers for page metadata passed to rendered views."""
+
 from __future__ import annotations
 
 from typing import NotRequired, TypedDict, cast
@@ -7,22 +9,30 @@ Primitive = str | int | float | bool
 
 
 class TitleTemplate(TypedDict, total=False):
+    """Template-based page title configuration."""
+
     default: NotRequired[str]
     template: NotRequired[str]
     absolute: NotRequired[str]
 
 
 class Author(TypedDict, total=False):
+    """Author metadata entry."""
+
     name: NotRequired[str]
     url: NotRequired[str]
 
 
 class ThemeColorDescriptor(TypedDict, total=False):
+    """Theme color declaration with optional media query."""
+
     color: str
     media: NotRequired[str]
 
 
 class Viewport(TypedDict, total=False):
+    """Viewport metadata settings."""
+
     width: NotRequired[str | int]
     height: NotRequired[str | int]
     initialScale: NotRequired[float]
@@ -34,6 +44,8 @@ class Viewport(TypedDict, total=False):
 
 
 class RobotsDirectives(TypedDict, total=False):
+    """Robots directive fields."""
+
     index: NotRequired[bool]
     follow: NotRequired[bool]
     nocache: NotRequired[bool]
@@ -47,15 +59,21 @@ class RobotsDirectives(TypedDict, total=False):
 
 
 class Robots(RobotsDirectives, total=False):
+    """Robots metadata including crawler-specific overrides."""
+
     googleBot: NotRequired[str | RobotsDirectives]
 
 
 class AlternateLinkDescriptor(TypedDict, total=False):
+    """Descriptor for alternate resource links."""
+
     url: str
     title: NotRequired[str]
 
 
 class Alternates(TypedDict, total=False):
+    """Alternate URL mappings for locales, media, and types."""
+
     canonical: NotRequired[str | AlternateLinkDescriptor]
     languages: NotRequired[dict[str, str | AlternateLinkDescriptor | list[str | AlternateLinkDescriptor]]]
     media: NotRequired[dict[str, str | AlternateLinkDescriptor | list[str | AlternateLinkDescriptor]]]
@@ -63,6 +81,8 @@ class Alternates(TypedDict, total=False):
 
 
 class IconDescriptor(TypedDict, total=False):
+    """Descriptor for a single icon asset."""
+
     url: str
     rel: NotRequired[str]
     media: NotRequired[str]
@@ -71,6 +91,8 @@ class IconDescriptor(TypedDict, total=False):
 
 
 class Icons(TypedDict, total=False):
+    """Collection of icon variants."""
+
     icon: NotRequired[str | IconDescriptor | list[str | IconDescriptor]]
     shortcut: NotRequired[str | IconDescriptor | list[str | IconDescriptor]]
     apple: NotRequired[str | IconDescriptor | list[str | IconDescriptor]]
@@ -78,6 +100,8 @@ class Icons(TypedDict, total=False):
 
 
 class OpenGraphMedia(TypedDict, total=False):
+    """Media metadata used by Open Graph fields."""
+
     url: str
     secureUrl: NotRequired[str]
     width: NotRequired[int]
@@ -87,6 +111,8 @@ class OpenGraphMedia(TypedDict, total=False):
 
 
 class OpenGraph(TypedDict, total=False):
+    """Open Graph metadata fields."""
+
     title: NotRequired[str]
     description: NotRequired[str]
     url: NotRequired[str]
@@ -106,11 +132,15 @@ class OpenGraph(TypedDict, total=False):
 
 
 class TwitterImage(TypedDict, total=False):
+    """Twitter card image descriptor."""
+
     url: str
     alt: NotRequired[str]
 
 
 class Twitter(TypedDict, total=False):
+    """Twitter card metadata fields."""
+
     card: NotRequired[str]
     title: NotRequired[str]
     description: NotRequired[str]
@@ -122,6 +152,8 @@ class Twitter(TypedDict, total=False):
 
 
 class Verification(TypedDict, total=False):
+    """Site verification token metadata."""
+
     google: NotRequired[str | list[str]]
     yahoo: NotRequired[str | list[str]]
     yandex: NotRequired[str | list[str]]
@@ -130,11 +162,15 @@ class Verification(TypedDict, total=False):
 
 
 class AppleWebAppStartupImage(TypedDict, total=False):
+    """Startup image configuration for Apple web apps."""
+
     url: str
     media: NotRequired[str]
 
 
 class AppleWebApp(TypedDict, total=False):
+    """Apple web app metadata options."""
+
     capable: NotRequired[bool]
     title: NotRequired[str]
     statusBarStyle: NotRequired[str]
@@ -142,22 +178,30 @@ class AppleWebApp(TypedDict, total=False):
 
 
 class FormatDetection(TypedDict, total=False):
+    """Automatic format detection controls."""
+
     telephone: NotRequired[bool]
     email: NotRequired[bool]
     address: NotRequired[bool]
 
 
 class ITunes(TypedDict, total=False):
+    """iTunes app metadata."""
+
     appId: str
     appArgument: NotRequired[str]
 
 
 class Facebook(TypedDict, total=False):
+    """Facebook metadata fields."""
+
     appId: NotRequired[str]
     admins: NotRequired[str | list[str]]
 
 
 class Pinterest(TypedDict, total=False):
+    """Pinterest metadata fields."""
+
     richPin: bool
 
 
@@ -176,6 +220,8 @@ AppLink = TypedDict(
 
 
 class AppLinks(TypedDict, total=False):
+    """Platform-specific deep-link metadata."""
+
     ios: NotRequired[AppLink | list[AppLink]]
     iphone: NotRequired[AppLink | list[AppLink]]
     ipad: NotRequired[AppLink | list[AppLink]]
@@ -186,6 +232,8 @@ class AppLinks(TypedDict, total=False):
 
 
 class Metadata(TypedDict, total=False):
+    """Full metadata payload for rendered documents."""
+
     metadataBase: NotRequired[str]
     title: NotRequired[str | TitleTemplate]
     description: NotRequired[str]
@@ -222,6 +270,7 @@ class Metadata(TypedDict, total=False):
 
 
 def merge_metadata(base: Metadata | None, override: Metadata | None) -> Metadata | None:
+    """Merge metadata dictionaries with override values taking precedence."""
     if base is None and override is None:
         return None
 
@@ -235,6 +284,7 @@ def merge_metadata(base: Metadata | None, override: Metadata | None) -> Metadata
 
 
 def resolve_metadata_url(value: str, metadata_base: str | None) -> str:
+    """Resolve relative metadata URLs against the configured metadata base."""
     parsed = urlparse(value)
     if parsed.scheme or parsed.netloc or metadata_base is None:
         return value

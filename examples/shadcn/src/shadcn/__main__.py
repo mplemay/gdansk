@@ -1,3 +1,5 @@
+"""Shadcn todo example server."""
+
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
@@ -15,6 +17,8 @@ amber = Amber(mcp=mcp, views=Path(__file__).parent / "views", plugins=[PostCSS()
 
 @dataclass(slots=True, kw_only=True)
 class Todo:
+    """Todo item returned by the MCP tools."""
+
     id: str
     title: str
     completed: bool = False
@@ -38,11 +42,13 @@ def _get_todo(todo_id: str) -> Todo:
 
 @amber.tool(name="list-todos", ui=Path("todo/app.tsx"), structured_output=True)
 def list_todos() -> list[Todo]:
+    """Return all todos."""
     return _serialize_todos()
 
 
 @mcp.tool(name="add-todo", structured_output=True)
 def add_todo(title: str) -> list[Todo]:
+    """Add a todo and return the updated list."""
     cleaned_title = title.strip()
     if not cleaned_title:
         msg = "Title cannot be empty."
@@ -54,6 +60,7 @@ def add_todo(title: str) -> list[Todo]:
 
 @mcp.tool(name="toggle-todo", structured_output=True)
 def toggle_todo(todo_id: str) -> list[Todo]:
+    """Toggle the completion state for a todo."""
     todo = _get_todo(todo_id)
     todo.completed = not todo.completed
     return _serialize_todos()
@@ -61,12 +68,14 @@ def toggle_todo(todo_id: str) -> list[Todo]:
 
 @mcp.tool(name="delete-todo", structured_output=True)
 def delete_todo(todo_id: str) -> list[Todo]:
+    """Delete a todo and return the updated list."""
     todo = _get_todo(todo_id)
     TODOS.remove(todo)
     return _serialize_todos()
 
 
 def main() -> None:
+    """Run the development server for the todo example."""
     app = amber(dev=True)
     app.add_middleware(
         CORSMiddleware,
