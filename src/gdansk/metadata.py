@@ -1,4 +1,4 @@
-"""Types and helpers for page metadata passed to rendered views."""
+"""Types and helpers for page metadata passed to rendered pages."""
 
 from __future__ import annotations
 

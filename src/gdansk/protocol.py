@@ -12,8 +12,8 @@ if TYPE_CHECKING:
 class Plugin(Protocol):
     """Plugin interface for build and watch hooks."""
 
-    async def build(self, *, views: Path, output: Path) -> None:
+    async def build(self, *, pages: Path, output: Path) -> None:
         """Build plugin outputs into the generated assets directory."""
 
-    async def watch(self, *, views: Path, output: Path, stop_event: asyncio.Event) -> None:
+    async def watch(self, *, pages: Path, output: Path, stop_event: asyncio.Event) -> None:
         """Watch for source changes and update generated assets until stopped."""

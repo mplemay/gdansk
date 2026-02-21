@@ -8,7 +8,7 @@ use pyo3::prelude::*;
 #[pymodule]
 mod _core {
     #[pymodule_export]
-    use super::bundle::{View, bundle};
+    use super::bundle::{Page, bundle};
     #[pymodule_export]
     use super::runtime::run;
 }

@@ -27,28 +27,28 @@ def _lifespan(app):
         loop.close()
 
 
-def _create_postcss_cli(views: Path) -> None:
-    postcss_cli = views / "node_modules" / ".bin" / "postcss"
+def _create_postcss_cli(pages: Path) -> None:
+    postcss_cli = pages / "node_modules" / ".bin" / "postcss"
     postcss_cli.parent.mkdir(parents=True, exist_ok=True)
     postcss_cli.write_text("", encoding="utf-8")
 
 
 @pytest.mark.integration
-def test_postcss_plugin_transforms_bundled_css(mock_mcp, views_dir, tmp_path, monkeypatch):
+def test_postcss_plugin_transforms_bundled_css(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    output = views_dir / ".gdansk"
+    output = pages_dir / ".gdansk"
     plugin = PostCSS()
-    amber = Amber(mcp=mock_mcp, views=views_dir, plugins=[plugin])
+    amber = Amber(mcp=mock_mcp, pages=pages_dir, plugins=[plugin])
 
-    @amber.tool(Path("with_css/app.tsx"))
+    @amber.tool(Path("with_css/page.tsx"))
     def my_tool():
         return "result"
 
-    _create_postcss_cli(views_dir)
+    _create_postcss_cli(pages_dir)
 
-    async def _transform_css(self, *, css_path: Path, cli_path: Path, views: Path) -> None:
+    async def _transform_css(self, *, css_path: Path, cli_path: Path, pages: Path) -> None:
         _ = self
-        assert cli_path == views / "node_modules" / ".bin" / "postcss"
+        assert cli_path == pages / "node_modules" / ".bin" / "postcss"
         css_apath = APath(css_path)
         original_css = await css_apath.read_text(encoding="utf-8")
         await css_apath.write_text(f"{original_css}\n/* transformed */\n", encoding="utf-8")
@@ -62,19 +62,19 @@ def test_postcss_plugin_transforms_bundled_css(mock_mcp, views_dir, tmp_path, mo
 
 
 @pytest.mark.integration
-def test_postcss_plugin_failure_raises(mock_mcp, views_dir, tmp_path, monkeypatch):
+def test_postcss_plugin_failure_raises(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     plugin = PostCSS()
-    amber = Amber(mcp=mock_mcp, views=views_dir, plugins=[plugin])
+    amber = Amber(mcp=mock_mcp, pages=pages_dir, plugins=[plugin])
 
-    @amber.tool(Path("with_css/app.tsx"))
+    @amber.tool(Path("with_css/page.tsx"))
     def my_tool():
         return "result"
 
-    _create_postcss_cli(views_dir)
+    _create_postcss_cli(pages_dir)
 
-    async def _raise_postcss_error(self, *, css_path: Path, cli_path: Path, views: Path) -> None:
-        _ = (self, cli_path, views)
+    async def _raise_postcss_error(self, *, css_path: Path, cli_path: Path, pages: Path) -> None:
+        _ = (self, cli_path, pages)
         msg = f"postcss failed for {css_path}"
         raise PostCSSError(msg)
 
@@ -85,20 +85,20 @@ def test_postcss_plugin_failure_raises(mock_mcp, views_dir, tmp_path, monkeypatc
 
 
 @pytest.mark.integration
-def test_postcss_watch_starts_and_stops_in_dev(mock_mcp, views_dir, tmp_path, monkeypatch):
+def test_postcss_watch_starts_and_stops_in_dev(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     started = threading.Event()
     stopped = threading.Event()
     cancelled = threading.Event()
     plugin = PostCSS()
-    amber = Amber(mcp=mock_mcp, views=views_dir, plugins=[plugin])
+    amber = Amber(mcp=mock_mcp, pages=pages_dir, plugins=[plugin])
 
-    @amber.tool(Path("with_css/app.tsx"))
+    @amber.tool(Path("with_css/page.tsx"))
     def my_tool():
         return "result"
 
-    async def _watch(self, *, views: Path, output: Path, stop_event: asyncio.Event) -> None:
-        _ = (self, views, output)
+    async def _watch(self, *, pages: Path, output: Path, stop_event: asyncio.Event) -> None:
+        _ = (self, pages, output)
         started.set()
         try:
             await stop_event.wait()

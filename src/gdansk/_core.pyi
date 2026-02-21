@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from pathlib import Path
 
-class View:
+class Page:
     def __init__(self, *, path: Path, app: bool = False, ssr: bool = False) -> None: ...
     path: Path
     app: bool
@@ -11,7 +11,7 @@ class View:
     css: Path
 
 async def bundle(
-    views: Sequence[View],
+    pages: Sequence[Page],
     dev: bool = False,
     minify: bool = True,
     output: Path = ...,

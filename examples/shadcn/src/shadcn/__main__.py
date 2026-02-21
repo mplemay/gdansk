@@ -12,7 +12,7 @@ from gdansk import Amber
 from gdansk.experimental.postcss import PostCSS
 
 mcp = FastMCP("Todo Server")
-amber = Amber(mcp=mcp, views=Path(__file__).parent / "views", plugins=[PostCSS()])
+amber = Amber(mcp=mcp, pages=Path(__file__).parent / "pages", plugins=[PostCSS()])
 
 
 @dataclass(slots=True, kw_only=True)
@@ -40,7 +40,7 @@ def _get_todo(todo_id: str) -> Todo:
     raise ValueError(msg)
 
 
-@amber.tool(name="list-todos", ui=Path("todo/app.tsx"), structured_output=True)
+@amber.tool(name="list-todos", page=Path("todo/page.tsx"), structured_output=True)
 def list_todos() -> list[Todo]:
     """Return all todos."""
     return _serialize_todos()

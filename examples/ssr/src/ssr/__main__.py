@@ -10,10 +10,10 @@ from starlette.middleware.cors import CORSMiddleware
 from gdansk import Amber
 
 mcp = FastMCP("SSR Example Server")
-amber = Amber(mcp=mcp, views=Path(__file__).parent / "views", ssr=True)
+amber = Amber(mcp=mcp, pages=Path(__file__).parent / "pages", ssr=True)
 
 
-@amber.tool(name="hello-ssr", ui=Path("hello-ssr/app.tsx"))
+@amber.tool(name="hello-ssr", page=Path("hello-ssr/page.tsx"))
 def hello_ssr() -> list[TextContent]:
     """Return a static greeting rendered from the SSR example."""
     return [TextContent(type="text", text="Hello from the SSR example")]

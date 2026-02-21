@@ -1,5 +1,5 @@
 """Public package exports for gdansk."""
 
-from gdansk.core import Amber, View
+from gdansk.core import Amber, Page
 
-__all__ = ["Amber", "View"]
+__all__ = ["Amber", "Page"]

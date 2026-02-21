@@ -1,4 +1,4 @@
-"""PostCSS plugin support for css assets in gdansk views."""
+"""PostCSS plugin support for css assets in gdansk pages."""
 
 from __future__ import annotations
 
@@ -22,18 +22,18 @@ class PostCSS:
 
     poll_interval_seconds: float = 0.1
 
-    async def build(self, *, views: Path, output: Path) -> None:
+    async def build(self, *, pages: Path, output: Path) -> None:
         """Compile all discovered CSS files once."""
         css_files = await self._collect_css_files(output=output)
         if not css_files:
             return
-        cli_path = await self._resolve_cli(views=views)
+        cli_path = await self._resolve_cli(pages=pages)
         for css_path in css_files:
-            await self._process_css_file(css_path=css_path, cli_path=cli_path, views=views)
+            await self._process_css_file(css_path=css_path, cli_path=cli_path, pages=pages)
 
-    async def watch(self, *, views: Path, output: Path, stop_event: asyncio.Event) -> None:
+    async def watch(self, *, pages: Path, output: Path, stop_event: asyncio.Event) -> None:
         """Watch CSS files and recompile when they change."""
-        cli_path = await self._resolve_cli(views=views)
+        cli_path = await self._resolve_cli(pages=pages)
         known_mtimes: dict[Path, int] = {}
 
         while not stop_event.is_set():
@@ -49,7 +49,7 @@ class PostCSS:
                     continue
 
                 try:
-                    await self._process_css_file(css_path=css_path, cli_path=cli_path, views=views)
+                    await self._process_css_file(css_path=css_path, cli_path=cli_path, pages=pages)
                 except FileNotFoundError:
                     known_mtimes.pop(css_path, None)
                     continue
@@ -70,7 +70,7 @@ class PostCSS:
             except TimeoutError:
                 continue
 
-    async def _process_css_file(self, *, css_path: Path, cli_path: Path, views: Path) -> None:
+    async def _process_css_file(self, *, css_path: Path, cli_path: Path, pages: Path) -> None:
         css_apath = APath(css_path)
         if not await css_apath.exists():
             raise FileNotFoundError(css_path)
@@ -84,10 +84,10 @@ class PostCSS:
                 str(output_path),
                 stdout=PIPE,
                 stderr=PIPE,
-                cwd=views,
+                cwd=pages,
                 env={
                     **environ,
-                    "NODE_PATH": str(views / "node_modules"),
+                    "NODE_PATH": str(pages / "node_modules"),
                 },
             )
             stdout, stderr = await process.communicate()
@@ -114,8 +114,8 @@ class PostCSS:
 
         return sorted(css_files)
 
-    async def _resolve_cli(self, *, views: Path) -> Path:
-        bin_dir = views / "node_modules" / ".bin"
+    async def _resolve_cli(self, *, pages: Path) -> Path:
+        bin_dir = pages / "node_modules" / ".bin"
         candidates = [bin_dir / "postcss"]
         if name == "nt":
             candidates = [bin_dir / "postcss.cmd", bin_dir / "postcss.exe", *candidates]
@@ -125,7 +125,7 @@ class PostCSS:
                 return candidate
 
         msg = (
-            "postcss-cli was not found in views/node_modules/.bin. "
-            "Install it with `npm install -D postcss postcss-cli` in your views directory."
+            "postcss-cli was not found in pages/node_modules/.bin. "
+            "Install it with `npm install -D postcss postcss-cli` in your pages directory."
         )
         raise OSError(msg)
