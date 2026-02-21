@@ -1,5 +1,5 @@
 [project]
-name = "fastapi-example"
+name = "mount"
 version = "0.1.0"
 description = "Super simple FastAPI mounted Gdansk example"
 readme = "README.md"
