@@ -50,6 +50,9 @@ select = ["ALL"]
 "__init__.py" = [
     "F401", # imported but unused (common in __init__.py to re-export symbols)
 ]
+"examples/fastapi/main.py" = [
+    "INP001", # example entrypoint is intentionally not part of a package
+]
 "**/__tests__/**/*" = [
     "D", # pydocstyle (i.e. ignore missing/malformed docstrings)
     "ANN001",  # missing type annotation for function argument
@@ -79,6 +82,8 @@ quote-style = "double"
 
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
+norecursedirs = ["target", "dist", "build", ".venv", "node_modules"]
+python_files = ["test_*.py"]
 markers = [
     "integration: marks tests that hit the database or external services",
 ]

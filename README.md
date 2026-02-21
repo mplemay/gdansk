@@ -138,20 +138,13 @@ interactive greeting tool ready to use.
    production MCP servers with proven reliability.
 
 
-## Resources
-
-- **[Model Context Protocol](https://modelcontextprotocol.io/)** — Official MCP documentation
-- **[mcp/python-sdk](https://github.com/modelcontextprotocol/python-sdk)** — Python SDK for building MCP servers
-- **[@modelcontextprotocol/ext-apps](https://www.npmjs.com/package/@modelcontextprotocol/ext-apps)** — React hooks for
-  MCP apps
-- **[Rolldown](https://rolldown.rs/)** — Rust-powered JavaScript bundler
-- **[Deno Core](https://docs.rs/deno_core/latest/deno_core/)** — JavaScript runtime foundation used in Gdansk's Rust
-  runtime layer
-
 ## Credits
 
 Gdansk builds on the shoulders of giants:
 
+- **[Model Context Protocol](https://modelcontextprotocol.io/)** — Official MCP documentation
+- **[@modelcontextprotocol/ext-apps](https://www.npmjs.com/package/@modelcontextprotocol/ext-apps)** — React hooks for
+  MCP apps
 - **[Rolldown](https://rolldown.rs/)** — Fast Rust-based JavaScript bundler
 - **[PyO3](https://github.com/PyO3/pyo3)** — Rust bindings for Python
 - **[mcp/python-sdk](https://github.com/modelcontextprotocol/python-sdk)** — Python SDK for MCP server development
