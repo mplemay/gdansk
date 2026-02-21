@@ -230,7 +230,7 @@ wheels = [
 
 [[package]]
 name = "fastapi"
-version = "0.129.0"
+version = "0.129.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "annotated-doc" },
@@ -239,9 +239,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "typing-inspection" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/48/47/75f6bea02e797abff1bca968d5997793898032d9923c1935ae2efdece642/fastapi-0.129.0.tar.gz", hash = "sha256:61315cebd2e65df5f97ec298c888f9de30430dd0612d59d6480beafbc10655af", size = 375450, upload-time = "2026-02-12T13:54:52.541Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/fd/cc/1b0d90ed759ff8c9dbc4800de7475d4e9256a81b97b45bd05a1affcb350a/fastapi-0.129.2.tar.gz", hash = "sha256:e2b3637a2b47856e704dbd9a3a09393f6df48e8b9cb6c7a3e26ba44d2053f9ab", size = 368211, upload-time = "2026-02-21T17:25:49.198Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/9e/dd/d0ee25348ac58245ee9f90b6f3cbb666bf01f69be7e0911f9851bddbda16/fastapi-0.129.0-py3-none-any.whl", hash = "sha256:b4946880e48f462692b31c083be0432275cbfb6e2274566b1be91479cc1a84ec", size = 102950, upload-time = "2026-02-12T13:54:54.528Z" },
+    { url = "https://files.pythonhosted.org/packages/18/d0/a89a640308016c7fff8d2a47b86cc03ee7cca780b5079d0b69f466f9e1a9/fastapi-0.129.2-py3-none-any.whl", hash = "sha256:e21d9f6e8db376655187905ad0145edd6f6a4e5f2bff241c4efb8a0bffd6a540", size = 103227, upload-time = "2026-02-21T17:25:47.745Z" },
 ]
 
 [package.optional-dependencies]
@@ -293,23 +293,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/de/0b/f07f4976784978ef159fd2e8f5c16f1f9d610578fb1fd976ff1315c11ea6/fastapi_cloud_cli-0.13.0.tar.gz", hash = "sha256:4d8f42337e8021c648f6cb0672de7d5b31b0fc7387a83d7b12f974600ac3f2fd", size = 38436, upload-time = "2026-02-17T05:18:19.033Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b4/88/71a1e989d17b9edb483f32e28b7891ffdd3005271518c98ba6415987c430/fastapi_cloud_cli-0.13.0-py3-none-any.whl", hash = "sha256:874a9ed8dba34ec828f198c72de9f9a38de77ac1b15083d6bc3a4d772b0bc477", size = 27631, upload-time = "2026-02-17T05:18:18.094Z" },
-]
-
-[[package]]
-name = "fastapi-example"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "fastapi", extra = ["standard"] },
-    { name = "gdansk" },
-    { name = "pydantic-settings" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "fastapi", extras = ["standard"] },
-    { name = "gdansk", editable = "../../" },
-    { name = "pydantic-settings" },
 ]
 
 [[package]]
@@ -684,17 +667,38 @@ wheels = [
 
 [[package]]
 name = "minijinja"
-version = "2.15.1"
+version = "2.16.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/7b/61/8d20816809ca214b6901416745174cba886342ab2c9a6f5b9bf72cbea62e/minijinja-2.15.1.tar.gz", hash = "sha256:f25ae7a479cd7771e7d2c482bf59211e72196db7e0c7c858339331163f299cca", size = 279740, upload-time = "2026-01-26T22:37:35.594Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c9/49/22a2ef2dfe1efae82f066667887ab7330683eb6b449953a26227886592d0/minijinja-2.16.0.tar.gz", hash = "sha256:6109593eeb36e3139d4a7a923e3e45d73143f1bf5838d39731eb883310a2a900", size = 276975, upload-time = "2026-02-20T16:48:56.335Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2a/e4/64ac289e5089d36243d12acb03c4558d254b4640dbe38bf111a8f7250c05/minijinja-2.15.1-cp38-abi3-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl", hash = "sha256:39963dfbc61c1d0b174a265569f58428d5bb1811dbc8669cd557de1abe24fd79", size = 2016460, upload-time = "2026-01-26T22:37:26.229Z" },
-    { url = "https://files.pythonhosted.org/packages/4e/1c/275ece09bdb99e6e071b677439b44a7608bcc4be34b69286b55e1299ca55/minijinja-2.15.1-cp38-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:daf7f58ca2a3df79d28a72fadb1c2065f99f57fea7020a9d1e70fce7d6e51a1d", size = 1054819, upload-time = "2026-01-26T22:37:27.635Z" },
-    { url = "https://files.pythonhosted.org/packages/d2/c4/894dc43f77cc06b42e3e9252e7030f8906cb5cc68eb10f2f79aa4a899bf7/minijinja-2.15.1-cp38-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:e7e908b1c458b9fc2cbd77c80a22c2052d55697527ebe41300a6b557fb11ab9f", size = 1026181, upload-time = "2026-01-26T22:37:28.883Z" },
-    { url = "https://files.pythonhosted.org/packages/6c/84/57214d870e7ff2aa8556ba7c9327cc15264fe759c6c675e4591b5845d3b8/minijinja-2.15.1-cp38-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:27385ec66713ee329020cb045ed32d926c6e22570858cf1cbb1af32fe7076256", size = 1081906, upload-time = "2026-01-26T22:37:30.139Z" },
-    { url = "https://files.pythonhosted.org/packages/dc/e9/7a5fe4bd852f08db7bdbc84e651499eb46894dc4120f8eebd186f6adc935/minijinja-2.15.1-cp38-abi3-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:aee8a6b3f209c79a4fe768279a93f2702b2810dd7b23b030efb244726181a936", size = 1208833, upload-time = "2026-01-26T22:37:31.525Z" },
-    { url = "https://files.pythonhosted.org/packages/8c/42/cf889a868a4d199b110907f2ab3d5ad609ef4eff2f2d889cf6161d1fb863/minijinja-2.15.1-cp38-abi3-win32.whl", hash = "sha256:05db1931d2bcd8f3db8ad2cbe1ea95832d2b66ea67204b30c58b3c697977a237", size = 983687, upload-time = "2026-01-26T22:37:32.876Z" },
-    { url = "https://files.pythonhosted.org/packages/f3/b6/7fdc3d9b25ad4e47302d5e5a0d3a483b2717f8249f98123ead0779ef8437/minijinja-2.15.1-cp38-abi3-win_amd64.whl", hash = "sha256:2740645d15b227647b83b4cb87cecc0a0bfd015e261721b372ed3d6842936086", size = 1031922, upload-time = "2026-01-26T22:37:34.27Z" },
+    { url = "https://files.pythonhosted.org/packages/58/7c/f44a55b80a5aac4c66a51583f56a3d33bf93008268cea4c6963baffdd886/minijinja-2.16.0-cp38-abi3-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl", hash = "sha256:72e7255e19beac6bb0caa8e3e7669f70709f61398e9d2d0d8c2fb83a279156f6", size = 2031662, upload-time = "2026-02-20T16:48:39.072Z" },
+    { url = "https://files.pythonhosted.org/packages/53/4b/3e21c69d9d588c3b846b43170b232cf9c68419fe7804e54342485ff1fdb8/minijinja-2.16.0-cp38-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:6ecc90fcb764c1977eee30ab4d86a672e0d771daf0711bf6cf1c12bac4148d93", size = 1065625, upload-time = "2026-02-20T16:48:40.773Z" },
+    { url = "https://files.pythonhosted.org/packages/cc/a9/3c884f15cc4e8bdbe9b2db0dd8aa1ecaa5bb8b138511d2ef1de0778e250e/minijinja-2.16.0-cp38-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:912784ebbb486bc51539c946e8fa074ff5591e6a14c755f964c96565b1841118", size = 1035808, upload-time = "2026-02-20T16:48:42.584Z" },
+    { url = "https://files.pythonhosted.org/packages/c7/06/33d779ed96712eb61fa01e445f73e9430b474c51a3d33d3785c143265e37/minijinja-2.16.0-cp38-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:13ec22d73f9ebc957b436a33d653df804df8eb7bd04bc7f315275cb296757893", size = 1092473, upload-time = "2026-02-20T16:48:43.966Z" },
+    { url = "https://files.pythonhosted.org/packages/d0/23/eac5774e8b7d91556483759747ccad77c806e05205cacbb2156593973fec/minijinja-2.16.0-cp38-abi3-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:52bfaca71ad5ddffc412375a7862213348601ea9c9579044244707909622bbd0", size = 1219264, upload-time = "2026-02-20T16:48:45.289Z" },
+    { url = "https://files.pythonhosted.org/packages/9f/b9/45ae481e82fa4dc6d2fe122385a7e72454f879e37bc47efc8b736890221e/minijinja-2.16.0-cp38-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:413357af0a5cb469ee3c5ebdecb38a84b943c97b09edcbead7c9f1f5f071d7e7", size = 1240893, upload-time = "2026-02-20T16:48:46.65Z" },
+    { url = "https://files.pythonhosted.org/packages/e1/4a/ac8d6b406624457b68f46eb4d6d76e77f50b43de3c1faa7d375616f1b5b1/minijinja-2.16.0-cp38-abi3-musllinux_1_2_armv7l.whl", hash = "sha256:90679250861f33f1d3a18ef29273ed532f18f8b40969c3f805813e9e0f117fc9", size = 1311147, upload-time = "2026-02-20T16:48:48.265Z" },
+    { url = "https://files.pythonhosted.org/packages/51/05/c901e7a9364df86d1b186062f5ad4fe70527055ac11ac59c9f4f37bdebe9/minijinja-2.16.0-cp38-abi3-musllinux_1_2_i686.whl", hash = "sha256:01a6144a204019f9cdacec23ccc63dfe429b8f0498454ec213e6a2dd3b329a9b", size = 1384051, upload-time = "2026-02-20T16:48:49.66Z" },
+    { url = "https://files.pythonhosted.org/packages/7d/d2/13dfcc2d9f1a880fe9524b4dacaeffda3495bbf10d21c539761aebf2de01/minijinja-2.16.0-cp38-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:4a8948dc9030958fa9bcace34ccdb9457cc025514d5d8058b0d55e3cd8424eb5", size = 1313927, upload-time = "2026-02-20T16:48:51.345Z" },
+    { url = "https://files.pythonhosted.org/packages/30/74/c77df83ae1c6391c945a65ffea33422edf9095490c9592eacc951adcb582/minijinja-2.16.0-cp38-abi3-win32.whl", hash = "sha256:fcb5cabcf6479dc5b51c1efa7ad1b60b82fe96fa0b7e05110967f514b5790ec9", size = 994468, upload-time = "2026-02-20T16:48:53.014Z" },
+    { url = "https://files.pythonhosted.org/packages/86/79/c9b19d970e10c7a8a290eab6cb0f3e702afb0e28b8a7f742d527fc4943a0/minijinja-2.16.0-cp38-abi3-win_amd64.whl", hash = "sha256:cbf0c847f2a2ab8d50d3ceca5fe8b8abe27222c8b5ea30907eb42aabc7f76a4a", size = 1042692, upload-time = "2026-02-20T16:48:55.041Z" },
+]
+
+[[package]]
+name = "mount"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "fastapi", extra = ["standard"] },
+    { name = "gdansk" },
+    { name = "pydantic-settings" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastapi", extras = ["standard"] },
+    { name = "gdansk", editable = "../../" },
+    { name = "pydantic-settings" },
 ]
 
 [[package]]
@@ -838,16 +842,16 @@ wheels = [
 
 [[package]]
 name = "pydantic-settings"
-version = "2.13.0"
+version = "2.13.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "typing-inspection" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/96/a1/ae859ffac5a3338a66b74c5e29e244fd3a3cc483c89feaf9f56c39898d75/pydantic_settings-2.13.0.tar.gz", hash = "sha256:95d875514610e8595672800a5c40b073e99e4aae467fa7c8f9c263061ea2e1fe", size = 222450, upload-time = "2026-02-15T12:11:23.476Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/52/6d/fffca34caecc4a3f97bda81b2098da5e8ab7efc9a66e819074a11955d87e/pydantic_settings-2.13.1.tar.gz", hash = "sha256:b4c11847b15237fb0171e1462bf540e294affb9b86db4d9aa5c01730bdbe4025", size = 223826, upload-time = "2026-02-19T13:45:08.055Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b0/1a/dd1b9d7e627486cf8e7523d09b70010e05a4bc41414f4ae6ce184cf0afb6/pydantic_settings-2.13.0-py3-none-any.whl", hash = "sha256:d67b576fff39cd086b595441bf9c75d4193ca9c0ed643b90360694d0f1240246", size = 58429, upload-time = "2026-02-15T12:11:22.133Z" },
+    { url = "https://files.pythonhosted.org/packages/00/4b/ccc026168948fec4f7555b9164c724cf4125eac006e176541483d2c959be/pydantic_settings-2.13.1-py3-none-any.whl", hash = "sha256:d56fd801823dbeae7f0975e1f8c8e25c258eb75d278ea7abb5d9cebb01b56237", size = 58929, upload-time = "2026-02-19T13:45:06.034Z" },
 ]
 
 [[package]]
@@ -981,15 +985,15 @@ wheels = [
 
 [[package]]
 name = "rich"
-version = "14.3.2"
+version = "14.3.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "markdown-it-py" },
     { name = "pygments" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/74/99/a4cab2acbb884f80e558b0771e97e21e939c5dfb460f488d19df485e8298/rich-14.3.2.tar.gz", hash = "sha256:e712f11c1a562a11843306f5ed999475f09ac31ffb64281f73ab29ffdda8b3b8", size = 230143, upload-time = "2026-02-01T16:20:47.908Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b3/c6/f3b320c27991c46f43ee9d856302c70dc2d0fb2dba4842ff739d5f46b393/rich-14.3.3.tar.gz", hash = "sha256:b8daa0b9e4eef54dd8cf7c86c03713f53241884e814f4e2f5fb342fe520f639b", size = 230582, upload-time = "2026-02-19T17:23:12.474Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ef/45/615f5babd880b4bd7d405cc0dc348234c5ffb6ed1ea33e152ede08b2072d/rich-14.3.2-py3-none-any.whl", hash = "sha256:08e67c3e90884651da3239ea668222d19bea7b589149d8014a21c633420dbb69", size = 309963, upload-time = "2026-02-01T16:20:46.078Z" },
+    { url = "https://files.pythonhosted.org/packages/14/25/b208c5683343959b670dc001595f2f3737e051da617f66c31f7c4fa93abc/rich-14.3.3-py3-none-any.whl", hash = "sha256:793431c1f8619afa7d3b52b2cdec859562b950ea0d4b6b505397612db8d5362d", size = 310458, upload-time = "2026-02-19T17:23:13.732Z" },
 ]
 
 [[package]]
@@ -1259,7 +1263,7 @@ wheels = [
 
 [[package]]
 name = "typer"
-version = "0.24.0"
+version = "0.24.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "annotated-doc" },
@@ -1267,9 +1271,9 @@ dependencies = [
     { name = "rich" },
     { name = "shellingham" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5a/b6/3e681d3b6bb22647509bdbfdd18055d5adc0dce5c5585359fa46ff805fdc/typer-0.24.0.tar.gz", hash = "sha256:f9373dc4eff901350694f519f783c29b6d7a110fc0dcc11b1d7e353b85ca6504", size = 118380, upload-time = "2026-02-16T22:08:48.496Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f5/24/cb09efec5cc954f7f9b930bf8279447d24618bb6758d4f6adf2574c41780/typer-0.24.1.tar.gz", hash = "sha256:e39b4732d65fbdcde189ae76cf7cd48aeae72919dea1fdfc16593be016256b45", size = 118613, upload-time = "2026-02-21T16:54:40.609Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/85/d0/4da85c2a45054bb661993c93524138ace4956cb075a7ae0c9d1deadc331b/typer-0.24.0-py3-none-any.whl", hash = "sha256:5fc435a9c8356f6160ed6e85a6301fdd6e3d8b2851da502050d1f92c5e9eddc8", size = 56441, upload-time = "2026-02-16T22:08:47.535Z" },
+    { url = "https://files.pythonhosted.org/packages/4a/91/48db081e7a63bb37284f9fbcefda7c44c277b18b0e13fbc36ea2335b71e6/typer-0.24.1-py3-none-any.whl", hash = "sha256:112c1f0ce578bfb4cab9ffdabc68f031416ebcc216536611ba21f04e9aa84c9e", size = 56085, upload-time = "2026-02-21T16:54:41.616Z" },
 ]
 
 [[package]]
