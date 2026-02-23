@@ -4,11 +4,11 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from fastapi import FastAPI
 from mcp.server.fastmcp import FastMCP
 from mcp.types import TextContent
 from pydantic_settings import BaseSettings
 
-from fastapi import FastAPI
 from gdansk import Amber
 
 

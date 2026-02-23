@@ -117,6 +117,9 @@ Gdansk mounts your default export into `#root` automatically and wraps it with `
 Run the server with `python server.py`, configure it in your MCP client (like Claude Desktop), and you'll have an
 interactive greeting tool ready to use.
 
+HTML resources are cached in memory by default. Use `Amber(..., cache_html=False)` if you need uncached reads (for
+example, intentionally dynamic SSR output).
+
 ## Why Use Gdansk?
 
 1. **Python Backend, React Frontend** — Use familiar technologies you already know. Write your logic in Python with type
