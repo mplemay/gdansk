@@ -23,6 +23,14 @@ polished UIs.
 uv add gdansk
 ```
 
+## Skill for Coding Agents
+
+If you use coding agents such as Claude Code or Cursor, we recommend adding this skill to your repository:
+
+```shell
+npx skills add mplemay/gdansk
+```
+
 ## Examples
 
 - **[FastAPI](examples/fastapi):** FastAPI-based MCP server integration with mounted app routes.
