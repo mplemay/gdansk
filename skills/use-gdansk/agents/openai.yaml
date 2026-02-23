@@ -1,0 +1,4 @@
+interface:
+  display_name: "Use Gdansk"
+  short_description: "Build and debug gdansk MCP app UIs"
+  default_prompt: "Use $use-gdansk to add or fix a gdansk tool UI in this codebase."
