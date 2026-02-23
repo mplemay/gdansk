@@ -92,6 +92,7 @@ class Amber:
     views: Path
     output: Path = field(init=False)
     ssr: bool = field(default=False, kw_only=True)
+    cache_html: bool = field(default=True, kw_only=True)
     metadata: Metadata | None = field(default=None, kw_only=True)
     plugins: Sequence[Plugin] = field(default=(), kw_only=True)
 
@@ -259,7 +260,7 @@ class Amber:
         app.router.lifespan_context = _lifespan
         return app
 
-    def tool(  # noqa: PLR0913
+    def tool(  # noqa: C901, PLR0913, PLR0915
         self,
         page: str | PathLike[str],
         name: str | None = None,
@@ -306,6 +307,73 @@ class Amber:
         # Preserve protocol metadata key/scheme for MCP compatibility.
         meta = meta or {}
         meta["ui"] = {"resourceUri": uri}
+        cached_fingerprint: tuple[tuple[str, bool, int | None, int | None], ...] | None = None
+        cached_html: str | None = None
+        cache_lock = asyncio.Lock()
+        client_path = APath(self.output / page_spec.client)
+        server_path = APath(self.output / page_spec.server) if page_spec.server else None
+        css_path = APath(self.output / page_spec.css)
+
+        async def _compute_fingerprint() -> tuple[tuple[str, bool, int | None, int | None], ...]:
+            client_exists = await client_path.exists()
+            if not client_exists:
+                msg = f"Client bundled output for {page} not found. Has the bundler been run?"
+                raise FileNotFoundError(msg)
+            client_stat = await client_path.stat()
+
+            if server_path is None:
+                if ssr:
+                    msg = f"SSR bundled output for {page} not found. Has the bundler been run?"
+                    raise FileNotFoundError(msg)
+                server_fingerprint = ("server", False, None, None)
+            else:
+                server_exists = await server_path.exists()
+                if not server_exists:
+                    if ssr:
+                        msg = f"SSR bundled output for {page} not found. Has the bundler been run?"
+                        raise FileNotFoundError(msg)
+                    server_fingerprint = ("server", False, None, None)
+                else:
+                    server_stat = await server_path.stat()
+                    server_fingerprint = ("server", True, server_stat.st_mtime_ns, server_stat.st_size)
+
+            if await css_path.exists():
+                css_stat = await css_path.stat()
+                css_fingerprint = ("css", True, css_stat.st_mtime_ns, css_stat.st_size)
+            else:
+                css_fingerprint = ("css", False, None, None)
+
+            return (
+                ("client", True, client_stat.st_mtime_ns, client_stat.st_size),
+                server_fingerprint,
+                css_fingerprint,
+            )
+
+        async def _render_resource_html() -> str:
+            client = None if not await client_path.exists() else await client_path.read_text(encoding="utf-8")
+
+            if not client:
+                msg = f"Client bundled output for {page} not found. Has the bundler been run?"
+                raise FileNotFoundError(msg)
+
+            server = None
+            if server_path and await server_path.exists():
+                server = await server_path.read_text(encoding="utf-8")
+            html = await run(server) if server else None
+
+            if (not html) and ssr:
+                msg = f"SSR bundled output for {page} not found. Has the bundler been run?"
+                raise FileNotFoundError(msg)
+
+            css = None if not await css_path.exists() else await css_path.read_text(encoding="utf-8")
+
+            return ENV.render_template(
+                "template.html",
+                js=client,
+                css=css,
+                html=html,
+                metadata=merge_metadata(self.metadata, metadata),
+            )
 
         def decorator(fn: AnyFunction) -> AnyFunction:
             self.mcp.tool(
@@ -326,38 +394,25 @@ class Amber:
                 mime_type="text/html;profile=mcp-app",
             )
             async def _() -> str:
-                client = (
-                    None
-                    if not await (path := APath(self.output / page_spec.client)).exists()
-                    else await path.read_text(encoding="utf-8")
-                )
+                nonlocal cached_fingerprint
+                nonlocal cached_html
 
-                if not client:
-                    msg = f"Client bundled output for {page} not found. Has the bundler been run?"
-                    raise FileNotFoundError(msg)
+                fingerprint = await _compute_fingerprint()
+                if self.cache_html and cached_fingerprint == fingerprint and cached_html is not None:
+                    return cached_html
 
-                server = None
-                if page_spec.server and await (path := APath(self.output / page_spec.server)).exists():
-                    server = await path.read_text(encoding="utf-8")
-                html = await run(server) if server else None
+                if not self.cache_html:
+                    return await _render_resource_html()
 
-                if (not html) and ssr:
-                    msg = f"SSR bundled output for {page} not found. Has the bundler been run?"
-                    raise FileNotFoundError(msg)
+                async with cache_lock:
+                    fingerprint = await _compute_fingerprint()
+                    if cached_fingerprint == fingerprint and cached_html is not None:
+                        return cached_html
 
-                css = (
-                    None
-                    if not await (path := APath(self.output / page_spec.css)).exists()
-                    else await path.read_text(encoding="utf-8")
-                )
-
-                return ENV.render_template(
-                    "template.html",
-                    js=client,
-                    css=css,
-                    html=html,
-                    metadata=merge_metadata(self.metadata, metadata),
-                )
+                    rendered_html = await _render_resource_html()
+                    cached_fingerprint = fingerprint
+                    cached_html = rendered_html
+                    return rendered_html
 
             return fn
 

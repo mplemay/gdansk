@@ -58,6 +58,11 @@ def test_amber_defaults_ssr_false(mock_mcp, pages_dir):
     assert amber.ssr is False
 
 
+def test_amber_defaults_cache_html_true(mock_mcp, pages_dir):
+    amber = Amber(mcp=mock_mcp, views=pages_dir)
+    assert amber.cache_html is True
+
+
 def test_registered_views_empty_initially(amber):
     assert amber._apps == set()
 
@@ -756,6 +761,104 @@ async def test_resource_injects_html_when_effective_ssr_true(mock_mcp, pages_dir
         html = await handler()
 
     assert '<div id="root"><p>server</p></div>' in html
+
+
+@pytest.mark.asyncio
+async def test_resource_caches_ssr_html_by_default(mock_mcp, pages_dir, tmp_path):
+    amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=True)
+    amber_output = tmp_path / "output"
+    object.__setattr__(amber, "output", amber_output)
+
+    @amber.tool(Path("simple/page.tsx"))
+    def my_tool():
+        pass
+
+    js_path = amber_output / "simple/client.js"
+    js_path.parent.mkdir(parents=True, exist_ok=True)
+    js_path.write_text("console.log('hello');", encoding="utf-8")
+    server_js_path = amber_output / "simple/server.js"
+    server_js_path.parent.mkdir(parents=True, exist_ok=True)
+    server_js_path.write_text('Deno.core.ops.op_gdansk_set_html("<p>server</p>");', encoding="utf-8")
+
+    handler = mock_mcp._resource_calls[-1]["handler"]
+    with patch("gdansk.core.run", new_callable=AsyncMock) as mock_run:
+        mock_run.return_value = "<p>server</p>"
+        first_html = await handler()
+        second_html = await handler()
+
+    assert first_html == second_html
+    mock_run.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_resource_does_not_cache_when_disabled(mock_mcp, pages_dir, tmp_path):
+    amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=True, cache_html=False)
+    amber_output = tmp_path / "output"
+    object.__setattr__(amber, "output", amber_output)
+
+    @amber.tool(Path("simple/page.tsx"))
+    def my_tool():
+        pass
+
+    js_path = amber_output / "simple/client.js"
+    js_path.parent.mkdir(parents=True, exist_ok=True)
+    js_path.write_text("console.log('hello');", encoding="utf-8")
+    server_js_path = amber_output / "simple/server.js"
+    server_js_path.parent.mkdir(parents=True, exist_ok=True)
+    server_js_path.write_text('Deno.core.ops.op_gdansk_set_html("<p>server</p>");', encoding="utf-8")
+
+    handler = mock_mcp._resource_calls[-1]["handler"]
+    with patch("gdansk.core.run", new_callable=AsyncMock) as mock_run:
+        mock_run.return_value = "<p>server</p>"
+        await handler()
+        await handler()
+
+    assert mock_run.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_resource_invalidates_cache_when_client_bundle_changes(amber, mock_mcp, tmp_path):
+    amber_output = tmp_path / "output"
+    object.__setattr__(amber, "output", amber_output)
+
+    @amber.tool(Path("simple/page.tsx"))
+    def my_tool():
+        pass
+
+    js_path = amber_output / "simple/client.js"
+    js_path.parent.mkdir(parents=True, exist_ok=True)
+    js_path.write_text("console.log('one');", encoding="utf-8")
+
+    handler = mock_mcp._resource_calls[-1]["handler"]
+    first_html = await handler()
+    js_path.write_text("console.log('two two');", encoding="utf-8")
+    second_html = await handler()
+
+    assert "console.log('one');" in first_html
+    assert "console.log('two two');" in second_html
+
+
+@pytest.mark.asyncio
+async def test_resource_invalidates_cache_when_css_presence_changes(amber, mock_mcp, tmp_path):
+    amber_output = tmp_path / "output"
+    object.__setattr__(amber, "output", amber_output)
+
+    @amber.tool(Path("simple/page.tsx"))
+    def my_tool():
+        pass
+
+    js_path = amber_output / "simple/client.js"
+    js_path.parent.mkdir(parents=True, exist_ok=True)
+    js_path.write_text("console.log('hello');", encoding="utf-8")
+
+    handler = mock_mcp._resource_calls[-1]["handler"]
+    first_html = await handler()
+    (amber_output / "simple/client.css").write_text("body { color: blue; }", encoding="utf-8")
+    second_html = await handler()
+
+    assert "<style>" not in first_html
+    assert "<style>" in second_html
+    assert "body { color: blue; }" in second_html
 
 
 @pytest.mark.asyncio
