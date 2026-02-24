@@ -10,8 +10,9 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from starlette.routing import Route
 
-from gdansk.core import Amber, Page
+from gdansk.core import Amber, Page, Ship
 from gdansk.render import ENV
 
 if TYPE_CHECKING:
@@ -521,7 +522,7 @@ def test_raises_when_directory_missing_page_files(amber):
 
 def test_rejects_ui_keyword_argument(amber):
     with pytest.raises(TypeError, match="ui"):
-        amber.tool(ui=Path("simple/page.tsx"))  # ty: ignore[missing-argument,unknown-argument]
+        amber.tool(ui=Path("simple/page.tsx"))
 
 
 def test_adds_bundle_path_to_registered_views(amber):
@@ -1015,6 +1016,168 @@ def test_returns_original_function(amber):
     result = amber.tool(Path("simple/page.tsx"))(my_tool)
     assert result is my_tool
     assert result() == "original"
+
+
+# --- Ship ---
+
+
+def _write_ship_page(
+    pages_dir: Path,
+    relative_path: str,
+    content: str = "export default function Page() { return <div>ok</div>; }\n",
+) -> None:
+    target = pages_dir / "app" / relative_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
+
+
+def test_ship_valid_construction(pages_dir):
+    ship = Ship(views=pages_dir)
+    assert ship.views == pages_dir
+
+
+def test_ship_raises_when_views_not_directory(pages_dir):
+    file_path = pages_dir / "apps/simple/page.tsx"
+    with pytest.raises(ValueError, match="does not exist"):
+        Ship(views=file_path)
+
+
+def test_ship_default_output(pages_dir):
+    ship = Ship(views=pages_dir)
+    assert ship.output == pages_dir / ".gdansk"
+
+
+def test_ship_include_page_adds_registered_page(pages_dir):
+    _write_ship_page(pages_dir, "simple/page.tsx")
+    ship = Ship(views=pages_dir)
+
+    ship.include_page(page=Page(path=Path("simple/page.tsx")))
+
+    assert ship._pages["/simple"] == Page(path=Path("app/simple/page.tsx"))
+
+
+def test_ship_include_page_accepts_directory_and_prefers_page_tsx(pages_dir):
+    _write_ship_page(
+        pages_dir,
+        "preferred/page.tsx",
+        "export default function Page() { return <div>tsx-version</div>; }\n",
+    )
+    _write_ship_page(
+        pages_dir,
+        "preferred/page.jsx",
+        "export default function Page() { return <div>jsx-version</div>; }\n",
+    )
+    ship = Ship(views=pages_dir)
+
+    ship.include_page(page=Page(path=Path("preferred")))
+
+    assert ship._pages["/preferred"] == Page(path=Path("app/preferred/page.tsx"))
+
+
+def test_ship_include_page_routes_top_level_to_root(pages_dir):
+    _write_ship_page(pages_dir, "page.tsx")
+    ship = Ship(views=pages_dir)
+
+    ship.include_page(page=Page(path=Path("page.tsx")))
+
+    assert ship._pages["/"] == Page(path=Path("app/page.tsx"))
+
+
+def test_ship_include_page_routes_nested_directories(pages_dir):
+    _write_ship_page(pages_dir, "nested/path/page.tsx")
+    ship = Ship(views=pages_dir)
+
+    ship.include_page(page=Page(path=Path("nested/path/page.tsx")))
+
+    assert ship._pages["/nested/path"] == Page(path=Path("app/nested/path/page.tsx"))
+
+
+def test_ship_include_page_rejects_absolute_page(pages_dir):
+    ship = Ship(views=pages_dir)
+    with pytest.raises(ValueError, match="must be a relative path"):
+        ship.include_page(page=Page(path=pages_dir / "app/simple/page.tsx"))
+
+
+def test_ship_include_page_rejects_traversal_segments(pages_dir):
+    ship = Ship(views=pages_dir)
+    with pytest.raises(ValueError, match="must not contain traversal segments"):
+        ship.include_page(page=Page(path=Path("simple/../simple/page.tsx")))
+
+
+def test_ship_include_page_rejects_app_prefixed_path(pages_dir):
+    ship = Ship(views=pages_dir)
+    with pytest.raises(ValueError, match="must not start with app/"):
+        ship.include_page(page=Page(path=Path("app/simple/page.tsx")))
+
+
+def test_ship_include_page_raises_when_missing_page(pages_dir):
+    ship = Ship(views=pages_dir)
+    with pytest.raises(FileNotFoundError, match="was not found"):
+        ship.include_page(page=Page(path=Path("missing/page.tsx")))
+
+
+def test_ship_include_page_raises_when_directory_missing_page_files(pages_dir):
+    ship = Ship(views=pages_dir)
+    with pytest.raises(FileNotFoundError, match="Expected one of"):
+        ship.include_page(page=Page(path=Path("missing")))
+
+
+def test_ship_include_page_reregistration_overwrites_route(pages_dir):
+    _write_ship_page(pages_dir, "simple/page.tsx")
+    _write_ship_page(pages_dir, "simple/page.jsx")
+    ship = Ship(views=pages_dir)
+
+    ship.include_page(page=Page(path=Path("simple/page.tsx")))
+    ship.include_page(page=Page(path=Path("simple/page.jsx")))
+
+    assert ship._pages["/simple"] == Page(path=Path("app/simple/page.jsx"))
+
+
+def test_ship_call_passes_bundle_options(pages_dir):
+    _write_ship_page(pages_dir, "simple/page.tsx")
+    ship = Ship(views=pages_dir)
+    ship.include_page(page=Page(path=Path("simple/page.tsx")))
+    captured: list[dict] = []
+
+    async def _fake_bundle(**kwargs: object):
+        captured.append(kwargs)
+
+    with patch("gdansk.core.bundle", _fake_bundle):
+        ship(dev=True)
+        ship(dev=False)
+
+    assert captured[0]["minify"] is False
+    assert captured[1]["minify"] is True
+    assert captured[0]["output"] == pages_dir / ".gdansk"
+    assert captured[0]["cwd"] == pages_dir
+    assert captured[0]["pages"] == [Page(path=Path("app/simple/page.tsx"))]
+
+
+@pytest.mark.asyncio
+async def test_ship_handler_renders_js_and_css(tmp_path):
+    views = tmp_path / "views"
+    _write_ship_page(views, "simple/page.tsx")
+    ship = Ship(views=views)
+    ship.include_page(page=Page(path=Path("simple/page.tsx")))
+
+    async def _fake_bundle(**_kwargs: object):
+        return
+
+    with patch("gdansk.core.bundle", _fake_bundle):
+        app = ship()
+
+    js_path = ship.output / "app/simple/page.js"
+    js_path.parent.mkdir(parents=True, exist_ok=True)
+    js_path.write_text("console.log('ship');", encoding="utf-8")
+    (ship.output / "app/simple/page.css").write_text("body { color: red; }", encoding="utf-8")
+
+    route = next(route for route in app.router.routes if getattr(route, "path", "") == "/simple")
+    assert isinstance(route, Route)
+    response = await route.endpoint(None)
+
+    assert "console.log('ship');" in response.body.decode("utf-8")
+    assert "body { color: red; }" in response.body.decode("utf-8")
+    assert "<!DOCTYPE html>" in response.body.decode("utf-8")
 
 
 # --- Template rendering ---

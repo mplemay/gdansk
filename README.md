@@ -16,7 +16,6 @@ bundling automatically. Whether you're building data visualization tools, form-b
 dashboards for Claude Desktop and other MCP clients, Gdansk provides a straightforward path from Python functions to
 polished UIs.
 
-
 ## Installation
 
 ```bash
@@ -147,7 +146,6 @@ example, intentionally dynamic SSR output).
 
 6. **Production Ready** — Comprehensive test suite covering Python 3.11-3.14 across Linux, macOS, and Windows. Used in
    production MCP servers with proven reliability.
-
 
 ## Credits
 

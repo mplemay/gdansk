@@ -6,8 +6,10 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+from starlette.applications import Starlette
+from starlette.testclient import TestClient
 
-from gdansk.core import Amber
+from gdansk.core import Amber, Page, Ship
 
 
 @contextmanager
@@ -23,6 +25,16 @@ def _lifespan(app):
         if entered:
             loop.run_until_complete(context.__aexit__(None, None, None))
         loop.close()
+
+
+def _write_ship_page(
+    pages_dir: Path,
+    relative_path: str,
+    content: str = "export default function Page() { return <div>ok</div>; }\n",
+) -> None:
+    target = pages_dir / "app" / relative_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
 
 
 @pytest.mark.integration
@@ -262,3 +274,92 @@ def test_ssr_runtime_failure_fails_fast(mock_mcp, pages_dir, tmp_path, monkeypat
             loop.run_until_complete(handler())
     finally:
         loop.close()
+
+
+@pytest.mark.integration
+def test_ship_prod_bundles_and_serves_html_when_mounted(pages_dir, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _write_ship_page(pages_dir, "simple/page.tsx")
+
+    ship = Ship(views=pages_dir)
+    ship.include_page(page=Page(path=Path("simple/page.tsx")))
+
+    root = Starlette()
+    root.mount(path="", app=ship(dev=False))
+
+    with TestClient(root, base_url="http://127.0.0.1:8000") as client:
+        response = client.get("/simple", follow_redirects=False)
+
+    assert response.status_code == 200
+    assert "<!DOCTYPE html>" in response.text
+    assert '<script type="module">' in response.text
+    assert '<div id="root"></div>' in response.text
+    assert (pages_dir / ".gdansk" / "app/simple/page.js").exists()
+
+
+@pytest.mark.integration
+def test_ship_nested_page_maps_to_nested_route(pages_dir, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _write_ship_page(pages_dir, "a/b/page.tsx", "export default function Page() { return <div>nested-route</div>; }\n")
+
+    ship = Ship(views=pages_dir)
+    ship.include_page(page=Page(path=Path("a/b/page.tsx")))
+
+    root = Starlette()
+    root.mount(path="", app=ship(dev=False))
+
+    with TestClient(root, base_url="http://127.0.0.1:8000") as client:
+        response = client.get("/a/b", follow_redirects=False)
+
+    assert response.status_code == 200
+    assert "nested-route" in response.text
+
+
+@pytest.mark.integration
+def test_ship_includes_css_output(pages_dir, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _write_ship_page(
+        pages_dir,
+        "with_css/page.tsx",
+        'import "./simple.css";\nexport default function Page() { return <div>css-route</div>; }\n',
+    )
+    (pages_dir / "app/with_css/simple.css").write_text("body { color: blue; }\n", encoding="utf-8")
+
+    ship = Ship(views=pages_dir)
+    ship.include_page(page=Page(path=Path("with_css/page.tsx")))
+
+    root = Starlette()
+    root.mount(path="", app=ship(dev=False))
+
+    with TestClient(root, base_url="http://127.0.0.1:8000") as client:
+        response = client.get("/with_css", follow_redirects=False)
+
+    assert response.status_code == 200
+    assert "<style>" in response.text
+    assert "color: blue" in response.text
+    assert (pages_dir / ".gdansk" / "app/with_css/page.css").exists()
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "dev",
+    [
+        False,
+        True,
+    ],
+)
+def test_ship_dev_and_prod_smoke(pages_dir, tmp_path, monkeypatch, dev):
+    monkeypatch.chdir(tmp_path)
+    _write_ship_page(pages_dir, "smoke/page.tsx")
+
+    ship = Ship(views=pages_dir)
+    ship.include_page(page=Page(path=Path("smoke/page.tsx")))
+
+    root = Starlette()
+    root.mount(path="", app=ship(dev=dev))
+
+    with TestClient(root, base_url="http://127.0.0.1:8000") as client:
+        response = client.get("/smoke", follow_redirects=False)
+
+    assert response.status_code == 200
+    assert (pages_dir / ".gdansk" / "app/smoke/page.js").exists()

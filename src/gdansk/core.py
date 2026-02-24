@@ -12,6 +12,9 @@ from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
 from anyio import Path as APath
+from starlette.applications import Starlette
+from starlette.responses import HTMLResponse
+from starlette.routing import Route
 
 from gdansk._core import Page, bundle, run
 from gdansk.metadata import Metadata, merge_metadata
@@ -23,7 +26,6 @@ if TYPE_CHECKING:
 
     from mcp.server.fastmcp import FastMCP
     from mcp.types import AnyFunction, Icon, ToolAnnotations
-    from starlette.applications import Starlette
 
     from gdansk.protocol import Plugin
 
@@ -417,3 +419,148 @@ class Amber:
             return fn
 
         return decorator
+
+
+@dataclass(frozen=True, slots=True)
+class Ship:
+    """Registers web pages and serves bundled HTML routes."""
+
+    _pages: dict[str, Page] = field(default_factory=dict, init=False)
+    _template: ClassVar[str] = "template.html"
+    _page_min_parts: ClassVar[int] = 1
+
+    views: Path
+    output: Path = field(init=False)
+
+    def __post_init__(self) -> None:
+        """Validate required paths and initialize derived output paths."""
+        if not self.views.is_dir():
+            msg = f"The views directory {self.views} does not exist"
+            raise ValueError(msg)
+
+        object.__setattr__(self, "output", self.views / ".gdansk")
+
+    @staticmethod
+    def _normalize_page_input(page: Path) -> Path:
+        if page.is_absolute():
+            msg = f"The page (i.e. {page}) must be a relative path"
+            raise ValueError(msg)
+
+        page_posix = PurePosixPath(page.as_posix())
+        if any(part in {"", ".", ".."} for part in page_posix.parts):
+            msg = f"The page (i.e. {page}) must not contain traversal segments"
+            raise ValueError(msg)
+
+        if page_posix.parts and page_posix.parts[0] == "app":
+            msg = f"The page (i.e. {page}) must not start with app/"
+            raise ValueError(msg)
+
+        return Path(*page_posix.parts)
+
+    @staticmethod
+    def _resolve_page_candidates(page: Path) -> tuple[Path, ...]:
+        if page.suffix:
+            if page.suffix not in {".tsx", ".jsx"}:
+                msg = f"The page (i.e. {page}) must be a .tsx or .jsx file"
+                raise ValueError(msg)
+            if page.name not in {"page.tsx", "page.jsx"}:
+                msg = f"The page (i.e. {page}) must match **/page.tsx or **/page.jsx and must not start with app/"
+                raise ValueError(msg)
+            return (page,)
+
+        return (page / "page.tsx", page / "page.jsx")
+
+    @staticmethod
+    def _normalize_page_path_and_route(page: Path) -> tuple[Path, Path, str]:
+        page_posix = PurePosixPath(page.as_posix())
+
+        if (
+            len(page_posix.parts) < Ship._page_min_parts
+            or page_posix.parts[0] == "app"
+            or page_posix.name not in {"page.tsx", "page.jsx"}
+        ):
+            msg = f"The page (i.e. {page}) must match **/page.tsx or **/page.jsx and must not start with app/"
+            raise ValueError(msg)
+
+        normalized_page = Path(*page_posix.parts)
+        bundle_page = Path("app", *page_posix.parts)
+        route_parts = page_posix.parts[:-1]
+        route = "/" if not route_parts else "/" + "/".join(route_parts)
+        return normalized_page, bundle_page, route
+
+    def include_page(self, *, page: Page) -> None:
+        """Register a page and map it to a web route."""
+        page_path = self._normalize_page_input(page.path)
+        page_candidates = self._resolve_page_candidates(page_path)
+
+        bundle_page: Path | None = None
+        route: str | None = None
+
+        for page_candidate in page_candidates:
+            _, candidate_bundle_page, candidate_route = self._normalize_page_path_and_route(page_candidate)
+            if (self.views / candidate_bundle_page).is_file():
+                bundle_page = candidate_bundle_page
+                route = candidate_route
+                break
+
+        if bundle_page is None or route is None:
+            if len(page_candidates) == 1:
+                msg = f"The page (i.e. {page_path}) was not found"
+            else:
+                msg = (
+                    f"The page (i.e. {page_path}) was not found. "
+                    f"Expected one of: {page_candidates[0]}, {page_candidates[1]}"
+                )
+            raise FileNotFoundError(msg)
+
+        self._pages[route] = Page(path=bundle_page)
+
+    async def _run_build(self, *, dev: bool) -> None:
+        await bundle(
+            pages=sorted(self._pages.values(), key=lambda page: page.path.as_posix()),
+            dev=False,
+            minify=not dev,
+            output=self.output,
+            cwd=self.views,
+        )
+
+    def __call__(self, *, dev: bool = False) -> Starlette:
+        """Build and return the Starlette app that serves registered pages."""
+        if self._pages:
+            runner = _AsyncThreadRunner()
+            try:
+                runner.run(self._run_build(dev=dev))
+            finally:
+                runner.stop()
+
+        routes: list[Route] = []
+        for route, page in sorted(self._pages.items()):
+            client_path = APath(self.output / page.client)
+            css_path = APath(self.output / page.css)
+            page_path = page.path
+
+            async def _handler(
+                _request: object,
+                *,
+                client_path: APath = client_path,
+                css_path: APath = css_path,
+                page_path: Path = page_path,
+            ) -> HTMLResponse:
+                client = None if not await client_path.exists() else await client_path.read_text(encoding="utf-8")
+                if not client:
+                    msg = f"Client bundled output for {page_path} not found. Has the bundler been run?"
+                    raise FileNotFoundError(msg)
+
+                css = None if not await css_path.exists() else await css_path.read_text(encoding="utf-8")
+                html = ENV.render_template(
+                    Ship._template,
+                    js=client,
+                    css=css,
+                    html=None,
+                    metadata=None,
+                )
+                return HTMLResponse(content=html)
+
+            routes.append(Route(route, endpoint=_handler, methods=["GET"]))
+
+        return Starlette(routes=routes)
