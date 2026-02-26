@@ -5,15 +5,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
-    import asyncio
     from pathlib import Path
 
 
 class Plugin(Protocol):
-    """Plugin interface for build and watch hooks."""
+    """Plugin interface for one-pass build hooks."""
 
-    async def build(self, *, pages: Path, output: Path) -> None:
-        """Build plugin outputs into the generated assets directory."""
+    timeout: float
 
-    async def watch(self, *, pages: Path, output: Path, stop_event: asyncio.Event) -> None:
-        """Watch for source changes and update generated assets until stopped."""
+    async def __call__(self, *, pages: Path, output: Path) -> None:
+        """Run one non-blocking plugin pass."""

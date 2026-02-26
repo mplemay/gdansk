@@ -5,11 +5,13 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from os import environ, name
-from pathlib import Path
 from subprocess import PIPE
-from tempfile import TemporaryDirectory
+from typing import TYPE_CHECKING, cast
 
-from anyio import Path as APath
+from anyio import Path as APath, TemporaryDirectory
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class PostCSSError(RuntimeError):
@@ -18,70 +20,34 @@ class PostCSSError(RuntimeError):
 
 @dataclass(slots=True, kw_only=True)
 class PostCSS:
-    """Builds and watches CSS files using postcss-cli."""
+    """Builds CSS files using postcss-cli."""
 
-    poll_interval_seconds: float = 0.1
+    timeout: float = 0.1
 
-    async def build(self, *, pages: Path, output: Path) -> None:
-        """Compile all discovered CSS files once."""
-        css_files = await self._collect_css_files(output=output)
-        if not css_files:
+    async def __call__(self, *, pages: Path, output: Path) -> None:
+        """Compile discovered CSS files in a single pass."""
+        if not (css := await self._collect_css_files(output=APath(output))):
             return
-        cli_path = await self._resolve_cli(pages=pages)
-        for css_path in css_files:
-            await self._process_css_file(css_path=css_path, cli_path=cli_path, pages=pages)
 
-    async def watch(self, *, pages: Path, output: Path, stop_event: asyncio.Event) -> None:
-        """Watch CSS files and recompile when they change."""
-        cli_path = await self._resolve_cli(pages=pages)
-        known_mtimes: dict[Path, int] = {}
+        cli = await self._resolve_cli(pages=pages)
 
-        while not stop_event.is_set():
-            for css_path in await self._collect_css_files(output=output):
-                css_apath = APath(css_path)
-                try:
-                    current_mtime = (await css_apath.stat()).st_mtime_ns
-                except FileNotFoundError:
-                    known_mtimes.pop(css_path, None)
-                    continue
-
-                if known_mtimes.get(css_path) == current_mtime:
-                    continue
-
-                try:
-                    await self._process_css_file(css_path=css_path, cli_path=cli_path, pages=pages)
-                except FileNotFoundError:
-                    known_mtimes.pop(css_path, None)
-                    continue
-
-                try:
-                    known_mtimes[css_path] = (await css_apath.stat()).st_mtime_ns
-                except FileNotFoundError:
-                    known_mtimes.pop(css_path, None)
-
-            known_mtimes = {
-                tracked_path: tracked_mtime
-                for tracked_path, tracked_mtime in known_mtimes.items()
-                if await APath(tracked_path).exists()
-            }
-
+        for css_path in css:
             try:
-                await asyncio.wait_for(stop_event.wait(), timeout=self.poll_interval_seconds)
-            except TimeoutError:
+                await self._process_css_file(css_path=css_path, cli_path=cli, pages=pages)
+            except FileNotFoundError:
                 continue
 
-    async def _process_css_file(self, *, css_path: Path, cli_path: Path, pages: Path) -> None:
-        css_apath = APath(css_path)
-        if not await css_apath.exists():
+    async def _process_css_file(self, *, css_path: APath, cli_path: Path, pages: Path) -> None:
+        if not await css_path.exists():
             raise FileNotFoundError(css_path)
 
-        with TemporaryDirectory() as tmp_dir_name:
-            output_path = Path(tmp_dir_name) / "output.css"
+        async with TemporaryDirectory() as tmp_dir_name:
+            output = APath(tmp_dir_name) / "output.css"
             process = await asyncio.create_subprocess_exec(
                 str(cli_path),
                 str(css_path),
                 "-o",
-                str(output_path),
+                str(output),
                 stdout=PIPE,
                 stderr=PIPE,
                 cwd=pages,
@@ -97,22 +63,20 @@ class PostCSS:
                 msg = f"postcss failed for {css_path}: {error_detail}"
                 raise PostCSSError(msg)
 
-            output_apath = APath(output_path)
-            if not await output_apath.exists():
+            if not await output.exists():
                 msg = f"postcss did not produce output for {css_path}"
                 raise PostCSSError(msg)
 
-            compiled_css = await output_apath.read_text(encoding="utf-8")
-            await css_apath.write_text(compiled_css, encoding="utf-8")
+            compiled = await output.read_text(encoding="utf-8")
+            await css_path.write_text(compiled, encoding="utf-8")
 
-    async def _collect_css_files(self, *, output: Path) -> list[Path]:
-        output_apath = APath(output)
-        if not await output_apath.exists():
+    async def _collect_css_files(self, *, output: APath) -> list[APath]:
+        if not await output.exists():
             return []
 
-        css_files = [Path(str(path)) async for path in output_apath.rglob("*.css") if await path.is_file()]
+        css_files = [APath(str(path)) async for path in output.rglob("*.css") if await path.is_file()]
 
-        return sorted(css_files)
+        return cast("list[APath]", sorted(css_files, key=str))
 
     async def _resolve_cli(self, *, pages: Path) -> Path:
         bin_dir = pages / "node_modules" / ".bin"

@@ -2,14 +2,18 @@ from __future__ import annotations
 
 import asyncio
 import threading
+import time
 from contextlib import contextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
-from anyio import Path as APath
 
 from gdansk.core import Amber
 from gdansk.experimental.postcss import PostCSS, PostCSSError
+
+if TYPE_CHECKING:
+    from anyio import Path as APath
 
 
 @contextmanager
@@ -46,12 +50,11 @@ def test_postcss_plugin_transforms_bundled_css(mock_mcp, pages_dir, tmp_path, mo
 
     _create_postcss_cli(pages_dir)
 
-    async def _transform_css(self, *, css_path: Path, cli_path: Path, pages: Path) -> None:
+    async def _transform_css(self, *, css_path: APath, cli_path: Path, pages: Path) -> None:
         _ = self
         assert cli_path == pages / "node_modules" / ".bin" / "postcss"
-        css_apath = APath(css_path)
-        original_css = await css_apath.read_text(encoding="utf-8")
-        await css_apath.write_text(f"{original_css}\n/* transformed */\n", encoding="utf-8")
+        original_css = await css_path.read_text(encoding="utf-8")
+        await css_path.write_text(f"{original_css}\n/* transformed */\n", encoding="utf-8")
 
     monkeypatch.setattr(PostCSS, "_process_css_file", _transform_css)
 
@@ -73,7 +76,7 @@ def test_postcss_plugin_failure_raises(mock_mcp, pages_dir, tmp_path, monkeypatc
 
     _create_postcss_cli(pages_dir)
 
-    async def _raise_postcss_error(self, *, css_path: Path, cli_path: Path, pages: Path) -> None:
+    async def _raise_postcss_error(self, *, css_path: APath, cli_path: Path, pages: Path) -> None:
         _ = (self, cli_path, pages)
         msg = f"postcss failed for {css_path}"
         raise PostCSSError(msg)
@@ -85,31 +88,28 @@ def test_postcss_plugin_failure_raises(mock_mcp, pages_dir, tmp_path, monkeypatc
 
 
 @pytest.mark.integration
-def test_postcss_watch_starts_and_stops_in_dev(mock_mcp, pages_dir, tmp_path, monkeypatch):
+def test_postcss_poll_runs_in_dev(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     started = threading.Event()
-    stopped = threading.Event()
-    cancelled = threading.Event()
-    plugin = PostCSS()
+    calls = 0
+    plugin = PostCSS(timeout=0.01)
     amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=[plugin])
 
     @amber.tool(Path("with_css/page.tsx"))
     def my_tool():
         return "result"
 
-    async def _watch(self, *, pages: Path, output: Path, stop_event: asyncio.Event) -> None:
+    async def _call(self, *, pages: Path, output: Path) -> None:
         _ = (self, pages, output)
+        nonlocal calls
+        calls += 1
         started.set()
-        try:
-            await stop_event.wait()
-            stopped.set()
-        except asyncio.CancelledError:
-            cancelled.set()
-            raise
 
-    monkeypatch.setattr(PostCSS, "watch", _watch)
+    monkeypatch.setattr(PostCSS, "__call__", _call)
 
     with _lifespan(amber(dev=True)):
         assert started.wait(timeout=5)
-
-    assert stopped.wait(timeout=5) or cancelled.wait(timeout=5)
+        deadline = time.monotonic() + 5
+        while calls < 2 and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert calls >= 2

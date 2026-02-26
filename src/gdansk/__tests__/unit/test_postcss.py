@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 from typing import cast
 
@@ -10,29 +9,19 @@ from anyio import Path as APath
 from gdansk.experimental.postcss import PostCSS, PostCSSError
 
 
-async def _wait_until(predicate, *, timeout_seconds: float = 2.0) -> None:
-    loop = asyncio.get_running_loop()
-    deadline = loop.time() + timeout_seconds
-    while loop.time() < deadline:
-        if predicate():
-            return
-        await asyncio.sleep(0.01)
-    pytest.fail("Timed out waiting for condition")
-
-
 @pytest.mark.asyncio
-async def test_build_skips_when_no_css_files(tmp_path):
+async def test_call_skips_when_no_css_files(tmp_path):
     plugin = PostCSS()
     pages = tmp_path / "pages"
     output = tmp_path / "output"
     pages.mkdir(parents=True, exist_ok=True)
     output.mkdir(parents=True, exist_ok=True)
 
-    await plugin.build(pages=pages, output=output)
+    await plugin(pages=pages, output=output)
 
 
 @pytest.mark.asyncio
-async def test_build_raises_when_cli_missing(tmp_path):
+async def test_call_raises_when_cli_missing(tmp_path):
     plugin = PostCSS()
     pages = tmp_path / "pages"
     output = tmp_path / "output"
@@ -42,11 +31,11 @@ async def test_build_raises_when_cli_missing(tmp_path):
     pages.mkdir(parents=True, exist_ok=True)
 
     with pytest.raises(OSError, match="postcss-cli was not found"):
-        await plugin.build(pages=pages, output=output)
+        await plugin(pages=pages, output=output)
 
 
 @pytest.mark.asyncio
-async def test_build_rewrites_css_on_success(tmp_path, monkeypatch):
+async def test_call_rewrites_css_on_success(tmp_path, monkeypatch):
     plugin = PostCSS()
     pages = tmp_path / "pages"
     output = tmp_path / "output"
@@ -76,13 +65,13 @@ async def test_build_rewrites_css_on_success(tmp_path, monkeypatch):
 
     monkeypatch.setattr("gdansk.experimental.postcss.asyncio.create_subprocess_exec", _fake_exec)
 
-    await plugin.build(pages=pages, output=output)
+    await plugin(pages=pages, output=output)
 
     assert css_path.read_text(encoding="utf-8") == "body { color: blue; }\n"
 
 
 @pytest.mark.asyncio
-async def test_build_raises_on_subprocess_error(tmp_path, monkeypatch):
+async def test_call_raises_on_subprocess_error(tmp_path, monkeypatch):
     plugin = PostCSS()
     pages = tmp_path / "pages"
     output = tmp_path / "output"
@@ -105,12 +94,12 @@ async def test_build_raises_on_subprocess_error(tmp_path, monkeypatch):
     monkeypatch.setattr("gdansk.experimental.postcss.asyncio.create_subprocess_exec", _fake_exec)
 
     with pytest.raises(PostCSSError, match="boom"):
-        await plugin.build(pages=pages, output=output)
+        await plugin(pages=pages, output=output)
 
 
 @pytest.mark.asyncio
-async def test_watch_processes_changed_css_and_skips_unchanged(tmp_path, monkeypatch):
-    plugin = PostCSS(poll_interval_seconds=0.01)
+async def test_call_processes_css_on_each_pass(tmp_path, monkeypatch):
+    plugin = PostCSS(timeout=0.01)
     pages = tmp_path / "pages"
     output = tmp_path / "output"
     css_path = output / "apps" / "page.css"
@@ -124,32 +113,29 @@ async def test_watch_processes_changed_css_and_skips_unchanged(tmp_path, monkeyp
 
     monkeypatch.setattr(PostCSS, "_resolve_cli", _resolve_cli)
 
-    calls: list[Path] = []
+    calls: list[APath] = []
 
-    async def _fake_process(self, *, css_path: Path, cli_path: Path, pages: Path) -> None:
+    async def _fake_process(self, *, css_path: APath, cli_path: Path, pages: Path) -> None:
         _ = self
         assert cli_path == pages / "postcss"
         calls.append(css_path)
 
     monkeypatch.setattr(PostCSS, "_process_css_file", _fake_process)
 
-    stop_event = asyncio.Event()
-    task = asyncio.create_task(plugin.watch(pages=pages, output=output, stop_event=stop_event))
-    await _wait_until(lambda: len(calls) >= 1)
-    initial_calls = len(calls)
-    await asyncio.sleep(0.05)
-    assert len(calls) == initial_calls
+    await plugin(pages=pages, output=output)
+    assert len(calls) == 1
+
+    await plugin(pages=pages, output=output)
+    assert len(calls) == 2
 
     css_path.write_text("body { color: blue; }\n", encoding="utf-8")
-    await _wait_until(lambda: len(calls) == initial_calls + 1)
-
-    stop_event.set()
-    await task
+    await plugin(pages=pages, output=output)
+    assert len(calls) == 3
 
 
 @pytest.mark.asyncio
-async def test_watch_handles_file_removed_between_scan_and_process(tmp_path, monkeypatch):
-    plugin = PostCSS(poll_interval_seconds=0.01)
+async def test_call_handles_file_removed_between_scan_and_process(tmp_path, monkeypatch):
+    plugin = PostCSS(timeout=0.01)
     pages = tmp_path / "pages"
     output = tmp_path / "output"
     css_path = output / "apps" / "page.css"
@@ -163,16 +149,12 @@ async def test_watch_handles_file_removed_between_scan_and_process(tmp_path, mon
 
     monkeypatch.setattr(PostCSS, "_resolve_cli", _resolve_cli)
 
-    async def _disappearing_process(self, *, css_path: Path, cli_path: Path, pages: Path) -> None:
+    async def _disappearing_process(self, *, css_path: APath, cli_path: Path, pages: Path) -> None:
         _ = (self, cli_path, pages)
-        await APath(css_path).unlink(missing_ok=True)
+        await css_path.unlink(missing_ok=True)
         raise FileNotFoundError(css_path)
 
     monkeypatch.setattr(PostCSS, "_process_css_file", _disappearing_process)
 
-    stop_event = asyncio.Event()
-    task = asyncio.create_task(plugin.watch(pages=pages, output=output, stop_event=stop_event))
-    await asyncio.sleep(0.05)
-    assert not task.done()
-    stop_event.set()
-    await task
+    await plugin(pages=pages, output=output)
+    await plugin(pages=pages, output=output)

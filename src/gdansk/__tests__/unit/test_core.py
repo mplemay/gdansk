@@ -100,13 +100,12 @@ def test_no_plugins_called_when_no_paths_registered(mock_mcp, pages_dir):
     called = False
 
     class _TestPlugin:
-        async def build(self, *, pages: Path, output: Path) -> None:
+        timeout = 0.1
+
+        async def __call__(self, *, pages: Path, output: Path) -> None:
             _ = (pages, output)
             nonlocal called
             called = True
-
-        async def watch(self, *, pages: Path, output: Path, stop_event: asyncio.Event) -> None:
-            _ = (pages, output, stop_event)
 
     amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=[_TestPlugin()])
     with patch("gdansk.core.bundle") as mock_bundle:
@@ -135,12 +134,11 @@ def test_plugins_run_after_bundle_in_prod(mock_mcp, pages_dir):
     calls: list[str] = []
 
     class _TestPlugin:
-        async def build(self, *, pages: Path, output: Path) -> None:
+        timeout = 0.1
+
+        async def __call__(self, *, pages: Path, output: Path) -> None:
             _ = (pages, output)
             calls.append("plugin")
-
-        async def watch(self, *, pages: Path, output: Path, stop_event: asyncio.Event) -> None:
-            _ = (pages, output, stop_event)
 
     amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=[_TestPlugin()])
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
@@ -167,8 +165,6 @@ def test_dev_true_starts_background_runner(amber):
         app = amber(dev=True)
         with _lifespan(app):
             assert started.wait(timeout=5)
-            thread_count = len([t for t in threading.enumerate() if t.daemon and t.is_alive()])
-            assert thread_count >= 1
 
 
 @pytest.mark.usefixtures("pages_dir")
@@ -194,13 +190,12 @@ def test_passes_dev_flag_and_derived_minify(amber):
 @pytest.mark.usefixtures("pages_dir")
 def test_plugin_errors_propagate_in_prod(mock_mcp, pages_dir):
     class _FailingPlugin:
-        async def build(self, *, pages: Path, output: Path) -> None:
+        timeout = 0.1
+
+        async def __call__(self, *, pages: Path, output: Path) -> None:
             _ = (pages, output)
             msg = "plugin boom"
             raise RuntimeError(msg)
-
-        async def watch(self, *, pages: Path, output: Path, stop_event: asyncio.Event) -> None:
-            _ = (pages, output, stop_event)
 
     amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=[_FailingPlugin()])
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
@@ -306,22 +301,21 @@ def test_run_build_pipeline_invokes_server_bundle_only_for_ssr_paths(mock_mcp, p
 
 
 @pytest.mark.usefixtures("pages_dir")
-def test_plugins_watch_started_and_cancelled_on_shutdown(mock_mcp, pages_dir):
-    watcher_started = threading.Event()
-    watcher_cancelled = threading.Event()
+def test_plugins_poll_started_and_cancelled_on_shutdown(mock_mcp, pages_dir):
+    poll_started = threading.Event()
+    poll_cancelled = threading.Event()
     bundle_cancelled = threading.Event()
 
     class _DevPlugin:
-        async def build(self, *, pages: Path, output: Path) -> None:
-            _ = (pages, output)
+        timeout = 0.01
 
-        async def watch(self, *, pages: Path, output: Path, stop_event: asyncio.Event) -> None:
+        async def __call__(self, *, pages: Path, output: Path) -> None:
             _ = (pages, output)
-            watcher_started.set()
+            poll_started.set()
             try:
-                await stop_event.wait()
+                await asyncio.sleep(999)
             except asyncio.CancelledError:
-                watcher_cancelled.set()
+                poll_cancelled.set()
                 raise
 
     amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=[_DevPlugin()])
@@ -335,24 +329,23 @@ def test_plugins_watch_started_and_cancelled_on_shutdown(mock_mcp, pages_dir):
             raise
 
     with patch("gdansk.core.bundle", _slow_bundle), _lifespan(amber(dev=True)):
-        assert watcher_started.wait(timeout=5)
+        assert poll_started.wait(timeout=5)
 
     assert bundle_cancelled.wait(timeout=5)
-    assert watcher_cancelled.wait(timeout=5)
+    assert poll_cancelled.wait(timeout=5)
 
 
 @pytest.mark.usefixtures("pages_dir")
-def test_dev_watch_error_is_logged(mock_mcp, pages_dir):
-    class _FailingWatchPlugin:
-        async def build(self, *, pages: Path, output: Path) -> None:
-            _ = (pages, output)
+def test_dev_plugin_error_is_logged_and_polling_continues(mock_mcp, pages_dir):
+    class _FailingPlugin:
+        timeout = 0.01
 
-        async def watch(self, *, pages: Path, output: Path, stop_event: asyncio.Event) -> None:
-            _ = (pages, output, stop_event)
-            msg = "watch failed"
+        async def __call__(self, *, pages: Path, output: Path) -> None:
+            _ = (pages, output)
+            msg = "poll failed"
             raise RuntimeError(msg)
 
-    amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=[_FailingWatchPlugin()])
+    amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=[_FailingPlugin()])
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
 
     async def _slow_bundle(**_kwargs: object):
@@ -364,38 +357,10 @@ def test_dev_watch_error_is_logged(mock_mcp, pages_dir):
         _lifespan(amber(dev=True)),
     ):
         deadline = time.monotonic() + 5
-        while mock_log.call_count == 0 and time.monotonic() < deadline:
+        while mock_log.call_count < 2 and time.monotonic() < deadline:
             time.sleep(0.05)
 
-    assert mock_log.call_count >= 1
-
-
-@pytest.mark.usefixtures("pages_dir")
-def test_closes_loop_on_shutdown(amber):
-    amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
-    loops: list[asyncio.AbstractEventLoop] = []
-    original_new_event_loop = asyncio.new_event_loop
-
-    def _capture_loop():
-        loop = original_new_event_loop()
-        loops.append(loop)
-        return loop
-
-    async def _fake_bundle(**_kwargs: object):
-        await asyncio.sleep(999)
-
-    with (
-        patch("gdansk.core.asyncio.new_event_loop", _capture_loop),
-        patch(
-            "gdansk.core.bundle",
-            _fake_bundle,
-        ),
-        _lifespan(amber(dev=True)),
-    ):
-        pass
-
-    assert len(loops) >= 1
-    assert all(loop.is_closed() for loop in loops)
+    assert mock_log.call_count >= 2
 
 
 @pytest.mark.usefixtures("pages_dir")

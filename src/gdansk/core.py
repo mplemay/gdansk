@@ -3,22 +3,23 @@
 from __future__ import annotations
 
 import asyncio
-import concurrent.futures
 import logging
-import threading
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
-from anyio import Path as APath
+from anyio import Path as APath, create_task_group
+from anyio.from_thread import start_blocking_portal
+from asyncer import asyncify
 
 from gdansk._core import Page, bundle, run
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import ENV
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable, Coroutine, Sequence
+    from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
     from os import PathLike
 
     from mcp.server.fastmcp import FastMCP
@@ -29,55 +30,6 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
-_T = TypeVar("_T")
-
-
-class _AsyncThreadRunner:
-    def __init__(self) -> None:
-        self._loop: asyncio.AbstractEventLoop | None = None
-        self._thread: threading.Thread | None = None
-        self._started = threading.Event()
-
-    def start(self) -> None:
-        if self._thread is not None and self._thread.is_alive():
-            return
-        self._started.clear()
-        self._thread = threading.Thread(target=self._run, daemon=True)
-        self._thread.start()
-        self._started.wait()
-
-    def _run(self) -> None:
-        loop = asyncio.new_event_loop()
-        self._loop = loop
-        asyncio.set_event_loop(loop)
-        self._started.set()
-        try:
-            loop.run_forever()
-        finally:
-            pending = [task for task in asyncio.all_tasks(loop) if not task.done()]
-            for task in pending:
-                task.cancel()
-            if pending:
-                with suppress(asyncio.CancelledError):
-                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-            loop.close()
-
-    def run(self, coro: Coroutine[Any, Any, _T]) -> _T:
-        self.start()
-        loop = self._loop
-        if loop is None:
-            msg = "Runner event loop was not started"
-            raise RuntimeError(msg)
-        future = asyncio.run_coroutine_threadsafe(coro, loop)
-        return future.result()
-
-    def stop(self) -> None:
-        if self._loop is None or self._thread is None:
-            return
-        self._loop.call_soon_threadsafe(self._loop.stop)
-        self._thread.join()
-        self._loop = None
-        self._thread = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,28 +56,6 @@ class Amber:
 
         object.__setattr__(self, "output", self.views / ".gdansk")
 
-    def _schedule_watcher_tasks(
-        self,
-        *,
-        dev: bool,
-    ) -> tuple[asyncio.Event | None, list[asyncio.Task[None]]]:
-        if not dev or not self.plugins:
-            return None, []
-
-        stop_event = asyncio.Event()
-        watcher_tasks: list[asyncio.Task[None]] = [
-            asyncio.create_task(
-                plugin.watch(
-                    pages=self.views,
-                    output=self.output,
-                    stop_event=stop_event,
-                ),
-            )
-            for plugin in self.plugins
-        ]
-
-        return stop_event, watcher_tasks
-
     async def _run_build_pipeline(self, *, dev: bool) -> None:
         await bundle(
             pages=sorted(self._apps, key=lambda page: page.path.as_posix()),
@@ -134,36 +64,78 @@ class Amber:
             output=self.output,
             cwd=self.views,
         )
+
         if dev:
             return
+
         for plugin in self.plugins:
-            await plugin.build(pages=self.views, output=self.output)
+            await asyncio.wait_for(
+                plugin(pages=self.views, output=self.output),
+                timeout=plugin.timeout,
+            )
 
     @staticmethod
-    def _log_background_task_error(task: asyncio.Task[None]) -> None:
-        if task.cancelled():
-            return
-        exc = task.exception()
-        if exc is None:
-            return
-        logger.exception("Amber background task failed", exc_info=exc)
+    async def _run_background(task: Callable[[], Awaitable[None]]) -> None:
+        try:
+            await task()
+        except asyncio.CancelledError as exc:
+            raise exc from exc
+        except Exception as exc:
+            logger.exception("Amber background task failed", exc_info=exc)
 
     @staticmethod
-    async def _shutdown_dev_tasks(
-        *,
-        stop_event: asyncio.Event | None,
-        bundle_task: asyncio.Task[None] | None,
-        watcher_tasks: list[asyncio.Task[None]],
+    async def _poll_plugin(
+        task: Callable[[], Awaitable[None]],
+        stop_event: asyncio.Event,
+        timeout: float,
     ) -> None:
-        if stop_event is not None:
-            stop_event.set()
-        tasks = [candidate for candidate in [bundle_task, *watcher_tasks] if candidate is not None]
-        for task in tasks:
-            if not task.done():
-                task.cancel()
-        if tasks:
-            with suppress(asyncio.CancelledError):
-                await asyncio.gather(*tasks, return_exceptions=True)
+        while not stop_event.is_set():
+            await Amber._run_background(task)
+
+            if timeout <= 0:
+                await asyncio.sleep(0)
+                continue
+
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=timeout)
+            except TimeoutError:
+                continue
+
+    async def _run_dev_tasks(self, *, stop_event: asyncio.Event) -> None:
+        async with create_task_group() as task_group:
+            task_group.start_soon(
+                Amber._run_background,
+                partial(self._run_build_pipeline, dev=True),
+            )
+            for plugin in self.plugins:
+                task_group.start_soon(
+                    Amber._poll_plugin,
+                    partial(plugin, pages=self.views, output=self.output),
+                    stop_event,
+                    plugin.timeout,
+                )
+            await stop_event.wait()
+            task_group.cancel_scope.cancel()
+
+    @asynccontextmanager
+    async def pipeline(self, *, dev: bool) -> AsyncIterator[None]:
+        with start_blocking_portal(backend="asyncio") as portal:
+            portal_call = asyncify(portal.call)
+            stop_event: asyncio.Event | None = None
+            dev_future = None
+
+            if dev:
+                stop_event = await portal_call(asyncio.Event)
+                dev_future = portal.start_task_soon(partial(self._run_dev_tasks, stop_event=stop_event))
+            else:
+                await portal_call(partial(self._run_build_pipeline, dev=False))
+
+            try:
+                yield
+            finally:
+                if dev and stop_event is not None and dev_future is not None:
+                    await portal_call(stop_event.set)
+                    await asyncify(dev_future.result)()
 
     @staticmethod
     def _normalize_page_input(page: str | PathLike[str]) -> Path:
@@ -219,45 +191,15 @@ class Amber:
         if not self._apps:
             return app
 
-        runner = _AsyncThreadRunner()
-        stop_event: asyncio.Event | None = None
-        watcher_tasks: list[asyncio.Task[None]] = []
-        bundle_task: asyncio.Task[None] | None = None
-        original_lifespan = app.router.lifespan_context
-
-        async def _start_dev() -> None:
-            nonlocal stop_event
-            nonlocal watcher_tasks
-            nonlocal bundle_task
-            stop_event, watcher_tasks = self._schedule_watcher_tasks(dev=True)
-            bundle_task = asyncio.create_task(self._run_build_pipeline(dev=True))
-            bundle_task.add_done_callback(self._log_background_task_error)
-            for watcher_task in watcher_tasks:
-                watcher_task.add_done_callback(self._log_background_task_error)
+        original = app.router.lifespan_context
 
         @asynccontextmanager
-        async def _lifespan(starlette_app: Starlette) -> AsyncIterator[None]:
-            if dev:
-                runner.run(_start_dev())
-            else:
-                runner.run(self._run_build_pipeline(dev=False))
+        async def new(starlette_app: Starlette) -> AsyncIterator[None]:
+            async with self.pipeline(dev=dev), original(starlette_app):
+                yield
 
-            async with original_lifespan(starlette_app):
-                try:
-                    yield
-                finally:
-                    if dev:
-                        with suppress(concurrent.futures.CancelledError):
-                            runner.run(
-                                Amber._shutdown_dev_tasks(
-                                    stop_event=stop_event,
-                                    bundle_task=bundle_task,
-                                    watcher_tasks=watcher_tasks,
-                                ),
-                            )
-                    runner.stop()
+        app.router.lifespan_context = new
 
-        app.router.lifespan_context = _lifespan
         return app
 
     def tool(  # noqa: C901, PLR0913, PLR0915
