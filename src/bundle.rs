@@ -600,24 +600,17 @@ fn find_client_entry_module_id(
     entry_module_ids: &[String],
 ) -> Option<String> {
     let entry_import = entry_import_for_client(&page.import, page.app);
-    if let Some(module_id) = entry_module_ids
-        .iter()
-        .find(|module_id| module_id == &&entry_import)
-    {
-        return Some(module_id.clone());
+    for module_id in entry_module_ids {
+        let normalized_module_id = module_id.replace('\\', "/");
+        if normalized_module_id == entry_import
+            || normalized_module_id.ends_with(&entry_import)
+            || normalized_module_id.ends_with(&page.import)
+        {
+            return Some(module_id.clone());
+        }
     }
 
-    if let Some(module_id) = entry_module_ids
-        .iter()
-        .find(|module_id| module_id.ends_with(&entry_import))
-    {
-        return Some(module_id.clone());
-    }
-
-    entry_module_ids
-        .iter()
-        .find(|module_id| module_id.ends_with(&page.import))
-        .cloned()
+    None
 }
 
 fn build_css_outputs(
@@ -1818,6 +1811,46 @@ mod tests {
             Some(&"apps/simple/page.tsx?gdansk-app-entry".to_string())
         );
         assert_eq!(fields.get("main"), Some(&"main.tsx".to_string()));
+    }
+
+    #[test]
+    fn client_entry_lookup_matches_windows_nested_non_app_paths() {
+        let project = TempProject::new();
+        project.create_file("home/page.tsx");
+
+        let normalized = normalize_pages(
+            vec![page("home/page.tsx", false, false)],
+            &project.root,
+            Path::new(".gdansk"),
+        )
+        .expect("expected normalized pages");
+
+        let module_id = r"D:\work\proj\home\page.tsx".to_string();
+
+        assert_eq!(
+            find_client_entry_module_id(&normalized[0], std::slice::from_ref(&module_id)),
+            Some(module_id)
+        );
+    }
+
+    #[test]
+    fn client_entry_lookup_matches_windows_app_entry_paths() {
+        let project = TempProject::new();
+        project.create_file("apps/simple/page.tsx");
+
+        let normalized = normalize_pages(
+            vec![page("apps/simple/page.tsx", true, false)],
+            &project.root,
+            Path::new(".gdansk"),
+        )
+        .expect("expected normalized pages");
+
+        let module_id = r"D:\work\proj\apps\simple\page.tsx?gdansk-app-entry".to_string();
+
+        assert_eq!(
+            find_client_entry_module_id(&normalized[0], std::slice::from_ref(&module_id)),
+            Some(module_id)
+        );
     }
 
     #[test]
