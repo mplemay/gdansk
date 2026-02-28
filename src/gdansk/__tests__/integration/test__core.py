@@ -307,6 +307,59 @@ async def test_bundle_removes_stale_css_output_when_import_is_removed(tmp_path, 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+async def test_bundle_minifies_css_output_by_default(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "page.css").write_text("body { color: red; }\n", encoding="utf-8")
+    (tmp_path / "page.tsx").write_text(
+        'import "./page.css";\nexport const page = 1;\n',
+        encoding="utf-8",
+    )
+
+    await bundle([Page(path=Path("page.tsx"))])
+
+    css_output = tmp_path / ".gdansk" / "page.css"
+    assert css_output.read_text(encoding="utf-8") == "body{color:red}\n"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_bundle_preserves_readable_css_when_minify_is_false(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "page.css").write_text("body { color: red; }\n", encoding="utf-8")
+    (tmp_path / "page.tsx").write_text(
+        'import "./page.css";\nexport const page = 1;\n',
+        encoding="utf-8",
+    )
+
+    await bundle([Page(path=Path("page.tsx"))], minify=False)
+
+    css_output = (tmp_path / ".gdansk" / "page.css").read_text(encoding="utf-8")
+    assert "body {" in css_output
+    assert "color: red;" in css_output
+    assert css_output.count("\n") >= 3
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_bundle_preserves_nested_conditional_css_imports(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "nested.css").write_text(".inner { color: blue; }\n", encoding="utf-8")
+    (tmp_path / "page.css").write_text('@import "./nested.css" screen;\n', encoding="utf-8")
+    (tmp_path / "page.tsx").write_text(
+        'import "./page.css";\nexport const page = 1;\n',
+        encoding="utf-8",
+    )
+
+    await bundle([Page(path=Path("page.tsx"))], minify=False)
+
+    css_output = (tmp_path / ".gdansk" / "page.css").read_text(encoding="utf-8")
+    assert "@media screen" in css_output
+    assert ".inner" in css_output
+    assert "color:" in css_output
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 async def test_bundle_accepts_minify_false(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "main.tsx").write_text("export const value = 1;\n", encoding="utf-8")

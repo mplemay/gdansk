@@ -14,6 +14,15 @@ use std::fs;
 #[cfg(not(test))]
 use deno_core::serde_json::Value;
 #[cfg(not(test))]
+use lightningcss::{
+    bundler::{
+        BundleErrorKind as CssBundleErrorKind, Bundler as CssBundler,
+        FileProvider as CssFileProvider, SourceProvider,
+    },
+    printer::PrinterOptions,
+    stylesheet::{MinifyOptions, ParserOptions},
+};
+#[cfg(not(test))]
 use pyo3::{
     basic::CompareOp,
     exceptions::{PyRuntimeError, PyValueError},
@@ -70,6 +79,70 @@ struct NormalizedPage {
 enum BundleError {
     Validation(String),
     Runtime(String),
+}
+
+#[cfg(not(test))]
+#[derive(Debug)]
+enum CssProviderError {
+    Io(std::io::Error),
+    Bundle(BundleError),
+}
+
+#[cfg(not(test))]
+impl fmt::Display for CssProviderError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Io(err) => err.fmt(f),
+            Self::Bundle(err) => err.fmt(f),
+        }
+    }
+}
+
+#[cfg(not(test))]
+impl std::error::Error for CssProviderError {}
+
+#[cfg(not(test))]
+impl From<std::io::Error> for CssProviderError {
+    fn from(err: std::io::Error) -> Self {
+        Self::Io(err)
+    }
+}
+
+#[cfg(not(test))]
+impl From<BundleError> for CssProviderError {
+    fn from(err: BundleError) -> Self {
+        Self::Bundle(err)
+    }
+}
+
+#[cfg(not(test))]
+struct CssSourceProvider {
+    cwd: PathBuf,
+    inner: CssFileProvider,
+}
+
+#[cfg(not(test))]
+impl CssSourceProvider {
+    fn new(cwd: &Path) -> Self {
+        Self {
+            cwd: cwd.to_path_buf(),
+            inner: CssFileProvider::new(),
+        }
+    }
+}
+
+#[cfg(not(test))]
+impl SourceProvider for CssSourceProvider {
+    type Error = CssProviderError;
+
+    fn read<'a>(&'a self, file: &Path) -> Result<&'a str, Self::Error> {
+        self.inner.read(file).map_err(CssProviderError::from)
+    }
+
+    fn resolve(&self, specifier: &str, originating_file: &Path) -> Result<PathBuf, Self::Error> {
+        let importer_dir = originating_file.parent().unwrap_or(self.cwd.as_path());
+        resolve_css_import_path(specifier, importer_dir, &self.cwd).map_err(CssProviderError::from)
+    }
 }
 
 const APP_ENTRYPOINT_QUERY: &str = "?gdansk-app-entry";
@@ -249,16 +322,6 @@ fn collect_direct_css_imports(source: &str) -> Vec<String> {
 }
 
 #[cfg(not(test))]
-fn parse_css_import_specifier(line: &str) -> Option<&str> {
-    let trimmed = line.trim();
-    let remainder = trimmed.strip_prefix("@import")?.trim_start();
-    if remainder.starts_with("url(") {
-        return None;
-    }
-    extract_quoted_string(remainder)
-}
-
-#[cfg(not(test))]
 fn canonicalize_existing_file(path: &Path, label: &str) -> Result<PathBuf, BundleError> {
     if !path.exists() {
         return Err(BundleError::validation(format!(
@@ -360,66 +423,57 @@ fn resolve_css_import_path(
 }
 
 #[cfg(not(test))]
-fn bundle_css_file(
-    file_path: &Path,
+fn render_css_asset(
+    specifier: &str,
+    entry_dir: &Path,
     cwd: &Path,
-    stack: &mut Vec<PathBuf>,
+    minify: bool,
 ) -> Result<String, BundleError> {
-    if stack.iter().any(|candidate| candidate == file_path) {
-        return Err(BundleError::runtime(format!(
-            "detected cyclic css import: {}",
-            file_path.display()
-        )));
-    }
-
-    stack.push(file_path.to_path_buf());
-
-    let source = fs::read_to_string(file_path).map_err(|err| {
-        BundleError::runtime(format!(
-            "failed to read css file {}: {err}",
-            file_path.display()
-        ))
+    let resolved_path = resolve_css_import_path(specifier, entry_dir, cwd)?;
+    let provider = CssSourceProvider::new(cwd);
+    let parser_options = ParserOptions {
+        filename: path_to_utf8(&resolved_path, "css path")?,
+        ..ParserOptions::default()
+    };
+    let mut bundler = CssBundler::new(&provider, None, parser_options);
+    let mut stylesheet = bundler.bundle(&resolved_path).map_err(|err| {
+        let err_message = err.to_string();
+        match err.kind {
+            CssBundleErrorKind::ResolverError(provider_err) => match provider_err {
+                CssProviderError::Bundle(bundle_err) => bundle_err,
+                CssProviderError::Io(io_err) => BundleError::runtime(format!(
+                    "failed to read css file {}: {io_err}",
+                    resolved_path.display()
+                )),
+            },
+            _ => BundleError::runtime(format!(
+                "failed to bundle css file {}: {err_message}",
+                resolved_path.display()
+            )),
+        }
     })?;
-    let importer_dir = file_path.parent().unwrap_or(cwd);
-    let mut bundled = String::new();
 
-    for line in source.lines() {
-        if let Some(specifier) = parse_css_import_specifier(line) {
-            let resolved = resolve_css_import_path(specifier, importer_dir, cwd)?;
-            let imported_css = bundle_css_file(&resolved, cwd, stack)?;
-            bundled.push_str(&imported_css);
-            if !imported_css.ends_with('\n') {
-                bundled.push('\n');
-            }
-            continue;
-        }
-
-        bundled.push_str(line);
-        bundled.push('\n');
+    if minify {
+        stylesheet.minify(MinifyOptions::default()).map_err(|err| {
+            BundleError::runtime(format!(
+                "failed to minify css file {}: {err}",
+                resolved_path.display()
+            ))
+        })?;
     }
 
-    let _ = stack.pop();
-    Ok(bundled)
-}
-
-#[cfg(not(test))]
-fn maybe_minify_css(css: String, minify: bool) -> String {
-    if !minify {
-        return css;
-    }
-
-    let mut compact = String::new();
-    for line in css.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        compact.push_str(trimmed);
-    }
-    if !compact.is_empty() {
-        compact.push('\n');
-    }
-    compact
+    stylesheet
+        .to_css(PrinterOptions {
+            minify,
+            ..PrinterOptions::default()
+        })
+        .map(|result| result.code)
+        .map_err(|err| {
+            BundleError::runtime(format!(
+                "failed to serialize css file {}: {err}",
+                resolved_path.display()
+            ))
+        })
 }
 
 #[cfg(not(test))]
@@ -466,9 +520,7 @@ fn build_css_outputs(
         let mut bundled = String::new();
 
         for specifier in css_imports {
-            let css_path = resolve_css_import_path(&specifier, entry_dir, cwd)?;
-            let mut stack = Vec::new();
-            let css = bundle_css_file(&css_path, cwd, &mut stack)?;
+            let css = render_css_asset(&specifier, entry_dir, cwd, minify)?;
             bundled.push_str(&css);
             if !css.ends_with('\n') {
                 bundled.push('\n');
@@ -483,7 +535,7 @@ fn build_css_outputs(
                 ))
             })?;
         }
-        fs::write(&output_path, maybe_minify_css(bundled, minify)).map_err(|err| {
+        fs::write(&output_path, bundled).map_err(|err| {
             BundleError::runtime(format!(
                 "failed to write css output {}: {err}",
                 output_path.display()
