@@ -19,8 +19,8 @@ pyo3-async-runtimes = { version = "0.28", features = ["tokio-runtime"] }
 
 # javascript
 deno_core = "0.385.0"
-rolldown = { git = "https://github.com/rolldown/rolldown.git", tag="v1.0.0-rc.5", features = ["experimental"] }
-rolldown_dev = { git = "https://github.com/rolldown/rolldown.git", tag="v1.0.0-rc.5" }
+rolldown = { git = "https://github.com/rolldown/rolldown.git", tag="v1.0.0-rc.6", features = ["experimental"] }
+rolldown_dev = { git = "https://github.com/rolldown/rolldown.git", tag="v1.0.0-rc.6" }
 
 [build-dependencies]
 deno_core = "0.385.0"

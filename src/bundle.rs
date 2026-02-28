@@ -2,10 +2,17 @@ use std::{
     collections::HashMap,
     ffi::OsStr,
     fmt,
-    hash::{Hash, Hasher},
     path::{Path, PathBuf},
 };
 
+#[cfg(not(test))]
+use std::hash::{Hash, Hasher};
+
+#[cfg(not(test))]
+use std::fs;
+
+#[cfg(not(test))]
+use deno_core::serde_json::Value;
 #[cfg(not(test))]
 use pyo3::{
     basic::CompareOp,
@@ -47,12 +54,15 @@ pub(crate) struct Page {
     css: PathBuf,
 }
 
+#[cfg_attr(test, allow(dead_code))]
 #[derive(Debug, Clone)]
 struct NormalizedPage {
+    absolute_path: PathBuf,
     import: String,
     app: bool,
     ssr: bool,
     client_name: String,
+    client_css_path: PathBuf,
     server_name: Option<String>,
 }
 
@@ -66,8 +76,11 @@ const APP_ENTRYPOINT_QUERY: &str = "?gdansk-app-entry";
 const SERVER_ENTRYPOINT_QUERY: &str = "?gdansk-server-entry";
 const GDANSK_RUNTIME_SPECIFIER: &str = "gdansk:runtime";
 #[cfg(not(test))]
+const GDANSK_CSS_STUB_PREFIX: &str = "gdansk:css-stub:";
+#[cfg(not(test))]
 const GDANSK_RUNTIME_MODULE_SOURCE: &str = include_str!("runtime.js");
 
+#[cfg(not(test))]
 fn derive_output_stems(path: &Path, app: bool, ssr: bool) -> (PathBuf, Option<PathBuf>) {
     if !app {
         let stem = path.with_extension("");
@@ -201,6 +214,286 @@ impl fmt::Display for BundleError {
     }
 }
 
+fn extract_quoted_string(input: &str) -> Option<&str> {
+    let first = input.chars().next()?;
+    if first != '"' && first != '\'' {
+        return None;
+    }
+
+    let remainder = &input[first.len_utf8()..];
+    let end = remainder.find(first)?;
+    Some(&remainder[..end])
+}
+
+fn parse_static_js_import_specifier(line: &str) -> Option<&str> {
+    let trimmed = line.trim_start();
+    let remainder = trimmed.strip_prefix("import")?.trim_start();
+    if remainder.is_empty() || remainder.starts_with('(') {
+        return None;
+    }
+
+    if let Some((_, tail)) = remainder.rsplit_once(" from ") {
+        return extract_quoted_string(tail.trim_start());
+    }
+
+    extract_quoted_string(remainder)
+}
+
+fn collect_direct_css_imports(source: &str) -> Vec<String> {
+    source
+        .lines()
+        .filter_map(parse_static_js_import_specifier)
+        .filter(|specifier| specifier.ends_with(".css"))
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
+#[cfg(not(test))]
+fn parse_css_import_specifier(line: &str) -> Option<&str> {
+    let trimmed = line.trim();
+    let remainder = trimmed.strip_prefix("@import")?.trim_start();
+    if remainder.starts_with("url(") {
+        return None;
+    }
+    extract_quoted_string(remainder)
+}
+
+#[cfg(not(test))]
+fn canonicalize_existing_file(path: &Path, label: &str) -> Result<PathBuf, BundleError> {
+    if !path.exists() {
+        return Err(BundleError::validation(format!(
+            "{label} does not exist: {}",
+            path.display()
+        )));
+    }
+
+    if !path.is_file() {
+        return Err(BundleError::validation(format!(
+            "{label} is not a file: {}",
+            path.display()
+        )));
+    }
+
+    let canonical = path.canonicalize().map_err(|err| {
+        BundleError::runtime(format!(
+            "failed to canonicalize {label} {}: {err}",
+            path.display()
+        ))
+    })?;
+    Ok(dunce::simplified(&canonical).to_path_buf())
+}
+
+#[cfg(not(test))]
+fn resolve_node_modules_path(specifier: &str, importer_dir: &Path, cwd: &Path) -> Option<PathBuf> {
+    let mut current = Some(importer_dir);
+    while let Some(directory) = current {
+        let candidate = directory.join("node_modules").join(specifier);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+
+        if directory == cwd {
+            break;
+        }
+
+        current = directory.parent().filter(|parent| parent.starts_with(cwd));
+    }
+
+    None
+}
+
+#[cfg(not(test))]
+fn resolve_package_style_export(
+    package_dir: &Path,
+    specifier: &str,
+) -> Result<PathBuf, BundleError> {
+    let package_json_path = package_dir.join("package.json");
+    let package_json = fs::read_to_string(&package_json_path).map_err(|err| {
+        BundleError::runtime(format!(
+            "failed to read package.json for css import \"{specifier}\": {} ({err})",
+            package_json_path.display()
+        ))
+    })?;
+    let parsed: Value = deno_core::serde_json::from_str(&package_json).map_err(|err| {
+        BundleError::runtime(format!(
+            "failed to parse package.json for css import \"{specifier}\": {} ({err})",
+            package_json_path.display()
+        ))
+    })?;
+    let style_path = parsed
+        .get("exports")
+        .and_then(|exports| exports.get("."))
+        .and_then(|entry| entry.get("style"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            BundleError::validation(format!(
+                "package \"{specifier}\" does not define exports[\".\"].style"
+            ))
+        })?;
+
+    Ok(package_dir.join(style_path))
+}
+
+#[cfg(not(test))]
+fn resolve_css_import_path(
+    specifier: &str,
+    importer_dir: &Path,
+    cwd: &Path,
+) -> Result<PathBuf, BundleError> {
+    if specifier.starts_with("./") || specifier.starts_with("../") {
+        return canonicalize_existing_file(&importer_dir.join(specifier), "css import");
+    }
+
+    if specifier.ends_with(".css") {
+        let candidate =
+            resolve_node_modules_path(specifier, importer_dir, cwd).ok_or_else(|| {
+                BundleError::validation(format!("failed to resolve css import \"{specifier}\""))
+            })?;
+        return canonicalize_existing_file(&candidate, "css import");
+    }
+
+    let package_dir = resolve_node_modules_path(specifier, importer_dir, cwd).ok_or_else(|| {
+        BundleError::validation(format!("failed to resolve css import \"{specifier}\""))
+    })?;
+    let style_path = resolve_package_style_export(&package_dir, specifier)?;
+    canonicalize_existing_file(&style_path, "css import")
+}
+
+#[cfg(not(test))]
+fn bundle_css_file(
+    file_path: &Path,
+    cwd: &Path,
+    stack: &mut Vec<PathBuf>,
+) -> Result<String, BundleError> {
+    if stack.iter().any(|candidate| candidate == file_path) {
+        return Err(BundleError::runtime(format!(
+            "detected cyclic css import: {}",
+            file_path.display()
+        )));
+    }
+
+    stack.push(file_path.to_path_buf());
+
+    let source = fs::read_to_string(file_path).map_err(|err| {
+        BundleError::runtime(format!(
+            "failed to read css file {}: {err}",
+            file_path.display()
+        ))
+    })?;
+    let importer_dir = file_path.parent().unwrap_or(cwd);
+    let mut bundled = String::new();
+
+    for line in source.lines() {
+        if let Some(specifier) = parse_css_import_specifier(line) {
+            let resolved = resolve_css_import_path(specifier, importer_dir, cwd)?;
+            let imported_css = bundle_css_file(&resolved, cwd, stack)?;
+            bundled.push_str(&imported_css);
+            if !imported_css.ends_with('\n') {
+                bundled.push('\n');
+            }
+            continue;
+        }
+
+        bundled.push_str(line);
+        bundled.push('\n');
+    }
+
+    let _ = stack.pop();
+    Ok(bundled)
+}
+
+#[cfg(not(test))]
+fn maybe_minify_css(css: String, minify: bool) -> String {
+    if !minify {
+        return css;
+    }
+
+    let mut compact = String::new();
+    for line in css.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        compact.push_str(trimmed);
+    }
+    if !compact.is_empty() {
+        compact.push('\n');
+    }
+    compact
+}
+
+#[cfg(not(test))]
+fn build_css_outputs(
+    normalized: &[NormalizedPage],
+    cwd: &Path,
+    output_dir: &Path,
+    minify: bool,
+) -> Result<(), BundleError> {
+    let output_root = if output_dir.is_absolute() {
+        output_dir.to_path_buf()
+    } else {
+        cwd.join(output_dir)
+    };
+
+    for page in normalized {
+        let entry_source = fs::read_to_string(&page.absolute_path).map_err(|err| {
+            BundleError::runtime(format!(
+                "failed to read entry source {}: {err}",
+                page.absolute_path.display()
+            ))
+        })?;
+        let css_imports = collect_direct_css_imports(&entry_source);
+        let output_path = output_root.join(&page.client_css_path);
+
+        if css_imports.is_empty() {
+            if output_path.exists() {
+                fs::remove_file(&output_path).map_err(|err| {
+                    BundleError::runtime(format!(
+                        "failed to remove stale css output {}: {err}",
+                        output_path.display()
+                    ))
+                })?;
+            }
+            continue;
+        }
+
+        let entry_dir = page.absolute_path.parent().ok_or_else(|| {
+            BundleError::runtime(format!(
+                "entry source does not have a parent directory: {}",
+                page.absolute_path.display()
+            ))
+        })?;
+        let mut bundled = String::new();
+
+        for specifier in css_imports {
+            let css_path = resolve_css_import_path(&specifier, entry_dir, cwd)?;
+            let mut stack = Vec::new();
+            let css = bundle_css_file(&css_path, cwd, &mut stack)?;
+            bundled.push_str(&css);
+            if !css.ends_with('\n') {
+                bundled.push('\n');
+            }
+        }
+
+        if let Some(parent) = output_path.parent() {
+            fs::create_dir_all(parent).map_err(|err| {
+                BundleError::runtime(format!(
+                    "failed to create css output directory {}: {err}",
+                    parent.display()
+                ))
+            })?;
+        }
+        fs::write(&output_path, maybe_minify_css(bundled, minify)).map_err(|err| {
+            BundleError::runtime(format!(
+                "failed to write css output {}: {err}",
+                output_path.display()
+            ))
+        })?;
+    }
+
+    Ok(())
+}
+
 fn entry_import_for_client(import: &str, app: bool) -> String {
     if app {
         format!("{import}{APP_ENTRYPOINT_QUERY}")
@@ -257,6 +550,59 @@ setSsrHtml(renderToString(createElement(App)));
 #[cfg(not(test))]
 struct DevEngineCloseGuard {
     engine: Option<Arc<DevEngine>>,
+}
+
+#[cfg(not(test))]
+#[derive(Debug, Default)]
+struct GdanskCssStubPlugin;
+
+#[cfg(not(test))]
+impl GdanskCssStubPlugin {
+    fn resolve_virtual_id(specifier: &str, importer: Option<&str>) -> String {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        std::hash::Hash::hash(&importer, &mut hasher);
+        std::hash::Hash::hash(&specifier, &mut hasher);
+        format!(
+            "{GDANSK_CSS_STUB_PREFIX}{:016x}",
+            std::hash::Hasher::finish(&hasher)
+        )
+    }
+}
+
+#[cfg(not(test))]
+impl Plugin for GdanskCssStubPlugin {
+    fn name(&self) -> Cow<'static, str> {
+        Cow::Borrowed("gdansk:css-stub")
+    }
+
+    async fn resolve_id(
+        &self,
+        _ctx: &PluginContext,
+        args: &HookResolveIdArgs<'_>,
+    ) -> HookResolveIdReturn {
+        if !args.specifier.ends_with(".css") {
+            return Ok(None);
+        }
+
+        Ok(Some(HookResolveIdOutput::from_id(
+            Self::resolve_virtual_id(args.specifier, args.importer),
+        )))
+    }
+
+    async fn load(&self, _ctx: SharedLoadPluginContext, args: &HookLoadArgs<'_>) -> HookLoadReturn {
+        if !args.id.starts_with(GDANSK_CSS_STUB_PREFIX) {
+            return Ok(None);
+        }
+
+        Ok(Some(HookLoadOutput {
+            code: "export {};".into(),
+            ..Default::default()
+        }))
+    }
+
+    fn register_hook_usage(&self) -> HookUsage {
+        HookUsage::ResolveId | HookUsage::Load
+    }
 }
 
 #[cfg(not(test))]
@@ -413,16 +759,17 @@ impl Plugin for GdanskServerEntrypointPlugin {
 
 #[cfg(not(test))]
 fn client_entrypoint_plugins(include_app_entrypoint_plugin: bool) -> Vec<SharedPluginable> {
+    let mut plugins: Vec<SharedPluginable> = vec![Arc::new(GdanskCssStubPlugin)];
     if include_app_entrypoint_plugin {
-        vec![Arc::new(GdanskAppEntrypointPlugin)]
-    } else {
-        vec![]
+        plugins.push(Arc::new(GdanskAppEntrypointPlugin));
     }
+    plugins
 }
 
 #[cfg(not(test))]
 fn server_entrypoint_plugins() -> Vec<SharedPluginable> {
     vec![
+        Arc::new(GdanskCssStubPlugin),
         Arc::new(GdanskRuntimeModulePlugin),
         Arc::new(GdanskServerEntrypointPlugin),
     ]
@@ -650,10 +997,12 @@ fn normalize_pages(
         };
 
         normalized_pages.push(NormalizedPage {
+            absolute_path: canonical_input,
             import,
             app: provided_page.app,
             ssr: provided_page.ssr,
             client_name,
+            client_css_path,
             server_name,
         });
     }
@@ -704,7 +1053,7 @@ async fn run_bundler(
         cwd: Some(cwd),
         dir: Some(output_dir_string),
         entry_filenames: Some("[name].js".to_string().into()),
-        css_entry_filenames: Some("[name].css".to_string().into()),
+        asset_filenames: Some("[name].css".to_string().into()),
         minify: Some(minify.into()),
         format,
         resolve: Some(ResolveOptions {
@@ -783,6 +1132,7 @@ pub(crate) fn bundle(
             path_to_utf8(&output_dir, "output path").map_err(map_bundle_error)?;
         let normalized =
             normalize_pages(parsed_pages, &cwd, &output_dir).map_err(map_bundle_error)?;
+        build_css_outputs(&normalized, &cwd, &output_dir, minify).map_err(map_bundle_error)?;
 
         let client_items = build_input_items(build_client_input_item_fields(&normalized));
         let server_items = build_input_items(build_server_input_item_fields(&normalized));
@@ -876,11 +1226,15 @@ mod tests {
         }
 
         fn create_file(&self, relative: &str) {
+            self.write_file(relative, "export default null;\n");
+        }
+
+        fn write_file(&self, relative: &str, contents: &str) {
             let file_path = self.root.join(relative);
             if let Some(parent) = file_path.parent() {
                 fs::create_dir_all(parent).expect("failed to create parent directories");
             }
-            fs::write(file_path, b"export default null;\n").expect("failed to write file");
+            fs::write(file_path, contents).expect("failed to write file");
         }
     }
 
@@ -1067,6 +1421,57 @@ mod tests {
             Some(&"apps/simple/page.tsx?gdansk-app-entry".to_string())
         );
         assert_eq!(fields.get("main"), Some(&"main.tsx".to_string()));
+    }
+
+    #[test]
+    fn css_scanner_detects_side_effect_imports() {
+        let imports = collect_direct_css_imports(
+            r#"
+import "./page.css";
+export const page = 1;
+"#,
+        );
+
+        assert_eq!(imports, vec!["./page.css".to_string()]);
+    }
+
+    #[test]
+    fn css_scanner_preserves_import_order() {
+        let imports = collect_direct_css_imports(
+            r#"
+import "./first.css";
+import "./second.css";
+"#,
+        );
+
+        assert_eq!(
+            imports,
+            vec!["./first.css".to_string(), "./second.css".to_string()]
+        );
+    }
+
+    #[test]
+    fn css_scanner_ignores_non_css_imports() {
+        let imports = collect_direct_css_imports(
+            r#"
+import "./page.js";
+import value from "./other.ts";
+"#,
+        );
+
+        assert!(imports.is_empty());
+    }
+
+    #[test]
+    fn css_scanner_ignores_dynamic_imports() {
+        let imports = collect_direct_css_imports(
+            r#"
+await import("./page.css");
+const loader = () => import("./other.css");
+"#,
+        );
+
+        assert!(imports.is_empty());
     }
 
     #[test]
