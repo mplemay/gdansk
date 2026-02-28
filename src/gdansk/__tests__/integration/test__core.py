@@ -284,6 +284,82 @@ async def test_bundle_resolves_css_package_style_exports(tmp_path, monkeypatch):
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+async def test_bundle_removes_stale_css_output_when_import_is_removed(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "page.css").write_text("body { color: red; }\n", encoding="utf-8")
+    page_path = tmp_path / "page.tsx"
+    page_path.write_text(
+        'import "./page.css";\nexport const page = 1;\n',
+        encoding="utf-8",
+    )
+
+    await bundle([Page(path=Path("page.tsx"))])
+
+    css_output = tmp_path / ".gdansk" / "page.css"
+    assert css_output.exists()
+
+    page_path.write_text("export const page = 2;\n", encoding="utf-8")
+
+    await bundle([Page(path=Path("page.tsx"))])
+
+    assert not css_output.exists()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_bundle_minifies_css_output_by_default(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "page.css").write_text("body { color: red; }\n", encoding="utf-8")
+    (tmp_path / "page.tsx").write_text(
+        'import "./page.css";\nexport const page = 1;\n',
+        encoding="utf-8",
+    )
+
+    await bundle([Page(path=Path("page.tsx"))])
+
+    css_output = tmp_path / ".gdansk" / "page.css"
+    assert css_output.read_text(encoding="utf-8") == "body{color:red}\n"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_bundle_preserves_readable_css_when_minify_is_false(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "page.css").write_text("body { color: red; }\n", encoding="utf-8")
+    (tmp_path / "page.tsx").write_text(
+        'import "./page.css";\nexport const page = 1;\n',
+        encoding="utf-8",
+    )
+
+    await bundle([Page(path=Path("page.tsx"))], minify=False)
+
+    css_output = (tmp_path / ".gdansk" / "page.css").read_text(encoding="utf-8")
+    assert "body {" in css_output
+    assert "color: red;" in css_output
+    assert css_output.count("\n") >= 3
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_bundle_preserves_nested_conditional_css_imports(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "nested.css").write_text(".inner { color: blue; }\n", encoding="utf-8")
+    (tmp_path / "page.css").write_text('@import "./nested.css" screen;\n', encoding="utf-8")
+    (tmp_path / "page.tsx").write_text(
+        'import "./page.css";\nexport const page = 1;\n',
+        encoding="utf-8",
+    )
+
+    await bundle([Page(path=Path("page.tsx"))], minify=False)
+
+    css_output = (tmp_path / ".gdansk" / "page.css").read_text(encoding="utf-8")
+    assert "@media screen" in css_output
+    assert ".inner" in css_output
+    assert "color:" in css_output
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 async def test_bundle_accepts_minify_false(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "main.tsx").write_text("export const value = 1;\n", encoding="utf-8")
@@ -317,6 +393,30 @@ async def test_bundle_app_ssr_view_writes_executable_server_output(tmp_path, mon
 
     html = await run(output_js.read_text(encoding="utf-8"))
     assert html == "<div>ok</div>"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_bundle_app_ssr_view_writes_css_output_when_page_imports_css(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _write_ssr_modules(tmp_path)
+    app_dir = tmp_path / "apps" / "simple"
+    app_dir.mkdir(parents=True, exist_ok=True)
+    (app_dir / "simple.css").write_text("body { color: red; }\n", encoding="utf-8")
+    (app_dir / "page.tsx").write_text(
+        'import "./simple.css";\n'
+        'import { createElement } from "react";\n'
+        "export default function App() {\n"
+        "  return createElement('div', null, 'ok');\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    await bundle([Page(path=Path("apps/simple/page.tsx"), app=True, ssr=True)])
+
+    assert (tmp_path / ".gdansk" / "simple" / "client.js").exists()
+    assert (tmp_path / ".gdansk" / "simple" / "client.css").exists()
+    assert (tmp_path / ".gdansk" / "simple" / "server.js").exists()
 
 
 @pytest.mark.integration
