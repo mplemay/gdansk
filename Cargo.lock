@@ -883,9 +883,9 @@ dependencies = [
 
 [[package]]
 name = "fast-glob"
-version = "1.0.0"
+version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d26eec0ae9682c457cb0f85de67ad417b716ae852736a5d94c2ad6e92a997c9"
+checksum = "3b9e81515b0279bf618200fd15d132e7195d2048fb46eed6f0f3c10cbc068266"
 dependencies = [
  "arrayvec",
 ]
@@ -1113,19 +1113,19 @@ checksum = "899def5c37c4fd7b2664648c28120ecec138e4d395b459e5ca34f9cce2dd77fd"
 dependencies = [
  "cfg-if",
  "libc",
- "r-efi",
+ "r-efi 5.3.0",
  "wasip2",
 ]
 
 [[package]]
 name = "getrandom"
-version = "0.4.1"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "139ef39800118c7683f2fd3c98c1b23c09ae076556b435f8e9064ae108aaeeec"
+checksum = "0de51e6874e94e7bf76d726fc5d13ba782deca734ff60d5bb2fb2607c7406555"
 dependencies = [
  "cfg-if",
  "libc",
- "r-efi",
+ "r-efi 6.0.0",
  "wasip2",
  "wasip3",
 ]
@@ -1387,9 +1387,9 @@ dependencies = [
 
 [[package]]
 name = "inotify"
-version = "0.11.0"
+version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f37dccff2791ab604f9babef0ba14fbe0be30bd368dc541e2b08d07c8aa908f3"
+checksum = "bd5b3eaf1a28b758ac0faa5a4254e8ab2705605496f1b1f3fbbc3988ad73d199"
 dependencies = [
  "bitflags 2.11.0",
  "inotify-sys",
@@ -1503,9 +1503,9 @@ checksum = "09edd9e8b54e49e587e4f6295a7d29c3ea94d469cb40ab8ca70b288248a81db2"
 
 [[package]]
 name = "libc"
-version = "0.2.182"
+version = "0.2.183"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6800badb6cb2082ffd7b6a67e6125bb39f18782f793520caee8cb8846be06112"
+checksum = "b5b646652bf6661599e1da8901b3b9522896f01e736bad5f723fe7a3a27f899d"
 
 [[package]]
 name = "libloading"
@@ -1537,9 +1537,9 @@ dependencies = [
 
 [[package]]
 name = "lightningcss"
-version = "1.0.0-alpha.70"
+version = "1.0.0-alpha.71"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9efb6a77b2389e62735b0b8157be9cc10a159eb4d1c3b864e99db9f297ada1b0"
+checksum = "cb6314c2f0590ac93c86099b98bb7ba8abcf759bfd89604ffca906472bb54937"
 dependencies = [
  "ahash 0.8.12",
  "bitflags 2.11.0",
@@ -2675,9 +2675,9 @@ dependencies = [
 
 [[package]]
 name = "quote"
-version = "1.0.44"
+version = "1.0.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21b2ebcf727b7760c461f091f9f0f539b77b8e87f2fd88131e7f1b433b3cece4"
+checksum = "41f2619966050689382d2b44f664f4bc593e129785a36d6ee376ddf37259b924"
 dependencies = [
  "proc-macro2",
 ]
@@ -2687,6 +2687,12 @@ name = "r-efi"
 version = "5.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
+
+[[package]]
+name = "r-efi"
+version = "6.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
 name = "radium"
@@ -2867,7 +2873,7 @@ dependencies = [
 [[package]]
 name = "rolldown"
 version = "0.1.0"
-source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.6#6dfa0ecefdf0b782a1749551afea01ada43285d8"
+source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.8#4c0d397ff77ee1abc2509db5d3a05f902bdea70c"
 dependencies = [
  "anyhow",
  "append-only-vec",
@@ -2888,7 +2894,6 @@ dependencies = [
  "oxc_traverse",
  "petgraph",
  "rayon",
- "rolldown-notify",
  "rolldown_common",
  "rolldown_dev_common",
  "rolldown_devtools",
@@ -2897,6 +2902,7 @@ dependencies = [
  "rolldown_error",
  "rolldown_fs",
  "rolldown_plugin",
+ "rolldown_plugin_asset_module",
  "rolldown_plugin_chunk_import_map",
  "rolldown_plugin_copy_module",
  "rolldown_plugin_data_url",
@@ -2931,18 +2937,18 @@ dependencies = [
 
 [[package]]
 name = "rolldown-file-id"
-version = "0.2.5"
+version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77087e8de5a5a65ea239ed3a5b182dfc27807a8fca4d0c2c0e693eb528b322b7"
+checksum = "502849309ebc019ffc0b96b34ad5ba583e90577d306df9f352215f2ae44b0f1d"
 dependencies = [
  "windows-sys 0.61.2",
 ]
 
 [[package]]
 name = "rolldown-notify"
-version = "10.1.0"
+version = "10.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8bf250d410b79487a6d054e6bd16ec08dddd2998f5f5e6291867a35066cfc37"
+checksum = "db2e631ba93bdea8ea34dd3faf92e8a7e37390473411e20c10babfe2dbcdba09"
 dependencies = [
  "bitflags 2.11.0",
  "inotify",
@@ -2959,9 +2965,9 @@ dependencies = [
 
 [[package]]
 name = "rolldown-notify-debouncer-full"
-version = "0.7.4"
+version = "0.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7141151f3eb9d0869f9fff744ce728f45a0db9c54fe3178e4f60c3c682035083"
+checksum = "02edf9ebd50a6b072b96ddb655b5854b777f9cc93096e4d51aba8ade93a83bce"
 dependencies = [
  "rolldown-file-id",
  "rolldown-notify",
@@ -2979,7 +2985,7 @@ checksum = "1931923a28e14c01a27ca56669669eb3e3de4068859c34e17b96c93ba3a61afe"
 [[package]]
 name = "rolldown_common"
 version = "0.1.0"
-source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.6#6dfa0ecefdf0b782a1749551afea01ada43285d8"
+source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.8#4c0d397ff77ee1abc2509db5d3a05f902bdea70c"
 dependencies = [
  "anyhow",
  "arcstr",
@@ -3010,7 +3016,7 @@ dependencies = [
 [[package]]
 name = "rolldown_dev"
 version = "0.1.0"
-source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.6#6dfa0ecefdf0b782a1749551afea01ada43285d8"
+source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.8#4c0d397ff77ee1abc2509db5d3a05f902bdea70c"
 dependencies = [
  "anyhow",
  "arcstr",
@@ -3031,7 +3037,7 @@ dependencies = [
 [[package]]
 name = "rolldown_dev_common"
 version = "0.1.0"
-source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.6#6dfa0ecefdf0b782a1749551afea01ada43285d8"
+source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.8#4c0d397ff77ee1abc2509db5d3a05f902bdea70c"
 dependencies = [
  "derive_more",
  "rolldown_common",
@@ -3041,7 +3047,7 @@ dependencies = [
 [[package]]
 name = "rolldown_devtools"
 version = "0.1.0"
-source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.6#6dfa0ecefdf0b782a1749551afea01ada43285d8"
+source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.8#4c0d397ff77ee1abc2509db5d3a05f902bdea70c"
 dependencies = [
  "blake3",
  "dashmap 6.1.0",
@@ -3056,7 +3062,7 @@ dependencies = [
 [[package]]
 name = "rolldown_devtools_action"
 version = "0.1.0"
-source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.6#6dfa0ecefdf0b782a1749551afea01ada43285d8"
+source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.8#4c0d397ff77ee1abc2509db5d3a05f902bdea70c"
 dependencies = [
  "serde",
  "ts-rs",
@@ -3065,7 +3071,7 @@ dependencies = [
 [[package]]
 name = "rolldown_ecmascript"
 version = "0.1.0"
-source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.6#6dfa0ecefdf0b782a1749551afea01ada43285d8"
+source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.8#4c0d397ff77ee1abc2509db5d3a05f902bdea70c"
 dependencies = [
  "arcstr",
  "oxc",
@@ -3077,7 +3083,7 @@ dependencies = [
 [[package]]
 name = "rolldown_ecmascript_utils"
 version = "0.1.0"
-source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.6#6dfa0ecefdf0b782a1749551afea01ada43285d8"
+source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.8#4c0d397ff77ee1abc2509db5d3a05f902bdea70c"
 dependencies = [
  "memchr",
  "oxc",
@@ -3089,7 +3095,7 @@ dependencies = [
 [[package]]
 name = "rolldown_error"
 version = "0.1.0"
-source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.6#6dfa0ecefdf0b782a1749551afea01ada43285d8"
+source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.8#4c0d397ff77ee1abc2509db5d3a05f902bdea70c"
 dependencies = [
  "anyhow",
  "arcstr",
@@ -3107,7 +3113,7 @@ dependencies = [
 [[package]]
 name = "rolldown_fs"
 version = "0.1.0"
-source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.6#6dfa0ecefdf0b782a1749551afea01ada43285d8"
+source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.8#4c0d397ff77ee1abc2509db5d3a05f902bdea70c"
 dependencies = [
  "oxc_resolver",
  "vfs",
@@ -3116,7 +3122,7 @@ dependencies = [
 [[package]]
 name = "rolldown_fs_watcher"
 version = "0.1.0"
-source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.6#6dfa0ecefdf0b782a1749551afea01ada43285d8"
+source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.8#4c0d397ff77ee1abc2509db5d3a05f902bdea70c"
 dependencies = [
  "rolldown-notify",
  "rolldown-notify-debouncer-full",
@@ -3126,7 +3132,7 @@ dependencies = [
 [[package]]
 name = "rolldown_plugin"
 version = "0.1.0"
-source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.6#6dfa0ecefdf0b782a1749551afea01ada43285d8"
+source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.8#4c0d397ff77ee1abc2509db5d3a05f902bdea70c"
 dependencies = [
  "anyhow",
  "arcstr",
@@ -3154,9 +3160,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "rolldown_plugin_asset_module"
+version = "0.1.0"
+source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.8#4c0d397ff77ee1abc2509db5d3a05f902bdea70c"
+dependencies = [
+ "anyhow",
+ "memchr",
+ "rolldown_common",
+ "rolldown_plugin",
+ "rolldown_utils",
+ "rustc-hash",
+ "string_wizard",
+ "sugar_path",
+ "tokio",
+]
+
+[[package]]
 name = "rolldown_plugin_chunk_import_map"
 version = "0.1.0"
-source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.6#6dfa0ecefdf0b782a1749551afea01ada43285d8"
+source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.8#4c0d397ff77ee1abc2509db5d3a05f902bdea70c"
 dependencies = [
  "arcstr",
  "rolldown_common",
@@ -3170,7 +3192,7 @@ dependencies = [
 [[package]]
 name = "rolldown_plugin_copy_module"
 version = "0.1.0"
-source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.6#6dfa0ecefdf0b782a1749551afea01ada43285d8"
+source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.8#4c0d397ff77ee1abc2509db5d3a05f902bdea70c"
 dependencies = [
  "anyhow",
  "arcstr",
@@ -3187,7 +3209,7 @@ dependencies = [
 [[package]]
 name = "rolldown_plugin_data_url"
 version = "0.1.0"
-source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.6#6dfa0ecefdf0b782a1749551afea01ada43285d8"
+source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.8#4c0d397ff77ee1abc2509db5d3a05f902bdea70c"
 dependencies = [
  "arcstr",
  "base64-simd 0.8.0",
@@ -3201,7 +3223,7 @@ dependencies = [
 [[package]]
 name = "rolldown_plugin_hmr"
 version = "0.1.0"
-source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.6#6dfa0ecefdf0b782a1749551afea01ada43285d8"
+source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.8#4c0d397ff77ee1abc2509db5d3a05f902bdea70c"
 dependencies = [
  "rolldown_common",
  "rolldown_plugin",
@@ -3210,7 +3232,7 @@ dependencies = [
 [[package]]
 name = "rolldown_plugin_lazy_compilation"
 version = "0.1.0"
-source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.6#6dfa0ecefdf0b782a1749551afea01ada43285d8"
+source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.8#4c0d397ff77ee1abc2509db5d3a05f902bdea70c"
 dependencies = [
  "anyhow",
  "arcstr",
@@ -3223,7 +3245,7 @@ dependencies = [
 [[package]]
 name = "rolldown_plugin_oxc_runtime"
 version = "0.1.0"
-source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.6#6dfa0ecefdf0b782a1749551afea01ada43285d8"
+source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.8#4c0d397ff77ee1abc2509db5d3a05f902bdea70c"
 dependencies = [
  "arcstr",
  "phf 0.13.1",
@@ -3234,7 +3256,7 @@ dependencies = [
 [[package]]
 name = "rolldown_resolver"
 version = "0.1.0"
-source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.6#6dfa0ecefdf0b782a1749551afea01ada43285d8"
+source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.8#4c0d397ff77ee1abc2509db5d3a05f902bdea70c"
 dependencies = [
  "anyhow",
  "arcstr",
@@ -3250,7 +3272,7 @@ dependencies = [
 [[package]]
 name = "rolldown_sourcemap"
 version = "0.1.0"
-source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.6#6dfa0ecefdf0b782a1749551afea01ada43285d8"
+source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.8#4c0d397ff77ee1abc2509db5d3a05f902bdea70c"
 dependencies = [
  "memchr",
  "oxc",
@@ -3262,7 +3284,7 @@ dependencies = [
 [[package]]
 name = "rolldown_std_utils"
 version = "0.1.0"
-source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.6#6dfa0ecefdf0b782a1749551afea01ada43285d8"
+source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.8#4c0d397ff77ee1abc2509db5d3a05f902bdea70c"
 dependencies = [
  "regex",
 ]
@@ -3270,7 +3292,7 @@ dependencies = [
 [[package]]
 name = "rolldown_tracing"
 version = "0.1.0"
-source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.6#6dfa0ecefdf0b782a1749551afea01ada43285d8"
+source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.8#4c0d397ff77ee1abc2509db5d3a05f902bdea70c"
 dependencies = [
  "tracing",
  "tracing-chrome",
@@ -3280,7 +3302,7 @@ dependencies = [
 [[package]]
 name = "rolldown_utils"
 version = "0.1.0"
-source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.6#6dfa0ecefdf0b782a1749551afea01ada43285d8"
+source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.8#4c0d397ff77ee1abc2509db5d3a05f902bdea70c"
 dependencies = [
  "anyhow",
  "arcstr",
@@ -3592,12 +3614,12 @@ checksum = "b7c388c1b5e93756d0c740965c41e8822f866621d41acbdf6336a6a168f8840c"
 
 [[package]]
 name = "socket2"
-version = "0.6.2"
+version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86f4aa3ad99f2088c990dfa82d367e19cb29268ed67c574d10d0a4bfe71f07e0"
+checksum = "3a766e1110788c36f4fa1c2b71b387a7815aa65f88ce0229841826633d93723e"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3648,7 +3670,7 @@ dependencies = [
 [[package]]
 name = "string_wizard"
 version = "0.0.27"
-source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.6#6dfa0ecefdf0b782a1749551afea01ada43285d8"
+source = "git+https://github.com/rolldown/rolldown.git?tag=v1.0.0-rc.8#4c0d397ff77ee1abc2509db5d3a05f902bdea70c"
 dependencies = [
  "memchr",
  "oxc_index",
@@ -3913,9 +3935,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.49.0"
+version = "1.50.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72a2903cd7736441aac9df9d7688bd0ce48edccaadf181c3b90be801e81d3d86"
+checksum = "27ad5e34374e03cfffefc301becb44e9dc3c17584f414349ebe29ed26661822d"
 dependencies = [
  "bytes",
  "libc",
@@ -3930,9 +3952,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-macros"
-version = "2.6.0"
+version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af407857209536a95c8e56f8231ef2c2e2aff839b22e07a1ffcbc617e9db9fa5"
+checksum = "5c55a2eff8b69ce66c84f85e1da1c233edc36ceb85a2058d11b0d6a3c7e7569c"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4120,11 +4142,11 @@ checksum = "b6c140620e7ffbb22c2dee59cafe6084a59b5ffc27a8859a5f0d494b5d52b6be"
 
 [[package]]
 name = "uuid"
-version = "1.21.0"
+version = "1.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b672338555252d43fd2240c714dc444b8c6fb0a5c5335e65a07bba7742735ddb"
+checksum = "a68d3c8f01c0cfa54a75291d83601161799e4a89a39e0929f4b0354d88757a37"
 dependencies = [
- "getrandom 0.4.1",
+ "getrandom 0.4.2",
  "js-sys",
  "wasm-bindgen",
 ]
@@ -4464,16 +4486,7 @@ version = "0.59.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e38bc4d79ed67fd075bcc251a1c39b32a1776bbe92e5bef1f0bf1f8c531853b"
 dependencies = [
- "windows-targets 0.52.6",
-]
-
-[[package]]
-name = "windows-sys"
-version = "0.60.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2f500e4d28234f72040990ec9d39e3a6b950f9f22d3dba18416c35882612bcb"
-dependencies = [
- "windows-targets 0.53.5",
+ "windows-targets",
 ]
 
 [[package]]
@@ -4491,31 +4504,14 @@ version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b724f72796e036ab90c1021d4780d4d3d648aca59e491e6b98e725b84e99973"
 dependencies = [
- "windows_aarch64_gnullvm 0.52.6",
- "windows_aarch64_msvc 0.52.6",
- "windows_i686_gnu 0.52.6",
- "windows_i686_gnullvm 0.52.6",
- "windows_i686_msvc 0.52.6",
- "windows_x86_64_gnu 0.52.6",
- "windows_x86_64_gnullvm 0.52.6",
- "windows_x86_64_msvc 0.52.6",
-]
-
-[[package]]
-name = "windows-targets"
-version = "0.53.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4945f9f551b88e0d65f3db0bc25c33b8acea4d9e41163edf90dcd0b19f9069f3"
-dependencies = [
- "windows-link",
- "windows_aarch64_gnullvm 0.53.1",
- "windows_aarch64_msvc 0.53.1",
- "windows_i686_gnu 0.53.1",
- "windows_i686_gnullvm 0.53.1",
- "windows_i686_msvc 0.53.1",
- "windows_x86_64_gnu 0.53.1",
- "windows_x86_64_gnullvm 0.53.1",
- "windows_x86_64_msvc 0.53.1",
+ "windows_aarch64_gnullvm",
+ "windows_aarch64_msvc",
+ "windows_i686_gnu",
+ "windows_i686_gnullvm",
+ "windows_i686_msvc",
+ "windows_x86_64_gnu",
+ "windows_x86_64_gnullvm",
+ "windows_x86_64_msvc",
 ]
 
 [[package]]
@@ -4534,22 +4530,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32a4622180e7a0ec044bb555404c800bc9fd9ec262ec147edd5989ccd0c02cd3"
 
 [[package]]
-name = "windows_aarch64_gnullvm"
-version = "0.53.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9d8416fa8b42f5c947f8482c43e7d89e73a173cead56d044f6a56104a6d1b53"
-
-[[package]]
 name = "windows_aarch64_msvc"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09ec2a7bb152e2252b53fa7803150007879548bc709c039df7627cabbd05d469"
-
-[[package]]
-name = "windows_aarch64_msvc"
-version = "0.53.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b9d782e804c2f632e395708e99a94275910eb9100b2114651e04744e9b125006"
 
 [[package]]
 name = "windows_i686_gnu"
@@ -4558,22 +4542,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8e9b5ad5ab802e97eb8e295ac6720e509ee4c243f69d781394014ebfe8bbfa0b"
 
 [[package]]
-name = "windows_i686_gnu"
-version = "0.53.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "960e6da069d81e09becb0ca57a65220ddff016ff2d6af6a223cf372a506593a3"
-
-[[package]]
 name = "windows_i686_gnullvm"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0eee52d38c090b3caa76c563b86c3a4bd71ef1a819287c19d586d7334ae8ed66"
-
-[[package]]
-name = "windows_i686_gnullvm"
-version = "0.53.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa7359d10048f68ab8b09fa71c3daccfb0e9b559aed648a8f95469c27057180c"
 
 [[package]]
 name = "windows_i686_msvc"
@@ -4582,22 +4554,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "240948bc05c5e7c6dabba28bf89d89ffce3e303022809e73deaefe4f6ec56c66"
 
 [[package]]
-name = "windows_i686_msvc"
-version = "0.53.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e7ac75179f18232fe9c285163565a57ef8d3c89254a30685b57d83a38d326c2"
-
-[[package]]
 name = "windows_x86_64_gnu"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "147a5c80aabfbf0c7d901cb5895d1de30ef2907eb21fbbab29ca94c5b08b1a78"
-
-[[package]]
-name = "windows_x86_64_gnu"
-version = "0.53.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c3842cdd74a865a8066ab39c8a7a473c0778a3f29370b5fd6b4b9aa7df4a499"
 
 [[package]]
 name = "windows_x86_64_gnullvm"
@@ -4606,22 +4566,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "24d5b23dc417412679681396f2b49f3de8c1473deb516bd34410872eff51ed0d"
 
 [[package]]
-name = "windows_x86_64_gnullvm"
-version = "0.53.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ffa179e2d07eee8ad8f57493436566c7cc30ac536a3379fdf008f47f6bb7ae1"
-
-[[package]]
 name = "windows_x86_64_msvc"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
-
-[[package]]
-name = "windows_x86_64_msvc"
-version = "0.53.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d6bbff5f0aada427a1e5a6da5f1f98158182f26556f345ac9e04d36d0ebed650"
 
 [[package]]
 name = "winsafe"
@@ -4769,18 +4717,18 @@ dependencies = [
 
 [[package]]
 name = "zerocopy"
-version = "0.8.40"
+version = "0.8.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a789c6e490b576db9f7e6b6d661bcc9799f7c0ac8352f56ea20193b2681532e5"
+checksum = "f2578b716f8a7a858b7f02d5bd870c14bf4ddbbcf3a4c05414ba6503640505e3"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.8.40"
+version = "0.8.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f65c489a7071a749c849713807783f70672b28094011623e200cb86dcb835953"
+checksum = "7e6cc098ea4d3bd6246687de65af3f920c430e236bee1e3bf2e441463f08a02f"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4844,9 +4792,9 @@ dependencies = [
 
 [[package]]
 name = "zlib-rs"
-version = "0.6.2"
+version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c745c48e1007337ed136dc99df34128b9faa6ed542d80a1c673cf55a6d7236c8"
+checksum = "3be3d40e40a133f9c916ee3f9f4fa2d9d63435b5fbe1bfc6d9dae0aa0ada1513"
 
 [[package]]
 name = "zmij"
