@@ -521,7 +521,7 @@ def test_raises_when_directory_missing_page_files(amber):
 
 def test_rejects_ui_keyword_argument(amber):
     with pytest.raises(TypeError, match="ui"):
-        amber.tool(ui=Path("simple/page.tsx"))  # ty: ignore[missing-argument,unknown-argument]
+        amber.tool(ui=Path("simple/page.tsx"))
 
 
 def test_adds_bundle_path_to_registered_views(amber):

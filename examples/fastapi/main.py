@@ -5,7 +5,11 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
-from mcp.server.fastmcp import FastMCP
+
+try:
+    from mcp.server.fastmcp import FastMCP
+except ImportError:
+    from mcp.server import MCPServer as FastMCP
 from mcp.types import TextContent
 from pydantic_settings import BaseSettings
 

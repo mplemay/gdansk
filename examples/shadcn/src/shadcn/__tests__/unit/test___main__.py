@@ -66,7 +66,7 @@ def test_delete_todo_errors_when_todo_not_found():
 @pytest.mark.asyncio
 async def test_list_tools_exposes_todo_output_schema():
     tools = await todo_main.mcp.list_tools()
-    schemas = {tool.name: tool.outputSchema for tool in tools}
+    schemas = {tool.name: getattr(tool, "output_schema", getattr(tool, "outputSchema", None)) for tool in tools}
 
     for tool_name in ("list-todos", "add-todo", "toggle-todo", "delete-todo"):
         schema = schemas[tool_name]
