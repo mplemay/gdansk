@@ -5,7 +5,11 @@ from pathlib import Path
 from uuid import uuid4
 
 import uvicorn
-from mcp.server.fastmcp import FastMCP
+
+try:
+    from mcp.server.fastmcp import FastMCP
+except ImportError:
+    from mcp.server import MCPServer as FastMCP
 from starlette.middleware.cors import CORSMiddleware
 
 from gdansk import Amber

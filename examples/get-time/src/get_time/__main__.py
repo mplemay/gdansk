@@ -4,7 +4,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import uvicorn
-from mcp.server.fastmcp import FastMCP
+
+try:
+    from mcp.server.fastmcp import FastMCP
+except ImportError:
+    from mcp.server import MCPServer as FastMCP
 from mcp.types import TextContent
 from starlette.middleware.cors import CORSMiddleware
 

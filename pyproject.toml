@@ -9,7 +9,7 @@ authors = [
 ]
 requires-python = ">=3.11,<3.15"
 dependencies = [
-    "mcp>=1,<2",
+    "mcp>=1.25.1.dev114,<1.26",
     "minijinja>=2,<3",
 ]
 
@@ -20,6 +20,9 @@ python-source = "src"
 
 [tool.uv]
 cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.rs" }, { file = "Cargo.toml" }, { file = "Cargo.lock" }]
+
+[tool.uv.sources]
+mcp = { git = "https://github.com/modelcontextprotocol/python-sdk.git", rev = "main" }
 
 [build-system]
 requires = ["maturin>=1.0,<2.0"]

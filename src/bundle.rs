@@ -12,7 +12,7 @@ use deno_core::serde_json::Value;
 use lightningcss::{
     bundler::{
         BundleErrorKind as CssBundleErrorKind, Bundler as CssBundler,
-        FileProvider as CssFileProvider, SourceProvider,
+        FileProvider as CssFileProvider, ResolveResult, SourceProvider,
     },
     printer::PrinterOptions,
     stylesheet::{MinifyOptions, ParserOptions},
@@ -153,15 +153,21 @@ impl SourceProvider for CssSourceProvider {
         self.inner.read(file).map_err(CssProviderError::from)
     }
 
-    fn resolve(&self, specifier: &str, originating_file: &Path) -> Result<PathBuf, Self::Error> {
+    fn resolve(
+        &self,
+        specifier: &str,
+        originating_file: &Path,
+    ) -> Result<ResolveResult, Self::Error> {
         if let Some(resolutions) = self.virtual_resolutions.get(originating_file)
             && let Some(resolved) = resolutions.get(specifier)
         {
-            return Ok(resolved.clone());
+            return Ok(ResolveResult::File(resolved.clone()));
         }
 
         let importer_dir = originating_file.parent().unwrap_or(self.cwd.as_path());
-        resolve_css_import_path(specifier, importer_dir, &self.cwd).map_err(CssProviderError::from)
+        resolve_css_import_path(specifier, importer_dir, &self.cwd)
+            .map(ResolveResult::File)
+            .map_err(CssProviderError::from)
     }
 }
 

@@ -21,8 +21,8 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable, Coroutine, Sequence
     from os import PathLike
 
-    from mcp.server.fastmcp import FastMCP
-    from mcp.types import AnyFunction, Icon, ToolAnnotations
+    from mcp.server import MCPServer as FastMCP
+    from mcp.types import Icon, ToolAnnotations
     from starlette.applications import Starlette
 
     from gdansk.protocol import Plugin
@@ -273,7 +273,7 @@ class Amber:
         metadata: Metadata | None = None,
         ssr: bool | None = None,
         structured_output: bool | None = None,
-    ) -> Callable[[AnyFunction], AnyFunction]:
+    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         """Register a tool and bind its page resource into the MCP server."""
         page_path = self._normalize_page_input(page)
         page_candidates = self._resolve_page_candidates(page_path)
@@ -375,7 +375,7 @@ class Amber:
                 metadata=merge_metadata(self.metadata, metadata),
             )
 
-        def decorator(fn: AnyFunction) -> AnyFunction:
+        def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
             self.mcp.tool(
                 name=name,
                 title=title,
