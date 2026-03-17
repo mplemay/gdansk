@@ -1081,6 +1081,7 @@ dependencies = [
  "pyo3-async-runtimes",
  "rolldown",
  "rolldown_dev",
+ "serde",
  "tokio",
 ]
 

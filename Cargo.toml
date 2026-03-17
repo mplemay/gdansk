@@ -12,6 +12,7 @@ crate-type = ["cdylib"]
 [dependencies]
 tokio = "1.40"
 dunce = "1.0"
+serde = { version = "1.0", features = ["derive"] }
 
 # python
 pyo3 = { version = "0.28", features = ["extension-module", "abi3-py311"] }

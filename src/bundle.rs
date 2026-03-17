@@ -7,6 +7,18 @@ use std::{
 
 #[cfg(not(test))]
 use std::hash::{Hash, Hasher};
+#[cfg(not(test))]
+use std::{
+    env,
+    io::{BufRead, BufReader, Write},
+    process::{Child, ChildStdin, ChildStdout, Command, Stdio},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+    thread::{self, JoinHandle},
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 use deno_core::serde_json::Value;
 use lightningcss::{
@@ -26,7 +38,7 @@ use pyo3::{
 };
 #[cfg(not(test))]
 use rolldown::plugin::{
-    __inner::SharedPluginable, HookBuildEndArgs, HookBuildStartArgs, HookLoadArgs, HookLoadOutput,
+    __inner::SharedPluginable, HookBuildEndArgs, HookCloseBundleArgs, HookLoadArgs, HookLoadOutput,
     HookLoadReturn, HookResolveIdArgs, HookResolveIdOutput, HookResolveIdReturn, HookUsage, Plugin,
     PluginContext, PluginContextResolveOptions, SharedLoadPluginContext,
 };
@@ -37,7 +49,9 @@ use rolldown::{
 #[cfg(not(test))]
 use rolldown_dev::{BundlerConfig, DevEngine, DevOptions, RebuildStrategy};
 #[cfg(not(test))]
-use std::{borrow::Cow, sync::Arc};
+use serde::{Deserialize, Serialize};
+#[cfg(not(test))]
+use std::borrow::Cow;
 
 #[derive(Debug, Clone)]
 struct PageSpec {
@@ -118,11 +132,11 @@ struct CssSourceProvider {
 }
 
 impl CssSourceProvider {
-    fn new(cwd: &Path) -> Self {
+    fn with_virtual_sources(cwd: &Path, virtual_sources: HashMap<PathBuf, String>) -> Self {
         Self {
             cwd: cwd.to_path_buf(),
             inner: CssFileProvider::new(),
-            virtual_sources: HashMap::new(),
+            virtual_sources,
             virtual_resolutions: HashMap::new(),
         }
     }
@@ -132,8 +146,9 @@ impl CssSourceProvider {
         entry_path: PathBuf,
         entry_source: String,
         resolutions: HashMap<String, PathBuf>,
+        virtual_sources: HashMap<PathBuf, String>,
     ) -> Self {
-        let mut provider = Self::new(cwd);
+        let mut provider = Self::with_virtual_sources(cwd, virtual_sources);
         provider
             .virtual_sources
             .insert(entry_path.clone(), entry_source);
@@ -176,7 +191,421 @@ const SERVER_ENTRYPOINT_QUERY: &str = "?gdansk-server-entry";
 const GDANSK_RUNTIME_SPECIFIER: &str = "gdansk:runtime";
 const GDANSK_CSS_STUB_PREFIX: &str = "gdansk:css-stub:";
 #[cfg(not(test))]
+const GDANSK_TAILWIND_NODE_BINARY_ENV: &str = "GDANSK_TAILWIND_NODE_BINARY";
+#[cfg(not(test))]
+const GDANSK_TAILWIND_VIEWS_ROOT_ENV: &str = "GDANSK_TAILWIND_VIEWS_ROOT";
+#[cfg(not(test))]
+const GDANSK_TAILWIND_WORKER_PATH_ENV: &str = "GDANSK_TAILWIND_WORKER_PATH";
+#[cfg(not(test))]
 const GDANSK_RUNTIME_MODULE_SOURCE: &str = include_str!("runtime.js");
+#[cfg(not(test))]
+const GDANSK_TAILWIND_WORKER_SOURCE: &str = include_str!("tailwind_worker.js");
+
+#[cfg(not(test))]
+#[derive(Debug, Serialize)]
+struct TailwindWorkerGenerateRequest {
+    kind: &'static str,
+    id: String,
+    content: String,
+}
+
+#[cfg(not(test))]
+#[derive(Debug, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+enum TailwindWorkerResponse {
+    Generated {
+        id: String,
+        is_tailwind_root: bool,
+        code: Option<String>,
+        watch_files: Vec<String>,
+        watch_directories: Vec<String>,
+    },
+    Error {
+        error: String,
+    },
+}
+
+#[cfg(not(test))]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct TailwindGenerateOutput {
+    code: String,
+    watch_files: Vec<PathBuf>,
+    watch_directories: Vec<PathBuf>,
+}
+
+#[cfg(not(test))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TailwindRelayTargetKind {
+    File,
+    Directory,
+}
+
+#[cfg(not(test))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TailwindRelayTarget {
+    kind: TailwindRelayTargetKind,
+    last_token: Option<u128>,
+}
+
+#[cfg(not(test))]
+#[derive(Debug)]
+struct TailwindWatchRelay {
+    marker_path: PathBuf,
+    watched_targets: Arc<Mutex<HashMap<PathBuf, TailwindRelayTarget>>>,
+    stop: Arc<AtomicBool>,
+    thread: Option<JoinHandle<()>>,
+}
+
+#[cfg(not(test))]
+impl TailwindWatchRelay {
+    fn new(marker_path: PathBuf) -> Self {
+        Self {
+            marker_path,
+            watched_targets: Arc::new(Mutex::new(HashMap::new())),
+            stop: Arc::new(AtomicBool::new(false)),
+            thread: None,
+        }
+    }
+
+    fn register_file(&mut self, path: &Path) -> Result<PathBuf, BundleError> {
+        self.register(path, TailwindRelayTargetKind::File)
+    }
+
+    fn register_directory(&mut self, path: &Path) -> Result<PathBuf, BundleError> {
+        self.register(path, TailwindRelayTargetKind::Directory)
+    }
+
+    fn register(
+        &mut self,
+        path: &Path,
+        kind: TailwindRelayTargetKind,
+    ) -> Result<PathBuf, BundleError> {
+        self.ensure_marker_exists()?;
+        self.start_thread();
+
+        self.watched_targets
+            .lock()
+            .expect("tailwind relay poisoned")
+            .entry(path.to_path_buf())
+            .or_insert_with(|| TailwindRelayTarget {
+                kind,
+                last_token: tailwind_watch_token(path, kind),
+            });
+
+        Ok(self.marker_path.clone())
+    }
+
+    fn close(&mut self) {
+        self.stop.store(true, Ordering::SeqCst);
+        if let Some(handle) = self.thread.take() {
+            let _ = handle.join();
+        }
+        self.stop.store(false, Ordering::SeqCst);
+    }
+
+    fn ensure_marker_exists(&self) -> Result<(), BundleError> {
+        if let Some(parent) = self.marker_path.parent() {
+            fs::create_dir_all(parent).map_err(|err| {
+                BundleError::runtime(format!(
+                    "failed to create Tailwind watch relay directory {}: {err}",
+                    parent.display()
+                ))
+            })?;
+        }
+
+        if !self.marker_path.exists() {
+            tailwind_touch_marker(&self.marker_path)?;
+        }
+
+        Ok(())
+    }
+
+    fn start_thread(&mut self) {
+        if self.thread.is_some() {
+            return;
+        }
+
+        let marker_path = self.marker_path.clone();
+        let watched_targets = Arc::clone(&self.watched_targets);
+        let stop = Arc::clone(&self.stop);
+
+        self.thread = Some(thread::spawn(move || {
+            while !stop.load(Ordering::SeqCst) {
+                let mut changed = false;
+                {
+                    let mut watched_targets =
+                        watched_targets.lock().expect("tailwind relay poisoned");
+                    for (path, target) in watched_targets.iter_mut() {
+                        let next_token = tailwind_watch_token(path, target.kind);
+                        if next_token != target.last_token {
+                            target.last_token = next_token;
+                            changed = true;
+                        }
+                    }
+                }
+
+                if changed {
+                    let _ = tailwind_touch_marker(&marker_path);
+                }
+
+                thread::sleep(Duration::from_millis(100));
+            }
+        }));
+    }
+}
+
+#[cfg(not(test))]
+impl Drop for TailwindWatchRelay {
+    fn drop(&mut self) {
+        self.close();
+    }
+}
+
+#[cfg(not(test))]
+fn tailwind_touch_marker(path: &Path) -> Result<(), BundleError> {
+    let token = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|err| BundleError::runtime(format!("failed to compute marker timestamp: {err}")))?
+        .as_nanos()
+        .to_string();
+    fs::write(path, token).map_err(|err| {
+        BundleError::runtime(format!(
+            "failed to write Tailwind watch relay marker {}: {err}",
+            path.display()
+        ))
+    })
+}
+
+#[cfg(not(test))]
+fn tailwind_watch_token(path: &Path, kind: TailwindRelayTargetKind) -> Option<u128> {
+    let metadata = fs::metadata(path).ok()?;
+    let modified = metadata.modified().ok()?;
+
+    match kind {
+        TailwindRelayTargetKind::File => modified
+            .duration_since(UNIX_EPOCH)
+            .ok()
+            .map(|v| v.as_nanos()),
+        TailwindRelayTargetKind::Directory => modified
+            .duration_since(UNIX_EPOCH)
+            .ok()
+            .map(|v| v.as_nanos()),
+    }
+}
+
+#[cfg(not(test))]
+fn is_tailwind_relay_path(path: &Path) -> bool {
+    if path.is_dir() {
+        return true;
+    }
+
+    matches!(
+        path.extension().and_then(OsStr::to_str),
+        Some("js" | "cjs" | "mjs" | "ts" | "cts" | "mts")
+    )
+}
+
+#[cfg(not(test))]
+#[derive(Debug)]
+struct TailwindWorkerClient {
+    child: Child,
+    stdin: ChildStdin,
+    stdout: BufReader<ChildStdout>,
+}
+
+#[cfg(not(test))]
+impl TailwindWorkerClient {
+    fn spawn(views_root: &Path) -> Result<Self, BundleError> {
+        let binary = env::var_os(GDANSK_TAILWIND_NODE_BINARY_ENV).unwrap_or_else(|| "node".into());
+        let mut command = Command::new(&binary);
+        if let Some(worker_path) = env::var_os(GDANSK_TAILWIND_WORKER_PATH_ENV) {
+            command.arg(worker_path);
+        } else {
+            command.arg("--input-type=module");
+            command.arg("--eval");
+            command.arg(GDANSK_TAILWIND_WORKER_SOURCE);
+        }
+
+        command.current_dir(views_root);
+        command.env(GDANSK_TAILWIND_VIEWS_ROOT_ENV, views_root);
+        command.env("NODE_PATH", views_root.join("node_modules"));
+        command.stdin(Stdio::piped());
+        command.stdout(Stdio::piped());
+        command.stderr(Stdio::null());
+
+        let mut child = command.spawn().map_err(|err| {
+            if err.kind() == std::io::ErrorKind::NotFound {
+                return BundleError::runtime(format!(
+                    "failed to start Tailwind worker: `{}` was not found. Install Node.js or set {}.",
+                    PathBuf::from(&binary).display(),
+                    GDANSK_TAILWIND_NODE_BINARY_ENV
+                ));
+            }
+            BundleError::runtime(format!("failed to start Tailwind worker: {err}"))
+        })?;
+
+        let stdin = child.stdin.take().ok_or_else(|| {
+            BundleError::runtime("failed to acquire stdin for Tailwind worker".to_string())
+        })?;
+        let stdout = child.stdout.take().ok_or_else(|| {
+            BundleError::runtime("failed to acquire stdout for Tailwind worker".to_string())
+        })?;
+
+        Ok(Self {
+            child,
+            stdin,
+            stdout: BufReader::new(stdout),
+        })
+    }
+
+    fn generate(
+        &mut self,
+        css_path: &Path,
+        content: &str,
+    ) -> Result<Option<TailwindGenerateOutput>, BundleError> {
+        let request = TailwindWorkerGenerateRequest {
+            kind: "generate",
+            id: path_to_utf8(css_path, "tailwind css path")?,
+            content: content.to_owned(),
+        };
+        let request_json = deno_core::serde_json::to_string(&request).map_err(|err| {
+            BundleError::runtime(format!("failed to encode Tailwind worker request: {err}"))
+        })?;
+
+        self.stdin
+            .write_all(request_json.as_bytes())
+            .and_then(|()| self.stdin.write_all(b"\n"))
+            .and_then(|()| self.stdin.flush())
+            .map_err(|err| {
+                BundleError::runtime(format!("failed to write Tailwind worker request: {err}"))
+            })?;
+
+        let mut response_line = String::new();
+        let bytes_read = self.stdout.read_line(&mut response_line).map_err(|err| {
+            BundleError::runtime(format!("failed to read Tailwind worker response: {err}"))
+        })?;
+        if bytes_read == 0 {
+            let status = self
+                .child
+                .try_wait()
+                .map_err(|err| {
+                    BundleError::runtime(format!(
+                        "Tailwind worker exited unexpectedly and its status could not be read: {err}"
+                    ))
+                })?
+                .map(|status| status.to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+            return Err(BundleError::runtime(format!(
+                "Tailwind worker exited unexpectedly with status {status}"
+            )));
+        }
+
+        let response: TailwindWorkerResponse =
+            deno_core::serde_json::from_str(response_line.trim_end()).map_err(|err| {
+                BundleError::runtime(format!("failed to decode Tailwind worker response: {err}"))
+            })?;
+
+        match response {
+            TailwindWorkerResponse::Generated {
+                id,
+                is_tailwind_root,
+                code,
+                watch_files,
+                watch_directories,
+            } => {
+                if id != request.id {
+                    return Err(BundleError::runtime(format!(
+                        "Tailwind worker response id mismatch: expected {}, received {id}",
+                        request.id
+                    )));
+                }
+                if !is_tailwind_root {
+                    return Ok(None);
+                }
+
+                let code = code.ok_or_else(|| {
+                    BundleError::runtime(format!(
+                        "Tailwind worker did not return generated CSS for {}",
+                        css_path.display()
+                    ))
+                })?;
+                Ok(Some(TailwindGenerateOutput {
+                    code,
+                    watch_files: watch_files.into_iter().map(PathBuf::from).collect(),
+                    watch_directories: watch_directories.into_iter().map(PathBuf::from).collect(),
+                }))
+            }
+            TailwindWorkerResponse::Error { error } => Err(BundleError::runtime(error)),
+        }
+    }
+
+    fn close(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+#[cfg(not(test))]
+impl Drop for TailwindWorkerClient {
+    fn drop(&mut self) {
+        self.close();
+    }
+}
+
+#[cfg(not(test))]
+#[derive(Debug)]
+struct TailwindProcessor {
+    views_root: PathBuf,
+    worker: Option<TailwindWorkerClient>,
+    relay: TailwindWatchRelay,
+}
+
+#[cfg(not(test))]
+impl TailwindProcessor {
+    fn new(views_root: &Path, _output_dir: &Path) -> Self {
+        Self {
+            views_root: views_root.to_path_buf(),
+            worker: None,
+            relay: TailwindWatchRelay::new(views_root.join(".gdansk-tailwind-watch")),
+        }
+    }
+
+    fn generate(&mut self, css_path: &Path) -> Result<Option<TailwindGenerateOutput>, BundleError> {
+        let resolved_css_path = canonicalize_existing_file(css_path, "tailwind css input")?;
+        let content = fs::read_to_string(&resolved_css_path).map_err(|err| {
+            BundleError::runtime(format!(
+                "failed to read Tailwind css input {}: {err}",
+                resolved_css_path.display()
+            ))
+        })?;
+        if self.worker.is_none() {
+            self.worker = Some(TailwindWorkerClient::spawn(&self.views_root)?);
+        }
+        self.worker
+            .as_mut()
+            .expect("tailwind worker should be initialized")
+            .generate(&resolved_css_path, &content)
+    }
+
+    fn watch_path(&mut self, path: &Path) -> Result<PathBuf, BundleError> {
+        if is_tailwind_relay_path(path) {
+            if path.is_dir() {
+                return self.relay.register_directory(path);
+            }
+            return self.relay.register_file(path);
+        }
+
+        Ok(path.to_path_buf())
+    }
+
+    fn close(&mut self) {
+        if let Some(worker) = self.worker.as_mut() {
+            worker.close();
+        }
+        self.worker = None;
+        self.relay.close();
+    }
+}
 
 #[cfg(not(test))]
 fn derive_output_stems(path: &Path, app: bool, ssr: bool) -> (PathBuf, Option<PathBuf>) {
@@ -484,12 +913,8 @@ fn synthetic_css_bundle_entry(
     (entry_path, source, resolutions)
 }
 
-fn render_css_bundle(
-    css_paths: &[String],
-    cwd: &Path,
-    minify: bool,
-) -> Result<String, BundleError> {
-    let resolved_paths = css_paths
+fn resolve_css_input_paths(css_paths: &[String], cwd: &Path) -> Result<Vec<PathBuf>, BundleError> {
+    css_paths
         .iter()
         .map(|css_path| {
             let path = Path::new(css_path);
@@ -500,10 +925,24 @@ fn render_css_bundle(
             };
             canonicalize_existing_file(&candidate, "css import")
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect()
+}
+
+fn render_css_bundle(
+    css_paths: &[String],
+    cwd: &Path,
+    minify: bool,
+    virtual_sources: &HashMap<PathBuf, String>,
+) -> Result<String, BundleError> {
+    let resolved_paths = resolve_css_input_paths(css_paths, cwd)?;
     let (entry_path, entry_source, resolutions) = synthetic_css_bundle_entry(cwd, &resolved_paths);
-    let provider =
-        CssSourceProvider::with_virtual_entry(cwd, entry_path.clone(), entry_source, resolutions);
+    let provider = CssSourceProvider::with_virtual_entry(
+        cwd,
+        entry_path.clone(),
+        entry_source,
+        resolutions,
+        virtual_sources.clone(),
+    );
     let parser_options = ParserOptions {
         filename: path_to_utf8(&entry_path, "css path")?,
         ..ParserOptions::default()
@@ -552,10 +991,12 @@ fn render_css_bundle(
 fn collect_entry_css_imports(
     entry_id: &str,
     modules: &HashMap<String, CssGraphModule>,
+    css_stub_resolutions: &HashMap<String, String>,
 ) -> Vec<String> {
     fn visit(
         module_id: &str,
         modules: &HashMap<String, CssGraphModule>,
+        css_stub_resolutions: &HashMap<String, String>,
         visited_modules: &mut HashSet<String>,
         visited_css: &mut HashSet<String>,
         ordered_css: &mut Vec<String>,
@@ -575,12 +1016,16 @@ fn collect_entry_css_imports(
         }
 
         for imported_id in &module.imported_ids {
-            if imported_id.starts_with(GDANSK_CSS_STUB_PREFIX) {
+            if let Some(css_import) = css_stub_resolutions.get(imported_id) {
+                if visited_css.insert(css_import.clone()) {
+                    ordered_css.push(css_import.clone());
+                }
                 continue;
             }
             visit(
                 imported_id,
                 modules,
+                css_stub_resolutions,
                 visited_modules,
                 visited_css,
                 ordered_css,
@@ -594,6 +1039,7 @@ fn collect_entry_css_imports(
     visit(
         entry_id,
         modules,
+        css_stub_resolutions,
         &mut visited_modules,
         &mut visited_css,
         &mut ordered_css,
@@ -619,13 +1065,16 @@ fn find_client_entry_module_id(
     None
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_css_outputs(
     normalized: &[NormalizedPage],
     entry_module_ids: &HashMap<String, String>,
     modules: &HashMap<String, CssGraphModule>,
+    css_stub_resolutions: &HashMap<String, String>,
     cwd: &Path,
     output_dir: &Path,
     minify: bool,
+    virtual_sources: &HashMap<PathBuf, String>,
 ) -> Result<(), BundleError> {
     let output_root = if output_dir.is_absolute() {
         output_dir.to_path_buf()
@@ -640,7 +1089,7 @@ fn build_css_outputs(
                 page.import
             ))
         })?;
-        let css_imports = collect_entry_css_imports(entry_id, modules);
+        let css_imports = collect_entry_css_imports(entry_id, modules, css_stub_resolutions);
         let output_path = output_root.join(&page.client_css_path);
 
         if css_imports.is_empty() {
@@ -655,7 +1104,7 @@ fn build_css_outputs(
             continue;
         }
 
-        let mut bundled = render_css_bundle(&css_imports, cwd, minify)?;
+        let mut bundled = render_css_bundle(&css_imports, cwd, minify, virtual_sources)?;
         if !bundled.ends_with('\n') {
             bundled.push('\n');
         }
@@ -797,18 +1246,27 @@ struct GdanskCssGraphPlugin {
     cwd: PathBuf,
     output_dir: PathBuf,
     minify: bool,
-    css_imports: std::sync::Mutex<HashMap<String, Vec<String>>>,
+    css_stub_resolutions: std::sync::Mutex<HashMap<String, String>>,
+    tailwind: Option<std::sync::Mutex<TailwindProcessor>>,
 }
 
 #[cfg(not(test))]
 impl GdanskCssGraphPlugin {
-    fn new(normalized: &[NormalizedPage], cwd: &Path, output_dir: &Path, minify: bool) -> Self {
+    fn new(
+        normalized: &[NormalizedPage],
+        cwd: &Path,
+        output_dir: &Path,
+        minify: bool,
+        tailwind: bool,
+    ) -> Self {
         Self {
             normalized: normalized.to_vec(),
             cwd: cwd.to_path_buf(),
             output_dir: output_dir.to_path_buf(),
             minify,
-            css_imports: std::sync::Mutex::new(HashMap::new()),
+            css_stub_resolutions: std::sync::Mutex::new(HashMap::new()),
+            tailwind: tailwind
+                .then(|| std::sync::Mutex::new(TailwindProcessor::new(cwd, output_dir))),
         }
     }
 
@@ -817,21 +1275,48 @@ impl GdanskCssGraphPlugin {
             && !specifier.starts_with("../")
             && !Path::new(specifier).is_absolute()
     }
+
+    fn collect_css_imports(
+        &self,
+        modules: &HashMap<String, CssGraphModule>,
+        entry_module_ids: &HashMap<String, String>,
+    ) -> Result<Vec<PathBuf>, BundleError> {
+        let mut unique_paths = Vec::new();
+        let mut seen = HashSet::new();
+        let css_stub_resolutions = self
+            .css_stub_resolutions
+            .lock()
+            .expect("css graph poisoned")
+            .clone();
+
+        for page in &self.normalized {
+            let entry_id = entry_module_ids.get(&page.import).ok_or_else(|| {
+                BundleError::runtime(format!(
+                    "failed to resolve client entry for css output: {}",
+                    page.import
+                ))
+            })?;
+
+            for css_import in collect_entry_css_imports(entry_id, modules, &css_stub_resolutions) {
+                let resolved =
+                    resolve_css_input_paths(std::slice::from_ref(&css_import), &self.cwd)?
+                        .into_iter()
+                        .next()
+                        .expect("resolved css path should exist");
+                if seen.insert(resolved.clone()) {
+                    unique_paths.push(resolved);
+                }
+            }
+        }
+
+        Ok(unique_paths)
+    }
 }
 
 #[cfg(not(test))]
 impl Plugin for GdanskCssGraphPlugin {
     fn name(&self) -> Cow<'static, str> {
         Cow::Borrowed("gdansk:css-graph")
-    }
-
-    async fn build_start(
-        &self,
-        _ctx: &PluginContext,
-        _args: &HookBuildStartArgs<'_>,
-    ) -> rolldown::plugin::HookNoopReturn {
-        self.css_imports.lock().expect("css graph poisoned").clear();
-        Ok(())
     }
 
     async fn resolve_id(
@@ -887,20 +1372,18 @@ impl Plugin for GdanskCssGraphPlugin {
             return Ok(None);
         }
 
-        let Some(importer) = args.importer else {
+        if args.importer.is_none() {
             return Ok(None);
-        };
+        }
 
-        self.css_imports
+        let virtual_id = GdanskCssStubPlugin::resolve_virtual_id(args.specifier, args.importer);
+
+        self.css_stub_resolutions
             .lock()
             .expect("css graph poisoned")
-            .entry(importer.to_owned())
-            .or_default()
-            .push(resolved.id.to_string());
+            .insert(virtual_id.clone(), resolved.id.to_string());
 
-        Ok(Some(HookResolveIdOutput::from_id(
-            GdanskCssStubPlugin::resolve_virtual_id(args.specifier, args.importer),
-        )))
+        Ok(Some(HookResolveIdOutput::from_id(virtual_id)))
     }
 
     async fn load(&self, _ctx: SharedLoadPluginContext, args: &HookLoadArgs<'_>) -> HookLoadReturn {
@@ -940,10 +1423,6 @@ impl Plugin for GdanskCssGraphPlugin {
             }
         }
 
-        for (importer, css_imports) in self.css_imports.lock().expect("css graph poisoned").iter() {
-            modules.entry(importer.clone()).or_default().css_imports = css_imports.clone();
-        }
-
         let mut entry_module_ids = HashMap::with_capacity(self.normalized.len());
         for page in &self.normalized {
             let entry_module_id = find_client_entry_module_id(page, &discovered_entry_modules)
@@ -956,21 +1435,99 @@ impl Plugin for GdanskCssGraphPlugin {
             entry_module_ids.insert(page.import.clone(), entry_module_id);
         }
 
+        let css_stub_resolutions = self
+            .css_stub_resolutions
+            .lock()
+            .expect("css graph poisoned")
+            .clone();
+
+        let mut virtual_sources = HashMap::new();
+        if let Some(tailwind) = &self.tailwind {
+            let css_paths = self
+                .collect_css_imports(&modules, &entry_module_ids)
+                .map_err(|err| {
+                    std::io::Error::other(format!("failed to collect Tailwind css inputs: {err}"))
+                })?;
+            let mut watch_paths = HashSet::new();
+            let mut processor = tailwind.lock().expect("tailwind processor poisoned");
+            for css_path in css_paths {
+                let generated = processor
+                    .generate(&css_path)
+                    .map_err(|err| std::io::Error::other(err.to_string()))?;
+                let Some(generated) = generated else {
+                    continue;
+                };
+
+                for watch_file in generated.watch_files {
+                    watch_paths.insert(
+                        processor
+                            .watch_path(&watch_file)
+                            .map_err(|err| std::io::Error::other(err.to_string()))?,
+                    );
+                }
+                for watch_directory in generated.watch_directories {
+                    watch_paths.insert(
+                        processor
+                            .watch_path(&watch_directory)
+                            .map_err(|err| std::io::Error::other(err.to_string()))?,
+                    );
+                }
+                virtual_sources.insert(css_path, generated.code);
+            }
+
+            for watch_path in watch_paths {
+                let watch_path = dunce::simplified(&watch_path).to_path_buf();
+                let watch_path = path_to_utf8(&watch_path, "tailwind watch path")
+                    .map_err(|err| std::io::Error::other(err.to_string()))?;
+                ctx.add_watch_file(&watch_path);
+            }
+        }
+
         build_css_outputs(
             &self.normalized,
             &entry_module_ids,
             &modules,
+            &css_stub_resolutions,
             &self.cwd,
             &self.output_dir,
             self.minify,
+            &virtual_sources,
         )
         .map_err(|err| std::io::Error::other(err.to_string()))?;
 
         Ok(())
     }
 
+    async fn close_bundle(
+        &self,
+        _ctx: &PluginContext,
+        _args: Option<&HookCloseBundleArgs<'_>>,
+    ) -> rolldown::plugin::HookNoopReturn {
+        if let Some(tailwind) = &self.tailwind {
+            tailwind
+                .lock()
+                .expect("tailwind processor poisoned")
+                .close();
+        }
+        Ok(())
+    }
+
+    async fn close_watcher(&self, _ctx: &PluginContext) -> rolldown::plugin::HookNoopReturn {
+        if let Some(tailwind) = &self.tailwind {
+            tailwind
+                .lock()
+                .expect("tailwind processor poisoned")
+                .close();
+        }
+        Ok(())
+    }
+
     fn register_hook_usage(&self) -> HookUsage {
-        HookUsage::BuildStart | HookUsage::ResolveId | HookUsage::Load | HookUsage::BuildEnd
+        HookUsage::ResolveId
+            | HookUsage::Load
+            | HookUsage::BuildEnd
+            | HookUsage::CloseBundle
+            | HookUsage::CloseWatcher
     }
 }
 
@@ -1132,10 +1689,11 @@ fn client_entrypoint_plugins(
     cwd: &Path,
     output_dir: &Path,
     minify: bool,
+    tailwind: bool,
     include_app_entrypoint_plugin: bool,
 ) -> Vec<SharedPluginable> {
     let mut plugins: Vec<SharedPluginable> = vec![Arc::new(GdanskCssGraphPlugin::new(
-        normalized, cwd, output_dir, minify,
+        normalized, cwd, output_dir, minify, tailwind,
     ))];
     if include_app_entrypoint_plugin {
         plugins.push(Arc::new(GdanskAppEntrypointPlugin));
@@ -1482,12 +2040,13 @@ async fn run_bundler(
 }
 
 #[cfg(not(test))]
-#[pyfunction(signature = (pages, dev = false, minify = true, output = None, cwd = None))]
+#[pyfunction(signature = (pages, dev = false, minify = true, tailwind = false, output = None, cwd = None))]
 pub(crate) fn bundle(
     py: Python<'_>,
     pages: Vec<Py<Page>>,
     dev: bool,
     minify: bool,
+    tailwind: bool,
     output: Option<PathBuf>,
     cwd: Option<PathBuf>,
 ) -> PyResult<Bound<'_, PyAny>> {
@@ -1512,8 +2071,14 @@ pub(crate) fn bundle(
         let client_items = build_input_items(build_client_input_item_fields(&normalized));
         let server_items = build_input_items(build_server_input_item_fields(&normalized));
         let has_app_entries = normalized.iter().any(|page| page.app);
-        let client_plugins =
-            client_entrypoint_plugins(&normalized, &cwd, &output_dir, minify, has_app_entries);
+        let client_plugins = client_entrypoint_plugins(
+            &normalized,
+            &cwd,
+            &output_dir,
+            minify,
+            tailwind,
+            has_app_entries,
+        );
 
         if dev {
             if server_items.is_empty() {
@@ -1880,7 +2445,7 @@ mod tests {
             ),
         ]);
 
-        let imports = collect_entry_css_imports("page", &modules);
+        let imports = collect_entry_css_imports("page", &modules, &HashMap::new());
 
         assert_eq!(
             imports,
@@ -1914,7 +2479,7 @@ mod tests {
             ),
         ]);
 
-        let imports = collect_entry_css_imports("page", &modules);
+        let imports = collect_entry_css_imports("page", &modules, &HashMap::new());
 
         assert_eq!(
             imports,
@@ -1933,7 +2498,7 @@ mod tests {
             css_graph_module(&[], vec!["first.css".to_string(), "second.css".to_string()]),
         )]);
 
-        let imports = collect_entry_css_imports("page", &modules);
+        let imports = collect_entry_css_imports("page", &modules, &HashMap::new());
 
         assert_eq!(
             imports,
@@ -1951,7 +2516,11 @@ mod tests {
             ),
         )]);
 
-        let imports = collect_entry_css_imports("page", &modules);
+        let css_stub_resolutions = HashMap::from([(
+            format!("{GDANSK_CSS_STUB_PREFIX}deadbeef"),
+            "page.css".to_string(),
+        )]);
+        let imports = collect_entry_css_imports("page", &modules, &css_stub_resolutions);
 
         assert_eq!(imports, vec!["page.css".to_string()]);
     }
@@ -2084,9 +2653,11 @@ mod tests {
             &normalized,
             &entry_module_ids,
             &modules,
+            &HashMap::new(),
             &project.root,
             Path::new(".gdansk"),
             false,
+            &HashMap::new(),
         )
         .expect("expected css output to build");
 
@@ -2129,15 +2700,55 @@ mod tests {
             &normalized,
             &entry_module_ids,
             &modules,
+            &HashMap::new(),
             &project.root,
             Path::new(".gdansk"),
             false,
+            &HashMap::new(),
         )
         .expect("expected css output to build");
 
         let css_output = fs::read_to_string(project.root.join(".gdansk/page.css"))
             .expect("expected css output file");
         assert!(css_output.contains(".theme"));
+    }
+
+    #[test]
+    fn build_css_outputs_prefers_virtual_sources_for_tailwind_roots() {
+        let project = TempProject::new();
+        project.create_file("page.tsx");
+        project.write_file("page.css", "body { color: red; }\n");
+
+        let normalized = normalize_pages(
+            vec![page("page.tsx", false, false)],
+            &project.root,
+            Path::new(".gdansk"),
+        )
+        .expect("expected normalized pages");
+        let entry_module_ids = HashMap::from([("page.tsx".to_string(), "page.tsx".to_string())]);
+        let css_path = canonical(&project.root.join("page.css"));
+        let modules = HashMap::from([(
+            "page.tsx".to_string(),
+            css_graph_module(&[], vec![css_path.to_string_lossy().into_owned()]),
+        )]);
+        let virtual_sources = HashMap::from([(css_path, ":root { --tw-test: 1; }\n".to_string())]);
+
+        build_css_outputs(
+            &normalized,
+            &entry_module_ids,
+            &modules,
+            &HashMap::new(),
+            &project.root,
+            Path::new(".gdansk"),
+            false,
+            &virtual_sources,
+        )
+        .expect("expected css output to build");
+
+        let css_output = fs::read_to_string(project.root.join(".gdansk/page.css"))
+            .expect("expected css output file");
+        assert!(css_output.contains("--tw-test"));
+        assert!(!css_output.contains("color: red"));
     }
 
     #[test]

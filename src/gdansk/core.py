@@ -18,18 +18,18 @@ from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import ENV
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable, Coroutine, Sequence
+    from collections.abc import AsyncIterator, Callable, Coroutine
     from os import PathLike
 
     from mcp.server import MCPServer as FastMCP
     from mcp.types import Icon, ToolAnnotations
     from starlette.applications import Starlette
 
-    from gdansk.protocol import Plugin
+    from gdansk.tailwind import Tailwind
 
 
 logger = logging.getLogger(__name__)
-_T = TypeVar("_T")
+T = TypeVar("T")
 
 
 class _AsyncThreadRunner:
@@ -62,7 +62,7 @@ class _AsyncThreadRunner:
                     loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
             loop.close()
 
-    def run(self, coro: Coroutine[Any, Any, _T]) -> _T:
+    def run(self, coro: Coroutine[Any, Any, T]) -> T:
         self.start()
         loop = self._loop
         if loop is None:
@@ -94,7 +94,7 @@ class Amber:
     ssr: bool = field(default=False, kw_only=True)
     cache_html: bool = field(default=True, kw_only=True)
     metadata: Metadata | None = field(default=None, kw_only=True)
-    plugins: Sequence[Plugin] = field(default=(), kw_only=True)
+    tailwind: Tailwind | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
         """Validate required paths and initialize derived output paths."""
@@ -104,40 +104,15 @@ class Amber:
 
         object.__setattr__(self, "output", self.views / ".gdansk")
 
-    def _schedule_watcher_tasks(
-        self,
-        *,
-        dev: bool,
-    ) -> tuple[asyncio.Event | None, list[asyncio.Task[None]]]:
-        if not dev or not self.plugins:
-            return None, []
-
-        stop_event = asyncio.Event()
-        watcher_tasks: list[asyncio.Task[None]] = [
-            asyncio.create_task(
-                plugin.watch(
-                    pages=self.views,
-                    output=self.output,
-                    stop_event=stop_event,
-                ),
-            )
-            for plugin in self.plugins
-        ]
-
-        return stop_event, watcher_tasks
-
     async def _run_build_pipeline(self, *, dev: bool) -> None:
         await bundle(
             pages=sorted(self._apps, key=lambda page: page.path.as_posix()),
             dev=dev,
             minify=not dev,
+            tailwind=self.tailwind is not None and self.tailwind.enabled,
             output=self.output,
             cwd=self.views,
         )
-        if dev:
-            return
-        for plugin in self.plugins:
-            await plugin.build(pages=self.views, output=self.output)
 
     @staticmethod
     def _log_background_task_error(task: asyncio.Task[None]) -> None:
@@ -149,21 +124,13 @@ class Amber:
         logger.exception("Amber background task failed", exc_info=exc)
 
     @staticmethod
-    async def _shutdown_dev_tasks(
-        *,
-        stop_event: asyncio.Event | None,
-        bundle_task: asyncio.Task[None] | None,
-        watcher_tasks: list[asyncio.Task[None]],
-    ) -> None:
-        if stop_event is not None:
-            stop_event.set()
-        tasks = [candidate for candidate in [bundle_task, *watcher_tasks] if candidate is not None]
-        for task in tasks:
-            if not task.done():
-                task.cancel()
-        if tasks:
-            with suppress(asyncio.CancelledError):
-                await asyncio.gather(*tasks, return_exceptions=True)
+    async def _shutdown_dev_task(*, bundle_task: asyncio.Task[None]) -> None:
+        if bundle_task.done():
+            await asyncio.gather(bundle_task, return_exceptions=True)
+            return
+        bundle_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await bundle_task
 
     @staticmethod
     def _normalize_page_input(page: str | PathLike[str]) -> Path:
@@ -220,20 +187,13 @@ class Amber:
             return app
 
         runner = _AsyncThreadRunner()
-        stop_event: asyncio.Event | None = None
-        watcher_tasks: list[asyncio.Task[None]] = []
         bundle_task: asyncio.Task[None] | None = None
         original_lifespan = app.router.lifespan_context
 
         async def _start_dev() -> None:
-            nonlocal stop_event
-            nonlocal watcher_tasks
             nonlocal bundle_task
-            stop_event, watcher_tasks = self._schedule_watcher_tasks(dev=True)
             bundle_task = asyncio.create_task(self._run_build_pipeline(dev=True))
             bundle_task.add_done_callback(self._log_background_task_error)
-            for watcher_task in watcher_tasks:
-                watcher_task.add_done_callback(self._log_background_task_error)
 
         @asynccontextmanager
         async def _lifespan(starlette_app: Starlette) -> AsyncIterator[None]:
@@ -246,15 +206,9 @@ class Amber:
                 try:
                     yield
                 finally:
-                    if dev:
+                    if dev and bundle_task is not None:
                         with suppress(concurrent.futures.CancelledError):
-                            runner.run(
-                                Amber._shutdown_dev_tasks(
-                                    stop_event=stop_event,
-                                    bundle_task=bundle_task,
-                                    watcher_tasks=watcher_tasks,
-                                ),
-                            )
+                            runner.run(Amber._shutdown_dev_task(bundle_task=bundle_task))
                     runner.stop()
 
         app.router.lifespan_context = _lifespan

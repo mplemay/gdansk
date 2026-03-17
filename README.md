@@ -19,8 +19,12 @@ polished UIs.
 ## Installation
 
 ```bash
-uv add gdansk
+uv add gdansk git+https://github.com/modelcontextprotocol/python-sdk.git@main
 ```
+
+> [!NOTE]
+> We are currently installing the MCP SDK from `main` because that branch is tracking the upcoming v2.0 release, and
+> Gdansk's stable release is planned to ship alongside the stable v2.0 SDK release.
 
 ## Skill for Coding Agents
 
@@ -36,6 +40,24 @@ npx skills add mplemay/gdansk
 - **[get-time](examples/get-time):** Feature-rich MCP app covering tool calls, messaging, logging, and links.
 - **[ssr](examples/ssr):** Minimal SSR example using `Amber(ssr=True)` with a single tool UI.
 - **[shadcn](examples/shadcn):** Todo app example using `shadcn/ui` components with Gdansk.
+
+## Tailwind CSS
+
+Tailwind support is built into the Rolldown pipeline. Enable it explicitly with `Tailwind()`:
+
+```python
+from gdansk import Amber, Tailwind
+
+amber = Amber(
+    mcp=mcp,
+    views=Path(__file__).parent / "views",
+    tailwind=Tailwind(),
+)
+```
+
+Install `tailwindcss`, `@tailwindcss/node`, and `@tailwindcss/oxide` in your `views/` package, then
+import Tailwind in your root stylesheet with `@import "tailwindcss";`. No `postcss.config.*` or
+`postcss-cli` step is required.
 
 ## Quick Start
 

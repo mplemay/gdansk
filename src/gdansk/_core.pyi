@@ -14,6 +14,7 @@ async def bundle(
     pages: Sequence[Page],
     dev: bool = False,
     minify: bool = True,
+    tailwind: bool = False,
     output: Path = ...,
     cwd: Path = ...,
 ) -> None: ...
