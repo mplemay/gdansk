@@ -360,8 +360,8 @@ wheels = [
 
 [[package]]
 name = "mcp"
-version = "1.25.1.dev136+20dd946"
-source = { git = "https://github.com/modelcontextprotocol/python-sdk.git?rev=main#20dd94632ef1b8a8e2db5ca9c0c38dab845fa5bb" }
+version = "1.25.1.dev137+5388bea"
+source = { git = "https://github.com/modelcontextprotocol/python-sdk.git?rev=main#5388bea53ad7b13db7d031cdfd27392474c89007" }
 dependencies = [
     { name = "anyio" },
     { name = "httpx" },
