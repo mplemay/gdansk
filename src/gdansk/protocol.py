@@ -9,7 +9,13 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-class Plugin(Protocol):
+class BundlerPlugin(Protocol):
+    """Protocol for Python wrappers around native rolldown plugins."""
+
+    id: str
+
+
+class LifecyclePlugin(Protocol):
     """Plugin interface for build and watch hooks."""
 
     async def build(self, *, pages: Path, output: Path) -> None:
@@ -17,3 +23,6 @@ class Plugin(Protocol):
 
     async def watch(self, *, pages: Path, output: Path, stop_event: asyncio.Event) -> None:
         """Watch for source changes and update generated assets until stopped."""
+
+
+Plugin = LifecyclePlugin

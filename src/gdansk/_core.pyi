@@ -17,4 +17,12 @@ async def bundle(
     output: Path = ...,
     cwd: Path = ...,
 ) -> None: ...
+async def _bundle_with_plugins(
+    pages: Sequence[Page],
+    plugins: Sequence[str],
+    dev: bool = False,
+    minify: bool = True,
+    output: Path = ...,
+    cwd: Path = ...,
+) -> None: ...
 async def run(code: str, /) -> object: ...

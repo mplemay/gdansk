@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
 from anyio import Path as APath
 
-from gdansk._core import Page, bundle, run
+from gdansk._core import Page, _bundle_with_plugins, bundle, run
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import ENV
 
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from mcp.types import Icon, ToolAnnotations
     from starlette.applications import Starlette
 
-    from gdansk.protocol import Plugin
+    from gdansk.protocol import BundlerPlugin, LifecyclePlugin
 
 
 logger = logging.getLogger(__name__)
@@ -94,7 +94,8 @@ class Amber:
     ssr: bool = field(default=False, kw_only=True)
     cache_html: bool = field(default=True, kw_only=True)
     metadata: Metadata | None = field(default=None, kw_only=True)
-    plugins: Sequence[Plugin] = field(default=(), kw_only=True)
+    plugins: Sequence[BundlerPlugin] | None = field(default=None, kw_only=True)
+    lifecycle_plugins: Sequence[LifecyclePlugin] = field(default=(), kw_only=True)
 
     def __post_init__(self) -> None:
         """Validate required paths and initialize derived output paths."""
@@ -109,7 +110,7 @@ class Amber:
         *,
         dev: bool,
     ) -> tuple[asyncio.Event | None, list[asyncio.Task[None]]]:
-        if not dev or not self.plugins:
+        if not dev or not self.lifecycle_plugins:
             return None, []
 
         stop_event = asyncio.Event()
@@ -121,22 +122,48 @@ class Amber:
                     stop_event=stop_event,
                 ),
             )
-            for plugin in self.plugins
+            for plugin in self.lifecycle_plugins
         ]
 
         return stop_event, watcher_tasks
 
+    def _bundler_plugin_ids(self) -> list[str] | None:
+        if self.plugins is None:
+            return None
+
+        plugin_ids: list[str] = []
+        for plugin in self.plugins:
+            plugin_id = getattr(plugin, "id", None)
+            if not isinstance(plugin_id, str) or not plugin_id:
+                msg = "Amber bundler plugins must expose a non-empty string `id` attribute"
+                raise TypeError(msg)
+            plugin_ids.append(plugin_id)
+
+        return plugin_ids
+
     async def _run_build_pipeline(self, *, dev: bool) -> None:
-        await bundle(
-            pages=sorted(self._apps, key=lambda page: page.path.as_posix()),
-            dev=dev,
-            minify=not dev,
-            output=self.output,
-            cwd=self.views,
-        )
+        pages = sorted(self._apps, key=lambda page: page.path.as_posix())
+        bundler_plugin_ids = self._bundler_plugin_ids()
+        if bundler_plugin_ids is None:
+            await bundle(
+                pages=pages,
+                dev=dev,
+                minify=not dev,
+                output=self.output,
+                cwd=self.views,
+            )
+        else:
+            await _bundle_with_plugins(
+                pages=pages,
+                plugins=bundler_plugin_ids,
+                dev=dev,
+                minify=not dev,
+                output=self.output,
+                cwd=self.views,
+            )
         if dev:
             return
-        for plugin in self.plugins:
+        for plugin in self.lifecycle_plugins:
             await plugin.build(pages=self.views, output=self.output)
 
     @staticmethod

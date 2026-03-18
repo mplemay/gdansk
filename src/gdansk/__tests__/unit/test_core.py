@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from gdansk import LightningCSS
 from gdansk.core import Amber, Page
 from gdansk.render import ENV
 
@@ -108,7 +109,7 @@ def test_no_plugins_called_when_no_paths_registered(mock_mcp, pages_dir):
         async def watch(self, *, pages: Path, output: Path, stop_event: asyncio.Event) -> None:
             _ = (pages, output, stop_event)
 
-    amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=[_TestPlugin()])
+    amber = Amber(mcp=mock_mcp, views=pages_dir, lifecycle_plugins=[_TestPlugin()])
     with patch("gdansk.core.bundle") as mock_bundle:
         amber(dev=True)
     assert called is False
@@ -142,7 +143,7 @@ def test_plugins_run_after_bundle_in_prod(mock_mcp, pages_dir):
         async def watch(self, *, pages: Path, output: Path, stop_event: asyncio.Event) -> None:
             _ = (pages, output, stop_event)
 
-    amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=[_TestPlugin()])
+    amber = Amber(mcp=mock_mcp, views=pages_dir, lifecycle_plugins=[_TestPlugin()])
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
 
     async def _fake_bundle(**_kwargs: object):
@@ -191,6 +192,63 @@ def test_passes_dev_flag_and_derived_minify(amber):
     assert captured[1]["minify"] is True
 
 
+def test_default_bundler_plugins_use_public_bundle(mock_mcp, pages_dir):
+    amber = Amber(mcp=mock_mcp, views=pages_dir)
+    amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
+    captured: list[dict] = []
+
+    async def _fake_bundle(**kwargs: object):
+        captured.append(kwargs)
+
+    with (
+        patch("gdansk.core.bundle", _fake_bundle),
+        patch("gdansk.core._bundle_with_plugins") as mock_bundle_with_plugins,
+        _lifespan(amber(dev=False)),
+    ):
+        pass
+
+    assert captured[-1]["pages"] == [Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False)]
+    mock_bundle_with_plugins.assert_not_called()
+
+
+def test_explicit_lightningcss_plugin_uses_internal_bundle_with_plugins(mock_mcp, pages_dir):
+    amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=[LightningCSS()])
+    amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
+    captured: list[dict] = []
+
+    async def _fake_bundle_with_plugins(**kwargs: object):
+        captured.append(kwargs)
+
+    with (
+        patch("gdansk.core._bundle_with_plugins", _fake_bundle_with_plugins),
+        patch("gdansk.core.bundle") as mock_bundle,
+        _lifespan(amber(dev=False)),
+    ):
+        pass
+
+    assert captured[-1]["plugins"] == ["lightningcss"]
+    mock_bundle.assert_not_called()
+
+
+def test_empty_bundler_plugin_list_is_forwarded(mock_mcp, pages_dir):
+    amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=[])
+    amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
+    captured: list[dict] = []
+
+    async def _fake_bundle_with_plugins(**kwargs: object):
+        captured.append(kwargs)
+
+    with (
+        patch("gdansk.core._bundle_with_plugins", _fake_bundle_with_plugins),
+        _lifespan(
+            amber(dev=False),
+        ),
+    ):
+        pass
+
+    assert captured[-1]["plugins"] == []
+
+
 @pytest.mark.usefixtures("pages_dir")
 def test_plugin_errors_propagate_in_prod(mock_mcp, pages_dir):
     class _FailingPlugin:
@@ -202,7 +260,7 @@ def test_plugin_errors_propagate_in_prod(mock_mcp, pages_dir):
         async def watch(self, *, pages: Path, output: Path, stop_event: asyncio.Event) -> None:
             _ = (pages, output, stop_event)
 
-    amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=[_FailingPlugin()])
+    amber = Amber(mcp=mock_mcp, views=pages_dir, lifecycle_plugins=[_FailingPlugin()])
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
 
     async def _fake_bundle(**_kwargs: object):
@@ -324,7 +382,7 @@ def test_plugins_watch_started_and_cancelled_on_shutdown(mock_mcp, pages_dir):
                 watcher_cancelled.set()
                 raise
 
-    amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=[_DevPlugin()])
+    amber = Amber(mcp=mock_mcp, views=pages_dir, lifecycle_plugins=[_DevPlugin()])
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
 
     async def _slow_bundle(**_kwargs: object):
@@ -352,7 +410,7 @@ def test_dev_watch_error_is_logged(mock_mcp, pages_dir):
             msg = "watch failed"
             raise RuntimeError(msg)
 
-    amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=[_FailingWatchPlugin()])
+    amber = Amber(mcp=mock_mcp, views=pages_dir, lifecycle_plugins=[_FailingWatchPlugin()])
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
 
     async def _slow_bundle(**_kwargs: object):

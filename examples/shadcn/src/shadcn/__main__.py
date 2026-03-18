@@ -16,7 +16,7 @@ from gdansk import Amber
 from gdansk.experimental.postcss import PostCSS
 
 mcp = FastMCP("Todo Server")
-amber = Amber(mcp=mcp, views=Path(__file__).parent / "views", plugins=[PostCSS()])
+amber = Amber(mcp=mcp, views=Path(__file__).parent / "views", lifecycle_plugins=[PostCSS()])
 
 
 @dataclass(slots=True, kw_only=True)

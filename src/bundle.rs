@@ -176,6 +176,8 @@ const SERVER_ENTRYPOINT_QUERY: &str = "?gdansk-server-entry";
 const GDANSK_RUNTIME_SPECIFIER: &str = "gdansk:runtime";
 const GDANSK_CSS_STUB_PREFIX: &str = "gdansk:css-stub:";
 #[cfg(not(test))]
+const LIGHTNINGCSS_PLUGIN_ID: &str = "lightningcss";
+#[cfg(not(test))]
 const GDANSK_RUNTIME_MODULE_SOURCE: &str = include_str!("runtime.js");
 
 #[cfg(not(test))]
@@ -738,11 +740,51 @@ struct DevEngineCloseGuard {
 }
 
 #[cfg(not(test))]
-#[derive(Debug, Default)]
-struct GdanskCssStubPlugin;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LightningCssPluginMode {
+    Client,
+    Server,
+}
 
 #[cfg(not(test))]
-impl GdanskCssStubPlugin {
+#[derive(Debug)]
+struct LightningCssClientState {
+    normalized: Vec<NormalizedPage>,
+    cwd: PathBuf,
+    output_dir: PathBuf,
+    minify: bool,
+    css_imports: std::sync::Mutex<HashMap<String, Vec<String>>>,
+}
+
+#[cfg(not(test))]
+#[derive(Debug)]
+struct LightningCssPlugin {
+    mode: LightningCssPluginMode,
+    client_state: Option<LightningCssClientState>,
+}
+
+#[cfg(not(test))]
+impl LightningCssPlugin {
+    fn client(normalized: &[NormalizedPage], cwd: &Path, output_dir: &Path, minify: bool) -> Self {
+        Self {
+            mode: LightningCssPluginMode::Client,
+            client_state: Some(LightningCssClientState {
+                normalized: normalized.to_vec(),
+                cwd: cwd.to_path_buf(),
+                output_dir: output_dir.to_path_buf(),
+                minify,
+                css_imports: std::sync::Mutex::new(HashMap::new()),
+            }),
+        }
+    }
+
+    fn server() -> Self {
+        Self {
+            mode: LightningCssPluginMode::Server,
+            client_state: None,
+        }
+    }
+
     fn resolve_virtual_id(specifier: &str, importer: Option<&str>) -> String {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         std::hash::Hash::hash(&importer, &mut hasher);
@@ -752,89 +794,14 @@ impl GdanskCssStubPlugin {
             std::hash::Hasher::finish(&hasher)
         )
     }
-}
-
-#[cfg(not(test))]
-impl Plugin for GdanskCssStubPlugin {
-    fn name(&self) -> Cow<'static, str> {
-        Cow::Borrowed("gdansk:css-stub")
-    }
-
-    async fn resolve_id(
-        &self,
-        _ctx: &PluginContext,
-        args: &HookResolveIdArgs<'_>,
-    ) -> HookResolveIdReturn {
-        if !args.specifier.ends_with(".css") {
-            return Ok(None);
-        }
-
-        Ok(Some(HookResolveIdOutput::from_id(
-            Self::resolve_virtual_id(args.specifier, args.importer),
-        )))
-    }
-
-    async fn load(&self, _ctx: SharedLoadPluginContext, args: &HookLoadArgs<'_>) -> HookLoadReturn {
-        if !args.id.starts_with(GDANSK_CSS_STUB_PREFIX) {
-            return Ok(None);
-        }
-
-        Ok(Some(HookLoadOutput {
-            code: "export {};".into(),
-            ..Default::default()
-        }))
-    }
-
-    fn register_hook_usage(&self) -> HookUsage {
-        HookUsage::ResolveId | HookUsage::Load
-    }
-}
-
-#[cfg(not(test))]
-#[derive(Debug)]
-struct GdanskCssGraphPlugin {
-    normalized: Vec<NormalizedPage>,
-    cwd: PathBuf,
-    output_dir: PathBuf,
-    minify: bool,
-    css_imports: std::sync::Mutex<HashMap<String, Vec<String>>>,
-}
-
-#[cfg(not(test))]
-impl GdanskCssGraphPlugin {
-    fn new(normalized: &[NormalizedPage], cwd: &Path, output_dir: &Path, minify: bool) -> Self {
-        Self {
-            normalized: normalized.to_vec(),
-            cwd: cwd.to_path_buf(),
-            output_dir: output_dir.to_path_buf(),
-            minify,
-            css_imports: std::sync::Mutex::new(HashMap::new()),
-        }
-    }
 
     fn is_bare_specifier(specifier: &str) -> bool {
         !specifier.starts_with("./")
             && !specifier.starts_with("../")
             && !Path::new(specifier).is_absolute()
     }
-}
 
-#[cfg(not(test))]
-impl Plugin for GdanskCssGraphPlugin {
-    fn name(&self) -> Cow<'static, str> {
-        Cow::Borrowed("gdansk:css-graph")
-    }
-
-    async fn build_start(
-        &self,
-        _ctx: &PluginContext,
-        _args: &HookBuildStartArgs<'_>,
-    ) -> rolldown::plugin::HookNoopReturn {
-        self.css_imports.lock().expect("css graph poisoned").clear();
-        Ok(())
-    }
-
-    async fn resolve_id(
+    async fn resolve_css_import(
         &self,
         ctx: &PluginContext,
         args: &HookResolveIdArgs<'_>,
@@ -887,20 +854,53 @@ impl Plugin for GdanskCssGraphPlugin {
             return Ok(None);
         }
 
-        let Some(importer) = args.importer else {
-            return Ok(None);
-        };
-
-        self.css_imports
-            .lock()
-            .expect("css graph poisoned")
-            .entry(importer.to_owned())
-            .or_default()
-            .push(resolved.id.to_string());
+        if let Some(client_state) = &self.client_state
+            && let Some(importer) = args.importer
+        {
+            client_state
+                .css_imports
+                .lock()
+                .expect("css graph poisoned")
+                .entry(importer.to_owned())
+                .or_default()
+                .push(resolved.id.to_string());
+        }
 
         Ok(Some(HookResolveIdOutput::from_id(
-            GdanskCssStubPlugin::resolve_virtual_id(args.specifier, args.importer),
+            Self::resolve_virtual_id(args.specifier, args.importer),
         )))
+    }
+}
+
+#[cfg(not(test))]
+impl Plugin for LightningCssPlugin {
+    fn name(&self) -> Cow<'static, str> {
+        Cow::Borrowed(LIGHTNINGCSS_PLUGIN_ID)
+    }
+
+    async fn build_start(
+        &self,
+        _ctx: &PluginContext,
+        _args: &HookBuildStartArgs<'_>,
+    ) -> rolldown::plugin::HookNoopReturn {
+        let Some(client_state) = &self.client_state else {
+            return Ok(());
+        };
+
+        client_state
+            .css_imports
+            .lock()
+            .expect("css graph poisoned")
+            .clear();
+        Ok(())
+    }
+
+    async fn resolve_id(
+        &self,
+        ctx: &PluginContext,
+        args: &HookResolveIdArgs<'_>,
+    ) -> HookResolveIdReturn {
+        self.resolve_css_import(ctx, args).await
     }
 
     async fn load(&self, _ctx: SharedLoadPluginContext, args: &HookLoadArgs<'_>) -> HookLoadReturn {
@@ -919,6 +919,14 @@ impl Plugin for GdanskCssGraphPlugin {
         ctx: &PluginContext,
         _args: Option<&HookBuildEndArgs<'_>>,
     ) -> rolldown::plugin::HookNoopReturn {
+        if self.mode != LightningCssPluginMode::Client {
+            return Ok(());
+        }
+
+        let Some(client_state) = &self.client_state else {
+            return Ok(());
+        };
+
         let mut modules = HashMap::new();
         let mut discovered_entry_modules = Vec::new();
         for module_id in ctx.get_module_ids() {
@@ -940,12 +948,17 @@ impl Plugin for GdanskCssGraphPlugin {
             }
         }
 
-        for (importer, css_imports) in self.css_imports.lock().expect("css graph poisoned").iter() {
+        for (importer, css_imports) in client_state
+            .css_imports
+            .lock()
+            .expect("css graph poisoned")
+            .iter()
+        {
             modules.entry(importer.clone()).or_default().css_imports = css_imports.clone();
         }
 
-        let mut entry_module_ids = HashMap::with_capacity(self.normalized.len());
-        for page in &self.normalized {
+        let mut entry_module_ids = HashMap::with_capacity(client_state.normalized.len());
+        for page in &client_state.normalized {
             let entry_module_id = find_client_entry_module_id(page, &discovered_entry_modules)
                 .ok_or_else(|| {
                     std::io::Error::other(format!(
@@ -957,12 +970,12 @@ impl Plugin for GdanskCssGraphPlugin {
         }
 
         build_css_outputs(
-            &self.normalized,
+            &client_state.normalized,
             &entry_module_ids,
             &modules,
-            &self.cwd,
-            &self.output_dir,
-            self.minify,
+            &client_state.cwd,
+            &client_state.output_dir,
+            client_state.minify,
         )
         .map_err(|err| std::io::Error::other(err.to_string()))?;
 
@@ -1127,29 +1140,94 @@ impl Plugin for GdanskServerEntrypointPlugin {
 }
 
 #[cfg(not(test))]
+fn resolve_bundler_plugin_ids(plugin_ids: Option<&[String]>) -> PyResult<Vec<&str>> {
+    let mut resolved_ids = Vec::new();
+    let mut seen_ids = HashSet::new();
+
+    match plugin_ids {
+        Some(plugin_ids) => {
+            for plugin_id in plugin_ids {
+                let plugin_id = plugin_id.as_str();
+                if !seen_ids.insert(plugin_id.to_owned()) {
+                    return Err(PyValueError::new_err(format!(
+                        "duplicate bundler plugin id: {plugin_id}"
+                    )));
+                }
+                match plugin_id {
+                    LIGHTNINGCSS_PLUGIN_ID => resolved_ids.push(plugin_id),
+                    _ => {
+                        return Err(PyValueError::new_err(format!(
+                            "unknown bundler plugin id: {plugin_id}"
+                        )));
+                    }
+                }
+            }
+        }
+        None => resolved_ids.push(LIGHTNINGCSS_PLUGIN_ID),
+    }
+
+    Ok(resolved_ids)
+}
+
+#[cfg(not(test))]
 fn client_entrypoint_plugins(
     normalized: &[NormalizedPage],
     cwd: &Path,
     output_dir: &Path,
     minify: bool,
     include_app_entrypoint_plugin: bool,
-) -> Vec<SharedPluginable> {
-    let mut plugins: Vec<SharedPluginable> = vec![Arc::new(GdanskCssGraphPlugin::new(
-        normalized, cwd, output_dir, minify,
-    ))];
+) -> PyResult<Vec<SharedPluginable>> {
+    let mut plugins: Vec<SharedPluginable> = resolve_bundler_plugin_ids(None)?
+        .into_iter()
+        .map(|plugin_id| match plugin_id {
+            LIGHTNINGCSS_PLUGIN_ID => Arc::new(LightningCssPlugin::client(
+                normalized, cwd, output_dir, minify,
+            )) as SharedPluginable,
+            _ => unreachable!("validated plugin id"),
+        })
+        .collect();
     if include_app_entrypoint_plugin {
         plugins.push(Arc::new(GdanskAppEntrypointPlugin));
     }
-    plugins
+    Ok(plugins)
 }
 
 #[cfg(not(test))]
-fn server_entrypoint_plugins() -> Vec<SharedPluginable> {
-    vec![
-        Arc::new(GdanskCssStubPlugin),
-        Arc::new(GdanskRuntimeModulePlugin),
-        Arc::new(GdanskServerEntrypointPlugin),
-    ]
+fn requested_client_entrypoint_plugins(
+    plugin_ids: &[String],
+    normalized: &[NormalizedPage],
+    cwd: &Path,
+    output_dir: &Path,
+    minify: bool,
+    include_app_entrypoint_plugin: bool,
+) -> PyResult<Vec<SharedPluginable>> {
+    let mut plugins: Vec<SharedPluginable> = resolve_bundler_plugin_ids(Some(plugin_ids))?
+        .into_iter()
+        .map(|plugin_id| match plugin_id {
+            LIGHTNINGCSS_PLUGIN_ID => Arc::new(LightningCssPlugin::client(
+                normalized, cwd, output_dir, minify,
+            )) as SharedPluginable,
+            _ => unreachable!("validated plugin id"),
+        })
+        .collect();
+    if include_app_entrypoint_plugin {
+        plugins.push(Arc::new(GdanskAppEntrypointPlugin));
+    }
+    Ok(plugins)
+}
+
+#[cfg(not(test))]
+fn server_entrypoint_plugins(plugin_ids: Option<&[String]>) -> PyResult<Vec<SharedPluginable>> {
+    let mut plugins: Vec<SharedPluginable> = resolve_bundler_plugin_ids(plugin_ids)?
+        .into_iter()
+        .map(|plugin_id| match plugin_id {
+            LIGHTNINGCSS_PLUGIN_ID => Arc::new(LightningCssPlugin::server()) as SharedPluginable,
+            _ => unreachable!("validated plugin id"),
+        })
+        .collect();
+    plugins.push(Arc::new(GdanskRuntimeModulePlugin));
+    plugins.push(Arc::new(GdanskServerEntrypointPlugin));
+    Ok(plugins)
 }
 
 #[cfg(not(test))]
@@ -1482,6 +1560,107 @@ async fn run_bundler(
 }
 
 #[cfg(not(test))]
+async fn bundle_impl(
+    parsed_pages: Vec<PageSpec>,
+    dev: bool,
+    minify: bool,
+    output: Option<PathBuf>,
+    cwd: Option<PathBuf>,
+    bundler_plugin_ids: Option<Vec<String>>,
+) -> Result<(), PyErr> {
+    let cwd = match cwd {
+        Some(dir) => dunce::simplified(
+            &dir.canonicalize()
+                .map_err(|err| py_runtime_error("failed to resolve provided cwd", err))?,
+        )
+        .to_path_buf(),
+        None => std::env::current_dir()
+            .map_err(|err| py_runtime_error("failed to read current working directory", err))?,
+    };
+    let output_dir = output.unwrap_or_else(|| PathBuf::from(".gdansk"));
+    let output_dir_string = path_to_utf8(&output_dir, "output path").map_err(map_bundle_error)?;
+    let normalized = normalize_pages(parsed_pages, &cwd, &output_dir).map_err(map_bundle_error)?;
+
+    let client_items = build_input_items(build_client_input_item_fields(&normalized));
+    let server_items = build_input_items(build_server_input_item_fields(&normalized));
+    let has_app_entries = normalized.iter().any(|page| page.app);
+    let client_plugins = match bundler_plugin_ids.as_deref() {
+        Some(plugin_ids) => requested_client_entrypoint_plugins(
+            plugin_ids,
+            &normalized,
+            &cwd,
+            &output_dir,
+            minify,
+            has_app_entries,
+        )?,
+        None => client_entrypoint_plugins(&normalized, &cwd, &output_dir, minify, has_app_entries)?,
+    };
+
+    if dev {
+        if server_items.is_empty() {
+            run_bundler(
+                client_items,
+                cwd,
+                output_dir_string,
+                minify,
+                dev,
+                None,
+                client_plugins,
+            )
+            .await?;
+        } else {
+            let server_plugins = server_entrypoint_plugins(bundler_plugin_ids.as_deref())?;
+            tokio::try_join!(
+                run_bundler(
+                    client_items,
+                    cwd.clone(),
+                    output_dir_string.clone(),
+                    minify,
+                    dev,
+                    None,
+                    client_plugins,
+                ),
+                run_bundler(
+                    server_items,
+                    cwd,
+                    output_dir_string,
+                    minify,
+                    dev,
+                    Some(OutputFormat::Iife),
+                    server_plugins,
+                ),
+            )?;
+        }
+        return Ok(());
+    }
+
+    run_bundler(
+        client_items,
+        cwd.clone(),
+        output_dir_string.clone(),
+        minify,
+        dev,
+        None,
+        client_plugins,
+    )
+    .await?;
+    if !server_items.is_empty() {
+        let server_plugins = server_entrypoint_plugins(bundler_plugin_ids.as_deref())?;
+        run_bundler(
+            server_items,
+            cwd,
+            output_dir_string,
+            minify,
+            dev,
+            Some(OutputFormat::Iife),
+            server_plugins,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+#[cfg(not(test))]
 #[pyfunction(signature = (pages, dev = false, minify = true, output = None, cwd = None))]
 pub(crate) fn bundle(
     py: Python<'_>,
@@ -1494,86 +1673,26 @@ pub(crate) fn bundle(
     let parsed_pages = parse_pages_from_python(py, pages);
 
     pyo3_async_runtimes::tokio::future_into_py(py, async move {
-        let cwd = match cwd {
-            Some(dir) => dunce::simplified(
-                &dir.canonicalize()
-                    .map_err(|err| py_runtime_error("failed to resolve provided cwd", err))?,
-            )
-            .to_path_buf(),
-            None => std::env::current_dir()
-                .map_err(|err| py_runtime_error("failed to read current working directory", err))?,
-        };
-        let output_dir = output.unwrap_or_else(|| PathBuf::from(".gdansk"));
-        let output_dir_string =
-            path_to_utf8(&output_dir, "output path").map_err(map_bundle_error)?;
-        let normalized =
-            normalize_pages(parsed_pages, &cwd, &output_dir).map_err(map_bundle_error)?;
+        bundle_impl(parsed_pages, dev, minify, output, cwd, None).await?;
+        Python::attach(|py| Ok(py.None()))
+    })
+}
 
-        let client_items = build_input_items(build_client_input_item_fields(&normalized));
-        let server_items = build_input_items(build_server_input_item_fields(&normalized));
-        let has_app_entries = normalized.iter().any(|page| page.app);
-        let client_plugins =
-            client_entrypoint_plugins(&normalized, &cwd, &output_dir, minify, has_app_entries);
+#[cfg(not(test))]
+#[pyfunction(name = "_bundle_with_plugins", signature = (pages, plugins, dev = false, minify = true, output = None, cwd = None))]
+pub(crate) fn bundle_with_plugins(
+    py: Python<'_>,
+    pages: Vec<Py<Page>>,
+    plugins: Vec<String>,
+    dev: bool,
+    minify: bool,
+    output: Option<PathBuf>,
+    cwd: Option<PathBuf>,
+) -> PyResult<Bound<'_, PyAny>> {
+    let parsed_pages = parse_pages_from_python(py, pages);
 
-        if dev {
-            if server_items.is_empty() {
-                run_bundler(
-                    client_items,
-                    cwd,
-                    output_dir_string,
-                    minify,
-                    dev,
-                    None,
-                    client_plugins,
-                )
-                .await?;
-            } else {
-                tokio::try_join!(
-                    run_bundler(
-                        client_items,
-                        cwd.clone(),
-                        output_dir_string.clone(),
-                        minify,
-                        dev,
-                        None,
-                        client_plugins,
-                    ),
-                    run_bundler(
-                        server_items,
-                        cwd,
-                        output_dir_string,
-                        minify,
-                        dev,
-                        Some(OutputFormat::Iife),
-                        server_entrypoint_plugins(),
-                    ),
-                )?;
-            }
-            return Python::attach(|py| Ok(py.None()));
-        }
-
-        run_bundler(
-            client_items,
-            cwd.clone(),
-            output_dir_string.clone(),
-            minify,
-            dev,
-            None,
-            client_plugins,
-        )
-        .await?;
-        if !server_items.is_empty() {
-            run_bundler(
-                server_items,
-                cwd,
-                output_dir_string,
-                minify,
-                dev,
-                Some(OutputFormat::Iife),
-                server_entrypoint_plugins(),
-            )
-            .await?;
-        }
+    pyo3_async_runtimes::tokio::future_into_py(py, async move {
+        bundle_impl(parsed_pages, dev, minify, output, cwd, Some(plugins)).await?;
         Python::attach(|py| Ok(py.None()))
     })
 }
