@@ -1,4 +1,5 @@
 mod bundle;
+mod plugins;
 mod runtime;
 
 #[cfg(not(test))]
