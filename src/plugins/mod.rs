@@ -27,6 +27,13 @@ pub(crate) struct PluginSelection {
     pub(crate) vite_plugin_specs: Vec<VitePluginSpec>,
 }
 
+fn plugin_selection_with_vite_specs(vite_plugin_specs: Vec<VitePluginSpec>) -> PluginSelection {
+    PluginSelection {
+        vite_plugin_specs,
+        ..PluginSelection::default()
+    }
+}
+
 impl Default for PluginSelection {
     fn default() -> Self {
         Self {
@@ -46,7 +53,6 @@ pub(crate) fn parse_plugin_selection(
         return Ok(PluginSelection::default());
     };
 
-    let include_lightningcss = !plugins.is_empty();
     let mut vite_plugin_specs = Vec::new();
 
     for plugin in plugins {
@@ -58,10 +64,7 @@ pub(crate) fn parse_plugin_selection(
         }
     }
 
-    Ok(PluginSelection {
-        include_lightningcss,
-        vite_plugin_specs,
-    })
+    Ok(plugin_selection_with_vite_specs(vite_plugin_specs))
 }
 
 #[cfg(not(test))]
@@ -114,4 +117,17 @@ pub(crate) fn server_entrypoint_plugins(
     plugins.push(runtime_module::plugin());
     plugins.push(server_entrypoint::plugin());
     Ok(plugins)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::plugin_selection_with_vite_specs;
+
+    #[test]
+    fn empty_plugin_selection_keeps_lightningcss_enabled() {
+        let selection = plugin_selection_with_vite_specs(vec![]);
+
+        assert!(selection.include_lightningcss);
+        assert!(selection.vite_plugin_specs.is_empty());
+    }
 }

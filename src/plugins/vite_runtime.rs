@@ -4,7 +4,7 @@ use std::{
     collections::BTreeSet,
     ffi::OsStr,
     fs,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     rc::Rc,
     sync::Arc,
 };
@@ -24,7 +24,57 @@ use url::Url;
 use super::vite::VitePluginSpec;
 
 const BOOTSTRAP_SPECIFIER: &str = "gdansk:vite-runtime-bootstrap";
+const NODE_FS_SPECIFIER: &str = "node:fs";
 const NODE_FS_PROMISES_SPECIFIER: &str = "node:fs/promises";
+const NODE_MODULE_SPECIFIER: &str = "node:module";
+const NODE_PATH_SPECIFIER: &str = "node:path";
+const NODE_URL_SPECIFIER: &str = "node:url";
+const GDANSK_FS_SPECIFIER: &str = "gdansk:fs";
+const GDANSK_FS_PROMISES_SPECIFIER: &str = "gdansk:fs/promises";
+const GDANSK_MODULE_SPECIFIER: &str = "gdansk:module";
+const GDANSK_JITI_SHIM_SPECIFIER: &str = "gdansk:jiti";
+const GDANSK_LIGHTNINGCSS_SHIM_SPECIFIER: &str = "gdansk:lightningcss";
+const GDANSK_PATH_SPECIFIER: &str = "gdansk:path";
+const GDANSK_TAILWIND_VITE_SHIM_SPECIFIER: &str = "gdansk:tailwindcss-vite";
+const GDANSK_URL_SPECIFIER: &str = "gdansk:url";
+const GDANSK_VITE_SHIM_SPECIFIER: &str = "gdansk:vite";
+
+fn normalize_supported_node_builtin(specifier: &str) -> Option<&'static str> {
+    match specifier {
+        "fs" | NODE_FS_SPECIFIER => Some(NODE_FS_SPECIFIER),
+        "fs/promises" | NODE_FS_PROMISES_SPECIFIER => Some(NODE_FS_PROMISES_SPECIFIER),
+        "module" | NODE_MODULE_SPECIFIER => Some(NODE_MODULE_SPECIFIER),
+        "path" | NODE_PATH_SPECIFIER => Some(NODE_PATH_SPECIFIER),
+        "url" | NODE_URL_SPECIFIER => Some(NODE_URL_SPECIFIER),
+        _ => None,
+    }
+}
+
+fn builtin_module_specifier(specifier: &str) -> Option<&'static str> {
+    match normalize_supported_node_builtin(specifier) {
+        Some(NODE_FS_SPECIFIER) => Some(GDANSK_FS_SPECIFIER),
+        Some(NODE_FS_PROMISES_SPECIFIER) => Some(GDANSK_FS_PROMISES_SPECIFIER),
+        Some(NODE_MODULE_SPECIFIER) => Some(GDANSK_MODULE_SPECIFIER),
+        Some(NODE_PATH_SPECIFIER) => Some(GDANSK_PATH_SPECIFIER),
+        Some(NODE_URL_SPECIFIER) => Some(GDANSK_URL_SPECIFIER),
+        _ => None,
+    }
+}
+
+fn builtin_module_source(specifier: &str) -> Option<&'static str> {
+    match specifier {
+        GDANSK_FS_SPECIFIER => Some(include_str!("vite_fs.js")),
+        GDANSK_FS_PROMISES_SPECIFIER => Some(include_str!("vite.js")),
+        GDANSK_JITI_SHIM_SPECIFIER => Some(include_str!("vite_jiti.js")),
+        GDANSK_LIGHTNINGCSS_SHIM_SPECIFIER => Some(include_str!("vite_lightningcss.js")),
+        GDANSK_MODULE_SPECIFIER => Some(include_str!("vite_node_module.js")),
+        GDANSK_PATH_SPECIFIER => Some(include_str!("vite_path.js")),
+        GDANSK_TAILWIND_VITE_SHIM_SPECIFIER => Some(include_str!("vite_tailwind_vite.js")),
+        GDANSK_URL_SPECIFIER => Some(include_str!("vite_url.js")),
+        GDANSK_VITE_SHIM_SPECIFIER => Some(include_str!("vite_module.js")),
+        _ => None,
+    }
+}
 
 #[derive(Debug, Clone)]
 pub(super) struct PluginAssetInput {
@@ -107,10 +157,11 @@ impl ViteRuntimeShared {
         specifier: &str,
         importer: Option<&str>,
     ) -> Result<String, JsErrorBox> {
+        if let Some(specifier) = normalize_supported_node_builtin(specifier) {
+            return Ok(specifier.to_owned());
+        }
+
         if specifier.starts_with("node:") {
-            if specifier == NODE_FS_PROMISES_SPECIFIER {
-                return Ok(specifier.to_owned());
-            }
             return Err(unsupported_node_builtin(specifier));
         }
 
@@ -152,11 +203,34 @@ impl ViteRuntimeShared {
         importer: Option<&str>,
         from_loader: bool,
     ) -> Result<ModuleSpecifier, JsErrorBox> {
+        if specifier == "jiti" {
+            return ModuleSpecifier::parse(GDANSK_JITI_SHIM_SPECIFIER)
+                .map_err(|err| JsErrorBox::generic(err.to_string()));
+        }
+
+        // Tailwind's published Vite plugin assumes a fuller Node runtime than
+        // the embedded loader provides, so we route it through a focused shim.
+        if specifier == "@tailwindcss/vite" {
+            return ModuleSpecifier::parse(GDANSK_TAILWIND_VITE_SHIM_SPECIFIER)
+                .map_err(|err| JsErrorBox::generic(err.to_string()));
+        }
+
+        if specifier == "lightningcss" {
+            return ModuleSpecifier::parse(GDANSK_LIGHTNINGCSS_SHIM_SPECIFIER)
+                .map_err(|err| JsErrorBox::generic(err.to_string()));
+        }
+
+        if specifier == "vite" {
+            return ModuleSpecifier::parse(GDANSK_VITE_SHIM_SPECIFIER)
+                .map_err(|err| JsErrorBox::generic(err.to_string()));
+        }
+
+        if let Some(specifier) = builtin_module_specifier(specifier) {
+            return ModuleSpecifier::parse(specifier)
+                .map_err(|err| JsErrorBox::generic(err.to_string()));
+        }
+
         if specifier.starts_with("node:") {
-            if specifier == NODE_FS_PROMISES_SPECIFIER {
-                return ModuleSpecifier::parse(specifier)
-                    .map_err(|err| JsErrorBox::generic(err.to_string()));
-            }
             return Err(unsupported_node_builtin(specifier));
         }
 
@@ -231,6 +305,15 @@ impl ModuleLoader for ViteModuleLoader {
         _options: ModuleLoadOptions,
     ) -> ModuleLoadResponse {
         let result = (|| {
+            if let Some(code) = builtin_module_source(module_specifier.as_str()) {
+                return Ok(ModuleSource::new(
+                    ModuleType::JavaScript,
+                    ModuleSourceCode::String(code.to_owned().into()),
+                    module_specifier,
+                    None,
+                ));
+            }
+
             if module_specifier.scheme() == "node" {
                 return Err(unsupported_node_builtin(module_specifier.as_str()));
             }
@@ -258,6 +341,25 @@ impl ModuleLoader for ViteModuleLoader {
     }
 }
 
+#[derive(Debug, Serialize)]
+struct StatResult {
+    #[serde(rename = "mtimeMs")]
+    mtime_ms: f64,
+    #[serde(rename = "isDirectory")]
+    is_directory: bool,
+    #[serde(rename = "isFile")]
+    is_file: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct ReadDirEntryResult {
+    name: String,
+    #[serde(rename = "isDirectory")]
+    is_directory: bool,
+    #[serde(rename = "isFile")]
+    is_file: bool,
+}
+
 #[op2]
 #[string]
 fn op_gdansk_vite_read_text_file(
@@ -277,6 +379,62 @@ fn op_gdansk_vite_read_text_file(
     let shared = state.borrow::<ViteRuntimeState>().shared.clone();
     let path = shared.resolve_input_path(&path)?;
     fs::read_to_string(path).map_err(|err| JsErrorBox::generic(err.to_string()))
+}
+
+#[op2]
+#[string]
+fn op_gdansk_vite_realpath_sync(
+    state: &mut OpState,
+    #[string] path: String,
+) -> Result<String, JsErrorBox> {
+    let shared = state.borrow::<ViteRuntimeState>().shared.clone();
+    let path = shared.resolve_input_path(&path)?;
+    canonicalize_existing_file(&path).map(|path| path.to_string_lossy().into_owned())
+}
+
+#[op2]
+#[string]
+fn op_gdansk_vite_stat(state: &mut OpState, #[string] path: String) -> Result<String, JsErrorBox> {
+    let shared = state.borrow::<ViteRuntimeState>().shared.clone();
+    let path = shared.resolve_input_path(&path)?;
+    let metadata = fs::metadata(path).map_err(|err| JsErrorBox::generic(err.to_string()))?;
+    let mtime_ms = metadata
+        .modified()
+        .ok()
+        .and_then(|value| value.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|value| value.as_secs_f64() * 1000.0)
+        .unwrap_or(0.0);
+    serde_json::to_string(&StatResult {
+        mtime_ms,
+        is_directory: metadata.is_dir(),
+        is_file: metadata.is_file(),
+    })
+    .map_err(|err| JsErrorBox::generic(err.to_string()))
+}
+
+#[op2]
+#[string]
+fn op_gdansk_vite_read_dir(
+    state: &mut OpState,
+    #[string] path: String,
+) -> Result<String, JsErrorBox> {
+    let shared = state.borrow::<ViteRuntimeState>().shared.clone();
+    let path = shared.resolve_input_path(&path)?;
+    let mut entries = Vec::new();
+
+    for entry in fs::read_dir(path).map_err(|err| JsErrorBox::generic(err.to_string()))? {
+        let entry = entry.map_err(|err| JsErrorBox::generic(err.to_string()))?;
+        let file_type = entry
+            .file_type()
+            .map_err(|err| JsErrorBox::generic(err.to_string()))?;
+        entries.push(ReadDirEntryResult {
+            name: entry.file_name().to_string_lossy().into_owned(),
+            is_directory: file_type.is_dir(),
+            is_file: file_type.is_file(),
+        });
+    }
+
+    serde_json::to_string(&entries).map_err(|err| JsErrorBox::generic(err.to_string()))
 }
 
 #[op2]
@@ -307,18 +465,93 @@ fn op_gdansk_vite_normalize_watch_file(
     shared.normalize_watch_file(&file)
 }
 
+#[op2]
+#[string]
+fn op_gdansk_vite_path_basename(#[string] path: String) -> String {
+    basename_string(&path)
+}
+
+#[op2]
+#[string]
+fn op_gdansk_vite_path_dirname(#[string] path: String) -> String {
+    dirname_string(&path)
+}
+
+#[op2]
+#[string]
+fn op_gdansk_vite_path_extname(#[string] path: String) -> String {
+    extname_string(&path)
+}
+
+#[op2]
+#[string]
+fn op_gdansk_vite_path_relative(
+    #[string] from: String,
+    #[string] to: String,
+) -> Result<String, JsErrorBox> {
+    diff_paths(Path::new(&to), Path::new(&from)).map(|path| {
+        let path = path.to_string_lossy();
+        if path == "." {
+            String::new()
+        } else {
+            path.into_owned()
+        }
+    })
+}
+
+#[op2]
+#[string]
+fn op_gdansk_vite_path_resolve(#[string] paths: String) -> Result<String, JsErrorBox> {
+    resolve_string_path_segments(&paths)
+}
+
+#[op2]
+#[string]
+fn op_gdansk_vite_path_posix_join(#[string] paths: String) -> Result<String, JsErrorBox> {
+    join_posix_segments(&paths)
+}
+
+#[op2]
+#[string]
+fn op_gdansk_vite_file_url_to_path(#[string] url: String) -> Result<String, JsErrorBox> {
+    Url::parse(&url)
+        .map_err(|err| JsErrorBox::generic(err.to_string()))?
+        .to_file_path()
+        .map_err(|_| JsErrorBox::generic(format!("unsupported file URL: {url}")))
+        .map(|path| path.to_string_lossy().into_owned())
+}
+
+#[op2]
+#[string]
+fn op_gdansk_vite_path_to_file_url(#[string] path: String) -> Result<String, JsErrorBox> {
+    let path = absolute_lexical_path(Path::new(&path))?;
+    Url::from_file_path(&path)
+        .map_err(|_| JsErrorBox::generic(format!("failed to resolve path {}", path.display())))
+        .map(|url| url.to_string())
+}
+
 deno_core::extension!(
     gdansk_vite_plugin_ext,
     ops = [
         op_gdansk_vite_read_text_file,
+        op_gdansk_vite_read_dir,
+        op_gdansk_vite_realpath_sync,
+        op_gdansk_vite_stat,
         op_gdansk_vite_resolve,
         op_gdansk_vite_normalize_watch_file,
+        op_gdansk_vite_path_basename,
+        op_gdansk_vite_path_dirname,
+        op_gdansk_vite_path_extname,
+        op_gdansk_vite_path_relative,
+        op_gdansk_vite_path_resolve,
+        op_gdansk_vite_path_posix_join,
+        op_gdansk_vite_file_url_to_path,
+        op_gdansk_vite_path_to_file_url,
     ],
     esm_entry_point = BOOTSTRAP_SPECIFIER,
     esm = [
         dir "src/plugins",
         "gdansk:vite-runtime-bootstrap" = "vite_runtime.js",
-        "node:fs/promises" = "vite.js",
     ],
     options = {
         shared: Arc<ViteRuntimeShared>,
@@ -407,6 +640,10 @@ pub(super) fn run_embedded_vite_plugins(
     pages: &Path,
     assets: Vec<PluginAssetInput>,
 ) -> Result<PluginRunResult, std::io::Error> {
+    #[cfg(test)]
+    let _guard = crate::test_support::js_runtime_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -509,6 +746,188 @@ fn path_to_module_specifier(path: &Path) -> Result<ModuleSpecifier, JsErrorBox> 
         .map_err(|_| JsErrorBox::generic(format!("failed to resolve path {}", path.display())))?
         .to_string();
     ModuleSpecifier::parse(&specifier).map_err(|err| JsErrorBox::generic(err.to_string()))
+}
+
+fn current_dir() -> Result<PathBuf, JsErrorBox> {
+    std::env::current_dir().map_err(|err| JsErrorBox::generic(err.to_string()))
+}
+
+fn normalize_path(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if matches!(
+                    normalized.components().next_back(),
+                    Some(Component::Normal(_))
+                ) {
+                    normalized.pop();
+                } else if !normalized.has_root() {
+                    normalized.push("..");
+                }
+            }
+            Component::Prefix(_) | Component::RootDir | Component::Normal(_) => {
+                normalized.push(component.as_os_str());
+            }
+        }
+    }
+
+    if normalized.as_os_str().is_empty() {
+        PathBuf::from(".")
+    } else {
+        normalized
+    }
+}
+
+fn absolute_lexical_path(path: &Path) -> Result<PathBuf, JsErrorBox> {
+    if path.is_absolute() {
+        return Ok(normalize_path(path));
+    }
+
+    Ok(normalize_path(&current_dir()?.join(path)))
+}
+
+fn diff_paths(path: &Path, base: &Path) -> Result<PathBuf, JsErrorBox> {
+    let path = absolute_lexical_path(path)?;
+    let base = absolute_lexical_path(base)?;
+
+    if path.is_absolute()
+        && base.is_absolute()
+        && path.components().next() != base.components().next()
+    {
+        return Ok(path);
+    }
+
+    let path_components = path.components().collect::<Vec<_>>();
+    let base_components = base.components().collect::<Vec<_>>();
+
+    let common_prefix = path_components
+        .iter()
+        .zip(base_components.iter())
+        .take_while(|(left, right)| left == right)
+        .count();
+
+    let mut relative = PathBuf::new();
+    for component in &base_components[common_prefix..] {
+        if matches!(component, Component::Normal(_)) {
+            relative.push("..");
+        }
+    }
+    for component in &path_components[common_prefix..] {
+        relative.push(component.as_os_str());
+    }
+
+    if relative.as_os_str().is_empty() {
+        Ok(PathBuf::from("."))
+    } else {
+        Ok(relative)
+    }
+}
+
+fn basename_string(path: &str) -> String {
+    Path::new(path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default()
+        .to_owned()
+}
+
+fn dirname_string(path: &str) -> String {
+    let path = Path::new(path);
+    if let Some(parent) = path.parent() {
+        let parent = parent.to_string_lossy();
+        if parent.is_empty() {
+            ".".to_owned()
+        } else {
+            parent.into_owned()
+        }
+    } else if path.has_root() {
+        path.to_string_lossy().into_owned()
+    } else {
+        ".".to_owned()
+    }
+}
+
+fn extname_string(path: &str) -> String {
+    let Some(file_name) = Path::new(path).file_name().and_then(|name| name.to_str()) else {
+        return String::new();
+    };
+    let Some((stem, extension)) = file_name.rsplit_once('.') else {
+        return String::new();
+    };
+    if stem.is_empty() {
+        return String::new();
+    }
+    format!(".{extension}")
+}
+
+fn parse_string_array(input: &str) -> Result<Vec<String>, JsErrorBox> {
+    serde_json::from_str(input).map_err(|err| JsErrorBox::generic(err.to_string()))
+}
+
+fn resolve_string_path_segments(input: &str) -> Result<String, JsErrorBox> {
+    let segments = parse_string_array(input)?;
+    let mut resolved = current_dir()?;
+    for segment in segments {
+        if segment.is_empty() {
+            continue;
+        }
+
+        let path = Path::new(&segment);
+        if path.is_absolute() {
+            resolved = path.to_path_buf();
+        } else {
+            resolved.push(path);
+        }
+    }
+
+    Ok(normalize_path(&resolved).to_string_lossy().into_owned())
+}
+
+fn join_posix_segments(input: &str) -> Result<String, JsErrorBox> {
+    let segments = parse_string_array(input)?;
+    let mut absolute = false;
+    let mut parts = Vec::new();
+
+    for segment in segments {
+        if segment.is_empty() {
+            continue;
+        }
+        if segment.starts_with('/') {
+            absolute = true;
+            parts.clear();
+        }
+
+        for part in segment.split('/') {
+            match part {
+                "" | "." => {}
+                ".." => {
+                    if parts.last().is_some_and(|last| last != "..") {
+                        parts.pop();
+                    } else if !absolute {
+                        parts.push("..".to_owned());
+                    }
+                }
+                _ => parts.push(part.to_owned()),
+            }
+        }
+    }
+
+    if parts.is_empty() {
+        return Ok(if absolute {
+            "/".to_owned()
+        } else {
+            ".".to_owned()
+        });
+    }
+
+    let joined = parts.join("/");
+    Ok(if absolute {
+        format!("/{joined}")
+    } else {
+        joined
+    })
 }
 
 fn unsupported_node_builtin(specifier: &str) -> JsErrorBox {
@@ -782,16 +1201,16 @@ mod tests {
         let shared = ViteRuntimeShared::new(&pages);
 
         let err = shared
-            .resolve_js_module_specifier("node:path", Some(BOOTSTRAP_SPECIFIER), true)
+            .resolve_js_module_specifier("node:os", Some(BOOTSTRAP_SPECIFIER), true)
             .expect_err("unsupported builtin should fail");
         assert!(
             err.to_string()
-                .contains("unsupported node builtin module: node:path")
+                .contains("unsupported node builtin module: node:os")
         );
     }
 
     #[test]
-    fn embedded_runtime_supports_node_fs_promises() {
+    fn embedded_runtime_supports_fs_promises_stat() {
         let temp_dir = TestDir::new();
         let pages = temp_dir.path().join("views");
         let plugin_dir = pages.join("plugins");
@@ -800,7 +1219,7 @@ mod tests {
         fs::write(
             plugin_dir.join("read-comment.mjs"),
             r#"
-import fs from "node:fs/promises";
+import fs from "fs/promises";
 
 export default function (options) {
   return {
@@ -814,6 +1233,10 @@ export default function (options) {
       async handler(source, id) {
         if (!id.endsWith(".css")) {
           return source;
+        }
+        const stat = await fs.stat(options.watchFile);
+        if (!stat.isFile()) {
+          throw new Error("expected file");
         }
         const comment = (await fs.readFile(options.watchFile, "utf8")).trim();
         return `${source}\n/* ${comment} */\n`;
@@ -844,5 +1267,103 @@ export default function (options) {
 
         assert_eq!(result.assets.len(), 1);
         assert!(result.assets[0].code.contains("from-runtime"));
+    }
+
+    #[test]
+    fn embedded_runtime_supports_node_path() {
+        let temp_dir = TestDir::new();
+        let pages = temp_dir.path().join("views");
+        let plugin_dir = pages.join("plugins");
+        fs::create_dir_all(&plugin_dir).expect("plugin dir should exist");
+        fs::write(
+            plugin_dir.join("use-node-path.mjs"),
+            r#"
+import path from "node:path";
+
+export default {
+  name: "use-node-path",
+  transform: {
+    filter: {
+      id: {
+        include: [/\.css$/],
+      },
+    },
+    handler(source, id) {
+      return `${source}\n/* ${path.basename(id)} */\n`;
+    },
+  },
+};
+"#,
+        )
+        .expect("plugin should be written");
+
+        let plugin_path = Url::from_file_path(plugin_dir.join("use-node-path.mjs"))
+            .expect("plugin path should convert to url")
+            .to_string();
+        let result = run_embedded_vite_plugins(
+            &[VitePluginSpec {
+                specifier: plugin_path,
+                options: serde_json::json!({}),
+            }],
+            &pages,
+            vec![PluginAssetInput {
+                filename: "style.css".to_owned(),
+                path: pages.join("style.css").to_string_lossy().into_owned(),
+                code: "body{}".to_owned(),
+            }],
+        )
+        .expect("embedded runtime should succeed");
+
+        assert_eq!(result.assets.len(), 1);
+        assert!(result.assets[0].code.contains("style.css"));
+    }
+
+    #[test]
+    fn embedded_runtime_supports_bare_path() {
+        let temp_dir = TestDir::new();
+        let pages = temp_dir.path().join("views");
+        let plugin_dir = pages.join("plugins");
+        fs::create_dir_all(&plugin_dir).expect("plugin dir should exist");
+        fs::write(
+            plugin_dir.join("use-bare-path.mjs"),
+            r#"
+import path from "path";
+
+export default {
+  name: "use-bare-path",
+  transform: {
+    filter: {
+      id: {
+        include: [/\.css$/],
+      },
+    },
+    handler(source, id) {
+      return `${source}\n/* ${path.basename(id)} */\n`;
+    },
+  },
+};
+"#,
+        )
+        .expect("plugin should be written");
+
+        let plugin_path = Url::from_file_path(plugin_dir.join("use-bare-path.mjs"))
+            .expect("plugin path should convert to url")
+            .to_string();
+        let result = run_embedded_vite_plugins(
+            &[VitePluginSpec {
+                specifier: plugin_path,
+                options: serde_json::json!({}),
+            }],
+            &pages,
+            vec![PluginAssetInput {
+                filename: "style.css".to_owned(),
+                path: pages.join("style.css").to_string_lossy().into_owned(),
+                code: "body{}".to_owned(),
+            }],
+        )
+        .expect("embedded runtime should succeed");
+
+        assert_eq!(result.assets.len(), 1);
+        assert!(result.assets[0].code.contains("style.css"));
     }
 }

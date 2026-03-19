@@ -1,5 +1,3 @@
-import "node:fs/promises";
-
 const BUILD_ENV = {
   command: "build",
   mode: "production",

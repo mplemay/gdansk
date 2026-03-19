@@ -106,6 +106,50 @@ def test_with_css_bundles_and_serves_html(mock_mcp, pages_dir, tmp_path, monkeyp
 
 
 @pytest.mark.integration
+def test_with_css_bundles_when_plugin_list_is_empty(mock_mcp, pages_dir, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    output = pages_dir / ".gdansk"
+    amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=[])
+
+    @amber.tool(Path("with_css/page.tsx"))
+    def my_tool():
+        return "result"
+
+    app = amber(dev=False)
+    with _lifespan(app):
+        assert (output / "with_css/client.js").exists()
+        assert (output / "with_css/client.css").exists()
+
+
+@pytest.mark.integration
+def test_with_css_default_import_bundles(mock_mcp, pages_dir, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    output = pages_dir / ".gdansk"
+    (pages_dir / "apps/with_css/page.tsx").write_text(
+        """
+import styles from "./simple.css";
+
+export default function App() {
+    void styles;
+    return null;
+}
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    amber = Amber(mcp=mock_mcp, views=pages_dir)
+
+    @amber.tool(Path("with_css/page.tsx"))
+    def my_tool():
+        return "result"
+
+    app = amber(dev=False)
+    with _lifespan(app):
+        assert (output / "with_css/client.js").exists()
+        assert (output / "with_css/client.css").exists()
+
+
+@pytest.mark.integration
 def test_dev_bundles_in_background(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     output = pages_dir / ".gdansk"

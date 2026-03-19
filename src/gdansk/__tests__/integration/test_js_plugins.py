@@ -6,8 +6,12 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+from anyio import Path as AnyPath
 
 from gdansk import Amber, VitePlugin
+from gdansk._core import Page, bundle
+
+REPO_ROOT = Path(__file__).resolve().parents[4]
 
 
 @contextmanager
@@ -307,3 +311,23 @@ body {
         css = css_output.read_text(encoding="utf-8")
 
     assert "margin-inline:auto" in css
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_js_plugin_smoke_uses_repo_shadcn_tailwind_package(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    views = REPO_ROOT / "examples" / "shadcn" / "src" / "shadcn" / "views"
+    output = tmp_path / "shadcn-out"
+
+    await bundle(
+        pages=[Page(path=Path("apps/todo/page.tsx"), app=True, ssr=False)],
+        dev=False,
+        minify=False,
+        output=output,
+        cwd=views,
+        plugins=[VitePlugin(specifier="@tailwindcss/vite")],
+    )
+
+    css = await AnyPath(output / "todo" / "client.css").read_text(encoding="utf-8")
+    assert ".mx-auto" in css

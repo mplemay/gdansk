@@ -672,7 +672,7 @@ impl Plugin for LightningCssPlugin {
         }
 
         Ok(Some(HookLoadOutput {
-            code: "export {};".into(),
+            code: "const gdanskCssStub = {};\nexport default gdanskCssStub;\n".into(),
             ..Default::default()
         }))
     }

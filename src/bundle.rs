@@ -22,7 +22,7 @@ use crate::plugins::{client_entry_import, server_entry_import};
 use pyo3::{
     FromPyObject,
     basic::CompareOp,
-    exceptions::{PyFileNotFoundError, PyRuntimeError, PyTypeError, PyValueError},
+    exceptions::{PyRuntimeError, PyTypeError, PyValueError},
     prelude::*,
     types::{
         PyBool, PyDict, PyFloat, PyInt, PyList, PyModule, PyNotImplemented, PyString, PyTuple,
@@ -305,36 +305,55 @@ fn py_any_to_json_value_inner(
     Err(PyTypeError::new_err(invalid_vite_options_message()))
 }
 
-#[cfg(not(test))]
-fn resolve_vite_specifier(specifier: &str, base: &Path) -> PyResult<String> {
+fn is_explicit_relative_specifier(specifier: &str) -> bool {
+    specifier.starts_with("./") || specifier.starts_with("../")
+}
+
+fn vite_specifier_file_candidate(specifier: &str, base: &Path) -> Result<Option<PathBuf>, String> {
     if specifier.starts_with("file://") {
-        return Ok(specifier.to_owned());
+        let url = url::Url::parse(specifier)
+            .map_err(|_| format!("failed to resolve VitePlugin.specifier `{specifier}`"))?;
+        let path = url
+            .to_file_path()
+            .map_err(|_| format!("failed to resolve VitePlugin.specifier `{specifier}`"))?;
+        return Ok(Some(path));
     }
 
     let path = Path::new(specifier);
-    let candidate = if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        base.join(path)
-    };
-    let is_probably_path = specifier.starts_with("./")
-        || specifier.starts_with("../")
-        || path.is_absolute()
-        || path.extension().is_some();
+    if path.is_absolute() || is_explicit_relative_specifier(specifier) {
+        return Ok(Some(if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            base.join(path)
+        }));
+    }
 
-    if candidate.exists() || is_probably_path {
-        let canonical = dunce::simplified(&candidate.canonicalize().map_err(|err| {
-            PyFileNotFoundError::new_err(format!(
-                "failed to resolve VitePlugin.specifier `{specifier}`: {err}"
-            ))
-        })?)
-        .to_path_buf();
-        let url = url::Url::from_file_path(&canonical).map_err(|_| {
-            PyFileNotFoundError::new_err(format!(
-                "failed to resolve VitePlugin.specifier `{specifier}`"
-            ))
-        })?;
-        return Ok(url.to_string());
+    let local_candidate = base.join(path);
+    Ok(local_candidate.exists().then_some(local_candidate))
+}
+
+#[cfg(not(test))]
+fn resolve_vite_specifier_as_file(path: &Path, specifier: &str) -> pyo3::PyResult<String> {
+    let canonical = dunce::simplified(&path.canonicalize().map_err(|err| {
+        pyo3::exceptions::PyFileNotFoundError::new_err(format!(
+            "failed to resolve VitePlugin.specifier `{specifier}`: {err}"
+        ))
+    })?)
+    .to_path_buf();
+    let url = url::Url::from_file_path(&canonical).map_err(|_| {
+        pyo3::exceptions::PyFileNotFoundError::new_err(format!(
+            "failed to resolve VitePlugin.specifier `{specifier}`"
+        ))
+    })?;
+    Ok(url.to_string())
+}
+
+#[cfg(not(test))]
+fn resolve_vite_specifier(specifier: &str, base: &Path) -> pyo3::PyResult<String> {
+    let candidate = vite_specifier_file_candidate(specifier, base)
+        .map_err(pyo3::exceptions::PyFileNotFoundError::new_err)?;
+    if let Some(candidate) = candidate {
+        return resolve_vite_specifier_as_file(&candidate, specifier);
     }
 
     Ok(specifier.to_owned())
@@ -1319,5 +1338,37 @@ mod tests {
         assert_eq!(fields.len(), 1);
         assert_eq!(fields[0].0, "simple/server");
         assert_eq!(fields[0].1, "apps/simple/page.tsx?gdansk-server-entry");
+    }
+
+    #[test]
+    fn resolve_vite_specifier_resolves_existing_local_relative_path() {
+        let project = TempProject::new();
+        project.create_file("plugins/append-comment.mjs");
+
+        let resolved =
+            vite_specifier_file_candidate("plugins/append-comment.mjs", &project.root).unwrap();
+
+        assert_eq!(
+            resolved,
+            Some(project.root.join("plugins/append-comment.mjs"))
+        );
+    }
+
+    #[test]
+    fn resolve_vite_specifier_leaves_bare_package_root_unchanged() {
+        let project = TempProject::new();
+
+        let resolved = vite_specifier_file_candidate("@tailwindcss/vite", &project.root).unwrap();
+
+        assert_eq!(resolved, None);
+    }
+
+    #[test]
+    fn resolve_vite_specifier_leaves_package_subpath_with_extension_unchanged() {
+        let project = TempProject::new();
+
+        let resolved = vite_specifier_file_candidate("my-pkg/plugin.mjs", &project.root).unwrap();
+
+        assert_eq!(resolved, None);
     }
 }

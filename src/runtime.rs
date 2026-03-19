@@ -225,6 +225,9 @@ mod tests {
     use super::*;
 
     fn run_value(code: &str) -> Result<Value, RuntimeError> {
+        let _guard = crate::test_support::js_runtime_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
