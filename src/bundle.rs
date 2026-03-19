@@ -12,8 +12,8 @@ use std::time::{Duration, UNIX_EPOCH};
 
 #[cfg(not(test))]
 use crate::plugins::{
-    ClientEntrypointPluginOptions, VitePluginSpec, client_entrypoint_plugins,
-    parse_vite_plugin_specs_json, server_entrypoint_plugins,
+    ClientEntrypointPluginOptions, PluginSelection, client_entrypoint_plugins,
+    parse_plugin_selection_json, server_entrypoint_plugins,
 };
 use crate::plugins::{client_entry_import, server_entry_import};
 #[cfg(not(test))]
@@ -658,8 +658,7 @@ async fn bundle_impl(
     minify: bool,
     output: Option<PathBuf>,
     cwd: Option<PathBuf>,
-    bundler_plugin_ids: Option<Vec<String>>,
-    vite_plugin_specs: Vec<VitePluginSpec>,
+    plugin_selection: PluginSelection,
 ) -> Result<(), PyErr> {
     let cwd = match cwd {
         Some(dir) => dunce::simplified(
@@ -684,16 +683,15 @@ async fn bundle_impl(
         ClientEntrypointPluginOptions {
             dev,
             minify,
-            plugin_ids: bundler_plugin_ids.as_deref(),
+            selection: &plugin_selection,
             include_app_entrypoint_plugin: has_app_entries,
-            vite_plugin_specs: &vite_plugin_specs,
         },
     )?;
     let client_bundler_options = RunBundlerOptions {
         minify,
         dev,
         format: None,
-        use_polling_watcher: !vite_plugin_specs.is_empty(),
+        use_polling_watcher: !plugin_selection.vite_plugin_specs.is_empty(),
     };
     let server_bundler_options = RunBundlerOptions {
         minify,
@@ -713,7 +711,7 @@ async fn bundle_impl(
             )
             .await?;
         } else {
-            let server_plugins = server_entrypoint_plugins(bundler_plugin_ids.as_deref())?;
+            let server_plugins = server_entrypoint_plugins(&plugin_selection)?;
             tokio::try_join!(
                 run_bundler(
                     client_items,
@@ -746,7 +744,7 @@ async fn bundle_impl(
     )
     .await?;
     if !server_items.is_empty() {
-        let server_plugins = server_entrypoint_plugins(bundler_plugin_ids.as_deref())?;
+        let server_plugins = server_entrypoint_plugins(&plugin_selection)?;
         run_bundler(
             server_items,
             cwd,
@@ -760,7 +758,7 @@ async fn bundle_impl(
 }
 
 #[cfg(not(test))]
-#[pyfunction(signature = (pages, dev = false, minify = true, output = None, cwd = None))]
+#[pyfunction(signature = (pages, dev = false, minify = true, output = None, cwd = None, plugins = None))]
 pub(crate) fn bundle(
     py: Python<'_>,
     pages: Vec<Py<Page>>,
@@ -768,53 +766,13 @@ pub(crate) fn bundle(
     minify: bool,
     output: Option<PathBuf>,
     cwd: Option<PathBuf>,
+    plugins: Option<String>,
 ) -> PyResult<Bound<'_, PyAny>> {
     let parsed_pages = parse_pages_from_python(py, pages);
+    let plugin_selection = parse_plugin_selection_json(plugins.as_deref())?;
 
     pyo3_async_runtimes::tokio::future_into_py(py, async move {
-        bundle_impl(parsed_pages, dev, minify, output, cwd, None, Vec::new()).await?;
-        Python::attach(|py| Ok(py.None()))
-    })
-}
-
-#[cfg(not(test))]
-#[allow(clippy::too_many_arguments)]
-#[pyfunction(
-    name = "_bundle_with_plugins",
-    signature = (
-        pages,
-        plugins = None,
-        vite_plugins_json = None,
-        dev = false,
-        minify = true,
-        output = None,
-        cwd = None
-    )
-)]
-pub(crate) fn bundle_with_plugins(
-    py: Python<'_>,
-    pages: Vec<Py<Page>>,
-    plugins: Option<Vec<String>>,
-    vite_plugins_json: Option<String>,
-    dev: bool,
-    minify: bool,
-    output: Option<PathBuf>,
-    cwd: Option<PathBuf>,
-) -> PyResult<Bound<'_, PyAny>> {
-    let parsed_pages = parse_pages_from_python(py, pages);
-    let vite_plugin_specs = parse_vite_plugin_specs_json(vite_plugins_json.as_deref())?;
-
-    pyo3_async_runtimes::tokio::future_into_py(py, async move {
-        bundle_impl(
-            parsed_pages,
-            dev,
-            minify,
-            output,
-            cwd,
-            plugins,
-            vite_plugin_specs,
-        )
-        .await?;
+        bundle_impl(parsed_pages, dev, minify, output, cwd, plugin_selection).await?;
         Python::attach(|py| Ok(py.None()))
     })
 }

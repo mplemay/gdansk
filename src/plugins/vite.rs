@@ -9,8 +9,6 @@ use std::{
 
 use deno_core::serde_json::{self, Value};
 #[cfg(not(test))]
-use pyo3::{PyResult, exceptions::PyValueError};
-#[cfg(not(test))]
 use rolldown::plugin::__inner::SharedPluginable;
 use rolldown_common::Output;
 #[cfg(not(test))]
@@ -32,18 +30,6 @@ pub(crate) struct VitePluginSpec {
     pub(crate) specifier: String,
     #[serde(default)]
     pub(crate) options: Value,
-}
-
-#[cfg(not(test))]
-pub(crate) fn parse_vite_plugin_specs_json(
-    specs_json: Option<&str>,
-) -> PyResult<Vec<VitePluginSpec>> {
-    match specs_json {
-        Some(specs_json) => serde_json::from_str(specs_json).map_err(|err| {
-            PyValueError::new_err(format!("invalid Vite plugin spec payload: {err}"))
-        }),
-        None => Ok(Vec::new()),
-    }
 }
 
 #[derive(Debug, Clone, Serialize)]

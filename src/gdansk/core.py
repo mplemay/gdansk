@@ -3,25 +3,23 @@
 from __future__ import annotations
 
 import asyncio
-import concurrent.futures
 import json
 import logging
-import threading
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
 from os import PathLike, fspath
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from anyio import Path as APath
 
-from gdansk._core import Page, _bundle_with_plugins, bundle, run
+from gdansk._core import Page, bundle, run
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.protocol import VitePlugin
 from gdansk.render import ENV
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable, Coroutine, Sequence
+    from collections.abc import AsyncIterator, Callable, Sequence
 
     from mcp.server import MCPServer as FastMCP
     from mcp.types import Icon, ToolAnnotations
@@ -31,7 +29,6 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
-_T = TypeVar("_T")
 
 
 def _is_probably_path_specifier(specifier: str) -> bool:
@@ -54,63 +51,40 @@ def _resolve_vite_specifier(specifier: str | PathLike[str], base: Path) -> str:
     return specifier
 
 
-def _serialize_vite_plugins(specs: list[VitePlugin], base: Path) -> str:
-    payload = [
-        {
-            "specifier": _resolve_vite_specifier(spec.specifier, base),
-            "options": spec.options,
-        }
-        for spec in specs
-    ]
+def _serialize_plugins(
+    plugins: Sequence[BundlerPlugin | VitePlugin] | None,
+    base: Path,
+    *,
+    resolve_vite_specifiers: bool,
+) -> str | None:
+    if plugins is None:
+        return None
+
+    payload = []
+    for plugin in plugins:
+        if isinstance(plugin, VitePlugin):
+            specifier = (
+                _resolve_vite_specifier(plugin.specifier, base) if resolve_vite_specifiers else fspath(plugin.specifier)
+            )
+            payload.append(
+                {
+                    "kind": "vite",
+                    "specifier": specifier,
+                    "options": plugin.options,
+                },
+            )
+            continue
+
+        plugin_id = getattr(plugin, "id", None)
+        if not isinstance(plugin_id, str) or not plugin_id:
+            msg = (
+                "Amber plugins must be VitePlugin instances or bundler plugins "
+                "that expose a non-empty string `id` attribute"
+            )
+            raise TypeError(msg)
+        payload.append({"kind": "bundler", "id": plugin_id})
+
     return json.dumps(payload)
-
-
-class _AsyncThreadRunner:
-    def __init__(self) -> None:
-        self._loop: asyncio.AbstractEventLoop | None = None
-        self._thread: threading.Thread | None = None
-        self._started = threading.Event()
-
-    def start(self) -> None:
-        if self._thread is not None and self._thread.is_alive():
-            return
-        self._started.clear()
-        self._thread = threading.Thread(target=self._run, daemon=True)
-        self._thread.start()
-        self._started.wait()
-
-    def _run(self) -> None:
-        loop = asyncio.new_event_loop()
-        self._loop = loop
-        asyncio.set_event_loop(loop)
-        self._started.set()
-        try:
-            loop.run_forever()
-        finally:
-            pending = [task for task in asyncio.all_tasks(loop) if not task.done()]
-            for task in pending:
-                task.cancel()
-            if pending:
-                with suppress(asyncio.CancelledError):
-                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-            loop.close()
-
-    def run(self, coro: Coroutine[Any, Any, _T]) -> _T:
-        self.start()
-        loop = self._loop
-        if loop is None:
-            msg = "Runner event loop was not started"
-            raise RuntimeError(msg)
-        future = asyncio.run_coroutine_threadsafe(coro, loop)
-        return future.result()
-
-    def stop(self) -> None:
-        if self._loop is None or self._thread is None:
-            return
-        self._loop.call_soon_threadsafe(self._loop.stop)
-        self._thread.join()
-        self._loop = None
-        self._thread = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,59 +109,19 @@ class Amber:
             msg = f"The views directory {self.views} does not exist"
             raise ValueError(msg)
 
-        self._split_plugins()
+        _serialize_plugins(self.plugins, self.views, resolve_vite_specifiers=False)
         object.__setattr__(self, "output", self.views / ".gdansk")
-
-    def _split_plugins(self) -> tuple[list[str] | None, list[VitePlugin]]:
-        if self.plugins is None:
-            return None, []
-
-        plugin_ids: list[str] = []
-        vite_plugins: list[VitePlugin] = []
-        has_native_plugins = False
-
-        for plugin in self.plugins:
-            if isinstance(plugin, VitePlugin):
-                vite_plugins.append(plugin)
-                continue
-
-            plugin_id = getattr(plugin, "id", None)
-            if not isinstance(plugin_id, str) or not plugin_id:
-                msg = (
-                    "Amber plugins must be VitePlugin instances or bundler plugins "
-                    "that expose a non-empty string `id` attribute"
-                )
-                raise TypeError(msg)
-            plugin_ids.append(plugin_id)
-            has_native_plugins = True
-
-        if has_native_plugins or not vite_plugins:
-            return plugin_ids, vite_plugins
-        return None, vite_plugins
 
     async def _run_build_pipeline(self, *, dev: bool) -> None:
         pages = sorted(self._apps, key=lambda page: page.path.as_posix())
-        bundler_plugin_ids, vite_plugins = self._split_plugins()
-        vite_plugins_json = None if not vite_plugins else _serialize_vite_plugins(vite_plugins, self.views)
-
-        if bundler_plugin_ids is None and vite_plugins_json is None:
-            await bundle(
-                pages=pages,
-                dev=dev,
-                minify=not dev,
-                output=self.output,
-                cwd=self.views,
-            )
-            return
-
-        await _bundle_with_plugins(
+        plugins_json = _serialize_plugins(self.plugins, self.views, resolve_vite_specifiers=True)
+        await bundle(
             pages=pages,
-            plugins=bundler_plugin_ids,
-            vite_plugins_json=vite_plugins_json,
             dev=dev,
             minify=not dev,
             output=self.output,
             cwd=self.views,
+            plugins=plugins_json,
         )
 
     @staticmethod
@@ -266,34 +200,24 @@ class Amber:
         if not self._apps:
             return app
 
-        runner = _AsyncThreadRunner()
         bundle_task: asyncio.Task[None] | None = None
         original_lifespan = app.router.lifespan_context
-
-        async def _start_dev() -> None:
-            nonlocal bundle_task
-            bundle_task = asyncio.create_task(self._run_build_pipeline(dev=True))
-            bundle_task.add_done_callback(self._log_background_task_error)
 
         @asynccontextmanager
         async def _lifespan(starlette_app: Starlette) -> AsyncIterator[None]:
             if dev:
-                runner.run(_start_dev())
+                nonlocal bundle_task
+                bundle_task = asyncio.create_task(self._run_build_pipeline(dev=True))
+                bundle_task.add_done_callback(self._log_background_task_error)
             else:
-                runner.run(self._run_build_pipeline(dev=False))
+                await self._run_build_pipeline(dev=False)
 
             async with original_lifespan(starlette_app):
                 try:
                     yield
                 finally:
                     if dev:
-                        with suppress(concurrent.futures.CancelledError):
-                            runner.run(
-                                Amber._shutdown_dev_tasks(
-                                    bundle_task=bundle_task,
-                                ),
-                            )
-                    runner.stop()
+                        await Amber._shutdown_dev_tasks(bundle_task=bundle_task)
 
         app.router.lifespan_context = _lifespan
         return app

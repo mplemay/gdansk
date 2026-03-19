@@ -131,13 +131,9 @@ def test_no_plugins_called_when_no_paths_registered(mock_mcp, pages_dir):
         views=pages_dir,
         plugins=[VitePlugin(specifier="plugins/append-comment.mjs")],
     )
-    with (
-        patch("gdansk.core.bundle") as mock_bundle,
-        patch("gdansk.core._bundle_with_plugins") as mock_bundle_with_plugins,
-    ):
+    with patch("gdansk.core.bundle") as mock_bundle:
         amber(dev=True)
     mock_bundle.assert_not_called()
-    mock_bundle_with_plugins.assert_not_called()
 
 
 @pytest.mark.usefixtures("pages_dir")
@@ -156,7 +152,7 @@ def test_dev_false_blocks_until_bundle_done(amber):
 
 
 @pytest.mark.usefixtures("pages_dir")
-def test_vite_plugins_use_internal_bundle_with_serialized_specs_in_prod(mock_mcp, pages_dir):
+def test_vite_plugins_are_serialized_onto_bundle_payload_in_prod(mock_mcp, pages_dir):
     amber = Amber(
         mcp=mock_mcp,
         views=pages_dir,
@@ -165,20 +161,18 @@ def test_vite_plugins_use_internal_bundle_with_serialized_specs_in_prod(mock_mcp
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
     captured: list[dict] = []
 
-    async def _fake_bundle_with_plugins(**kwargs: object):
+    async def _fake_bundle(**kwargs: object):
         captured.append(kwargs)
 
     with (
-        patch("gdansk.core._bundle_with_plugins", _fake_bundle_with_plugins),
-        patch("gdansk.core.bundle") as mock_bundle,
+        patch("gdansk.core.bundle", _fake_bundle),
         _lifespan(amber(dev=False)),
     ):
         pass
 
-    mock_bundle.assert_not_called()
-    assert captured[-1]["plugins"] is None
-    assert json.loads(captured[-1]["vite_plugins_json"]) == [
+    assert json.loads(captured[-1]["plugins"]) == [
         {
+            "kind": "vite",
             "specifier": (pages_dir / "plugins" / "append-comment.mjs").resolve().as_uri(),
             "options": {"comment": "prod"},
         },
@@ -186,20 +180,30 @@ def test_vite_plugins_use_internal_bundle_with_serialized_specs_in_prod(mock_mcp
 
 
 @pytest.mark.usefixtures("pages_dir")
-def test_dev_true_starts_background_runner(amber):
+def test_dev_true_starts_background_task(amber):
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
     started = threading.Event()
+    created_tasks: list[asyncio.Task[None]] = []
+    original_create_task = asyncio.create_task
 
     async def _slow_bundle(**_kwargs: object):
         started.set()
         await asyncio.sleep(999)
 
-    with patch("gdansk.core.bundle", _slow_bundle):
+    def _capture_create_task(coro):
+        task = original_create_task(coro)
+        created_tasks.append(task)
+        return task
+
+    with (
+        patch("gdansk.core.bundle", _slow_bundle),
+        patch("gdansk.core.asyncio.create_task", side_effect=_capture_create_task),
+    ):
         app = amber(dev=True)
         with _lifespan(app):
             assert started.wait(timeout=5)
-            thread_count = len([t for t in threading.enumerate() if t.daemon and t.is_alive()])
-            assert thread_count >= 1
+            assert len(created_tasks) == 1
+            assert created_tasks[0].done() is False
 
 
 @pytest.mark.usefixtures("pages_dir")
@@ -230,35 +234,25 @@ def test_default_bundler_plugins_use_public_bundle(mock_mcp, pages_dir):
     async def _fake_bundle(**kwargs: object):
         captured.append(kwargs)
 
-    with (
-        patch("gdansk.core.bundle", _fake_bundle),
-        patch("gdansk.core._bundle_with_plugins") as mock_bundle_with_plugins,
-        _lifespan(amber(dev=False)),
-    ):
+    with patch("gdansk.core.bundle", _fake_bundle), _lifespan(amber(dev=False)):
         pass
 
     assert captured[-1]["pages"] == [Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False)]
-    mock_bundle_with_plugins.assert_not_called()
+    assert captured[-1]["plugins"] is None
 
 
-def test_explicit_lightningcss_plugin_uses_internal_bundle_with_plugins(mock_mcp, pages_dir):
+def test_explicit_lightningcss_plugin_serializes_bundle_payload(mock_mcp, pages_dir):
     amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=[LightningCSS()])
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
     captured: list[dict] = []
 
-    async def _fake_bundle_with_plugins(**kwargs: object):
+    async def _fake_bundle(**kwargs: object):
         captured.append(kwargs)
 
-    with (
-        patch("gdansk.core._bundle_with_plugins", _fake_bundle_with_plugins),
-        patch("gdansk.core.bundle") as mock_bundle,
-        _lifespan(amber(dev=False)),
-    ):
+    with patch("gdansk.core.bundle", _fake_bundle), _lifespan(amber(dev=False)):
         pass
 
-    assert captured[-1]["plugins"] == ["lightningcss"]
-    assert captured[-1]["vite_plugins_json"] is None
-    mock_bundle.assert_not_called()
+    assert json.loads(captured[-1]["plugins"]) == [{"kind": "bundler", "id": "lightningcss"}]
 
 
 def test_empty_bundler_plugin_list_is_forwarded(mock_mcp, pages_dir):
@@ -266,19 +260,13 @@ def test_empty_bundler_plugin_list_is_forwarded(mock_mcp, pages_dir):
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
     captured: list[dict] = []
 
-    async def _fake_bundle_with_plugins(**kwargs: object):
+    async def _fake_bundle(**kwargs: object):
         captured.append(kwargs)
 
-    with (
-        patch("gdansk.core._bundle_with_plugins", _fake_bundle_with_plugins),
-        _lifespan(
-            amber(dev=False),
-        ),
-    ):
+    with patch("gdansk.core.bundle", _fake_bundle), _lifespan(amber(dev=False)):
         pass
 
-    assert captured[-1]["plugins"] == []
-    assert captured[-1]["vite_plugins_json"] is None
+    assert json.loads(captured[-1]["plugins"]) == []
 
 
 def test_vite_only_plugins_keep_native_defaults(mock_mcp, pages_dir):
@@ -290,22 +278,19 @@ def test_vite_only_plugins_keep_native_defaults(mock_mcp, pages_dir):
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
     captured: list[dict] = []
 
-    async def _fake_bundle_with_plugins(**kwargs: object):
+    async def _fake_bundle(**kwargs: object):
         captured.append(kwargs)
 
-    with (
-        patch("gdansk.core._bundle_with_plugins", _fake_bundle_with_plugins),
-        patch("gdansk.core.bundle") as mock_bundle,
-        _lifespan(amber(dev=False)),
-    ):
+    with patch("gdansk.core.bundle", _fake_bundle), _lifespan(amber(dev=False)):
         pass
 
-    mock_bundle.assert_not_called()
-    assert captured[-1]["plugins"] is None
-    assert (
-        json.loads(captured[-1]["vite_plugins_json"])[0]["specifier"]
-        == (pages_dir / "plugins" / "append-comment.mjs").resolve().as_uri()
-    )
+    assert json.loads(captured[-1]["plugins"]) == [
+        {
+            "kind": "vite",
+            "specifier": (pages_dir / "plugins" / "append-comment.mjs").resolve().as_uri(),
+            "options": {},
+        },
+    ]
 
 
 def test_mixed_plugins_use_native_override_and_vite_bridge(mock_mcp, pages_dir):
@@ -317,22 +302,20 @@ def test_mixed_plugins_use_native_override_and_vite_bridge(mock_mcp, pages_dir):
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
     captured: list[dict] = []
 
-    async def _fake_bundle_with_plugins(**kwargs: object):
+    async def _fake_bundle(**kwargs: object):
         captured.append(kwargs)
 
-    with (
-        patch("gdansk.core._bundle_with_plugins", _fake_bundle_with_plugins),
-        patch("gdansk.core.bundle") as mock_bundle,
-        _lifespan(amber(dev=False)),
-    ):
+    with patch("gdansk.core.bundle", _fake_bundle), _lifespan(amber(dev=False)):
         pass
 
-    mock_bundle.assert_not_called()
-    assert captured[-1]["plugins"] == ["lightningcss"]
-    assert (
-        json.loads(captured[-1]["vite_plugins_json"])[0]["specifier"]
-        == (pages_dir / "plugins" / "append-comment.mjs").resolve().as_uri()
-    )
+    assert json.loads(captured[-1]["plugins"]) == [
+        {"kind": "bundler", "id": "lightningcss"},
+        {
+            "kind": "vite",
+            "specifier": (pages_dir / "plugins" / "append-comment.mjs").resolve().as_uri(),
+            "options": {},
+        },
+    ]
 
 
 @pytest.mark.usefixtures("pages_dir")
@@ -344,12 +327,12 @@ def test_plugin_errors_propagate_in_prod(mock_mcp, pages_dir):
     )
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
 
-    async def _failing_bundle_with_plugins(**_kwargs: object):
+    async def _failing_bundle(**_kwargs: object):
         msg = "plugin boom"
         raise RuntimeError(msg)
 
     with (
-        patch("gdansk.core._bundle_with_plugins", _failing_bundle_with_plugins),
+        patch("gdansk.core.bundle", _failing_bundle),
         pytest.raises(RuntimeError, match="plugin boom"),
         _lifespan(
             amber(dev=False),
@@ -455,7 +438,7 @@ def test_dev_vite_bundle_task_cancelled_on_shutdown(mock_mcp, pages_dir):
     )
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
 
-    async def _slow_bundle_with_plugins(**_kwargs: object):
+    async def _slow_bundle(**_kwargs: object):
         try:
             await asyncio.sleep(999)
         except asyncio.CancelledError:
@@ -463,7 +446,7 @@ def test_dev_vite_bundle_task_cancelled_on_shutdown(mock_mcp, pages_dir):
             raise
 
     with (
-        patch("gdansk.core._bundle_with_plugins", _slow_bundle_with_plugins),
+        patch("gdansk.core.bundle", _slow_bundle),
         _lifespan(
             amber(dev=True),
         ),
@@ -482,12 +465,12 @@ def test_dev_vite_bundle_error_is_logged(mock_mcp, pages_dir):
     )
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
 
-    async def _failing_bundle_with_plugins(**_kwargs: object):
+    async def _failing_bundle(**_kwargs: object):
         msg = "watch failed"
         raise RuntimeError(msg)
 
     with (
-        patch("gdansk.core._bundle_with_plugins", _failing_bundle_with_plugins),
+        patch("gdansk.core.bundle", _failing_bundle),
         patch("gdansk.core.logger.exception") as mock_log,
         _lifespan(amber(dev=True)),
     ):
@@ -496,34 +479,6 @@ def test_dev_vite_bundle_error_is_logged(mock_mcp, pages_dir):
             time.sleep(0.05)
 
     assert mock_log.call_count >= 1
-
-
-@pytest.mark.usefixtures("pages_dir")
-def test_closes_loop_on_shutdown(amber):
-    amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
-    loops: list[asyncio.AbstractEventLoop] = []
-    original_new_event_loop = asyncio.new_event_loop
-
-    def _capture_loop():
-        loop = original_new_event_loop()
-        loops.append(loop)
-        return loop
-
-    async def _fake_bundle(**_kwargs: object):
-        await asyncio.sleep(999)
-
-    with (
-        patch("gdansk.core.asyncio.new_event_loop", _capture_loop),
-        patch(
-            "gdansk.core.bundle",
-            _fake_bundle,
-        ),
-        _lifespan(amber(dev=True)),
-    ):
-        pass
-
-    assert len(loops) >= 1
-    assert all(loop.is_closed() for loop in loops)
 
 
 @pytest.mark.usefixtures("pages_dir")

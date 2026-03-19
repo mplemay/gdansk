@@ -16,14 +16,6 @@ async def bundle(
     minify: bool = True,
     output: Path = ...,
     cwd: Path = ...,
-) -> None: ...
-async def _bundle_with_plugins(
-    pages: Sequence[Page],
-    plugins: Sequence[str] | None = None,
-    vite_plugins_json: str | None = None,
-    dev: bool = False,
-    minify: bool = True,
-    output: Path = ...,
-    cwd: Path = ...,
+    plugins: str | None = None,
 ) -> None: ...
 async def run(code: str, /) -> object: ...
