@@ -9,7 +9,7 @@ import pytest
 from anyio import Path as APath
 
 from gdansk.core import Amber
-from gdansk.experimental.postcss import PostCSS, PostCSSError
+from gdansk.plugins.postcss import PostCSS, PostCSSError
 
 
 @contextmanager

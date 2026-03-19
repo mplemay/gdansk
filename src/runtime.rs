@@ -1,5 +1,14 @@
 use deno_core::{
-    JsRuntime, OpState, PollEventLoopOptions, RuntimeOptions, op2, serde_json::Value, v8,
+    FsModuleLoader, JsRuntime, OpState, PollEventLoopOptions, RuntimeOptions, op2,
+    serde_json::Value, v8,
+};
+use deno_error::JsErrorBox;
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    rc::Rc,
+    sync::mpsc,
+    thread,
 };
 
 #[cfg(not(test))]
@@ -36,9 +45,60 @@ fn op_gdansk_set_html(state: &mut OpState, #[string] html: String) {
     state.borrow_mut::<SsrCapture>().html = Some(html);
 }
 
+#[op2]
+#[string]
+fn op_gdansk_read_text_file(#[string] path: String) -> Result<String, JsErrorBox> {
+    fs::read_to_string(path).map_err(|err| JsErrorBox::generic(err.to_string()))
+}
+
+#[op2(fast)]
+fn op_gdansk_write_text_file(
+    #[string] path: String,
+    #[string] content: String,
+) -> Result<(), JsErrorBox> {
+    fs::write(path, content).map_err(|err| JsErrorBox::generic(err.to_string()))?;
+    Ok(())
+}
+
+#[op2]
+fn op_gdansk_scan_css_files(#[string] root: String) -> Result<Vec<String>, JsErrorBox> {
+    fn walk(dir: &Path, files: &mut Vec<String>) -> Result<(), JsErrorBox> {
+        for entry in fs::read_dir(dir).map_err(|err| JsErrorBox::generic(err.to_string()))? {
+            let entry =
+                entry.map_err(|err: std::io::Error| JsErrorBox::generic(err.to_string()))?;
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, files)?;
+                continue;
+            }
+            if path.extension().and_then(|value| value.to_str()) != Some("css") {
+                continue;
+            }
+            let Some(path) = path.to_str() else {
+                continue;
+            };
+            files.push(path.to_owned());
+        }
+        Ok(())
+    }
+
+    let mut files = Vec::new();
+    let root = PathBuf::from(root);
+    if root.is_dir() {
+        walk(&root, &mut files)?;
+    }
+    files.sort();
+    Ok(files)
+}
+
 deno_core::extension!(
     gdansk_runtime_ext,
-    ops = [op_gdansk_set_html],
+    ops = [
+        op_gdansk_set_html,
+        op_gdansk_read_text_file,
+        op_gdansk_write_text_file,
+        op_gdansk_scan_css_files,
+    ],
     state = |state| state.put(SsrCapture::default())
 );
 
@@ -129,6 +189,205 @@ async fn evaluate(code: &str) -> Result<Value, RuntimeError> {
         .map_err(execution_error)?;
 
     read_json_value(&mut runtime, output)
+}
+
+#[cfg(not(test))]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+struct JsPluginSpecInput {
+    specifier: String,
+    #[serde(default)]
+    options: Value,
+}
+
+#[cfg(not(test))]
+#[derive(Debug, serde::Serialize)]
+struct JsBuildContext {
+    pages: String,
+    output: String,
+}
+
+#[cfg(not(test))]
+enum JsPluginCommand {
+    Build {
+        context: JsBuildContext,
+        response: tokio::sync::oneshot::Sender<Result<(), String>>,
+    },
+    Shutdown,
+}
+
+#[cfg(not(test))]
+#[pyclass(module = "gdansk._core", frozen, skip_from_py_object)]
+#[derive(Debug)]
+pub(crate) struct JsPluginRunner {
+    sender: mpsc::Sender<JsPluginCommand>,
+}
+
+#[cfg(not(test))]
+fn create_js_runtime() -> JsRuntime {
+    JsRuntime::new(RuntimeOptions {
+        startup_snapshot: Some(snapshot()),
+        extensions: vec![gdansk_runtime_ext::init()],
+        module_loader: Some(Rc::new(FsModuleLoader)),
+        ..Default::default()
+    })
+}
+
+#[cfg(not(test))]
+async fn run_module(
+    runtime: &mut JsRuntime,
+    module_specifier: String,
+    code: &str,
+    is_main: bool,
+) -> Result<(), RuntimeError> {
+    let module_specifier = deno_core::resolve_url(&module_specifier).map_err(execution_error)?;
+    let mod_id = if is_main {
+        runtime
+            .load_main_es_module_from_code(&module_specifier, code.to_owned())
+            .await
+            .map_err(execution_error)?
+    } else {
+        runtime
+            .load_side_es_module_from_code(&module_specifier, code.to_owned())
+            .await
+            .map_err(execution_error)?
+    };
+
+    let result = runtime.mod_evaluate(mod_id);
+    runtime
+        .run_event_loop(PollEventLoopOptions::default())
+        .await
+        .map_err(execution_error)?;
+    result.await.map_err(execution_error)?;
+    Ok(())
+}
+
+#[cfg(not(test))]
+fn runtime_error_message(err: RuntimeError) -> String {
+    match err {
+        RuntimeError::Execution(message) | RuntimeError::Deserialize(message) => message,
+    }
+}
+
+#[cfg(not(test))]
+fn spawn_js_plugin_thread(
+    specs: Vec<JsPluginSpecInput>,
+) -> Result<mpsc::Sender<JsPluginCommand>, String> {
+    let (command_tx, command_rx) = mpsc::channel();
+    let (ready_tx, ready_rx) = mpsc::channel();
+
+    thread::spawn(move || {
+        let runtime = match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(runtime) => runtime,
+            Err(err) => {
+                let _ = ready_tx.send(Err(format!("failed to create JS plugin runtime: {err}")));
+                return;
+            }
+        };
+
+        let mut js_runtime = create_js_runtime();
+        let mut module_counter = 0u64;
+        let init_result = runtime.block_on(async {
+            let specs_json = deno_core::serde_json::to_string(&specs).map_err(execution_error)?;
+            let module_code = format!(
+                "import {{ loadPlugins }} from \"gdansk:runtime\";\nawait loadPlugins({specs_json});"
+            );
+            let module_specifier = format!(
+                "file:///gdansk/js-plugin-runtime-{}.js",
+                module_counter
+            );
+            module_counter += 1;
+            run_module(&mut js_runtime, module_specifier, &module_code, true).await
+        });
+
+        if let Err(err) = init_result {
+            let _ = ready_tx.send(Err(runtime_error_message(err)));
+            return;
+        }
+
+        let _ = ready_tx.send(Ok(()));
+
+        while let Ok(command) = command_rx.recv() {
+            match command {
+                JsPluginCommand::Build { context, response } => {
+                    let result = runtime.block_on(async {
+                        let context_json = deno_core::serde_json::to_string(&context)
+                            .map_err(execution_error)?;
+                        let module_code = format!(
+                            "import {{ runBuild }} from \"gdansk:runtime\";\nawait runBuild({context_json});"
+                        );
+                        let module_specifier = format!(
+                            "file:///gdansk/js-plugin-runtime-{}.js",
+                            module_counter
+                        );
+                        module_counter += 1;
+                        run_module(&mut js_runtime, module_specifier, &module_code, false).await
+                    });
+                    let _ = response.send(result.map_err(runtime_error_message));
+                }
+                JsPluginCommand::Shutdown => {
+                    break;
+                }
+            }
+        }
+    });
+
+    match ready_rx.recv() {
+        Ok(Ok(())) => Ok(command_tx),
+        Ok(Err(message)) => Err(message),
+        Err(_) => Err("failed to initialize JS plugin runtime".to_owned()),
+    }
+}
+
+#[cfg(not(test))]
+#[pymethods]
+impl JsPluginRunner {
+    #[new]
+    fn new(specs_json: String) -> PyResult<Self> {
+        let specs: Vec<JsPluginSpecInput> =
+            deno_core::serde_json::from_str(&specs_json).map_err(|err| {
+                PyValueError::new_err(format!("invalid JS plugin spec payload: {err}"))
+            })?;
+        let sender = spawn_js_plugin_thread(specs).map_err(PyRuntimeError::new_err)?;
+        Ok(Self { sender })
+    }
+
+    fn close(&self) {
+        let _ = self.sender.send(JsPluginCommand::Shutdown);
+    }
+
+    fn build<'py>(
+        &self,
+        py: Python<'py>,
+        pages: PathBuf,
+        output: PathBuf,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let sender = self.sender.clone();
+        let pages = pages.to_string_lossy().to_string();
+        let output = output.to_string_lossy().to_string();
+
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let (response_tx, response_rx) = tokio::sync::oneshot::channel();
+            sender
+                .send(JsPluginCommand::Build {
+                    context: JsBuildContext { pages, output },
+                    response: response_tx,
+                })
+                .map_err(|err| {
+                    PyRuntimeError::new_err(format!("failed to send JS build command: {err}"))
+                })?;
+
+            match response_rx.await {
+                Ok(Ok(())) => Python::attach(|py| Ok(py.None())),
+                Ok(Err(message)) => Err(PyRuntimeError::new_err(message)),
+                Err(err) => Err(PyRuntimeError::new_err(format!(
+                    "JS plugin runtime closed unexpectedly: {err}"
+                ))),
+            }
+        })
+    }
 }
 
 #[cfg(not(test))]

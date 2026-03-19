@@ -10,6 +10,11 @@ class Page:
     server: Path | None
     css: Path
 
+class JsPluginRunner:
+    def __init__(self, specs_json: str, /) -> None: ...
+    async def build(self, *, pages: Path, output: Path) -> None: ...
+    def close(self) -> None: ...
+
 async def bundle(
     pages: Sequence[Page],
     dev: bool = False,

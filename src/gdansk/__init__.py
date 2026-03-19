@@ -1,6 +1,6 @@
-"""Public package exports for gdansk."""
+# ruff: noqa: D104
 
 from gdansk.core import Amber, Page
-from gdansk.plugins import LightningCSS
+from gdansk.plugins import JsPluginSpec, LightningCSS, PostCSS, PostCSSError
 
-__all__ = ["Amber", "LightningCSS", "Page"]
+__all__ = ["Amber", "JsPluginSpec", "LightningCSS", "Page", "PostCSS", "PostCSSError"]

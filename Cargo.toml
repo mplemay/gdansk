@@ -12,6 +12,7 @@ crate-type = ["cdylib"]
 [dependencies]
 tokio = "1.40"
 dunce = "1.0"
+serde = { version = "1", features = ["derive"] }
 
 # python
 pyo3 = { version = "0.28", features = ["extension-module", "abi3-py311"] }
@@ -19,6 +20,7 @@ pyo3-async-runtimes = { version = "0.28", features = ["tokio-runtime"] }
 
 # javascript
 deno_core = "0.385.0"
+deno_error = "0.7.3"
 rolldown = { git = "https://github.com/rolldown/rolldown.git", tag="v1.0.0-rc.10", features = ["experimental"] }
 rolldown_dev = { git = "https://github.com/rolldown/rolldown.git", tag="v1.0.0-rc.10" }
 rolldown_plugin = { git = "https://github.com/rolldown/rolldown.git", tag="v1.0.0-rc.10" }

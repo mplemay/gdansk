@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 from anyio import Path as APath
 
 from gdansk._core import Page, _bundle_with_plugins, bundle, run
+from gdansk.js_plugins import create_js_lifecycle_plugin
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import ENV
 
@@ -25,7 +26,7 @@ if TYPE_CHECKING:
     from mcp.types import Icon, ToolAnnotations
     from starlette.applications import Starlette
 
-    from gdansk.protocol import BundlerPlugin, LifecyclePlugin
+    from gdansk.protocol import BundlerPlugin, JsPluginSpec, LifecyclePlugin
 
 
 logger = logging.getLogger(__name__)
@@ -96,12 +97,21 @@ class Amber:
     metadata: Metadata | None = field(default=None, kw_only=True)
     plugins: Sequence[BundlerPlugin] | None = field(default=None, kw_only=True)
     lifecycle_plugins: Sequence[LifecyclePlugin] = field(default=(), kw_only=True)
+    js_plugins: Sequence[JsPluginSpec] = field(default=(), kw_only=True)
+    _js_lifecycle_plugin: LifecyclePlugin | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         """Validate required paths and initialize derived output paths."""
         if not self.views.is_dir():
             msg = f"The views directory {self.views} does not exist"
             raise ValueError(msg)
+
+        if self.js_plugins:
+            object.__setattr__(
+                self,
+                "_js_lifecycle_plugin",
+                create_js_lifecycle_plugin(list(self.js_plugins), pages=self.views),
+            )
 
         object.__setattr__(self, "output", self.views / ".gdansk")
 
@@ -110,7 +120,8 @@ class Amber:
         *,
         dev: bool,
     ) -> tuple[asyncio.Event | None, list[asyncio.Task[None]]]:
-        if not dev or not self.lifecycle_plugins:
+        lifecycle_plugins = self._all_lifecycle_plugins()
+        if not dev or not lifecycle_plugins:
             return None, []
 
         stop_event = asyncio.Event()
@@ -122,10 +133,16 @@ class Amber:
                     stop_event=stop_event,
                 ),
             )
-            for plugin in self.lifecycle_plugins
+            for plugin in lifecycle_plugins
         ]
 
         return stop_event, watcher_tasks
+
+    def _all_lifecycle_plugins(self) -> list[LifecyclePlugin]:
+        lifecycle_plugins: list[LifecyclePlugin] = list(self.lifecycle_plugins)
+        if self._js_lifecycle_plugin is not None:
+            lifecycle_plugins.append(self._js_lifecycle_plugin)
+        return lifecycle_plugins
 
     def _bundler_plugin_ids(self) -> list[str] | None:
         if self.plugins is None:
@@ -144,27 +161,31 @@ class Amber:
     async def _run_build_pipeline(self, *, dev: bool) -> None:
         pages = sorted(self._apps, key=lambda page: page.path.as_posix())
         bundler_plugin_ids = self._bundler_plugin_ids()
-        if bundler_plugin_ids is None:
-            await bundle(
-                pages=pages,
-                dev=dev,
-                minify=not dev,
-                output=self.output,
-                cwd=self.views,
-            )
-        else:
-            await _bundle_with_plugins(
-                pages=pages,
-                plugins=bundler_plugin_ids,
-                dev=dev,
-                minify=not dev,
-                output=self.output,
-                cwd=self.views,
-            )
-        if dev:
-            return
-        for plugin in self.lifecycle_plugins:
-            await plugin.build(pages=self.views, output=self.output)
+        try:
+            if bundler_plugin_ids is None:
+                await bundle(
+                    pages=pages,
+                    dev=dev,
+                    minify=not dev,
+                    output=self.output,
+                    cwd=self.views,
+                )
+            else:
+                await _bundle_with_plugins(
+                    pages=pages,
+                    plugins=bundler_plugin_ids,
+                    dev=dev,
+                    minify=not dev,
+                    output=self.output,
+                    cwd=self.views,
+                )
+            if dev:
+                return
+            for plugin in self._all_lifecycle_plugins():
+                await plugin.build(pages=self.views, output=self.output)
+        finally:
+            if not dev:
+                self._close_js_lifecycle_plugin()
 
     @staticmethod
     def _log_background_task_error(task: asyncio.Task[None]) -> None:
@@ -174,6 +195,15 @@ class Amber:
         if exc is None:
             return
         logger.exception("Amber background task failed", exc_info=exc)
+
+    def _close_js_lifecycle_plugin(self) -> None:
+        plugin = self._js_lifecycle_plugin
+        if plugin is None:
+            return
+        close = getattr(plugin, "close", None)
+        if callable(close):
+            close()
+        object.__setattr__(self, "_js_lifecycle_plugin", None)
 
     @staticmethod
     async def _shutdown_dev_tasks(
@@ -244,6 +274,7 @@ class Amber:
         """Build and return the Starlette app that serves registered resources."""
         app = self.mcp.streamable_http_app()
         if not self._apps:
+            self._close_js_lifecycle_plugin()
             return app
 
         runner = _AsyncThreadRunner()

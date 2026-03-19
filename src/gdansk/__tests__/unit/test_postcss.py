@@ -7,7 +7,7 @@ from typing import cast
 import pytest
 from anyio import Path as APath
 
-from gdansk.experimental.postcss import PostCSS, PostCSSError
+from gdansk.plugins.postcss import PostCSS, PostCSSError
 
 
 async def _wait_until(predicate, *, timeout_seconds: float = 2.0) -> None:
@@ -74,7 +74,7 @@ async def test_build_rewrites_css_on_success(tmp_path, monkeypatch):
         assert env["NODE_PATH"] == str(pages / "node_modules")
         return _Process()
 
-    monkeypatch.setattr("gdansk.experimental.postcss.asyncio.create_subprocess_exec", _fake_exec)
+    monkeypatch.setattr("gdansk.plugins.postcss.asyncio.create_subprocess_exec", _fake_exec)
 
     await plugin.build(pages=pages, output=output)
 
@@ -102,7 +102,7 @@ async def test_build_raises_on_subprocess_error(tmp_path, monkeypatch):
     async def _fake_exec(*_command: str, **_kwargs: object) -> _Process:
         return _Process()
 
-    monkeypatch.setattr("gdansk.experimental.postcss.asyncio.create_subprocess_exec", _fake_exec)
+    monkeypatch.setattr("gdansk.plugins.postcss.asyncio.create_subprocess_exec", _fake_exec)
 
     with pytest.raises(PostCSSError, match="boom"):
         await plugin.build(pages=pages, output=output)

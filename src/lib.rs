@@ -10,5 +10,5 @@ mod _core {
     #[pymodule_export]
     use super::bundle::{Page, bundle, bundle_with_plugins};
     #[pymodule_export]
-    use super::runtime::run;
+    use super::runtime::{JsPluginRunner, run};
 }

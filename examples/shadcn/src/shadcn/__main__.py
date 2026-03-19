@@ -13,7 +13,7 @@ except ImportError:
 from starlette.middleware.cors import CORSMiddleware
 
 from gdansk import Amber
-from gdansk.experimental.postcss import PostCSS
+from gdansk.plugins import PostCSS
 
 mcp = FastMCP("Todo Server")
 amber = Amber(mcp=mcp, views=Path(__file__).parent / "views", lifecycle_plugins=[PostCSS()])

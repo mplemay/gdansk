@@ -1,8 +1,11 @@
-"""Shared protocol definitions for gdansk plugins."""
+# ruff: noqa: D100,D101,D102,D105
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol
+import json
+from dataclasses import dataclass, field
+from os import PathLike, fspath
+from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
     import asyncio
@@ -10,19 +13,32 @@ if TYPE_CHECKING:
 
 
 class BundlerPlugin(Protocol):
-    """Protocol for Python wrappers around native rolldown plugins."""
-
     id: str
 
 
 class LifecyclePlugin(Protocol):
-    """Plugin interface for build and watch hooks."""
+    async def build(self, *, pages: Path, output: Path) -> None: ...
 
-    async def build(self, *, pages: Path, output: Path) -> None:
-        """Build plugin outputs into the generated assets directory."""
-
-    async def watch(self, *, pages: Path, output: Path, stop_event: asyncio.Event) -> None:
-        """Watch for source changes and update generated assets until stopped."""
+    async def watch(self, *, pages: Path, output: Path, stop_event: asyncio.Event) -> None: ...
 
 
 Plugin = LifecyclePlugin
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
+class JsPluginSpec:
+    specifier: str | PathLike[str]
+    options: Any = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        specifier = fspath(self.specifier)
+        if not isinstance(specifier, str) or not specifier.strip():
+            msg = "JsPluginSpec.specifier must be a non-empty string or path"
+            raise ValueError(msg)
+        object.__setattr__(self, "specifier", specifier)
+
+        try:
+            json.dumps(self.options)
+        except TypeError as exc:
+            msg = "JsPluginSpec.options must be JSON serializable"
+            raise TypeError(msg) from exc

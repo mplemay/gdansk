@@ -13,6 +13,7 @@ import pytest
 
 from gdansk import LightningCSS
 from gdansk.core import Amber, Page
+from gdansk.protocol import JsPluginSpec
 from gdansk.render import ENV
 
 if TYPE_CHECKING:
@@ -247,6 +248,41 @@ def test_empty_bundler_plugin_list_is_forwarded(mock_mcp, pages_dir):
         pass
 
     assert captured[-1]["plugins"] == []
+
+
+def test_js_plugins_use_internal_bridge(mock_mcp, pages_dir):
+    calls: list[str] = []
+
+    class _FakeJsPlugin:
+        async def build(self, *, pages: Path, output: Path) -> None:
+            _ = (pages, output)
+            calls.append("js-build")
+
+        async def watch(self, *, pages: Path, output: Path, stop_event: asyncio.Event) -> None:
+            _ = (pages, output, stop_event)
+
+        def close(self) -> None:
+            calls.append("js-close")
+
+    with patch("gdansk.core.create_js_lifecycle_plugin", return_value=_FakeJsPlugin()):
+        amber = Amber(
+            mcp=mock_mcp,
+            views=pages_dir,
+            js_plugins=[JsPluginSpec(specifier="plugins/append-comment.mjs")],
+        )
+
+    amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
+
+    async def _fake_bundle(**_kwargs: object):
+        calls.append("bundle")
+
+    with (
+        patch("gdansk.core.bundle", _fake_bundle),
+        _lifespan(amber(dev=False)),
+    ):
+        pass
+
+    assert calls == ["bundle", "js-build", "js-close"]
 
 
 @pytest.mark.usefixtures("pages_dir")
