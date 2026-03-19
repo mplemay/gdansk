@@ -10,11 +10,6 @@ class Page:
     server: Path | None
     css: Path
 
-class JsPluginRunner:
-    def __init__(self, specs_json: str, /) -> None: ...
-    async def build(self, *, pages: Path, output: Path) -> None: ...
-    def close(self) -> None: ...
-
 async def bundle(
     pages: Sequence[Page],
     dev: bool = False,
@@ -24,7 +19,8 @@ async def bundle(
 ) -> None: ...
 async def _bundle_with_plugins(
     pages: Sequence[Page],
-    plugins: Sequence[str],
+    plugins: Sequence[str] | None = None,
+    vite_plugins_json: str | None = None,
     dev: bool = False,
     minify: bool = True,
     output: Path = ...,

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import shutil
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -9,9 +8,6 @@ from pathlib import Path
 import pytest
 
 from gdansk import Amber, VitePlugin
-
-_ROOT = Path(__file__).resolve().parents[4]
-_SHADCN_VIEWS = _ROOT / "examples" / "shadcn" / "src" / "shadcn" / "views"
 
 
 @contextmanager
@@ -29,20 +25,57 @@ def _lifespan(app):
         loop.close()
 
 
-def _copy_shadcn_views(tmp_path: Path) -> Path:
-    views = tmp_path / "views"
-    shutil.copytree(
-        _SHADCN_VIEWS,
-        views,
-        ignore=shutil.ignore_patterns("node_modules", ".gdansk"),
+def _wait_for_css_contains(css_output: Path, text: str, *, timeout_seconds: int = 20) -> str:
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        if css_output.exists():
+            css = css_output.read_text(encoding="utf-8")
+            if text in css:
+                return css
+        if time.monotonic() > deadline:
+            pytest.fail(f"Timed out waiting for CSS output to contain {text!r}")
+        time.sleep(0.1)
+
+
+def _write_tailwind_vite_package(views: Path) -> None:
+    package_dir = views / "node_modules" / "@tailwindcss" / "vite"
+    package_dir.mkdir(parents=True, exist_ok=True)
+    package_dir.joinpath("package.json").write_text(
+        """
+{
+  "name": "@tailwindcss/vite",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./index.js"
+  }
+}
+""".strip()
+        + "\n",
+        encoding="utf-8",
     )
-
-    node_modules = _SHADCN_VIEWS / "node_modules"
-    if not node_modules.is_dir():
-        pytest.skip("shadcn example dependencies are not installed")
-
-    views.joinpath("node_modules").symlink_to(node_modules, target_is_directory=True)
-    return views
+    package_dir.joinpath("index.js").write_text(
+        """
+export default function tailwindVite() {
+  return {
+    name: "@tailwindcss/vite",
+    apply: "build",
+    transform: {
+      filter: {
+        id: {
+          include: [/\\.css$/],
+        },
+      },
+      async handler(source) {
+        return `${source}\\n.mx-auto{margin-inline:auto}\\n`;
+      },
+    },
+  };
+}
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
 
 
 @pytest.mark.integration
@@ -82,13 +115,94 @@ def test_js_plugin_watch_runs_in_dev(mock_mcp, pages_dir, tmp_path, monkeypatch)
     app = amber(dev=True)
     with _lifespan(app):
         css_output = output / "with_css/client.css"
-        deadline = time.monotonic() + 20
-        while True:
-            if css_output.exists() and "dev-js" in css_output.read_text(encoding="utf-8"):
-                break
-            if time.monotonic() > deadline:
-                pytest.fail("Timed out waiting for JS plugin output")
-            time.sleep(0.1)
+        _wait_for_css_contains(css_output, "dev-js")
+
+
+@pytest.mark.integration
+def test_js_plugins_apply_in_declared_order(mock_mcp, pages_dir, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    output = pages_dir / ".gdansk"
+    amber = Amber(
+        mcp=mock_mcp,
+        views=pages_dir,
+        plugins=[
+            VitePlugin(specifier=Path("plugins/append-comment.mjs"), options={"comment": "first"}),
+            VitePlugin(specifier=Path("plugins/append-comment.mjs"), options={"comment": "second"}),
+        ],
+    )
+
+    @amber.tool(Path("with_css/page.tsx"))
+    def my_tool():
+        return "result"
+
+    with _lifespan(amber(dev=False)):
+        css_output = output / "with_css/client.css"
+        css = css_output.read_text(encoding="utf-8")
+
+    assert css.index("first") < css.index("second")
+
+
+@pytest.mark.integration
+def test_js_plugin_add_watch_file_triggers_dev_rebuild(mock_mcp, pages_dir, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    watched_file = pages_dir / "comment.txt"
+    watched_file.write_text("initial", encoding="utf-8")
+    plugin_path = pages_dir / "plugins" / "watch-comment.mjs"
+    plugin_path.parent.mkdir(parents=True, exist_ok=True)
+    plugin_path.write_text(
+        """
+import fs from "node:fs/promises";
+
+export default function (options) {
+  return {
+    name: "watch-comment",
+    apply: "build",
+    transform: {
+      filter: {
+        id: {
+          include: [/\\.css$/],
+        },
+      },
+      async handler(source, id) {
+        if (!id.endsWith(".css")) {
+          return source;
+        }
+
+        this.addWatchFile(options.watchFile);
+        const comment = (await fs.readFile(options.watchFile, "utf8")).trim();
+        return `${source}\\n/* ${comment} */\\n`;
+      },
+    },
+  };
+}
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    output = pages_dir / ".gdansk"
+    amber = Amber(
+        mcp=mock_mcp,
+        views=pages_dir,
+        plugins=[
+            VitePlugin(
+                specifier=Path("plugins/watch-comment.mjs"),
+                options={"watchFile": "comment.txt"},
+            ),
+        ],
+    )
+
+    @amber.tool(Path("with_css/page.tsx"))
+    def my_tool():
+        return "result"
+
+    with _lifespan(amber(dev=True)):
+        css_output = output / "with_css/client.css"
+        _wait_for_css_contains(css_output, "initial")
+        watched_file.write_text("updated", encoding="utf-8")
+        css = _wait_for_css_contains(css_output, "updated")
+
+    assert "initial" not in css
 
 
 @pytest.mark.integration
@@ -123,12 +237,13 @@ export default {
 
 
 @pytest.mark.integration
-def test_shadcn_example_uses_tailwind_vite_package(mock_mcp, tmp_path, monkeypatch):
+def test_js_plugin_uses_local_tailwind_vite_package(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    views = _copy_shadcn_views(tmp_path)
-    (views / "apps" / "todo" / "page.tsx").write_text(
+    todo_dir = pages_dir / "apps" / "todo"
+    todo_dir.mkdir(parents=True, exist_ok=True)
+    todo_dir.joinpath("page.tsx").write_text(
         """
-import "../../global.css";
+import "./global.css";
 
 export default function App() {
   return <main className="mx-auto w-full max-w-xl">Todo</main>;
@@ -137,10 +252,20 @@ export default function App() {
         + "\n",
         encoding="utf-8",
     )
-    output = views / ".gdansk"
+    todo_dir.joinpath("global.css").write_text(
+        """
+body {
+  color: red;
+}
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    _write_tailwind_vite_package(pages_dir)
+    output = pages_dir / ".gdansk"
     amber = Amber(
         mcp=mock_mcp,
-        views=views,
+        views=pages_dir,
         plugins=[VitePlugin(specifier="@tailwindcss/vite")],
     )
 

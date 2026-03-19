@@ -4,35 +4,65 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import json
 import logging
 import threading
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
+from os import PathLike, fspath
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
 from anyio import Path as APath
 
 from gdansk._core import Page, _bundle_with_plugins, bundle, run
-from gdansk.js_plugins import create_js_lifecycle_plugin
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.protocol import VitePlugin
 from gdansk.render import ENV
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable, Coroutine, Sequence
-    from os import PathLike
 
     from mcp.server import MCPServer as FastMCP
     from mcp.types import Icon, ToolAnnotations
     from starlette.applications import Starlette
 
-    from gdansk.js_plugins import JsLifecyclePlugin
     from gdansk.protocol import BundlerPlugin
 
 
 logger = logging.getLogger(__name__)
 _T = TypeVar("_T")
+
+
+def _is_probably_path_specifier(specifier: str) -> bool:
+    return specifier.startswith(("./", "../")) or Path(specifier).is_absolute() or Path(specifier).suffix != ""
+
+
+def _resolve_vite_specifier(specifier: str | PathLike[str], base: Path) -> str:
+    specifier = fspath(specifier)
+    if specifier.startswith("file://"):
+        return specifier
+
+    path = Path(specifier)
+    if path.is_absolute():
+        return path.resolve(strict=True).as_uri()
+
+    candidate = base / path
+    if candidate.exists() or _is_probably_path_specifier(specifier):
+        return candidate.resolve(strict=True).as_uri()
+
+    return specifier
+
+
+def _serialize_vite_plugins(specs: list[VitePlugin], base: Path) -> str:
+    payload = [
+        {
+            "specifier": _resolve_vite_specifier(spec.specifier, base),
+            "options": spec.options,
+        }
+        for spec in specs
+    ]
+    return json.dumps(payload)
 
 
 class _AsyncThreadRunner:
@@ -98,7 +128,6 @@ class Amber:
     cache_html: bool = field(default=True, kw_only=True)
     metadata: Metadata | None = field(default=None, kw_only=True)
     plugins: Sequence[BundlerPlugin | VitePlugin] | None = field(default=None, kw_only=True)
-    _js_lifecycle_plugin: JsLifecyclePlugin | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         """Validate required paths and initialize derived output paths."""
@@ -106,37 +135,8 @@ class Amber:
             msg = f"The views directory {self.views} does not exist"
             raise ValueError(msg)
 
-        _, vite_plugins = self._split_plugins()
-        if vite_plugins:
-            object.__setattr__(
-                self,
-                "_js_lifecycle_plugin",
-                create_js_lifecycle_plugin(vite_plugins, pages=self.views),
-            )
-
+        self._split_plugins()
         object.__setattr__(self, "output", self.views / ".gdansk")
-
-    def _schedule_watcher_tasks(
-        self,
-        *,
-        dev: bool,
-    ) -> tuple[asyncio.Event | None, list[asyncio.Task[None]]]:
-        plugin = self._js_lifecycle_plugin
-        if not dev or plugin is None:
-            return None, []
-
-        stop_event = asyncio.Event()
-        watcher_tasks: list[asyncio.Task[None]] = [
-            asyncio.create_task(
-                plugin.watch(
-                    pages=self.views,
-                    output=self.output,
-                    stop_event=stop_event,
-                ),
-            ),
-        ]
-
-        return stop_event, watcher_tasks
 
     def _split_plugins(self) -> tuple[list[str] | None, list[VitePlugin]]:
         if self.plugins is None:
@@ -167,33 +167,28 @@ class Amber:
 
     async def _run_build_pipeline(self, *, dev: bool) -> None:
         pages = sorted(self._apps, key=lambda page: page.path.as_posix())
-        bundler_plugin_ids, _ = self._split_plugins()
-        try:
-            if bundler_plugin_ids is None:
-                await bundle(
-                    pages=pages,
-                    dev=dev,
-                    minify=not dev,
-                    output=self.output,
-                    cwd=self.views,
-                )
-            else:
-                await _bundle_with_plugins(
-                    pages=pages,
-                    plugins=bundler_plugin_ids,
-                    dev=dev,
-                    minify=not dev,
-                    output=self.output,
-                    cwd=self.views,
-                )
-            if dev:
-                return
-            plugin = self._js_lifecycle_plugin
-            if plugin is not None:
-                await plugin.build(pages=self.views, output=self.output)
-        finally:
-            if not dev:
-                self._close_js_lifecycle_plugin()
+        bundler_plugin_ids, vite_plugins = self._split_plugins()
+        vite_plugins_json = None if not vite_plugins else _serialize_vite_plugins(vite_plugins, self.views)
+
+        if bundler_plugin_ids is None and vite_plugins_json is None:
+            await bundle(
+                pages=pages,
+                dev=dev,
+                minify=not dev,
+                output=self.output,
+                cwd=self.views,
+            )
+            return
+
+        await _bundle_with_plugins(
+            pages=pages,
+            plugins=bundler_plugin_ids,
+            vite_plugins_json=vite_plugins_json,
+            dev=dev,
+            minify=not dev,
+            output=self.output,
+            cwd=self.views,
+        )
 
     @staticmethod
     def _log_background_task_error(task: asyncio.Task[None]) -> None:
@@ -204,25 +199,12 @@ class Amber:
             return
         logger.exception("Amber background task failed", exc_info=exc)
 
-    def _close_js_lifecycle_plugin(self) -> None:
-        plugin = self._js_lifecycle_plugin
-        if plugin is None:
-            return
-        close = getattr(plugin, "close", None)
-        if callable(close):
-            close()
-        object.__setattr__(self, "_js_lifecycle_plugin", None)
-
     @staticmethod
     async def _shutdown_dev_tasks(
         *,
-        stop_event: asyncio.Event | None,
         bundle_task: asyncio.Task[None] | None,
-        watcher_tasks: list[asyncio.Task[None]],
     ) -> None:
-        if stop_event is not None:
-            stop_event.set()
-        tasks = [candidate for candidate in [bundle_task, *watcher_tasks] if candidate is not None]
+        tasks = [candidate for candidate in [bundle_task] if candidate is not None]
         for task in tasks:
             if not task.done():
                 task.cancel()
@@ -282,24 +264,16 @@ class Amber:
         """Build and return the Starlette app that serves registered resources."""
         app = self.mcp.streamable_http_app()
         if not self._apps:
-            self._close_js_lifecycle_plugin()
             return app
 
         runner = _AsyncThreadRunner()
-        stop_event: asyncio.Event | None = None
-        watcher_tasks: list[asyncio.Task[None]] = []
         bundle_task: asyncio.Task[None] | None = None
         original_lifespan = app.router.lifespan_context
 
         async def _start_dev() -> None:
-            nonlocal stop_event
-            nonlocal watcher_tasks
             nonlocal bundle_task
-            stop_event, watcher_tasks = self._schedule_watcher_tasks(dev=True)
             bundle_task = asyncio.create_task(self._run_build_pipeline(dev=True))
             bundle_task.add_done_callback(self._log_background_task_error)
-            for watcher_task in watcher_tasks:
-                watcher_task.add_done_callback(self._log_background_task_error)
 
         @asynccontextmanager
         async def _lifespan(starlette_app: Starlette) -> AsyncIterator[None]:
@@ -316,9 +290,7 @@ class Amber:
                         with suppress(concurrent.futures.CancelledError):
                             runner.run(
                                 Amber._shutdown_dev_tasks(
-                                    stop_event=stop_event,
                                     bundle_task=bundle_task,
-                                    watcher_tasks=watcher_tasks,
                                 ),
                             )
                     runner.stop()

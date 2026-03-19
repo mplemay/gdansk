@@ -2,13 +2,7 @@ use deno_core::{
     JsRuntime, OpState, PollEventLoopOptions, RuntimeOptions, op2, serde_json::Value, v8,
 };
 use deno_error::JsErrorBox;
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    process::Command,
-    sync::mpsc,
-    thread,
-};
+use std::fs;
 
 #[cfg(not(test))]
 use pyo3::{
@@ -59,44 +53,12 @@ fn op_gdansk_write_text_file(
     Ok(())
 }
 
-#[op2]
-fn op_gdansk_scan_css_files(#[string] root: String) -> Result<Vec<String>, JsErrorBox> {
-    fn walk(dir: &Path, files: &mut Vec<String>) -> Result<(), JsErrorBox> {
-        for entry in fs::read_dir(dir).map_err(|err| JsErrorBox::generic(err.to_string()))? {
-            let entry =
-                entry.map_err(|err: std::io::Error| JsErrorBox::generic(err.to_string()))?;
-            let path = entry.path();
-            if path.is_dir() {
-                walk(&path, files)?;
-                continue;
-            }
-            if path.extension().and_then(|value| value.to_str()) != Some("css") {
-                continue;
-            }
-            let Some(path) = path.to_str() else {
-                continue;
-            };
-            files.push(path.to_owned());
-        }
-        Ok(())
-    }
-
-    let mut files = Vec::new();
-    let root = PathBuf::from(root);
-    if root.is_dir() {
-        walk(&root, &mut files)?;
-    }
-    files.sort();
-    Ok(files)
-}
-
 deno_core::extension!(
     gdansk_runtime_ext,
     ops = [
         op_gdansk_set_html,
         op_gdansk_read_text_file,
         op_gdansk_write_text_file,
-        op_gdansk_scan_css_files,
     ],
     state = |state| state.put(SsrCapture::default())
 );
@@ -188,167 +150,6 @@ async fn evaluate(code: &str) -> Result<Value, RuntimeError> {
         .map_err(execution_error)?;
 
     read_json_value(&mut runtime, output)
-}
-
-#[cfg(not(test))]
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
-struct JsPluginSpecInput {
-    specifier: String,
-    #[serde(default)]
-    options: Value,
-}
-
-#[cfg(not(test))]
-#[derive(Debug, serde::Serialize)]
-struct JsBuildContext {
-    pages: String,
-    output: String,
-}
-
-#[cfg(not(test))]
-enum JsPluginCommand {
-    Build {
-        context: JsBuildContext,
-        response: tokio::sync::oneshot::Sender<Result<(), String>>,
-    },
-    Shutdown,
-}
-
-#[cfg(not(test))]
-#[pyclass(module = "gdansk._core", frozen, skip_from_py_object)]
-#[derive(Debug)]
-pub(crate) struct JsPluginRunner {
-    sender: mpsc::Sender<JsPluginCommand>,
-}
-
-#[cfg(not(test))]
-fn js_plugin_runner_script() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/js_plugin_runner.mjs")
-}
-
-#[cfg(not(test))]
-fn run_js_plugin_build(
-    specs: &[JsPluginSpecInput],
-    context: &JsBuildContext,
-) -> Result<(), String> {
-    let script = js_plugin_runner_script();
-    if !script.is_file() {
-        return Err(format!(
-            "Vite plugin runner script not found: {}",
-            script.display(),
-        ));
-    }
-
-    let specs_json = deno_core::serde_json::to_string(specs)
-        .map_err(|err| format!("failed to serialize Vite plugin specs: {err}"))?;
-    let context_json = deno_core::serde_json::to_string(context)
-        .map_err(|err| format!("failed to serialize Vite plugin context: {err}"))?;
-
-    let output = Command::new("node")
-        .arg(&script)
-        .arg(specs_json)
-        .arg(context_json)
-        .current_dir(&context.pages)
-        .output()
-        .map_err(|err| format!("failed to run node for Vite plugins: {err}"))?;
-
-    if output.status.success() {
-        return Ok(());
-    }
-
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-    let status = output
-        .status
-        .code()
-        .map_or_else(|| "signal".to_owned(), |code| code.to_string());
-    let detail = if !stderr.is_empty() {
-        stderr
-    } else if !stdout.is_empty() {
-        stdout
-    } else {
-        format!("node exited with status {status}")
-    };
-    Err(detail)
-}
-
-#[cfg(not(test))]
-fn spawn_js_plugin_thread(
-    specs: Vec<JsPluginSpecInput>,
-) -> Result<mpsc::Sender<JsPluginCommand>, String> {
-    let (command_tx, command_rx) = mpsc::channel();
-    let (ready_tx, ready_rx) = mpsc::channel();
-
-    thread::spawn(move || {
-        let _ = ready_tx.send(Ok(()));
-
-        while let Ok(command) = command_rx.recv() {
-            match command {
-                JsPluginCommand::Build { context, response } => {
-                    let result = run_js_plugin_build(&specs, &context);
-                    let _ = response.send(result);
-                }
-                JsPluginCommand::Shutdown => {
-                    break;
-                }
-            }
-        }
-    });
-
-    match ready_rx.recv() {
-        Ok(Ok(())) => Ok(command_tx),
-        Ok(Err(message)) => Err(message),
-        Err(_) => Err("failed to initialize Vite plugin runtime".to_owned()),
-    }
-}
-
-#[cfg(not(test))]
-#[pymethods]
-impl JsPluginRunner {
-    #[new]
-    fn new(specs_json: String) -> PyResult<Self> {
-        let specs: Vec<JsPluginSpecInput> =
-            deno_core::serde_json::from_str(&specs_json).map_err(|err| {
-                PyValueError::new_err(format!("invalid Vite plugin spec payload: {err}"))
-            })?;
-        let sender = spawn_js_plugin_thread(specs).map_err(PyRuntimeError::new_err)?;
-        Ok(Self { sender })
-    }
-
-    fn close(&self) {
-        let _ = self.sender.send(JsPluginCommand::Shutdown);
-    }
-
-    fn build<'py>(
-        &self,
-        py: Python<'py>,
-        pages: PathBuf,
-        output: PathBuf,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let sender = self.sender.clone();
-        let pages = pages.to_string_lossy().to_string();
-        let output = output.to_string_lossy().to_string();
-
-        pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let (response_tx, response_rx) = tokio::sync::oneshot::channel();
-            sender
-                .send(JsPluginCommand::Build {
-                    context: JsBuildContext { pages, output },
-                    response: response_tx,
-                })
-                .map_err(|err| {
-                    PyRuntimeError::new_err(format!("failed to send JS build command: {err}"))
-                })?;
-
-            match response_rx.await {
-                Ok(Ok(())) => Python::attach(|py| Ok(py.None())),
-                Ok(Err(message)) => Err(PyRuntimeError::new_err(message)),
-                Err(err) => Err(PyRuntimeError::new_err(format!(
-                    "Vite plugin runtime closed unexpectedly: {err}"
-                ))),
-            }
-        })
-    }
 }
 
 #[cfg(not(test))]

@@ -22,10 +22,12 @@ use std::{
 
 #[cfg(not(test))]
 use rolldown::plugin::{
-    __inner::SharedPluginable, HookBuildEndArgs, HookBuildStartArgs, HookLoadArgs, HookLoadOutput,
-    HookLoadReturn, HookResolveIdArgs, HookResolveIdOutput, HookResolveIdReturn, HookUsage, Plugin,
-    PluginContext, PluginContextResolveOptions, SharedLoadPluginContext,
+    __inner::SharedPluginable, HookBuildStartArgs, HookLoadArgs, HookLoadOutput, HookLoadReturn,
+    HookResolveIdArgs, HookResolveIdOutput, HookResolveIdReturn, HookUsage, Plugin, PluginContext,
+    PluginContextResolveOptions, SharedLoadPluginContext,
 };
+#[cfg(not(test))]
+use rolldown_common::{Output, OutputAsset, StrOrBytes};
 
 use crate::bundle::{BundleError, NormalizedPage, path_to_utf8};
 
@@ -436,20 +438,20 @@ fn find_client_entry_module_id(
     None
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RenderedCssOutput {
+    filename: String,
+    code: Option<String>,
+}
+
 fn build_css_outputs(
     normalized: &[NormalizedPage],
     entry_module_ids: &HashMap<String, String>,
     modules: &HashMap<String, CssGraphModule>,
     cwd: &Path,
-    output_dir: &Path,
     minify: bool,
-) -> Result<(), BundleError> {
-    let output_root = if output_dir.is_absolute() {
-        output_dir.to_path_buf()
-    } else {
-        cwd.join(output_dir)
-    };
-
+) -> Result<Vec<RenderedCssOutput>, BundleError> {
+    let mut outputs = Vec::with_capacity(normalized.len());
     for page in normalized {
         let entry_id = entry_module_ids.get(&page.import).ok_or_else(|| {
             BundleError::runtime(format!(
@@ -458,17 +460,14 @@ fn build_css_outputs(
             ))
         })?;
         let css_imports = collect_entry_css_imports(entry_id, modules);
-        let output_path = output_root.join(&page.client_css_path);
+        let filename =
+            path_to_utf8(&page.client_css_path, "client css output path")?.replace('\\', "/");
 
         if css_imports.is_empty() {
-            if output_path.exists() {
-                fs::remove_file(&output_path).map_err(|err| {
-                    BundleError::runtime(format!(
-                        "failed to remove stale css output {}: {err}",
-                        output_path.display()
-                    ))
-                })?;
-            }
+            outputs.push(RenderedCssOutput {
+                filename,
+                code: None,
+            });
             continue;
         }
 
@@ -477,23 +476,13 @@ fn build_css_outputs(
             bundled.push('\n');
         }
 
-        if let Some(parent) = output_path.parent() {
-            fs::create_dir_all(parent).map_err(|err| {
-                BundleError::runtime(format!(
-                    "failed to create css output directory {}: {err}",
-                    parent.display()
-                ))
-            })?;
-        }
-        fs::write(&output_path, bundled).map_err(|err| {
-            BundleError::runtime(format!(
-                "failed to write css output {}: {err}",
-                output_path.display()
-            ))
-        })?;
+        outputs.push(RenderedCssOutput {
+            filename,
+            code: Some(bundled),
+        });
     }
 
-    Ok(())
+    Ok(outputs)
 }
 
 #[cfg(not(test))]
@@ -688,10 +677,10 @@ impl Plugin for LightningCssPlugin {
         }))
     }
 
-    async fn build_end(
+    async fn generate_bundle(
         &self,
         ctx: &PluginContext,
-        _args: Option<&HookBuildEndArgs<'_>>,
+        args: &mut rolldown::plugin::HookGenerateBundleArgs<'_>,
     ) -> rolldown::plugin::HookNoopReturn {
         if self.mode != LightningCssPluginMode::Client {
             return Ok(());
@@ -743,21 +732,81 @@ impl Plugin for LightningCssPlugin {
             entry_module_ids.insert(page.import.clone(), entry_module_id);
         }
 
-        build_css_outputs(
+        let css_outputs = build_css_outputs(
             &client_state.normalized,
             &entry_module_ids,
             &modules,
             &client_state.cwd,
-            &client_state.output_dir,
             client_state.minify,
         )
         .map_err(|err| std::io::Error::other(err.to_string()))?;
+
+        let output_root = if client_state.output_dir.is_absolute() {
+            client_state.output_dir.clone()
+        } else {
+            client_state.cwd.join(&client_state.output_dir)
+        };
+        let mut pending_assets = HashMap::new();
+        let mut deleted_assets = HashSet::new();
+
+        for asset in css_outputs {
+            match asset.code {
+                Some(code) => {
+                    pending_assets.insert(asset.filename, code);
+                }
+                None => {
+                    deleted_assets.insert(asset.filename.clone());
+                    let stale_path = output_root.join(&asset.filename);
+                    if stale_path.exists() {
+                        fs::remove_file(&stale_path).map_err(|err| {
+                            std::io::Error::other(format!(
+                                "failed to remove stale css output {}: {err}",
+                                stale_path.display()
+                            ))
+                        })?;
+                    }
+                }
+            }
+        }
+
+        let mut existing_assets = HashSet::new();
+        args.bundle.retain_mut(|output| match output {
+            Output::Asset(asset) => {
+                if deleted_assets.contains(asset.filename.as_str()) {
+                    return false;
+                }
+                if let Some(code) = pending_assets.remove(asset.filename.as_str()) {
+                    existing_assets.insert(asset.filename.to_string());
+                    *output = Output::Asset(Arc::new(OutputAsset {
+                        names: asset.names.clone(),
+                        original_file_names: asset.original_file_names.clone(),
+                        filename: asset.filename.clone(),
+                        source: StrOrBytes::from(code),
+                    }));
+                    return true;
+                }
+                true
+            }
+            Output::Chunk(_) => true,
+        });
+
+        for (filename, code) in pending_assets {
+            if existing_assets.contains(&filename) {
+                continue;
+            }
+            args.bundle.push(Output::Asset(Arc::new(OutputAsset {
+                names: Vec::new(),
+                original_file_names: Vec::new(),
+                filename: filename.into(),
+                source: StrOrBytes::from(code),
+            })));
+        }
 
         Ok(())
     }
 
     fn register_hook_usage(&self) -> HookUsage {
-        HookUsage::BuildStart | HookUsage::ResolveId | HookUsage::Load | HookUsage::BuildEnd
+        HookUsage::BuildStart | HookUsage::ResolveId | HookUsage::Load | HookUsage::GenerateBundle
     }
 }
 
@@ -1085,19 +1134,23 @@ mod tests {
             ),
         ]);
 
-        build_css_outputs(
+        let outputs = build_css_outputs(
             &normalized,
             &entry_module_ids,
             &modules,
             &project.root,
-            Path::new(".gdansk"),
             false,
         )
         .expect("expected css output to build");
 
-        let css_output = fs::read_to_string(project.root.join(".gdansk/page.css"))
-            .expect("expected css output file");
-        assert!(css_output.contains(".button"));
+        assert_eq!(outputs.len(), 1);
+        assert_eq!(outputs[0].filename, "page.css");
+        assert!(
+            outputs[0]
+                .code
+                .as_ref()
+                .is_some_and(|css| css.contains(".button"))
+        );
     }
 
     #[test]
@@ -1125,18 +1178,22 @@ mod tests {
             ),
         )]);
 
-        build_css_outputs(
+        let outputs = build_css_outputs(
             &normalized,
             &entry_module_ids,
             &modules,
             &project.root,
-            Path::new(".gdansk"),
             false,
         )
         .expect("expected css output to build");
 
-        let css_output = fs::read_to_string(project.root.join(".gdansk/page.css"))
-            .expect("expected css output file");
-        assert!(css_output.contains(".theme"));
+        assert_eq!(outputs.len(), 1);
+        assert_eq!(outputs[0].filename, "page.css");
+        assert!(
+            outputs[0]
+                .code
+                .as_ref()
+                .is_some_and(|css| css.contains(".theme"))
+        );
     }
 }

@@ -3,8 +3,11 @@ mod lightningcss;
 mod runtime_module;
 mod server_entrypoint;
 mod shared;
+mod vite;
 
 pub(crate) use shared::{client_entry_import, server_entry_import};
+#[cfg(not(test))]
+pub(crate) use vite::{VitePluginSpec, parse_vite_plugin_specs_json};
 
 #[cfg(not(test))]
 use std::{collections::HashSet, path::Path};
@@ -19,6 +22,15 @@ use crate::bundle::NormalizedPage;
 
 #[cfg(not(test))]
 use self::shared::LIGHTNINGCSS_PLUGIN_ID;
+
+#[cfg(not(test))]
+pub(crate) struct ClientEntrypointPluginOptions<'a> {
+    pub(crate) dev: bool,
+    pub(crate) minify: bool,
+    pub(crate) plugin_ids: Option<&'a [String]>,
+    pub(crate) include_app_entrypoint_plugin: bool,
+    pub(crate) vite_plugin_specs: &'a [VitePluginSpec],
+}
 
 #[cfg(not(test))]
 fn resolve_bundler_plugin_ids(plugin_ids: Option<&[String]>) -> PyResult<Vec<&str>> {
@@ -55,21 +67,28 @@ pub(crate) fn client_entrypoint_plugins(
     normalized: &[NormalizedPage],
     cwd: &Path,
     output_dir: &Path,
-    minify: bool,
-    plugin_ids: Option<&[String]>,
-    include_app_entrypoint_plugin: bool,
+    options: ClientEntrypointPluginOptions<'_>,
 ) -> PyResult<Vec<SharedPluginable>> {
-    let mut plugins: Vec<SharedPluginable> = resolve_bundler_plugin_ids(plugin_ids)?
+    let mut plugins: Vec<SharedPluginable> = resolve_bundler_plugin_ids(options.plugin_ids)?
         .into_iter()
         .map(|plugin_id| match plugin_id {
             LIGHTNINGCSS_PLUGIN_ID => {
-                lightningcss::client_plugin(normalized, cwd, output_dir, minify)
+                lightningcss::client_plugin(normalized, cwd, output_dir, options.minify)
             }
             _ => unreachable!("validated plugin id"),
         })
         .collect();
-    if include_app_entrypoint_plugin {
+    if options.include_app_entrypoint_plugin {
         plugins.push(app_entrypoint::plugin());
+    }
+    if !options.vite_plugin_specs.is_empty() {
+        plugins.push(vite::client_plugin(
+            options.vite_plugin_specs,
+            normalized,
+            cwd,
+            output_dir,
+            options.dev,
+        ));
     }
     Ok(plugins)
 }

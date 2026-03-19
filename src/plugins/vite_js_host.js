@@ -1,8 +1,9 @@
-import fs from "node:fs/promises";
 import path from "node:path";
+import fs from "node:fs/promises";
 import { createRequire } from "node:module";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
+const RESULT_PREFIX = "__GDANSK_VITE_PLUGIN_RESULT__=";
 const BUILD_ENV = {
   command: "build",
   mode: "production",
@@ -81,39 +82,6 @@ async function normalizePluginExport(exported, options) {
   }
 
   throw new Error("Vite plugin modules must export an object, factory, or array");
-}
-
-async function collectCssFiles(root) {
-  try {
-    const stat = await fs.stat(root);
-    if (!stat.isDirectory()) {
-      return [];
-    }
-  } catch {
-    return [];
-  }
-
-  const files = [];
-  const stack = [root];
-
-  while (stack.length > 0) {
-    const current = stack.pop();
-    const entries = await fs.readdir(current, { withFileTypes: true });
-    for (const entry of entries) {
-      const filePath = path.join(current, entry.name);
-      if (entry.isDirectory()) {
-        stack.push(filePath);
-        continue;
-      }
-
-      if (entry.isFile() && filePath.endsWith(".css")) {
-        files.push(filePath);
-      }
-    }
-  }
-
-  files.sort();
-  return files;
 }
 
 function splitPackageSpecifier(specifier) {
@@ -376,10 +344,31 @@ async function loadPlugins(specs, context) {
   return plugins;
 }
 
-function createTransformContext() {
+function normalizeWatchFile(file, rootDir) {
+  if (typeof file !== "string" || file.length === 0) {
+    return null;
+  }
+
+  if (file.startsWith("file://")) {
+    return fileURLToPath(file);
+  }
+
+  if (path.isAbsolute(file)) {
+    return path.normalize(file);
+  }
+
+  return path.resolve(rootDir, file);
+}
+
+function createTransformContext(watchFiles, rootDir) {
   return {
     environment: null,
-    addWatchFile() {},
+    addWatchFile(file) {
+      const normalized = normalizeWatchFile(file, rootDir);
+      if (normalized) {
+        watchFiles.add(normalized);
+      }
+    },
   };
 }
 
@@ -395,24 +384,32 @@ function extractTransformCode(result) {
   return null;
 }
 
-async function runBuild(specs, context) {
-  const plugins = await loadPlugins(specs, context);
-  if (plugins.length === 0) {
-    return;
+async function runBuild(payload) {
+  const plugins = await loadPlugins(payload.specs, payload.context);
+  if (plugins.length === 0 || payload.assets.length === 0) {
+    return {
+      assets: [],
+      watchFiles: [],
+    };
   }
 
-  const cssFiles = await collectCssFiles(context.output);
-  for (const file of cssFiles) {
-    let current = await fs.readFile(file, "utf8");
+  const changedAssets = [];
+  const watchFiles = new Set();
+  for (const asset of payload.assets) {
+    let current = asset.code;
     let changed = false;
 
     for (const plugin of plugins) {
-      if (!plugin.transform || !matchesFilter(plugin.transform.filter, file)) {
+      if (!plugin.transform || !matchesFilter(plugin.transform.filter, asset.path)) {
         continue;
       }
 
       try {
-        const result = await plugin.transform.handler.call(createTransformContext(), current, file);
+        const result = await plugin.transform.handler.call(
+          createTransformContext(watchFiles, payload.context.pages),
+          current,
+          asset.path,
+        );
         const nextCode = extractTransformCode(result);
         if (typeof nextCode !== "string" || nextCode === current) {
           continue;
@@ -426,17 +423,31 @@ async function runBuild(specs, context) {
     }
 
     if (changed) {
-      await fs.writeFile(file, current, "utf8");
+      changedAssets.push({
+        filename: asset.filename,
+        code: current,
+      });
     }
   }
+
+  return {
+    assets: changedAssets,
+    watchFiles: [...watchFiles].sort(),
+  };
 }
 
-const [, , specsJson, contextJson] = process.argv;
-if (!specsJson || !contextJson) {
-  throw new Error("Vite plugin runner requires specs and context JSON arguments");
+async function readPayload() {
+  process.stdin.setEncoding("utf8");
+  let input = "";
+  for await (const chunk of process.stdin) {
+    input += chunk;
+  }
+  if (input.trim().length === 0) {
+    throw new Error("Vite plugin host requires a JSON payload on stdin");
+  }
+  return JSON.parse(input);
 }
 
-const specs = JSON.parse(specsJson);
-const context = JSON.parse(contextJson);
-
-await runBuild(specs, context);
+const payload = await readPayload();
+const result = await runBuild(payload);
+process.stdout.write(`${RESULT_PREFIX}${JSON.stringify(result)}\n`);

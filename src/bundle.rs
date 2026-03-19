@@ -7,10 +7,15 @@ use std::{
 
 #[cfg(not(test))]
 use std::hash::{Hash, Hasher};
-
-use crate::plugins::{client_entry_import, server_entry_import};
 #[cfg(not(test))]
-use crate::plugins::{client_entrypoint_plugins, server_entrypoint_plugins};
+use std::time::{Duration, UNIX_EPOCH};
+
+#[cfg(not(test))]
+use crate::plugins::{
+    ClientEntrypointPluginOptions, VitePluginSpec, client_entrypoint_plugins,
+    parse_vite_plugin_specs_json, server_entrypoint_plugins,
+};
+use crate::plugins::{client_entry_import, server_entry_import};
 #[cfg(not(test))]
 use pyo3::{
     basic::CompareOp,
@@ -25,7 +30,9 @@ use rolldown::{
     Bundler, BundlerOptions, ExperimentalOptions, InputItem, OutputFormat, ResolveOptions,
 };
 #[cfg(not(test))]
-use rolldown_dev::{BundlerConfig, DevEngine, DevOptions, RebuildStrategy};
+use rolldown_common::ScanMode;
+#[cfg(not(test))]
+use rolldown_dev::{BundlerConfig, DevEngine, DevOptions, DevWatchOptions, RebuildStrategy};
 #[cfg(not(test))]
 use std::sync::Arc;
 
@@ -266,6 +273,55 @@ fn py_runtime_error(context: &str, err: impl std::fmt::Display) -> PyErr {
     PyRuntimeError::new_err(format!("{context}: {err}"))
 }
 
+#[cfg(not(test))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum WatchFileState {
+    Missing,
+    Present {
+        len: u64,
+        modified_millis: Option<u128>,
+    },
+}
+
+#[cfg(not(test))]
+fn read_watch_file_state(path: &Path) -> Result<WatchFileState, PyErr> {
+    let metadata = match std::fs::metadata(path) {
+        Ok(metadata) => metadata,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(WatchFileState::Missing);
+        }
+        Err(err) => {
+            return Err(py_runtime_error(
+                "failed to read watched file metadata",
+                err,
+            ));
+        }
+    };
+
+    let modified_millis = metadata
+        .modified()
+        .ok()
+        .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis());
+    Ok(WatchFileState::Present {
+        len: metadata.len(),
+        modified_millis,
+    })
+}
+
+#[cfg(not(test))]
+fn collect_watch_states(bundler: &Bundler) -> Result<HashMap<PathBuf, WatchFileState>, PyErr> {
+    bundler
+        .watch_files()
+        .iter()
+        .map(|path| {
+            let path = PathBuf::from(path.as_str());
+            let state = read_watch_file_state(&path)?;
+            Ok((path, state))
+        })
+        .collect()
+}
+
 pub(crate) fn path_to_utf8(path: &Path, label: &str) -> Result<String, BundleError> {
     path.to_str().map(ToOwned::to_owned).ok_or_else(|| {
         BundleError::validation(format!(
@@ -494,23 +550,29 @@ fn build_input_items(fields: Vec<(String, String)>) -> Vec<InputItem> {
 }
 
 #[cfg(not(test))]
+struct RunBundlerOptions {
+    minify: bool,
+    dev: bool,
+    format: Option<OutputFormat>,
+    use_polling_watcher: bool,
+}
+
+#[cfg(not(test))]
 async fn run_bundler(
     input_items: Vec<InputItem>,
     cwd: PathBuf,
     output_dir_string: String,
-    minify: bool,
-    dev: bool,
-    format: Option<OutputFormat>,
     plugins: Vec<SharedPluginable>,
+    options: RunBundlerOptions,
 ) -> Result<(), PyErr> {
-    let mut options = BundlerOptions {
+    let mut bundler_options = BundlerOptions {
         input: Some(input_items),
         cwd: Some(cwd),
         dir: Some(output_dir_string),
         entry_filenames: Some("[name].js".to_string().into()),
         asset_filenames: Some("[name].css".to_string().into()),
-        minify: Some(minify.into()),
-        format,
+        minify: Some(options.minify.into()),
+        format: options.format,
         resolve: Some(ResolveOptions {
             condition_names: Some(vec!["module".to_string(), "style".to_string()]),
             ..Default::default()
@@ -518,18 +580,47 @@ async fn run_bundler(
         ..Default::default()
     };
 
-    if dev {
-        options.experimental = Some(ExperimentalOptions {
+    if options.dev {
+        bundler_options.experimental = Some(ExperimentalOptions {
             incremental_build: Some(true),
             ..Default::default()
         });
 
-        let bundler_config = BundlerConfig::new(options, plugins);
+        if options.use_polling_watcher {
+            let mut bundler = Bundler::with_plugins(bundler_options, plugins)
+                .map_err(|err| py_runtime_error("failed to initialize Bundler", err))?;
+            bundler
+                .write()
+                .await
+                .map_err(|err| py_runtime_error("bundling failed", err))?;
+
+            let mut watched_files = collect_watch_states(&bundler)?;
+            loop {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                let current_states = collect_watch_states(&bundler)?;
+                if current_states == watched_files {
+                    continue;
+                }
+
+                bundler
+                    .incremental_write(ScanMode::Full)
+                    .await
+                    .map_err(|err| py_runtime_error("bundling failed", err))?;
+                watched_files = collect_watch_states(&bundler)?;
+            }
+        }
+
+        let bundler_config = BundlerConfig::new(bundler_options, plugins);
         let dev_engine = Arc::new(
             DevEngine::new(
                 bundler_config,
                 DevOptions {
                     rebuild_strategy: Some(RebuildStrategy::Always),
+                    watch: options.use_polling_watcher.then_some(DevWatchOptions {
+                        use_polling: Some(true),
+                        compare_contents_for_polling: Some(true),
+                        ..Default::default()
+                    }),
                     ..Default::default()
                 },
             )
@@ -551,7 +642,7 @@ async fn run_bundler(
         return Ok(());
     }
 
-    let mut bundler = Bundler::with_plugins(options, plugins)
+    let mut bundler = Bundler::with_plugins(bundler_options, plugins)
         .map_err(|err| py_runtime_error("failed to initialize Bundler", err))?;
     bundler
         .write()
@@ -568,6 +659,7 @@ async fn bundle_impl(
     output: Option<PathBuf>,
     cwd: Option<PathBuf>,
     bundler_plugin_ids: Option<Vec<String>>,
+    vite_plugin_specs: Vec<VitePluginSpec>,
 ) -> Result<(), PyErr> {
     let cwd = match cwd {
         Some(dir) => dunce::simplified(
@@ -589,10 +681,26 @@ async fn bundle_impl(
         &normalized,
         &cwd,
         &output_dir,
-        minify,
-        bundler_plugin_ids.as_deref(),
-        has_app_entries,
+        ClientEntrypointPluginOptions {
+            dev,
+            minify,
+            plugin_ids: bundler_plugin_ids.as_deref(),
+            include_app_entrypoint_plugin: has_app_entries,
+            vite_plugin_specs: &vite_plugin_specs,
+        },
     )?;
+    let client_bundler_options = RunBundlerOptions {
+        minify,
+        dev,
+        format: None,
+        use_polling_watcher: !vite_plugin_specs.is_empty(),
+    };
+    let server_bundler_options = RunBundlerOptions {
+        minify,
+        dev,
+        format: Some(OutputFormat::Iife),
+        use_polling_watcher: false,
+    };
 
     if dev {
         if server_items.is_empty() {
@@ -600,10 +708,8 @@ async fn bundle_impl(
                 client_items,
                 cwd,
                 output_dir_string,
-                minify,
-                dev,
-                None,
                 client_plugins,
+                client_bundler_options,
             )
             .await?;
         } else {
@@ -613,19 +719,15 @@ async fn bundle_impl(
                     client_items,
                     cwd.clone(),
                     output_dir_string.clone(),
-                    minify,
-                    dev,
-                    None,
                     client_plugins,
+                    client_bundler_options,
                 ),
                 run_bundler(
                     server_items,
                     cwd,
                     output_dir_string,
-                    minify,
-                    dev,
-                    Some(OutputFormat::Iife),
                     server_plugins,
+                    server_bundler_options,
                 ),
             )?;
         }
@@ -636,10 +738,11 @@ async fn bundle_impl(
         client_items,
         cwd.clone(),
         output_dir_string.clone(),
-        minify,
-        dev,
-        None,
         client_plugins,
+        RunBundlerOptions {
+            use_polling_watcher: false,
+            ..client_bundler_options
+        },
     )
     .await?;
     if !server_items.is_empty() {
@@ -648,10 +751,8 @@ async fn bundle_impl(
             server_items,
             cwd,
             output_dir_string,
-            minify,
-            dev,
-            Some(OutputFormat::Iife),
             server_plugins,
+            server_bundler_options,
         )
         .await?;
     }
@@ -671,26 +772,49 @@ pub(crate) fn bundle(
     let parsed_pages = parse_pages_from_python(py, pages);
 
     pyo3_async_runtimes::tokio::future_into_py(py, async move {
-        bundle_impl(parsed_pages, dev, minify, output, cwd, None).await?;
+        bundle_impl(parsed_pages, dev, minify, output, cwd, None, Vec::new()).await?;
         Python::attach(|py| Ok(py.None()))
     })
 }
 
 #[cfg(not(test))]
-#[pyfunction(name = "_bundle_with_plugins", signature = (pages, plugins, dev = false, minify = true, output = None, cwd = None))]
+#[allow(clippy::too_many_arguments)]
+#[pyfunction(
+    name = "_bundle_with_plugins",
+    signature = (
+        pages,
+        plugins = None,
+        vite_plugins_json = None,
+        dev = false,
+        minify = true,
+        output = None,
+        cwd = None
+    )
+)]
 pub(crate) fn bundle_with_plugins(
     py: Python<'_>,
     pages: Vec<Py<Page>>,
-    plugins: Vec<String>,
+    plugins: Option<Vec<String>>,
+    vite_plugins_json: Option<String>,
     dev: bool,
     minify: bool,
     output: Option<PathBuf>,
     cwd: Option<PathBuf>,
 ) -> PyResult<Bound<'_, PyAny>> {
     let parsed_pages = parse_pages_from_python(py, pages);
+    let vite_plugin_specs = parse_vite_plugin_specs_json(vite_plugins_json.as_deref())?;
 
     pyo3_async_runtimes::tokio::future_into_py(py, async move {
-        bundle_impl(parsed_pages, dev, minify, output, cwd, Some(plugins)).await?;
+        bundle_impl(
+            parsed_pages,
+            dev,
+            minify,
+            output,
+            cwd,
+            plugins,
+            vite_plugin_specs,
+        )
+        .await?;
         Python::attach(|py| Ok(py.None()))
     })
 }
