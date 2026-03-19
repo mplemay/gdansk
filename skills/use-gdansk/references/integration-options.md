@@ -111,34 +111,31 @@ app = FastAPI(lifespan=lifespan)
 app.mount(path="/mcp", app=mcp_app)
 ```
 
-## JS plugin adapters
+## Vite CSS plugins
 
-Attach a local adapter through `js_plugins`:
+Attach a Vite plugin through `plugins`:
 
 ```python
-from pathlib import Path
-
-from gdansk import Amber, JsPluginSpec
+from gdansk import Amber, VitePlugin
 
 amber = Amber(
     mcp=mcp,
     views=views_path,
-    js_plugins=[JsPluginSpec(specifier=Path("plugins/tailwindcss.mjs"))],
+    plugins=[VitePlugin(specifier="@tailwindcss/vite")],
 )
 ```
 
-Use this pattern for Tailwind CSS or any other build-time CSS transform that can run in Node.
+Use this pattern for Tailwind CSS or any other build-time CSS transform that can run as a Vite plugin.
 
 Requirements in `views/`:
 
-- the adapter module must exist under `views/plugins/`
 - install the adapter package dependencies, such as `@tailwindcss/vite` and `tailwindcss`
 - the `views` package must already have its regular bundling dependencies installed
 
 Behavior summary:
 
-- `build`: runs the adapter once after the bundle and can rewrite generated `.gdansk/**/*.css`
-- `watch` in dev: polls CSS outputs and re-runs the adapter when generated CSS changes
+- `build`: runs matching Vite CSS transform hooks once after the bundle and can rewrite generated `.gdansk/**/*.css`
+- `watch` in dev: polls CSS outputs and re-runs the transforms when generated CSS changes
 
 ## Decision matrix
 
@@ -151,4 +148,4 @@ Behavior summary:
 | Shared head metadata across tools | constructor `metadata=` |
 | Per-tool title or OG override | `@amber.tool(..., metadata=...)` |
 | Running inside existing FastAPI service | mount `mcp_app` + lifespan wrapper |
-| Tailwind CSS transform on generated CSS | add a `js_plugins` adapter that uses `@tailwindcss/vite` |
+| Tailwind CSS transform on generated CSS | add `plugins=[VitePlugin(specifier="@tailwindcss/vite")]` |

@@ -15,8 +15,8 @@ Use exact error text to choose the fastest fix.
 | `SSR bundled output for ... not found. Has the bundler been run?` | Effective SSR true but server bundle missing | Ensure SSR is enabled intentionally and bundle succeeded | Check `views/.gdansk/**/server.js` existence |
 | `Execution error: ...` during SSR | Server JS threw at runtime (SSR render or dependency issue) | Fix SSR page default export and runtime-safe imports; retry | Open `server.js` bundle and run minimal SSR page to isolate |
 | Build fails with message containing `default` for app page | Page component missing default export | Export default React component from `page.tsx`/`page.jsx` | `rg -n "export default" views/apps/**/page.tsx views/apps/**/page.jsx` |
-| `Cannot find package '@tailwindcss/vite'` | JS adapter imports Tailwind plugin but it is not installed in `views/node_modules` | Install `@tailwindcss/vite` and `tailwindcss` in the `views` package | `node --input-type=module -e \"import('@tailwindcss/vite').then(() => console.log('ok'))\"` |
-| Tailwind transform not applied | JS adapter not attached or no generated CSS to process | Add a `js_plugins` adapter and ensure `.gdansk/**/client.css` exists after bundle | Confirm `.gdansk/**/client.css` contains generated utilities such as `.mx-auto` |
+| `Cannot find package '@tailwindcss/vite'` | `VitePlugin` references Tailwind but it is not installed in `views/node_modules` | Install `@tailwindcss/vite` and `tailwindcss` in the `views` package | `node --input-type=module -e \"import('@tailwindcss/vite').then(() => console.log('ok'))\"` |
+| Tailwind transform not applied | Vite plugin not attached or no generated CSS to process | Add `plugins=[VitePlugin(specifier=\"@tailwindcss/vite\")]` and ensure `.gdansk/**/client.css` exists after bundle | Confirm `.gdansk/**/client.css` contains generated utilities such as `.mx-auto` |
 
 ## Structured diagnosis flow
 
@@ -25,7 +25,7 @@ Use exact error text to choose the fastest fix.
 3. Confirm `views/package.json` has `type=module`, `react`, `react-dom`, and `@modelcontextprotocol/ext-apps`.
 4. Confirm bundler outputs are present under `views/.gdansk/`.
 5. For SSR-specific failures, confirm `server.js` exists and isolate runtime errors.
-6. For CSS-specific failures, confirm the JS adapter wiring and package availability.
+6. For CSS-specific failures, confirm the Vite plugin wiring and package availability.
 
 ## Minimal command set
 
@@ -39,6 +39,6 @@ rg -n "export default" views/apps
 # 3) check generated outputs
 find views/.gdansk -type f | sort
 
-# 4) check Tailwind adapter package availability
+# 4) check Tailwind Vite package availability
 node --input-type=module -e "import('@tailwindcss/vite').then(() => console.log('tailwind vite ok'))"
 ```

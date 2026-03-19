@@ -8,8 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from gdansk.core import Amber
-from gdansk.protocol import JsPluginSpec
+from gdansk import Amber, VitePlugin
 
 _ROOT = Path(__file__).resolve().parents[4]
 _SHADCN_VIEWS = _ROOT / "examples" / "shadcn" / "src" / "shadcn" / "views"
@@ -53,7 +52,7 @@ def test_js_plugin_transforms_bundled_css(mock_mcp, pages_dir, tmp_path, monkeyp
     amber = Amber(
         mcp=mock_mcp,
         views=pages_dir,
-        js_plugins=[JsPluginSpec(specifier=Path("plugins/append-comment.mjs"), options={"comment": "from-js"})],
+        plugins=[VitePlugin(specifier=Path("plugins/append-comment.mjs"), options={"comment": "from-js"})],
     )
 
     @amber.tool(Path("with_css/page.tsx"))
@@ -73,7 +72,7 @@ def test_js_plugin_watch_runs_in_dev(mock_mcp, pages_dir, tmp_path, monkeypatch)
     amber = Amber(
         mcp=mock_mcp,
         views=pages_dir,
-        js_plugins=[JsPluginSpec(specifier=Path("plugins/append-comment.mjs"), options={"comment": "dev-js"})],
+        plugins=[VitePlugin(specifier=Path("plugins/append-comment.mjs"), options={"comment": "dev-js"})],
     )
 
     @amber.tool(Path("with_css/page.tsx"))
@@ -101,7 +100,10 @@ def test_js_plugin_failure_surfaces_error(mock_mcp, pages_dir, tmp_path, monkeyp
         """
 export default {
   name: "boom",
-  async build() {
+  async transform(source, id) {
+    if (!id.endsWith(".css")) {
+      return source;
+    }
     throw new Error("boom");
   },
 };
@@ -110,7 +112,7 @@ export default {
         encoding="utf-8",
     )
 
-    amber = Amber(mcp=mock_mcp, views=pages_dir, js_plugins=[JsPluginSpec(specifier=Path("plugins/boom.mjs"))])
+    amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=[VitePlugin(specifier=Path("plugins/boom.mjs"))])
 
     @amber.tool(Path("with_css/page.tsx"))
     def my_tool():
@@ -121,7 +123,7 @@ export default {
 
 
 @pytest.mark.integration
-def test_shadcn_example_uses_tailwind_vite_adapter(mock_mcp, tmp_path, monkeypatch):
+def test_shadcn_example_uses_tailwind_vite_package(mock_mcp, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     views = _copy_shadcn_views(tmp_path)
     (views / "apps" / "todo" / "page.tsx").write_text(
@@ -139,7 +141,7 @@ export default function App() {
     amber = Amber(
         mcp=mock_mcp,
         views=views,
-        js_plugins=[JsPluginSpec(specifier=Path("plugins/tailwindcss.mjs"))],
+        plugins=[VitePlugin(specifier="@tailwindcss/vite")],
     )
 
     @amber.tool(Path("todo/page.tsx"))

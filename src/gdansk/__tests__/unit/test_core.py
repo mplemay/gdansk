@@ -11,9 +11,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from gdansk import LightningCSS
+from gdansk import LightningCSS, VitePlugin
 from gdansk.core import Amber, Page
-from gdansk.protocol import JsPluginSpec
 from gdansk.render import ENV
 
 if TYPE_CHECKING:
@@ -56,6 +55,24 @@ def test_rejects_lifecycle_plugins_argument(mock_mcp, pages_dir):
             mcp=mock_mcp,
             views=pages_dir,
             lifecycle_plugins=[],  # ty: ignore[unknown-argument]
+        )
+
+
+def test_rejects_js_plugins_argument(mock_mcp, pages_dir):
+    with pytest.raises(TypeError, match="js_plugins"):
+        Amber(
+            mcp=mock_mcp,
+            views=pages_dir,
+            js_plugins=[],  # ty: ignore[unknown-argument]
+        )
+
+
+def test_rejects_unknown_plugin_objects(mock_mcp, pages_dir):
+    with pytest.raises(TypeError, match="VitePlugin"):
+        Amber(
+            mcp=mock_mcp,
+            views=pages_dir,
+            plugins=[object()],  # ty: ignore[invalid-argument-type] runtime validation test
         )
 
 
@@ -123,7 +140,7 @@ def test_no_plugins_called_when_no_paths_registered(mock_mcp, pages_dir):
         amber = Amber(
             mcp=mock_mcp,
             views=pages_dir,
-            js_plugins=[JsPluginSpec(specifier="plugins/append-comment.mjs")],
+            plugins=[VitePlugin(specifier="plugins/append-comment.mjs")],
         )
     with patch("gdansk.core.bundle") as mock_bundle:
         amber(dev=True)
@@ -162,7 +179,7 @@ def test_plugins_run_after_bundle_in_prod(mock_mcp, pages_dir):
         amber = Amber(
             mcp=mock_mcp,
             views=pages_dir,
-            js_plugins=[JsPluginSpec(specifier="plugins/append-comment.mjs")],
+            plugins=[VitePlugin(specifier="plugins/append-comment.mjs")],
         )
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
 
@@ -269,25 +286,25 @@ def test_empty_bundler_plugin_list_is_forwarded(mock_mcp, pages_dir):
     assert captured[-1]["plugins"] == []
 
 
-def test_js_plugins_use_internal_bridge(mock_mcp, pages_dir):
+def test_vite_only_plugins_keep_native_defaults(mock_mcp, pages_dir):
     calls: list[str] = []
 
     class _FakeJsPlugin:
         async def build(self, *, pages: Path, output: Path) -> None:
             _ = (pages, output)
-            calls.append("js-build")
+            calls.append("vite-build")
 
         async def watch(self, *, pages: Path, output: Path, stop_event: asyncio.Event) -> None:
             _ = (pages, output, stop_event)
 
         def close(self) -> None:
-            calls.append("js-close")
+            calls.append("vite-close")
 
     with patch("gdansk.core.create_js_lifecycle_plugin", return_value=_FakeJsPlugin()):
         amber = Amber(
             mcp=mock_mcp,
             views=pages_dir,
-            js_plugins=[JsPluginSpec(specifier="plugins/append-comment.mjs")],
+            plugins=[VitePlugin(specifier="plugins/append-comment.mjs")],
         )
 
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
@@ -301,7 +318,44 @@ def test_js_plugins_use_internal_bridge(mock_mcp, pages_dir):
     ):
         pass
 
-    assert calls == ["bundle", "js-build", "js-close"]
+    assert calls == ["bundle", "vite-build", "vite-close"]
+
+
+def test_mixed_plugins_use_native_override_and_vite_bridge(mock_mcp, pages_dir):
+    calls: list[str] = []
+
+    class _FakeVitePlugin:
+        async def build(self, *, pages: Path, output: Path) -> None:
+            _ = (pages, output)
+            calls.append("vite-build")
+
+        async def watch(self, *, pages: Path, output: Path, stop_event: asyncio.Event) -> None:
+            _ = (pages, output, stop_event)
+
+        def close(self) -> None:
+            calls.append("vite-close")
+
+    with patch("gdansk.core.create_js_lifecycle_plugin", return_value=_FakeVitePlugin()):
+        amber = Amber(
+            mcp=mock_mcp,
+            views=pages_dir,
+            plugins=[LightningCSS(), VitePlugin(specifier="plugins/append-comment.mjs")],
+        )
+
+    amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
+
+    async def _fake_bundle_with_plugins(**kwargs: object):
+        calls.append(f"bundler:{kwargs['plugins']}")
+
+    with (
+        patch("gdansk.core._bundle_with_plugins", _fake_bundle_with_plugins),
+        patch("gdansk.core.bundle") as mock_bundle,
+        _lifespan(amber(dev=False)),
+    ):
+        pass
+
+    assert calls == ["bundler:['lightningcss']", "vite-build", "vite-close"]
+    mock_bundle.assert_not_called()
 
 
 @pytest.mark.usefixtures("pages_dir")
@@ -319,7 +373,7 @@ def test_plugin_errors_propagate_in_prod(mock_mcp, pages_dir):
         amber = Amber(
             mcp=mock_mcp,
             views=pages_dir,
-            js_plugins=[JsPluginSpec(specifier="plugins/append-comment.mjs")],
+            plugins=[VitePlugin(specifier="plugins/append-comment.mjs")],
         )
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
 
@@ -446,7 +500,7 @@ def test_plugins_watch_started_and_cancelled_on_shutdown(mock_mcp, pages_dir):
         amber = Amber(
             mcp=mock_mcp,
             views=pages_dir,
-            js_plugins=[JsPluginSpec(specifier="plugins/append-comment.mjs")],
+            plugins=[VitePlugin(specifier="plugins/append-comment.mjs")],
         )
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
 
@@ -479,7 +533,7 @@ def test_dev_watch_error_is_logged(mock_mcp, pages_dir):
         amber = Amber(
             mcp=mock_mcp,
             views=pages_dir,
-            js_plugins=[JsPluginSpec(specifier="plugins/append-comment.mjs")],
+            plugins=[VitePlugin(specifier="plugins/append-comment.mjs")],
         )
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
 

@@ -11,7 +11,11 @@ from pathlib import Path
 from anyio import Path as APath
 
 from gdansk._core import JsPluginRunner
-from gdansk.protocol import JsPluginSpec
+from gdansk.protocol import VitePlugin
+
+
+def _is_probably_path_specifier(specifier: str) -> bool:
+    return specifier.startswith(("./", "../")) or Path(specifier).is_absolute() or Path(specifier).suffix != ""
 
 
 def _resolve_specifier(specifier: str | PathLike[str], base: Path) -> str:
@@ -20,12 +24,17 @@ def _resolve_specifier(specifier: str | PathLike[str], base: Path) -> str:
         return specifier
 
     path = Path(specifier)
-    if not path.is_absolute():
-        path = base / path
-    return path.resolve(strict=True).as_uri()
+    if path.is_absolute():
+        return path.resolve(strict=True).as_uri()
+
+    candidate = base / path
+    if candidate.exists() or _is_probably_path_specifier(specifier):
+        return candidate.resolve(strict=True).as_uri()
+
+    return specifier
 
 
-def _serialize_specs(specs: list[JsPluginSpec], base: Path) -> str:
+def _serialize_specs(specs: list[VitePlugin], base: Path) -> str:
     payload = [
         {
             "specifier": _resolve_specifier(spec.specifier, base),
@@ -99,6 +108,6 @@ class JsLifecyclePlugin:
         self.close()
 
 
-def create_js_lifecycle_plugin(specs: list[JsPluginSpec], *, pages: Path) -> JsLifecyclePlugin:
+def create_js_lifecycle_plugin(specs: list[VitePlugin], *, pages: Path) -> JsLifecyclePlugin:
     runner = JsPluginRunner(_serialize_specs(specs, pages))
     return JsLifecyclePlugin(_runner=runner)

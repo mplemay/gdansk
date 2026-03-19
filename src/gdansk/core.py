@@ -16,6 +16,7 @@ from anyio import Path as APath
 from gdansk._core import Page, _bundle_with_plugins, bundle, run
 from gdansk.js_plugins import create_js_lifecycle_plugin
 from gdansk.metadata import Metadata, merge_metadata
+from gdansk.protocol import VitePlugin
 from gdansk.render import ENV
 
 if TYPE_CHECKING:
@@ -27,7 +28,7 @@ if TYPE_CHECKING:
     from starlette.applications import Starlette
 
     from gdansk.js_plugins import JsLifecyclePlugin
-    from gdansk.protocol import BundlerPlugin, JsPluginSpec
+    from gdansk.protocol import BundlerPlugin
 
 
 logger = logging.getLogger(__name__)
@@ -96,8 +97,7 @@ class Amber:
     ssr: bool = field(default=False, kw_only=True)
     cache_html: bool = field(default=True, kw_only=True)
     metadata: Metadata | None = field(default=None, kw_only=True)
-    plugins: Sequence[BundlerPlugin] | None = field(default=None, kw_only=True)
-    js_plugins: Sequence[JsPluginSpec] = field(default=(), kw_only=True)
+    plugins: Sequence[BundlerPlugin | VitePlugin] | None = field(default=None, kw_only=True)
     _js_lifecycle_plugin: JsLifecyclePlugin | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -106,11 +106,12 @@ class Amber:
             msg = f"The views directory {self.views} does not exist"
             raise ValueError(msg)
 
-        if self.js_plugins:
+        _, vite_plugins = self._split_plugins()
+        if vite_plugins:
             object.__setattr__(
                 self,
                 "_js_lifecycle_plugin",
-                create_js_lifecycle_plugin(list(self.js_plugins), pages=self.views),
+                create_js_lifecycle_plugin(vite_plugins, pages=self.views),
             )
 
         object.__setattr__(self, "output", self.views / ".gdansk")
@@ -137,23 +138,36 @@ class Amber:
 
         return stop_event, watcher_tasks
 
-    def _bundler_plugin_ids(self) -> list[str] | None:
+    def _split_plugins(self) -> tuple[list[str] | None, list[VitePlugin]]:
         if self.plugins is None:
-            return None
+            return None, []
 
         plugin_ids: list[str] = []
+        vite_plugins: list[VitePlugin] = []
+        has_native_plugins = False
+
         for plugin in self.plugins:
+            if isinstance(plugin, VitePlugin):
+                vite_plugins.append(plugin)
+                continue
+
             plugin_id = getattr(plugin, "id", None)
             if not isinstance(plugin_id, str) or not plugin_id:
-                msg = "Amber bundler plugins must expose a non-empty string `id` attribute"
+                msg = (
+                    "Amber plugins must be VitePlugin instances or bundler plugins "
+                    "that expose a non-empty string `id` attribute"
+                )
                 raise TypeError(msg)
             plugin_ids.append(plugin_id)
+            has_native_plugins = True
 
-        return plugin_ids
+        if has_native_plugins or not vite_plugins:
+            return plugin_ids, vite_plugins
+        return None, vite_plugins
 
     async def _run_build_pipeline(self, *, dev: bool) -> None:
         pages = sorted(self._apps, key=lambda page: page.path.as_posix())
-        bundler_plugin_ids = self._bundler_plugin_ids()
+        bundler_plugin_ids, _ = self._split_plugins()
         try:
             if bundler_plugin_ids is None:
                 await bundle(

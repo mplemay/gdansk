@@ -234,15 +234,15 @@ fn run_js_plugin_build(
     let script = js_plugin_runner_script();
     if !script.is_file() {
         return Err(format!(
-            "JS plugin runner script not found: {}",
+            "Vite plugin runner script not found: {}",
             script.display(),
         ));
     }
 
     let specs_json = deno_core::serde_json::to_string(specs)
-        .map_err(|err| format!("failed to serialize JS plugin specs: {err}"))?;
+        .map_err(|err| format!("failed to serialize Vite plugin specs: {err}"))?;
     let context_json = deno_core::serde_json::to_string(context)
-        .map_err(|err| format!("failed to serialize JS plugin context: {err}"))?;
+        .map_err(|err| format!("failed to serialize Vite plugin context: {err}"))?;
 
     let output = Command::new("node")
         .arg(&script)
@@ -250,7 +250,7 @@ fn run_js_plugin_build(
         .arg(context_json)
         .current_dir(&context.pages)
         .output()
-        .map_err(|err| format!("failed to run node for JS plugins: {err}"))?;
+        .map_err(|err| format!("failed to run node for Vite plugins: {err}"))?;
 
     if output.status.success() {
         return Ok(());
@@ -298,7 +298,7 @@ fn spawn_js_plugin_thread(
     match ready_rx.recv() {
         Ok(Ok(())) => Ok(command_tx),
         Ok(Err(message)) => Err(message),
-        Err(_) => Err("failed to initialize JS plugin runtime".to_owned()),
+        Err(_) => Err("failed to initialize Vite plugin runtime".to_owned()),
     }
 }
 
@@ -309,7 +309,7 @@ impl JsPluginRunner {
     fn new(specs_json: String) -> PyResult<Self> {
         let specs: Vec<JsPluginSpecInput> =
             deno_core::serde_json::from_str(&specs_json).map_err(|err| {
-                PyValueError::new_err(format!("invalid JS plugin spec payload: {err}"))
+                PyValueError::new_err(format!("invalid Vite plugin spec payload: {err}"))
             })?;
         let sender = spawn_js_plugin_thread(specs).map_err(PyRuntimeError::new_err)?;
         Ok(Self { sender })
@@ -344,7 +344,7 @@ impl JsPluginRunner {
                 Ok(Ok(())) => Python::attach(|py| Ok(py.None())),
                 Ok(Err(message)) => Err(PyRuntimeError::new_err(message)),
                 Err(err) => Err(PyRuntimeError::new_err(format!(
-                    "JS plugin runtime closed unexpectedly: {err}"
+                    "Vite plugin runtime closed unexpectedly: {err}"
                 ))),
             }
         })

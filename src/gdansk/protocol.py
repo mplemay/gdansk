@@ -13,19 +13,19 @@ class BundlerPlugin(Protocol):
 
 
 @dataclass(slots=True, kw_only=True, frozen=True)
-class JsPluginSpec:
+class VitePlugin:
     specifier: str | PathLike[str]
     options: Any = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         specifier = fspath(self.specifier)
         if not isinstance(specifier, str) or not specifier.strip():
-            msg = "JsPluginSpec.specifier must be a non-empty string or path"
+            msg = "VitePlugin.specifier must be a non-empty string or path"
             raise ValueError(msg)
         object.__setattr__(self, "specifier", specifier)
 
         try:
             json.dumps(self.options)
         except TypeError as exc:
-            msg = "JsPluginSpec.options must be JSON serializable"
+            msg = "VitePlugin.options must be JSON serializable"
             raise TypeError(msg) from exc

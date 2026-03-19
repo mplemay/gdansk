@@ -1,6 +1,6 @@
 """Public Python wrappers for gdansk bundler plugins."""
 
 from gdansk.plugins.lightningcss import LightningCSS
-from gdansk.protocol import JsPluginSpec
+from gdansk.protocol import VitePlugin
 
-__all__ = ["JsPluginSpec", "LightningCSS"]
+__all__ = ["LightningCSS", "VitePlugin"]

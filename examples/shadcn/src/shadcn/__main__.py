@@ -12,13 +12,13 @@ except ImportError:
     from mcp.server import MCPServer as FastMCP
 from starlette.middleware.cors import CORSMiddleware
 
-from gdansk import Amber, JsPluginSpec
+from gdansk import Amber, VitePlugin
 
 mcp = FastMCP("Todo Server")
 amber = Amber(
     mcp=mcp,
     views=Path(__file__).parent / "views",
-    js_plugins=[JsPluginSpec(specifier=Path("plugins/tailwindcss.mjs"))],
+    plugins=[VitePlugin(specifier="@tailwindcss/vite")],
 )
 
 

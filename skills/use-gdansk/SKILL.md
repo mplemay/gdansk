@@ -69,9 +69,9 @@ Choose the smallest integration needed:
 - FastAPI:
   - Mount `mcp_app` and run its lifespan.
   - Use `streamable_http_path="/"` in `FastMCP` when mounted.
-- JS plugin adapters:
-  - Add a local adapter through `js_plugins=[JsPluginSpec(...)]`.
-  - Install adapter dependencies in the `views` package, such as `@tailwindcss/vite` and `tailwindcss`.
+- Vite CSS plugins:
+  - Add them through `plugins=[VitePlugin(...)]`.
+  - Install plugin dependencies in the `views` package, such as `@tailwindcss/vite` and `tailwindcss`.
 
 Use [integration-options.md](references/integration-options.md) for exact implementation shapes.
 
