@@ -317,8 +317,8 @@ deno_core::extension!(
     esm_entry_point = BOOTSTRAP_SPECIFIER,
     esm = [
         dir "src/plugins",
-        "gdansk:vite-runtime-bootstrap" = "vite_runtime_bootstrap.js",
-        "node:fs/promises" = "vite_node_fs_promises.js",
+        "gdansk:vite-runtime-bootstrap" = "vite_runtime.js",
+        "node:fs/promises" = "vite.js",
     ],
     options = {
         shared: Arc<ViteRuntimeShared>,
