@@ -23,250 +23,8 @@ use url::Url;
 
 use super::vite::VitePluginSpec;
 
-const BOOTSTRAP_SPECIFIER: &str = "file:///gdansk/vite_plugin_runtime_bootstrap.js";
+const BOOTSTRAP_SPECIFIER: &str = "gdansk:vite-runtime-bootstrap";
 const NODE_FS_PROMISES_SPECIFIER: &str = "node:fs/promises";
-const NODE_FS_PROMISES_SOURCE: &str = r#"
-async function readFile(path, encoding = undefined) {
-  return Deno.core.ops.op_gdansk_vite_read_text_file(path, encoding ?? null);
-}
-
-export { readFile };
-export default { readFile };
-"#;
-const BOOTSTRAP_SOURCE: &str = r#"
-const BUILD_ENV = {
-  command: "build",
-  mode: "production",
-  ssrBuild: false,
-};
-
-const plugins = [];
-
-function toRegExp(value) {
-  if (value instanceof RegExp) {
-    return value;
-  }
-
-  if (typeof value === "string" && value.length > 0) {
-    return new RegExp(value);
-  }
-
-  return null;
-}
-
-function normalizeFilter(filter) {
-  if (!filter) {
-    return null;
-  }
-
-  const idFilter = filter && typeof filter === "object" && "id" in filter ? filter.id : filter;
-  if (!idFilter || typeof idFilter !== "object") {
-    return null;
-  }
-
-  const include = Array.isArray(idFilter.include) ? idFilter.include.map(toRegExp).filter(Boolean) : [];
-  const exclude = Array.isArray(idFilter.exclude) ? idFilter.exclude.map(toRegExp).filter(Boolean) : [];
-  if (include.length === 0 && exclude.length === 0) {
-    return null;
-  }
-
-  return { include, exclude };
-}
-
-function matchesFilter(filter, id) {
-  if (!filter) {
-    return true;
-  }
-
-  const matches = (pattern) => {
-    pattern.lastIndex = 0;
-    return pattern.test(id);
-  };
-
-  if (filter.include.length > 0 && !filter.include.some(matches)) {
-    return false;
-  }
-
-  if (filter.exclude.length > 0 && filter.exclude.some(matches)) {
-    return false;
-  }
-
-  return true;
-}
-
-async function normalizePluginExport(exported, options) {
-  if (typeof exported === "function") {
-    return normalizePluginExport(await exported(options), options);
-  }
-
-  if (Array.isArray(exported)) {
-    const normalized = [];
-    for (const value of exported) {
-      normalized.push(...(await normalizePluginExport(value, options)));
-    }
-    return normalized;
-  }
-
-  if (exported && typeof exported === "object") {
-    return [exported];
-  }
-
-  throw new Error("Vite plugin modules must export an object, factory, or array");
-}
-
-function shouldApply(plugin, config) {
-  if (plugin.apply == null) {
-    return true;
-  }
-
-  if (plugin.apply === "build") {
-    return true;
-  }
-
-  if (plugin.apply === "serve") {
-    return false;
-  }
-
-  if (typeof plugin.apply === "function") {
-    return Boolean(plugin.apply(config, BUILD_ENV));
-  }
-
-  return true;
-}
-
-function normalizeTransformHook(transform) {
-  if (typeof transform === "function") {
-    return {
-      filter: normalizeFilter(transform.filter),
-      handler: transform,
-    };
-  }
-
-  if (transform && typeof transform === "object" && typeof transform.handler === "function") {
-    return {
-      filter: normalizeFilter(transform.filter),
-      handler: transform.handler,
-    };
-  }
-
-  return null;
-}
-
-function getPluginName(plugin, fallback) {
-  return typeof plugin.name === "string" && plugin.name.length > 0 ? plugin.name : fallback;
-}
-
-function getErrorMessage(error) {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function createViteConfig(rootDir) {
-  return {
-    root: rootDir,
-    mode: BUILD_ENV.mode,
-    build: {
-      cssMinify: true,
-      ssr: false,
-    },
-    css: {
-      devSourcemap: false,
-    },
-    resolve: {},
-    createResolver(options = {}) {
-      const isCssResolver =
-        options?.extensions?.includes(".css") || options?.mainFields?.includes("style");
-
-      return async (specifier, importer) => {
-        return Deno.core.ops.op_gdansk_vite_resolve(
-          specifier,
-          importer ?? null,
-          isCssResolver ? "css" : "js",
-        );
-      };
-    },
-  };
-}
-
-function createTransformContext(watchFiles) {
-  return {
-    environment: null,
-    addWatchFile(file) {
-      if (typeof file !== "string" || file.length === 0) {
-        return;
-      }
-      watchFiles.add(Deno.core.ops.op_gdansk_vite_normalize_watch_file(file));
-    },
-  };
-}
-
-function extractTransformCode(result) {
-  if (typeof result === "string") {
-    return result;
-  }
-
-  if (result && typeof result === "object" && typeof result.code === "string") {
-    return result.code;
-  }
-
-  return null;
-}
-
-globalThis.__gdansk_vite_runtime = {
-  async loadPlugins(specs, context) {
-    plugins.length = 0;
-    const config = createViteConfig(context.pages);
-
-    for (const spec of specs) {
-      const mod = await import(spec.specifier);
-      const exported = await normalizePluginExport(mod.default ?? mod, spec.options);
-
-      for (const plugin of exported) {
-        const name = getPluginName(plugin, spec.specifier);
-        if (!shouldApply(plugin, config)) {
-          continue;
-        }
-
-        if (typeof plugin.configResolved === "function") {
-          try {
-            await plugin.configResolved.call(plugin, config);
-          } catch (error) {
-            throw new Error(`[${name}] configResolved hook failed: ${getErrorMessage(error)}`);
-          }
-        }
-
-        plugins.push({
-          name,
-          transform: normalizeTransformHook(plugin.transform),
-        });
-      }
-    }
-
-    return plugins.length;
-  },
-
-  async transformPlugin(index, code, id) {
-    const plugin = plugins[index];
-    if (!plugin?.transform || !matchesFilter(plugin.transform.filter, id)) {
-      return null;
-    }
-
-    const watchFiles = new Set();
-    try {
-      const result = await plugin.transform.handler.call(
-        createTransformContext(watchFiles),
-        code,
-        id,
-      );
-      return {
-        code: extractTransformCode(result),
-        watchFiles: [...watchFiles].sort(),
-      };
-    } catch (error) {
-      throw new Error(`[${plugin.name}] transform hook failed: ${getErrorMessage(error)}`);
-    }
-  },
-};
-"#;
 
 #[derive(Debug, Clone)]
 pub(super) struct PluginAssetInput {
@@ -473,15 +231,6 @@ impl ModuleLoader for ViteModuleLoader {
         _options: ModuleLoadOptions,
     ) -> ModuleLoadResponse {
         let result = (|| {
-            if module_specifier.as_str() == NODE_FS_PROMISES_SPECIFIER {
-                return Ok(ModuleSource::new(
-                    ModuleType::JavaScript,
-                    ModuleSourceCode::String(NODE_FS_PROMISES_SOURCE.to_owned().into()),
-                    module_specifier,
-                    None,
-                ));
-            }
-
             if module_specifier.scheme() == "node" {
                 return Err(unsupported_node_builtin(module_specifier.as_str()));
             }
@@ -565,6 +314,12 @@ deno_core::extension!(
         op_gdansk_vite_resolve,
         op_gdansk_vite_normalize_watch_file,
     ],
+    esm_entry_point = BOOTSTRAP_SPECIFIER,
+    esm = [
+        dir "src/plugins",
+        "gdansk:vite-runtime-bootstrap" = "vite_runtime_bootstrap.js",
+        "node:fs/promises" = "vite_node_fs_promises.js",
+    ],
     options = {
         shared: Arc<ViteRuntimeShared>,
     },
@@ -580,31 +335,18 @@ struct EmbeddedViteRuntime {
 }
 
 impl EmbeddedViteRuntime {
-    async fn new(pages: &Path) -> Result<Self, std::io::Error> {
+    fn new(pages: &Path) -> Self {
         let shared = Arc::new(ViteRuntimeShared::new(pages));
         let module_loader = Rc::new(ViteModuleLoader {
             shared: shared.clone(),
         });
-        let mut runtime = JsRuntime::new(RuntimeOptions {
+        let runtime = JsRuntime::new(RuntimeOptions {
             module_loader: Some(module_loader),
             extensions: vec![gdansk_vite_plugin_ext::init(shared)],
             ..Default::default()
         });
 
-        let bootstrap_specifier =
-            deno_core::resolve_url(BOOTSTRAP_SPECIFIER).map_err(execution_error)?;
-        let module_id = runtime
-            .load_main_es_module_from_code(&bootstrap_specifier, BOOTSTRAP_SOURCE)
-            .await
-            .map_err(execution_error)?;
-        let bootstrap = runtime.mod_evaluate(module_id);
-        runtime
-            .run_event_loop(PollEventLoopOptions::default())
-            .await
-            .map_err(execution_error)?;
-        bootstrap.await.map_err(execution_error)?;
-
-        Ok(Self { runtime })
+        Self { runtime }
     }
 
     async fn load_plugins(
@@ -670,7 +412,7 @@ pub(super) fn run_embedded_vite_plugins(
         .build()
         .map_err(execution_error)?;
     runtime.block_on(async move {
-        let mut embedded = EmbeddedViteRuntime::new(pages).await?;
+        let mut embedded = EmbeddedViteRuntime::new(pages);
         let plugin_count = embedded.load_plugins(specs, pages).await?;
         if plugin_count == 0 || assets.is_empty() {
             return Ok(PluginRunResult {
