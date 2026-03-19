@@ -17,6 +17,7 @@ dependencies = [
 module-name = "gdansk._core"
 python-packages = ["gdansk"]
 python-source = "src"
+exclude = ["**/__tests__/**"]
 
 [tool.uv]
 cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.rs" }, { file = "Cargo.toml" }, { file = "Cargo.lock" }]
@@ -37,9 +38,6 @@ dev = [
     "rumdl>=0.1.21",
     "ty>=0.0.17",
 ]
-
-[tool.uv.build-backend]
-source-exclude = ["**/__tests__/**"]
 
 [tool.ruff]
 target-version = "py311"
