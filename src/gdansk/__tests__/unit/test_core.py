@@ -50,6 +50,15 @@ def test_rejects_pages_argument(mock_mcp, pages_dir):
         Amber(mcp=mock_mcp, views=pages_dir, pages=pages_dir)  # ty: ignore[unknown-argument]
 
 
+def test_rejects_lifecycle_plugins_argument(mock_mcp, pages_dir):
+    with pytest.raises(TypeError, match="lifecycle_plugins"):
+        Amber(
+            mcp=mock_mcp,
+            views=pages_dir,
+            lifecycle_plugins=[],  # ty: ignore[unknown-argument]
+        )
+
+
 def test_default_output(mock_mcp, pages_dir):
     amber = Amber(mcp=mock_mcp, views=pages_dir)
     assert amber.output == pages_dir / ".gdansk"
@@ -110,7 +119,12 @@ def test_no_plugins_called_when_no_paths_registered(mock_mcp, pages_dir):
         async def watch(self, *, pages: Path, output: Path, stop_event: asyncio.Event) -> None:
             _ = (pages, output, stop_event)
 
-    amber = Amber(mcp=mock_mcp, views=pages_dir, lifecycle_plugins=[_TestPlugin()])
+    with patch("gdansk.core.create_js_lifecycle_plugin", return_value=_TestPlugin()):
+        amber = Amber(
+            mcp=mock_mcp,
+            views=pages_dir,
+            js_plugins=[JsPluginSpec(specifier="plugins/append-comment.mjs")],
+        )
     with patch("gdansk.core.bundle") as mock_bundle:
         amber(dev=True)
     assert called is False
@@ -144,7 +158,12 @@ def test_plugins_run_after_bundle_in_prod(mock_mcp, pages_dir):
         async def watch(self, *, pages: Path, output: Path, stop_event: asyncio.Event) -> None:
             _ = (pages, output, stop_event)
 
-    amber = Amber(mcp=mock_mcp, views=pages_dir, lifecycle_plugins=[_TestPlugin()])
+    with patch("gdansk.core.create_js_lifecycle_plugin", return_value=_TestPlugin()):
+        amber = Amber(
+            mcp=mock_mcp,
+            views=pages_dir,
+            js_plugins=[JsPluginSpec(specifier="plugins/append-comment.mjs")],
+        )
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
 
     async def _fake_bundle(**_kwargs: object):
@@ -296,7 +315,12 @@ def test_plugin_errors_propagate_in_prod(mock_mcp, pages_dir):
         async def watch(self, *, pages: Path, output: Path, stop_event: asyncio.Event) -> None:
             _ = (pages, output, stop_event)
 
-    amber = Amber(mcp=mock_mcp, views=pages_dir, lifecycle_plugins=[_FailingPlugin()])
+    with patch("gdansk.core.create_js_lifecycle_plugin", return_value=_FailingPlugin()):
+        amber = Amber(
+            mcp=mock_mcp,
+            views=pages_dir,
+            js_plugins=[JsPluginSpec(specifier="plugins/append-comment.mjs")],
+        )
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
 
     async def _fake_bundle(**_kwargs: object):
@@ -418,7 +442,12 @@ def test_plugins_watch_started_and_cancelled_on_shutdown(mock_mcp, pages_dir):
                 watcher_cancelled.set()
                 raise
 
-    amber = Amber(mcp=mock_mcp, views=pages_dir, lifecycle_plugins=[_DevPlugin()])
+    with patch("gdansk.core.create_js_lifecycle_plugin", return_value=_DevPlugin()):
+        amber = Amber(
+            mcp=mock_mcp,
+            views=pages_dir,
+            js_plugins=[JsPluginSpec(specifier="plugins/append-comment.mjs")],
+        )
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
 
     async def _slow_bundle(**_kwargs: object):
@@ -446,7 +475,12 @@ def test_dev_watch_error_is_logged(mock_mcp, pages_dir):
             msg = "watch failed"
             raise RuntimeError(msg)
 
-    amber = Amber(mcp=mock_mcp, views=pages_dir, lifecycle_plugins=[_FailingWatchPlugin()])
+    with patch("gdansk.core.create_js_lifecycle_plugin", return_value=_FailingWatchPlugin()):
+        amber = Amber(
+            mcp=mock_mcp,
+            views=pages_dir,
+            js_plugins=[JsPluginSpec(specifier="plugins/append-comment.mjs")],
+        )
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
 
     async def _slow_bundle(**_kwargs: object):

@@ -1,28 +1,15 @@
-# ruff: noqa: D100,D101,D102,D105
+# ruff: noqa: D100,D101,D105
 
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
 from os import PathLike, fspath
-from typing import TYPE_CHECKING, Any, Protocol
-
-if TYPE_CHECKING:
-    import asyncio
-    from pathlib import Path
+from typing import Any, Protocol
 
 
 class BundlerPlugin(Protocol):
     id: str
-
-
-class LifecyclePlugin(Protocol):
-    async def build(self, *, pages: Path, output: Path) -> None: ...
-
-    async def watch(self, *, pages: Path, output: Path, stop_event: asyncio.Event) -> None: ...
-
-
-Plugin = LifecyclePlugin
 
 
 @dataclass(slots=True, kw_only=True, frozen=True)

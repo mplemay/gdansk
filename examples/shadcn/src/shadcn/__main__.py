@@ -12,11 +12,14 @@ except ImportError:
     from mcp.server import MCPServer as FastMCP
 from starlette.middleware.cors import CORSMiddleware
 
-from gdansk import Amber
-from gdansk.plugins import PostCSS
+from gdansk import Amber, JsPluginSpec
 
 mcp = FastMCP("Todo Server")
-amber = Amber(mcp=mcp, views=Path(__file__).parent / "views", lifecycle_plugins=[PostCSS()])
+amber = Amber(
+    mcp=mcp,
+    views=Path(__file__).parent / "views",
+    js_plugins=[JsPluginSpec(specifier=Path("plugins/tailwindcss.mjs"))],
+)
 
 
 @dataclass(slots=True, kw_only=True)

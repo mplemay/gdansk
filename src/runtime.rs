@@ -1,12 +1,11 @@
 use deno_core::{
-    FsModuleLoader, JsRuntime, OpState, PollEventLoopOptions, RuntimeOptions, op2,
-    serde_json::Value, v8,
+    JsRuntime, OpState, PollEventLoopOptions, RuntimeOptions, op2, serde_json::Value, v8,
 };
 use deno_error::JsErrorBox;
 use std::{
     fs,
     path::{Path, PathBuf},
-    rc::Rc,
+    process::Command,
     sync::mpsc,
     thread,
 };
@@ -223,49 +222,54 @@ pub(crate) struct JsPluginRunner {
 }
 
 #[cfg(not(test))]
-fn create_js_runtime() -> JsRuntime {
-    JsRuntime::new(RuntimeOptions {
-        startup_snapshot: Some(snapshot()),
-        extensions: vec![gdansk_runtime_ext::init()],
-        module_loader: Some(Rc::new(FsModuleLoader)),
-        ..Default::default()
-    })
+fn js_plugin_runner_script() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/js_plugin_runner.mjs")
 }
 
 #[cfg(not(test))]
-async fn run_module(
-    runtime: &mut JsRuntime,
-    module_specifier: String,
-    code: &str,
-    is_main: bool,
-) -> Result<(), RuntimeError> {
-    let module_specifier = deno_core::resolve_url(&module_specifier).map_err(execution_error)?;
-    let mod_id = if is_main {
-        runtime
-            .load_main_es_module_from_code(&module_specifier, code.to_owned())
-            .await
-            .map_err(execution_error)?
-    } else {
-        runtime
-            .load_side_es_module_from_code(&module_specifier, code.to_owned())
-            .await
-            .map_err(execution_error)?
-    };
-
-    let result = runtime.mod_evaluate(mod_id);
-    runtime
-        .run_event_loop(PollEventLoopOptions::default())
-        .await
-        .map_err(execution_error)?;
-    result.await.map_err(execution_error)?;
-    Ok(())
-}
-
-#[cfg(not(test))]
-fn runtime_error_message(err: RuntimeError) -> String {
-    match err {
-        RuntimeError::Execution(message) | RuntimeError::Deserialize(message) => message,
+fn run_js_plugin_build(
+    specs: &[JsPluginSpecInput],
+    context: &JsBuildContext,
+) -> Result<(), String> {
+    let script = js_plugin_runner_script();
+    if !script.is_file() {
+        return Err(format!(
+            "JS plugin runner script not found: {}",
+            script.display(),
+        ));
     }
+
+    let specs_json = deno_core::serde_json::to_string(specs)
+        .map_err(|err| format!("failed to serialize JS plugin specs: {err}"))?;
+    let context_json = deno_core::serde_json::to_string(context)
+        .map_err(|err| format!("failed to serialize JS plugin context: {err}"))?;
+
+    let output = Command::new("node")
+        .arg(&script)
+        .arg(specs_json)
+        .arg(context_json)
+        .current_dir(&context.pages)
+        .output()
+        .map_err(|err| format!("failed to run node for JS plugins: {err}"))?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    let status = output
+        .status
+        .code()
+        .map_or_else(|| "signal".to_owned(), |code| code.to_string());
+    let detail = if !stderr.is_empty() {
+        stderr
+    } else if !stdout.is_empty() {
+        stdout
+    } else {
+        format!("node exited with status {status}")
+    };
+    Err(detail)
 }
 
 #[cfg(not(test))]
@@ -276,56 +280,13 @@ fn spawn_js_plugin_thread(
     let (ready_tx, ready_rx) = mpsc::channel();
 
     thread::spawn(move || {
-        let runtime = match tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-        {
-            Ok(runtime) => runtime,
-            Err(err) => {
-                let _ = ready_tx.send(Err(format!("failed to create JS plugin runtime: {err}")));
-                return;
-            }
-        };
-
-        let mut js_runtime = create_js_runtime();
-        let mut module_counter = 0u64;
-        let init_result = runtime.block_on(async {
-            let specs_json = deno_core::serde_json::to_string(&specs).map_err(execution_error)?;
-            let module_code = format!(
-                "import {{ loadPlugins }} from \"gdansk:runtime\";\nawait loadPlugins({specs_json});"
-            );
-            let module_specifier = format!(
-                "file:///gdansk/js-plugin-runtime-{}.js",
-                module_counter
-            );
-            module_counter += 1;
-            run_module(&mut js_runtime, module_specifier, &module_code, true).await
-        });
-
-        if let Err(err) = init_result {
-            let _ = ready_tx.send(Err(runtime_error_message(err)));
-            return;
-        }
-
         let _ = ready_tx.send(Ok(()));
 
         while let Ok(command) = command_rx.recv() {
             match command {
                 JsPluginCommand::Build { context, response } => {
-                    let result = runtime.block_on(async {
-                        let context_json = deno_core::serde_json::to_string(&context)
-                            .map_err(execution_error)?;
-                        let module_code = format!(
-                            "import {{ runBuild }} from \"gdansk:runtime\";\nawait runBuild({context_json});"
-                        );
-                        let module_specifier = format!(
-                            "file:///gdansk/js-plugin-runtime-{}.js",
-                            module_counter
-                        );
-                        module_counter += 1;
-                        run_module(&mut js_runtime, module_specifier, &module_code, false).await
-                    });
-                    let _ = response.send(result.map_err(runtime_error_message));
+                    let result = run_js_plugin_build(&specs, &context);
+                    let _ = response.send(result);
                 }
                 JsPluginCommand::Shutdown => {
                     break;

@@ -1,16 +1,31 @@
-from gdansk import LightningCSS, PostCSS
-from gdansk.experimental.postcss import PostCSS as LegacyPostCSS
-from gdansk.plugins import LightningCSS as PackageLightningCSS, PostCSS as PackagePostCSS
+from __future__ import annotations
+
+import importlib
+
+import pytest
+
+from gdansk import LightningCSS
+from gdansk.plugins import LightningCSS as PackageLightningCSS
 
 
 def test_lightningcss_exposes_expected_id():
     assert LightningCSS().id == "lightningcss"
 
 
-def test_plugins_package_re_exports_wrappers():
+def test_plugins_package_re_exports_lightningcss_only():
     assert PackageLightningCSS().id == LightningCSS().id
-    assert PackagePostCSS().poll_interval_seconds == PostCSS().poll_interval_seconds
 
 
-def test_experimental_postcss_shim_still_works():
-    assert LegacyPostCSS().poll_interval_seconds == PostCSS().poll_interval_seconds
+def test_public_package_no_longer_exports_postcss():
+    module = importlib.import_module("gdansk")
+    assert not hasattr(module, "PostCSS")
+
+
+def test_plugins_package_no_longer_exports_postcss():
+    module = importlib.import_module("gdansk.plugins")
+    assert not hasattr(module, "PostCSS")
+
+
+def test_experimental_postcss_module_is_gone():
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("gdansk.experimental.postcss")

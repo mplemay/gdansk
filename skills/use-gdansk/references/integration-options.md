@@ -111,30 +111,34 @@ app = FastAPI(lifespan=lifespan)
 app.mount(path="/mcp", app=mcp_app)
 ```
 
-## PostCSS plugin
+## JS plugin adapters
 
-Attach plugin:
+Attach a local adapter through `js_plugins`:
 
 ```python
-from gdansk.experimental.postcss import PostCSS
+from pathlib import Path
 
-amber = Amber(mcp=mcp, views=views_path, plugins=[PostCSS()])
+from gdansk import Amber, JsPluginSpec
+
+amber = Amber(
+    mcp=mcp,
+    views=views_path,
+    js_plugins=[JsPluginSpec(specifier=Path("plugins/tailwindcss.mjs"))],
+)
 ```
+
+Use this pattern for Tailwind CSS or any other build-time CSS transform that can run in Node.
 
 Requirements in `views/`:
 
-- `node_modules/.bin/postcss` must exist
-- install with:
-
-```bash
-cd views
-npm install -D postcss postcss-cli
-```
+- the adapter module must exist under `views/plugins/`
+- install the adapter package dependencies, such as `@tailwindcss/vite` and `tailwindcss`
+- the `views` package must already have its regular bundling dependencies installed
 
 Behavior summary:
 
-- `build`: transforms discovered `.gdansk/**/*.css` once after bundle.
-- `watch` in dev: polls CSS outputs and re-runs transform on changes.
+- `build`: runs the adapter once after the bundle and can rewrite generated `.gdansk/**/*.css`
+- `watch` in dev: polls CSS outputs and re-runs the adapter when generated CSS changes
 
 ## Decision matrix
 
@@ -147,4 +151,4 @@ Behavior summary:
 | Shared head metadata across tools | constructor `metadata=` |
 | Per-tool title or OG override | `@amber.tool(..., metadata=...)` |
 | Running inside existing FastAPI service | mount `mcp_app` + lifespan wrapper |
-| Tailwind/PostCSS transform on generated CSS | add `PostCSS()` plugin and CLI deps |
+| Tailwind CSS transform on generated CSS | add a `js_plugins` adapter that uses `@tailwindcss/vite` |

@@ -26,7 +26,8 @@ if TYPE_CHECKING:
     from mcp.types import Icon, ToolAnnotations
     from starlette.applications import Starlette
 
-    from gdansk.protocol import BundlerPlugin, JsPluginSpec, LifecyclePlugin
+    from gdansk.js_plugins import JsLifecyclePlugin
+    from gdansk.protocol import BundlerPlugin, JsPluginSpec
 
 
 logger = logging.getLogger(__name__)
@@ -96,9 +97,8 @@ class Amber:
     cache_html: bool = field(default=True, kw_only=True)
     metadata: Metadata | None = field(default=None, kw_only=True)
     plugins: Sequence[BundlerPlugin] | None = field(default=None, kw_only=True)
-    lifecycle_plugins: Sequence[LifecyclePlugin] = field(default=(), kw_only=True)
     js_plugins: Sequence[JsPluginSpec] = field(default=(), kw_only=True)
-    _js_lifecycle_plugin: LifecyclePlugin | None = field(default=None, init=False, repr=False)
+    _js_lifecycle_plugin: JsLifecyclePlugin | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         """Validate required paths and initialize derived output paths."""
@@ -120,8 +120,8 @@ class Amber:
         *,
         dev: bool,
     ) -> tuple[asyncio.Event | None, list[asyncio.Task[None]]]:
-        lifecycle_plugins = self._all_lifecycle_plugins()
-        if not dev or not lifecycle_plugins:
+        plugin = self._js_lifecycle_plugin
+        if not dev or plugin is None:
             return None, []
 
         stop_event = asyncio.Event()
@@ -132,17 +132,10 @@ class Amber:
                     output=self.output,
                     stop_event=stop_event,
                 ),
-            )
-            for plugin in lifecycle_plugins
+            ),
         ]
 
         return stop_event, watcher_tasks
-
-    def _all_lifecycle_plugins(self) -> list[LifecyclePlugin]:
-        lifecycle_plugins: list[LifecyclePlugin] = list(self.lifecycle_plugins)
-        if self._js_lifecycle_plugin is not None:
-            lifecycle_plugins.append(self._js_lifecycle_plugin)
-        return lifecycle_plugins
 
     def _bundler_plugin_ids(self) -> list[str] | None:
         if self.plugins is None:
@@ -181,7 +174,8 @@ class Amber:
                 )
             if dev:
                 return
-            for plugin in self._all_lifecycle_plugins():
+            plugin = self._js_lifecycle_plugin
+            if plugin is not None:
                 await plugin.build(pages=self.views, output=self.output)
         finally:
             if not dev:
