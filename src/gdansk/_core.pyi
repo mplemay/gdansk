@@ -11,6 +11,10 @@ class Page:
     server: Path | None
     css: Path
 
+class LightningCSS:
+    def __init__(self) -> None: ...
+    id: str
+
 class VitePlugin:
     def __init__(self, *, specifier: str | PathLike[str], options: object = ...) -> None: ...
     specifier: str
@@ -22,6 +26,6 @@ async def bundle(
     minify: bool = True,
     output: Path = ...,
     cwd: Path = ...,
-    plugins: Sequence[object] | None = None,
+    plugins: Sequence[LightningCSS | VitePlugin] | None = None,
 ) -> None: ...
 async def run(code: str, /) -> object: ...

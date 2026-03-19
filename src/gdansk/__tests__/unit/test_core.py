@@ -68,11 +68,14 @@ def test_rejects_js_plugins_argument(mock_mcp, pages_dir):
 
 
 def test_rejects_unknown_plugin_objects(mock_mcp, pages_dir):
-    with pytest.raises(TypeError, match="VitePlugin"):
+    class _IdOnlyPlugin:
+        id = "not-allowed"
+
+    with pytest.raises(TypeError, match="LightningCSS or VitePlugin"):
         Amber(
             mcp=mock_mcp,
             views=pages_dir,
-            plugins=[object()],  # ty: ignore[invalid-argument-type] runtime validation test
+            plugins=[_IdOnlyPlugin()],  # ty: ignore[invalid-argument-type] runtime validation test
         )
 
 

@@ -1,9 +1,7 @@
-"""Public Python wrappers for gdansk bundler plugins."""
+"""Public wrapper for the native Lightning CSS plugin."""
 
+from gdansk._core import LightningCSS as _LightningCSS
 
-class LightningCSS:
-    """Python handle for the native Lightning CSS rolldown plugin."""
+LightningCSS = _LightningCSS
 
-    __slots__ = ()
-
-    id = "lightningcss"
+__all__ = ["LightningCSS"]

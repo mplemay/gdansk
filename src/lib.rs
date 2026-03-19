@@ -9,7 +9,7 @@ use pyo3::prelude::*;
 #[pymodule]
 mod _core {
     #[pymodule_export]
-    use super::bundle::{Page, VitePlugin, bundle};
+    use super::bundle::{LightningCSS, Page, VitePlugin, bundle};
     #[pymodule_export]
     use super::runtime::run;
 }

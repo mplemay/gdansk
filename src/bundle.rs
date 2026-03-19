@@ -20,6 +20,7 @@ use crate::plugins::{
 use crate::plugins::{client_entry_import, server_entry_import};
 #[cfg(not(test))]
 use pyo3::{
+    FromPyObject,
     basic::CompareOp,
     exceptions::{PyFileNotFoundError, PyRuntimeError, PyTypeError, PyValueError},
     prelude::*,
@@ -183,14 +184,20 @@ impl Page {
 
 #[cfg(not(test))]
 #[pyclass(module = "gdansk._core", frozen, skip_from_py_object)]
+#[derive(Debug)]
 pub(crate) struct VitePlugin {
     specifier: String,
     options: Py<PyAny>,
 }
 
 #[cfg(not(test))]
-pub(crate) fn invalid_vite_plugin_message() -> &'static str {
-    "Amber plugins must be VitePlugin instances or bundler plugins that expose a non-empty string `id` attribute"
+#[pyclass(module = "gdansk.plugins.lightningcss", frozen, skip_from_py_object)]
+#[derive(Debug)]
+pub(crate) struct LightningCSS;
+
+#[cfg(not(test))]
+pub(crate) fn invalid_plugin_message() -> &'static str {
+    "Amber plugins must be LightningCSS or VitePlugin instances"
 }
 
 #[cfg(not(test))]
@@ -335,6 +342,24 @@ fn resolve_vite_specifier(specifier: &str, base: &Path) -> PyResult<String> {
 
 #[cfg(not(test))]
 #[pymethods]
+impl LightningCSS {
+    #[new]
+    fn new() -> Self {
+        Self
+    }
+
+    #[getter]
+    fn id(&self) -> &'static str {
+        "lightningcss"
+    }
+
+    fn __repr__(&self) -> String {
+        "LightningCSS()".to_owned()
+    }
+}
+
+#[cfg(not(test))]
+#[pymethods]
 impl VitePlugin {
     #[new]
     #[pyo3(signature = (*, specifier, options = None))]
@@ -424,6 +449,28 @@ impl VitePlugin {
         let options_bound = self.options.bind(py);
         let options = py_any_to_json_value(options_bound)?;
         Ok(crate::plugins::VitePluginSpec { specifier, options })
+    }
+}
+
+#[cfg(not(test))]
+pub(crate) enum PluginInput {
+    LightningCSS,
+    VitePlugin(Py<VitePlugin>),
+}
+
+#[cfg(not(test))]
+impl<'a, 'py> FromPyObject<'a, 'py> for PluginInput {
+    type Error = PyErr;
+
+    fn extract(obj: pyo3::Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
+        if obj.cast::<LightningCSS>().is_ok() {
+            return Ok(Self::LightningCSS);
+        }
+
+        let plugin = obj
+            .cast::<VitePlugin>()
+            .map_err(|_| PyTypeError::new_err(invalid_plugin_message()))?;
+        Ok(Self::VitePlugin(plugin.to_owned().unbind()))
     }
 }
 
@@ -908,7 +955,7 @@ async fn bundle_impl(
     minify: bool,
     output: Option<PathBuf>,
     cwd: Option<PathBuf>,
-    plugins: Option<Vec<Py<PyAny>>>,
+    plugins: Option<Vec<PluginInput>>,
 ) -> Result<(), PyErr> {
     let cwd = match cwd {
         Some(dir) => dunce::simplified(
@@ -1017,7 +1064,7 @@ pub(crate) fn bundle(
     minify: bool,
     output: Option<PathBuf>,
     cwd: Option<PathBuf>,
-    plugins: Option<Vec<Py<PyAny>>>,
+    plugins: Option<Vec<PluginInput>>,
 ) -> PyResult<Bound<'_, PyAny>> {
     let parsed_pages = parse_pages_from_python(py, pages);
 

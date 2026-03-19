@@ -1,14 +1,11 @@
-# ruff: noqa: D100, D101
+# ruff: noqa: D100
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import TypeAlias
 
-from gdansk._core import VitePlugin
+from gdansk._core import LightningCSS, VitePlugin
 
+Plugin: TypeAlias = LightningCSS | VitePlugin
 
-class BundlerPlugin(Protocol):
-    id: str
-
-
-__all__ = ["BundlerPlugin", "VitePlugin"]
+__all__ = ["Plugin", "VitePlugin"]
