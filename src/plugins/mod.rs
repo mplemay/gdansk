@@ -11,55 +11,62 @@ pub(crate) use vite::VitePluginSpec;
 #[cfg(not(test))]
 use std::{collections::HashSet, path::Path};
 
-use deno_core::serde_json::Value;
 #[cfg(not(test))]
-use pyo3::{PyResult, exceptions::PyValueError};
+use pyo3::{
+    PyResult,
+    exceptions::{PyTypeError, PyValueError},
+    prelude::*,
+    types::PyString,
+};
 #[cfg(not(test))]
 use rolldown::plugin::__inner::SharedPluginable;
-use serde::Deserialize;
 
 #[cfg(not(test))]
-use crate::bundle::NormalizedPage;
+use crate::bundle::{NormalizedPage, VitePlugin, invalid_vite_plugin_message};
 
 #[cfg(not(test))]
 use self::shared::LIGHTNINGCSS_PLUGIN_ID;
 
+#[cfg_attr(test, allow(dead_code))]
 #[derive(Debug, Clone, Default)]
 pub(crate) struct PluginSelection {
     pub(crate) bundler_plugin_ids: Option<Vec<String>>,
     pub(crate) vite_plugin_specs: Vec<VitePluginSpec>,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-enum PluginSpec {
-    Bundler {
-        id: String,
-    },
-    Vite {
-        specifier: String,
-        #[serde(default)]
-        options: Value,
-    },
-}
-
-fn parse_plugin_selection_payload(plugins_json: Option<&str>) -> Result<PluginSelection, String> {
-    let Some(plugins_json) = plugins_json else {
+#[cfg(not(test))]
+pub(crate) fn parse_plugin_selection(
+    py: Python<'_>,
+    plugins: Option<Vec<Py<PyAny>>>,
+    cwd: &Path,
+) -> PyResult<PluginSelection> {
+    let Some(plugins) = plugins else {
         return Ok(PluginSelection::default());
     };
 
-    let specs: Vec<PluginSpec> = deno_core::serde_json::from_str(plugins_json)
-        .map_err(|err| format!("invalid plugin payload: {err}"))?;
     let mut bundler_plugin_ids = Vec::new();
     let mut vite_plugin_specs = Vec::new();
 
-    for spec in specs {
-        match spec {
-            PluginSpec::Bundler { id } => bundler_plugin_ids.push(id),
-            PluginSpec::Vite { specifier, options } => {
-                vite_plugin_specs.push(VitePluginSpec { specifier, options });
-            }
+    for plugin in plugins {
+        let plugin = plugin.bind(py);
+        if plugin.is_instance_of::<VitePlugin>() {
+            let plugin = plugin.cast::<VitePlugin>()?;
+            vite_plugin_specs.push(plugin.borrow().to_spec(py, cwd)?);
+            continue;
         }
+
+        let plugin_id = plugin
+            .getattr("id")
+            .map_err(|_| PyTypeError::new_err(invalid_vite_plugin_message()))?;
+        let plugin_id = plugin_id
+            .cast::<PyString>()
+            .map_err(|_| PyTypeError::new_err(invalid_vite_plugin_message()))?
+            .to_str()
+            .map_err(|_| PyTypeError::new_err(invalid_vite_plugin_message()))?;
+        if plugin_id.is_empty() {
+            return Err(PyTypeError::new_err(invalid_vite_plugin_message()));
+        }
+        bundler_plugin_ids.push(plugin_id.to_owned());
     }
 
     Ok(PluginSelection {
@@ -70,11 +77,6 @@ fn parse_plugin_selection_payload(plugins_json: Option<&str>) -> Result<PluginSe
         },
         vite_plugin_specs,
     })
-}
-
-#[cfg(not(test))]
-pub(crate) fn parse_plugin_selection_json(plugins_json: Option<&str>) -> PyResult<PluginSelection> {
-    parse_plugin_selection_payload(plugins_json).map_err(PyValueError::new_err)
 }
 
 #[cfg(not(test))]
@@ -162,59 +164,4 @@ pub(crate) fn server_entrypoint_plugins(
     plugins.push(runtime_module::plugin());
     plugins.push(server_entrypoint::plugin());
     Ok(plugins)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::parse_plugin_selection_payload;
-
-    #[test]
-    fn parse_plugin_selection_defaults_native_plugins_when_payload_is_missing() {
-        let selection = parse_plugin_selection_payload(None).expect("payload should parse");
-
-        assert!(selection.bundler_plugin_ids.is_none());
-        assert!(selection.vite_plugin_specs.is_empty());
-    }
-
-    #[test]
-    fn parse_plugin_selection_preserves_explicit_empty_native_plugin_list() {
-        let selection = parse_plugin_selection_payload(Some("[]")).expect("payload should parse");
-
-        assert_eq!(selection.bundler_plugin_ids, Some(Vec::new()));
-        assert!(selection.vite_plugin_specs.is_empty());
-    }
-
-    #[test]
-    fn parse_plugin_selection_keeps_native_defaults_for_vite_only_payloads() {
-        let selection = parse_plugin_selection_payload(Some(
-            r#"[{"kind":"vite","specifier":"file:///plugin.mjs","options":{"comment":"ok"}}]"#,
-        ))
-        .expect("payload should parse");
-
-        assert!(selection.bundler_plugin_ids.is_none());
-        assert_eq!(selection.vite_plugin_specs.len(), 1);
-        assert_eq!(
-            selection.vite_plugin_specs[0].specifier,
-            "file:///plugin.mjs"
-        );
-        assert_eq!(selection.vite_plugin_specs[0].options["comment"], "ok");
-    }
-
-    #[test]
-    fn parse_plugin_selection_splits_mixed_payloads() {
-        let selection = parse_plugin_selection_payload(Some(
-            r#"[{"kind":"bundler","id":"lightningcss"},{"kind":"vite","specifier":"file:///plugin.mjs","options":{}}]"#,
-        ))
-        .expect("payload should parse");
-
-        assert_eq!(
-            selection.bundler_plugin_ids,
-            Some(vec!["lightningcss".to_owned()])
-        );
-        assert_eq!(selection.vite_plugin_specs.len(), 1);
-        assert_eq!(
-            selection.vite_plugin_specs[0].specifier,
-            "file:///plugin.mjs"
-        );
-    }
 }

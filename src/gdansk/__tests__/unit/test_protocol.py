@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 import pytest
 
-from gdansk.protocol import VitePlugin
+from gdansk._core import VitePlugin
 
 
 def test_vite_plugin_accepts_path_like_specifier():
@@ -12,6 +12,13 @@ def test_vite_plugin_accepts_path_like_specifier():
 
     assert spec.specifier == "plugins/append-comment.mjs"
     assert spec.options == {"comment": "ok"}
+    assert repr(spec) == "VitePlugin(specifier='plugins/append-comment.mjs', options={'comment': 'ok'})"
+
+
+def test_vite_plugin_normalizes_windows_path_like_specifier():
+    spec = VitePlugin(specifier=PureWindowsPath("plugins\\append-comment.mjs"), options={"comment": "ok"})
+
+    assert spec.specifier == "plugins/append-comment.mjs"
 
 
 def test_vite_plugin_accepts_bare_package_specifier():
@@ -19,6 +26,15 @@ def test_vite_plugin_accepts_bare_package_specifier():
 
     assert spec.specifier == "@tailwindcss/vite"
     assert spec.options == {}
+    assert repr(spec) == "VitePlugin(specifier='@tailwindcss/vite', options={})"
+
+
+def test_vite_plugin_behaves_like_a_value_object():
+    left = VitePlugin(specifier="plugins/append-comment.mjs", options=("first", "second"))
+    right = VitePlugin(specifier="plugins/append-comment.mjs", options=("first", "second"))
+
+    assert left == right
+    assert hash(left) == hash(right)
 
 
 def test_vite_plugin_rejects_empty_specifier():

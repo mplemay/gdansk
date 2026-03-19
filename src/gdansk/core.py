@@ -3,23 +3,21 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
-from os import PathLike, fspath
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from anyio import Path as APath
 
-from gdansk._core import Page, bundle, run
+from gdansk._core import Page, VitePlugin, bundle, run
 from gdansk.metadata import Metadata, merge_metadata
-from gdansk.protocol import VitePlugin
 from gdansk.render import ENV
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable, Sequence
+    from os import PathLike
 
     from mcp.server import MCPServer as FastMCP
     from mcp.types import Icon, ToolAnnotations
@@ -31,48 +29,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _is_probably_path_specifier(specifier: str) -> bool:
-    return specifier.startswith(("./", "../")) or Path(specifier).is_absolute() or Path(specifier).suffix != ""
-
-
-def _resolve_vite_specifier(specifier: str | PathLike[str], base: Path) -> str:
-    specifier = fspath(specifier)
-    if specifier.startswith("file://"):
-        return specifier
-
-    path = Path(specifier)
-    if path.is_absolute():
-        return path.resolve(strict=True).as_uri()
-
-    candidate = base / path
-    if candidate.exists() or _is_probably_path_specifier(specifier):
-        return candidate.resolve(strict=True).as_uri()
-
-    return specifier
-
-
-def _serialize_plugins(
-    plugins: Sequence[BundlerPlugin | VitePlugin] | None,
-    base: Path,
-    *,
-    resolve_vite_specifiers: bool,
-) -> str | None:
+def _validate_plugins(plugins: Sequence[BundlerPlugin | VitePlugin] | None) -> None:
     if plugins is None:
-        return None
+        return
 
-    payload = []
     for plugin in plugins:
         if isinstance(plugin, VitePlugin):
-            specifier = (
-                _resolve_vite_specifier(plugin.specifier, base) if resolve_vite_specifiers else fspath(plugin.specifier)
-            )
-            payload.append(
-                {
-                    "kind": "vite",
-                    "specifier": specifier,
-                    "options": plugin.options,
-                },
-            )
             continue
 
         plugin_id = getattr(plugin, "id", None)
@@ -82,9 +44,6 @@ def _serialize_plugins(
                 "that expose a non-empty string `id` attribute"
             )
             raise TypeError(msg)
-        payload.append({"kind": "bundler", "id": plugin_id})
-
-    return json.dumps(payload)
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,19 +68,18 @@ class Amber:
             msg = f"The views directory {self.views} does not exist"
             raise ValueError(msg)
 
-        _serialize_plugins(self.plugins, self.views, resolve_vite_specifiers=False)
+        _validate_plugins(self.plugins)
         object.__setattr__(self, "output", self.views / ".gdansk")
 
     async def _run_build_pipeline(self, *, dev: bool) -> None:
         pages = sorted(self._apps, key=lambda page: page.path.as_posix())
-        plugins_json = _serialize_plugins(self.plugins, self.views, resolve_vite_specifiers=True)
         await bundle(
             pages=pages,
             dev=dev,
             minify=not dev,
             output=self.output,
             cwd=self.views,
-            plugins=plugins_json,
+            plugins=self.plugins,
         )
 
     @staticmethod

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
-import json
 import threading
 import time
 from contextlib import contextmanager
@@ -152,11 +151,12 @@ def test_dev_false_blocks_until_bundle_done(amber):
 
 
 @pytest.mark.usefixtures("pages_dir")
-def test_vite_plugins_are_serialized_onto_bundle_payload_in_prod(mock_mcp, pages_dir):
+def test_vite_plugins_are_forwarded_without_serialization_in_prod(mock_mcp, pages_dir):
+    plugins = [VitePlugin(specifier="plugins/append-comment.mjs", options={"comment": "prod"})]
     amber = Amber(
         mcp=mock_mcp,
         views=pages_dir,
-        plugins=[VitePlugin(specifier="plugins/append-comment.mjs", options={"comment": "prod"})],
+        plugins=plugins,
     )
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
     captured: list[dict] = []
@@ -170,13 +170,7 @@ def test_vite_plugins_are_serialized_onto_bundle_payload_in_prod(mock_mcp, pages
     ):
         pass
 
-    assert json.loads(captured[-1]["plugins"]) == [
-        {
-            "kind": "vite",
-            "specifier": (pages_dir / "plugins" / "append-comment.mjs").resolve().as_uri(),
-            "options": {"comment": "prod"},
-        },
-    ]
+    assert captured[-1]["plugins"] is plugins
 
 
 @pytest.mark.usefixtures("pages_dir")
@@ -241,8 +235,9 @@ def test_default_bundler_plugins_use_public_bundle(mock_mcp, pages_dir):
     assert captured[-1]["plugins"] is None
 
 
-def test_explicit_lightningcss_plugin_serializes_bundle_payload(mock_mcp, pages_dir):
-    amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=[LightningCSS()])
+def test_explicit_lightningcss_plugin_is_forwarded_to_bundle_payload(mock_mcp, pages_dir):
+    plugins = [LightningCSS()]
+    amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=plugins)
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
     captured: list[dict] = []
 
@@ -252,11 +247,12 @@ def test_explicit_lightningcss_plugin_serializes_bundle_payload(mock_mcp, pages_
     with patch("gdansk.core.bundle", _fake_bundle), _lifespan(amber(dev=False)):
         pass
 
-    assert json.loads(captured[-1]["plugins"]) == [{"kind": "bundler", "id": "lightningcss"}]
+    assert captured[-1]["plugins"] is plugins
 
 
 def test_empty_bundler_plugin_list_is_forwarded(mock_mcp, pages_dir):
-    amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=[])
+    plugins: list[LightningCSS] = []
+    amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=plugins)
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
     captured: list[dict] = []
 
@@ -266,14 +262,15 @@ def test_empty_bundler_plugin_list_is_forwarded(mock_mcp, pages_dir):
     with patch("gdansk.core.bundle", _fake_bundle), _lifespan(amber(dev=False)):
         pass
 
-    assert json.loads(captured[-1]["plugins"]) == []
+    assert captured[-1]["plugins"] is plugins
 
 
-def test_vite_only_plugins_keep_native_defaults(mock_mcp, pages_dir):
+def test_vite_only_plugins_are_forwarded_without_serialization(mock_mcp, pages_dir):
+    plugins = [VitePlugin(specifier="plugins/append-comment.mjs")]
     amber = Amber(
         mcp=mock_mcp,
         views=pages_dir,
-        plugins=[VitePlugin(specifier="plugins/append-comment.mjs")],
+        plugins=plugins,
     )
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
     captured: list[dict] = []
@@ -284,20 +281,15 @@ def test_vite_only_plugins_keep_native_defaults(mock_mcp, pages_dir):
     with patch("gdansk.core.bundle", _fake_bundle), _lifespan(amber(dev=False)):
         pass
 
-    assert json.loads(captured[-1]["plugins"]) == [
-        {
-            "kind": "vite",
-            "specifier": (pages_dir / "plugins" / "append-comment.mjs").resolve().as_uri(),
-            "options": {},
-        },
-    ]
+    assert captured[-1]["plugins"] is plugins
 
 
-def test_mixed_plugins_use_native_override_and_vite_bridge(mock_mcp, pages_dir):
+def test_mixed_plugins_are_forwarded_without_serialization(mock_mcp, pages_dir):
+    plugins = [LightningCSS(), VitePlugin(specifier="plugins/append-comment.mjs")]
     amber = Amber(
         mcp=mock_mcp,
         views=pages_dir,
-        plugins=[LightningCSS(), VitePlugin(specifier="plugins/append-comment.mjs")],
+        plugins=plugins,
     )
     amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
     captured: list[dict] = []
@@ -308,14 +300,7 @@ def test_mixed_plugins_use_native_override_and_vite_bridge(mock_mcp, pages_dir):
     with patch("gdansk.core.bundle", _fake_bundle), _lifespan(amber(dev=False)):
         pass
 
-    assert json.loads(captured[-1]["plugins"]) == [
-        {"kind": "bundler", "id": "lightningcss"},
-        {
-            "kind": "vite",
-            "specifier": (pages_dir / "plugins" / "append-comment.mjs").resolve().as_uri(),
-            "options": {},
-        },
-    ]
+    assert captured[-1]["plugins"] is plugins
 
 
 @pytest.mark.usefixtures("pages_dir")

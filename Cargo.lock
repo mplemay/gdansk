@@ -1086,6 +1086,7 @@ dependencies = [
  "rolldown_plugin",
  "serde",
  "tokio",
+ "url",
 ]
 
 [[package]]

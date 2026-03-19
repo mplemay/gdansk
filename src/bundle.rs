@@ -6,22 +6,26 @@ use std::{
 };
 
 #[cfg(not(test))]
+use std::collections::HashSet;
+#[cfg(not(test))]
 use std::hash::{Hash, Hasher};
 #[cfg(not(test))]
 use std::time::{Duration, UNIX_EPOCH};
 
 #[cfg(not(test))]
 use crate::plugins::{
-    ClientEntrypointPluginOptions, PluginSelection, client_entrypoint_plugins,
-    parse_plugin_selection_json, server_entrypoint_plugins,
+    ClientEntrypointPluginOptions, client_entrypoint_plugins, parse_plugin_selection,
+    server_entrypoint_plugins,
 };
 use crate::plugins::{client_entry_import, server_entry_import};
 #[cfg(not(test))]
 use pyo3::{
     basic::CompareOp,
-    exceptions::{PyRuntimeError, PyValueError},
+    exceptions::{PyFileNotFoundError, PyRuntimeError, PyTypeError, PyValueError},
     prelude::*,
-    types::PyModule,
+    types::{
+        PyBool, PyDict, PyFloat, PyInt, PyList, PyModule, PyNotImplemented, PyString, PyTuple,
+    },
 };
 #[cfg(not(test))]
 use rolldown::plugin::__inner::SharedPluginable;
@@ -174,6 +178,252 @@ impl Page {
             "Page(path={:?}, app={}, ssr={}, client={:?}, server={:?}, css={:?})",
             self.path, self.app, self.ssr, self.client, self.server, self.css
         )
+    }
+}
+
+#[cfg(not(test))]
+#[pyclass(module = "gdansk._core", frozen, skip_from_py_object)]
+pub(crate) struct VitePlugin {
+    specifier: String,
+    options: Py<PyAny>,
+}
+
+#[cfg(not(test))]
+pub(crate) fn invalid_vite_plugin_message() -> &'static str {
+    "Amber plugins must be VitePlugin instances or bundler plugins that expose a non-empty string `id` attribute"
+}
+
+#[cfg(not(test))]
+fn invalid_vite_options_message() -> &'static str {
+    "VitePlugin.options must be JSON serializable"
+}
+
+#[cfg(not(test))]
+fn py_any_to_json_value(value: &Bound<'_, PyAny>) -> PyResult<deno_core::serde_json::Value> {
+    let mut seen = HashSet::new();
+    py_any_to_json_value_inner(value, &mut seen)
+}
+
+#[cfg(not(test))]
+fn py_any_to_json_value_inner(
+    value: &Bound<'_, PyAny>,
+    seen: &mut HashSet<usize>,
+) -> PyResult<deno_core::serde_json::Value> {
+    if value.is_none() {
+        return Ok(deno_core::serde_json::Value::Null);
+    }
+
+    if value.is_instance_of::<PyBool>() {
+        return Ok(deno_core::serde_json::Value::Bool(
+            value.cast::<PyBool>()?.extract::<bool>()?,
+        ));
+    }
+
+    if value.is_instance_of::<PyString>() {
+        return Ok(deno_core::serde_json::Value::String(
+            value.cast::<PyString>()?.to_str()?.to_owned(),
+        ));
+    }
+
+    if value.is_instance_of::<PyInt>() {
+        let integer = value.cast::<PyInt>()?;
+        if let Ok(integer) = integer.extract::<i64>() {
+            return Ok(deno_core::serde_json::Value::Number(integer.into()));
+        }
+        if let Ok(integer) = integer.extract::<u64>() {
+            return Ok(deno_core::serde_json::Value::Number(integer.into()));
+        }
+        return Err(PyTypeError::new_err(invalid_vite_options_message()));
+    }
+
+    if value.is_instance_of::<PyFloat>() {
+        let number = value.cast::<PyFloat>()?.extract::<f64>()?;
+        let Some(number) = deno_core::serde_json::Number::from_f64(number) else {
+            return Err(PyTypeError::new_err(invalid_vite_options_message()));
+        };
+        return Ok(deno_core::serde_json::Value::Number(number));
+    }
+
+    if value.is_instance_of::<PyDict>() {
+        let dict = value.cast::<PyDict>()?;
+        let object_id = dict.as_ptr() as usize;
+        if !seen.insert(object_id) {
+            return Err(PyTypeError::new_err(invalid_vite_options_message()));
+        }
+        let mut entries = deno_core::serde_json::Map::new();
+        for (key, item) in dict.iter() {
+            let key = key
+                .cast::<PyString>()
+                .map_err(|_| PyTypeError::new_err(invalid_vite_options_message()))?
+                .to_str()
+                .map_err(|_| PyTypeError::new_err(invalid_vite_options_message()))?
+                .to_owned();
+            entries.insert(key, py_any_to_json_value_inner(&item, seen)?);
+        }
+        seen.remove(&object_id);
+        return Ok(deno_core::serde_json::Value::Object(entries));
+    }
+
+    if value.is_instance_of::<PyList>() {
+        let list = value.cast::<PyList>()?;
+        let object_id = list.as_ptr() as usize;
+        if !seen.insert(object_id) {
+            return Err(PyTypeError::new_err(invalid_vite_options_message()));
+        }
+        let items = deno_core::serde_json::Value::Array(
+            list.iter()
+                .map(|item| py_any_to_json_value_inner(&item, seen))
+                .collect::<PyResult<Vec<_>>>()?,
+        );
+        seen.remove(&object_id);
+        return Ok(items);
+    }
+
+    if value.is_instance_of::<PyTuple>() {
+        let tuple = value.cast::<PyTuple>()?;
+        let object_id = tuple.as_ptr() as usize;
+        if !seen.insert(object_id) {
+            return Err(PyTypeError::new_err(invalid_vite_options_message()));
+        }
+        let items = deno_core::serde_json::Value::Array(
+            tuple
+                .iter()
+                .map(|item| py_any_to_json_value_inner(&item, seen))
+                .collect::<PyResult<Vec<_>>>()?,
+        );
+        seen.remove(&object_id);
+        return Ok(items);
+    }
+
+    Err(PyTypeError::new_err(invalid_vite_options_message()))
+}
+
+#[cfg(not(test))]
+fn resolve_vite_specifier(specifier: &str, base: &Path) -> PyResult<String> {
+    if specifier.starts_with("file://") {
+        return Ok(specifier.to_owned());
+    }
+
+    let path = Path::new(specifier);
+    let candidate = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        base.join(path)
+    };
+    let is_probably_path = specifier.starts_with("./")
+        || specifier.starts_with("../")
+        || path.is_absolute()
+        || path.extension().is_some();
+
+    if candidate.exists() || is_probably_path {
+        let canonical = dunce::simplified(&candidate.canonicalize().map_err(|err| {
+            PyFileNotFoundError::new_err(format!(
+                "failed to resolve VitePlugin.specifier `{specifier}`: {err}"
+            ))
+        })?)
+        .to_path_buf();
+        let url = url::Url::from_file_path(&canonical).map_err(|_| {
+            PyFileNotFoundError::new_err(format!(
+                "failed to resolve VitePlugin.specifier `{specifier}`"
+            ))
+        })?;
+        return Ok(url.to_string());
+    }
+
+    Ok(specifier.to_owned())
+}
+
+#[cfg(not(test))]
+#[pymethods]
+impl VitePlugin {
+    #[new]
+    #[pyo3(signature = (*, specifier, options = None))]
+    fn new(py: Python<'_>, specifier: PathBuf, options: Option<Py<PyAny>>) -> PyResult<Self> {
+        let specifier = specifier.to_str().ok_or_else(|| {
+            PyValueError::new_err("VitePlugin.specifier must be a non-empty string or path")
+        })?;
+        if specifier.trim().is_empty() {
+            return Err(PyValueError::new_err(
+                "VitePlugin.specifier must be a non-empty string or path",
+            ));
+        }
+        let specifier = specifier.replace('\\', "/");
+
+        let options = match options {
+            Some(options) => options,
+            None => PyDict::new(py).into_any().unbind(),
+        };
+        let options_bound = options.bind(py);
+        py_any_to_json_value(options_bound)?;
+
+        Ok(Self {
+            specifier: specifier.to_owned(),
+            options,
+        })
+    }
+
+    #[getter]
+    fn specifier(&self) -> String {
+        self.specifier.clone()
+    }
+
+    #[getter]
+    fn options(&self, py: Python<'_>) -> Py<PyAny> {
+        self.options.clone_ref(py)
+    }
+
+    fn __richcmp__(&self, other: &Bound<'_, PyAny>, op: CompareOp) -> PyResult<Py<PyAny>> {
+        let py = other.py();
+        let Ok(other) = other.cast::<VitePlugin>() else {
+            return Ok(PyNotImplemented::get(py).to_owned().into_any().unbind());
+        };
+        let other = other.borrow();
+        let options_equal = self
+            .options
+            .bind(py)
+            .rich_compare(other.options.bind(py), CompareOp::Eq)?
+            .is_truthy()?;
+        let equal = self.specifier == other.specifier && options_equal;
+
+        match op {
+            CompareOp::Eq => Ok(PyBool::new(py, equal).to_owned().into_any().unbind()),
+            CompareOp::Ne => Ok(PyBool::new(py, !equal).to_owned().into_any().unbind()),
+            _ => Ok(PyNotImplemented::get(py).to_owned().into_any().unbind()),
+        }
+    }
+
+    fn __hash__(&self, py: Python<'_>) -> PyResult<isize> {
+        let specifier = PyString::new(py, &self.specifier)
+            .to_owned()
+            .into_any()
+            .unbind();
+        let options = self.options.clone_ref(py);
+        PyTuple::new(py, [specifier, options])?.hash()
+    }
+
+    fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
+        let specifier = PyString::new(py, &self.specifier)
+            .repr()?
+            .to_str()?
+            .to_owned();
+        let options = self.options.bind(py).repr()?.to_str()?.to_owned();
+        Ok(format!(
+            "VitePlugin(specifier={specifier}, options={options})"
+        ))
+    }
+}
+
+#[cfg(not(test))]
+impl VitePlugin {
+    pub(crate) fn to_spec(
+        &self,
+        py: Python<'_>,
+        cwd: &Path,
+    ) -> PyResult<crate::plugins::VitePluginSpec> {
+        let specifier = resolve_vite_specifier(&self.specifier, cwd)?;
+        let options_bound = self.options.bind(py);
+        let options = py_any_to_json_value(options_bound)?;
+        Ok(crate::plugins::VitePluginSpec { specifier, options })
     }
 }
 
@@ -658,7 +908,7 @@ async fn bundle_impl(
     minify: bool,
     output: Option<PathBuf>,
     cwd: Option<PathBuf>,
-    plugin_selection: PluginSelection,
+    plugins: Option<Vec<Py<PyAny>>>,
 ) -> Result<(), PyErr> {
     let cwd = match cwd {
         Some(dir) => dunce::simplified(
@@ -669,6 +919,7 @@ async fn bundle_impl(
         None => std::env::current_dir()
             .map_err(|err| py_runtime_error("failed to read current working directory", err))?,
     };
+    let plugin_selection = Python::attach(|py| parse_plugin_selection(py, plugins, &cwd))?;
     let output_dir = output.unwrap_or_else(|| PathBuf::from(".gdansk"));
     let output_dir_string = path_to_utf8(&output_dir, "output path").map_err(map_bundle_error)?;
     let normalized = normalize_pages(parsed_pages, &cwd, &output_dir).map_err(map_bundle_error)?;
@@ -766,13 +1017,12 @@ pub(crate) fn bundle(
     minify: bool,
     output: Option<PathBuf>,
     cwd: Option<PathBuf>,
-    plugins: Option<String>,
+    plugins: Option<Vec<Py<PyAny>>>,
 ) -> PyResult<Bound<'_, PyAny>> {
     let parsed_pages = parse_pages_from_python(py, pages);
-    let plugin_selection = parse_plugin_selection_json(plugins.as_deref())?;
 
     pyo3_async_runtimes::tokio::future_into_py(py, async move {
-        bundle_impl(parsed_pages, dev, minify, output, cwd, plugin_selection).await?;
+        bundle_impl(parsed_pages, dev, minify, output, cwd, plugins).await?;
         Python::attach(|py| Ok(py.None()))
     })
 }
