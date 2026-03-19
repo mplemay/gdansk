@@ -1,13 +1,11 @@
 #![cfg_attr(test, allow(dead_code, unused_imports))]
 
 use std::{
-    io::Write,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
     sync::Arc,
 };
 
-use deno_core::serde_json::{self, Value};
+use deno_core::serde_json::Value;
 #[cfg(not(test))]
 use rolldown::plugin::__inner::SharedPluginable;
 use rolldown_common::Output;
@@ -21,47 +19,15 @@ use std::{borrow::Cow, collections::HashMap};
 
 use crate::bundle::NormalizedPage;
 
-const HOST_RESULT_PREFIX: &str = "__GDANSK_VITE_PLUGIN_RESULT__=";
+use super::vite_runtime::{PluginAssetInput, run_embedded_vite_plugins};
+
 const VITE_BRIDGE_PLUGIN_ID: &str = "gdansk-vite-bridge";
-const VITE_JS_HOST_SOURCE: &str = include_str!("vite_js_host.js");
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct VitePluginSpec {
     pub(crate) specifier: String,
     #[serde(default)]
     pub(crate) options: Value,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct JsPluginContext {
-    pages: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-struct JsPluginAssetInput {
-    filename: String,
-    path: String,
-    code: String,
-}
-
-#[derive(Debug, Serialize)]
-struct JsPluginPayload {
-    specs: Vec<VitePluginSpec>,
-    context: JsPluginContext,
-    assets: Vec<JsPluginAssetInput>,
-}
-
-#[derive(Debug, Deserialize)]
-struct JsPluginAssetOutput {
-    filename: String,
-    code: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct JsPluginHostResult {
-    assets: Vec<JsPluginAssetOutput>,
-    #[serde(rename = "watchFiles", default)]
-    watch_files: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -90,14 +56,10 @@ impl VitePluginBridge {
         }
     }
 
-    fn pages_string(&self) -> String {
-        self.pages.to_string_lossy().into_owned()
-    }
-
     fn collect_css_assets(
         &self,
         bundle: &[Output],
-    ) -> Result<Vec<JsPluginAssetInput>, std::io::Error> {
+    ) -> Result<Vec<PluginAssetInput>, std::io::Error> {
         let mut assets = Vec::new();
         for output in bundle {
             let Output::Asset(asset) = output else {
@@ -108,7 +70,7 @@ impl VitePluginBridge {
             }
 
             let asset_path = self.output_root.join(asset.filename.as_str());
-            assets.push(JsPluginAssetInput {
+            assets.push(PluginAssetInput {
                 filename: asset.filename.to_string(),
                 path: asset_path.to_string_lossy().into_owned(),
                 code: asset
@@ -134,23 +96,17 @@ impl VitePluginBridge {
         normalized.to_string_lossy().into_owned()
     }
 
-    fn css_probe_payload(&self, id: &str, code: &str) -> JsPluginPayload {
+    fn css_probe_assets(&self, id: &str, code: &str) -> Vec<PluginAssetInput> {
         let filename = Path::new(id)
             .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or("style.css")
             .to_owned();
-        JsPluginPayload {
-            specs: self.specs.as_ref().to_vec(),
-            context: JsPluginContext {
-                pages: self.pages_string(),
-            },
-            assets: vec![JsPluginAssetInput {
-                filename,
-                path: id.to_owned(),
-                code: code.to_owned(),
-            }],
-        }
+        vec![PluginAssetInput {
+            filename,
+            path: id.to_owned(),
+            code: code.to_owned(),
+        }]
     }
 
     fn is_entry_module(&self, id: &str) -> bool {
@@ -161,73 +117,6 @@ impl VitePluginBridge {
                 || normalized_id.ends_with(&format!("/{entry}"))
         })
     }
-}
-
-fn extract_node_error_detail(stdout: &str, stderr: &str) -> String {
-    let stderr_lines: Vec<_> = stderr.lines().map(str::trim).collect();
-    if let Some(line) = stderr_lines
-        .iter()
-        .copied()
-        .find(|line| line.contains("Error:"))
-    {
-        return line.to_owned();
-    }
-
-    if let Some(line) = stderr_lines
-        .iter()
-        .copied()
-        .find(|line| !line.is_empty() && !line.starts_with("at ") && !line.starts_with("Node.js "))
-    {
-        return line.to_owned();
-    }
-
-    if let Some(line) = stdout.lines().map(str::trim).find(|line| !line.is_empty()) {
-        return line.to_owned();
-    }
-
-    "node exited without output".to_owned()
-}
-
-fn run_js_plugin_host(
-    payload: &JsPluginPayload,
-    pages: &Path,
-) -> Result<JsPluginHostResult, std::io::Error> {
-    let payload_json = serde_json::to_vec(payload).map_err(std::io::Error::other)?;
-    let mut child = Command::new("node")
-        .arg("--input-type=module")
-        .arg("--eval")
-        .arg(VITE_JS_HOST_SOURCE)
-        .current_dir(pages)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
-
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(&payload_json)?;
-    }
-
-    let output = child.wait_with_output()?;
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-
-    if !output.status.success() {
-        return Err(std::io::Error::other(extract_node_error_detail(
-            &stdout, &stderr,
-        )));
-    }
-
-    let Some(result_line) = stdout
-        .lines()
-        .rev()
-        .find_map(|line| line.strip_prefix(HOST_RESULT_PREFIX))
-    else {
-        return Err(std::io::Error::other(
-            "Vite plugin host did not return a result payload",
-        ));
-    };
-
-    serde_json::from_str(result_line).map_err(std::io::Error::other)
 }
 
 #[cfg(not(test))]
@@ -273,12 +162,14 @@ impl Plugin for VitePluginBridge {
             .join("__gdansk_watch_probe__.css")
             .to_string_lossy()
             .into_owned();
-        let payload = self.css_probe_payload(&probe_path, "");
+        let specs = self.specs.clone();
+        let assets = self.css_probe_assets(&probe_path, "");
         let pages = self.pages.clone();
-        let result = tokio::task::spawn_blocking(move || run_js_plugin_host(&payload, &pages))
-            .await
-            .map_err(std::io::Error::other)?
-            .map_err(std::io::Error::other)?;
+        let result =
+            tokio::task::spawn_blocking(move || run_embedded_vite_plugins(&specs, &pages, assets))
+                .await
+                .map_err(std::io::Error::other)?
+                .map_err(std::io::Error::other)?;
 
         for watch_file in result.watch_files {
             ctx.add_watch_file(&self.normalize_watch_file(&watch_file));
@@ -297,18 +188,14 @@ impl Plugin for VitePluginBridge {
             return Ok(());
         }
 
-        let payload = JsPluginPayload {
-            specs: self.specs.as_ref().to_vec(),
-            context: JsPluginContext {
-                pages: self.pages_string(),
-            },
-            assets: css_assets,
-        };
+        let specs = self.specs.clone();
         let pages = self.pages.clone();
-        let result = tokio::task::spawn_blocking(move || run_js_plugin_host(&payload, &pages))
-            .await
-            .map_err(std::io::Error::other)?
-            .map_err(std::io::Error::other)?;
+        let result = tokio::task::spawn_blocking(move || {
+            run_embedded_vite_plugins(&specs, &pages, css_assets)
+        })
+        .await
+        .map_err(std::io::Error::other)?
+        .map_err(std::io::Error::other)?;
 
         for watch_file in result.watch_files {
             ctx.add_watch_file(&self.normalize_watch_file(&watch_file));

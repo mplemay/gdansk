@@ -99,6 +99,32 @@ def test_js_plugin_transforms_bundled_css(mock_mcp, pages_dir, tmp_path, monkeyp
 
 
 @pytest.mark.integration
+def test_js_plugin_transforms_bundled_css_without_node_in_path(
+    mock_mcp,
+    pages_dir,
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PATH", "")
+    output = pages_dir / ".gdansk"
+    amber = Amber(
+        mcp=mock_mcp,
+        views=pages_dir,
+        plugins=[VitePlugin(specifier=Path("plugins/append-comment.mjs"), options={"comment": "no-node"})],
+    )
+
+    @amber.tool(Path("with_css/page.tsx"))
+    def my_tool():
+        return "result"
+
+    with _lifespan(amber(dev=False)):
+        css_output = output / "with_css/client.css"
+        assert css_output.exists()
+        assert "no-node" in css_output.read_text(encoding="utf-8")
+
+
+@pytest.mark.integration
 def test_js_plugin_watch_runs_in_dev(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     output = pages_dir / ".gdansk"

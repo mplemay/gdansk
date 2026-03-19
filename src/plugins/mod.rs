@@ -4,6 +4,7 @@ mod runtime_module;
 mod server_entrypoint;
 mod shared;
 mod vite;
+mod vite_runtime;
 
 pub(crate) use shared::{client_entry_import, server_entry_import};
 pub(crate) use vite::VitePluginSpec;

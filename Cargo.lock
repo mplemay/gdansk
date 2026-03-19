@@ -1078,6 +1078,7 @@ dependencies = [
  "deno_error",
  "dunce",
  "lightningcss",
+ "oxc_resolver",
  "pyo3",
  "pyo3-async-runtimes",
  "rolldown",

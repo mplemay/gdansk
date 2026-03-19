@@ -26,6 +26,7 @@ rolldown_dev = { git = "https://github.com/rolldown/rolldown.git", tag="v1.0.0-r
 rolldown_plugin = { git = "https://github.com/rolldown/rolldown.git", tag="v1.0.0-rc.10" }
 rolldown_common = { git = "https://github.com/rolldown/rolldown.git", tag="v1.0.0-rc.10" }
 lightningcss = "1.0.0-alpha.70"
+oxc_resolver = "11.18.0"
 url = "2.5.8"
 
 [build-dependencies]
