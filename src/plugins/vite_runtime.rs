@@ -699,6 +699,15 @@ mod tests {
         }
     }
 
+    fn canonical(path: &Path) -> PathBuf {
+        dunce::simplified(
+            &path
+                .canonicalize()
+                .expect("expected path to be canonicalizable"),
+        )
+        .to_path_buf()
+    }
+
     #[test]
     fn resolves_bare_package_with_oxc_resolver() {
         let temp_dir = TestDir::new();
@@ -724,15 +733,15 @@ mod tests {
         let resolved = shared
             .resolve_js_module_specifier("sample-plugin", Some(BOOTSTRAP_SPECIFIER), true)
             .expect("specifier should resolve");
-        let expected = package_dir
-            .join("index.js")
-            .canonicalize()
-            .expect("expected path should canonicalize");
+        let expected = canonical(&package_dir.join("index.js"));
 
         assert_eq!(
-            resolved
-                .to_file_path()
-                .expect("resolved specifier should be a file path"),
+            canonical(
+                resolved
+                    .to_file_path()
+                    .expect("resolved specifier should be a file path")
+                    .as_path(),
+            ),
             expected
         );
     }
@@ -761,10 +770,7 @@ mod tests {
 
         let resolved = resolve_css_import_path("@scope/styles", &pages, &pages)
             .expect("css import should resolve");
-        let expected = package_dir
-            .join("dist/main.css")
-            .canonicalize()
-            .expect("expected css path should canonicalize");
+        let expected = canonical(&package_dir.join("dist/main.css"));
         assert_eq!(resolved, expected);
     }
 
