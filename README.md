@@ -48,10 +48,13 @@ my-mcp-server/
 ├── server.py
 └── views/
     ├── package.json
-    └── apps/
+    └── widgets/
         └── hello/
-            └── page.tsx
+            └── widget.tsx
 ```
+
+The `views` folder name is only an example: pass any directory to `Amber(..., views=...)` (for example
+`Path(__file__).parent / "frontend"`).
 
 **server.py:**
 
@@ -65,7 +68,7 @@ import uvicorn
 mcp = FastMCP("Hello World Server")
 amber = Amber(mcp=mcp, views=Path(__file__).parent / "views")
 
-@amber.tool(name="greet", page=Path("hello"))
+@amber.tool(name="greet", widget=Path("hello"))
 def greet(name: str) -> list[TextContent]:
     """Greet someone by name."""
     return [TextContent(type="text", text=f"Hello, {name}!")]
@@ -75,7 +78,7 @@ if __name__ == "__main__":
     uvicorn.run(app, port=3000)
 ```
 
-**views/apps/hello/page.tsx:**
+**views/widgets/hello/widget.tsx:**
 
 ```tsx
 import { useApp } from "@modelcontextprotocol/ext-apps/react";

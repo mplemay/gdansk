@@ -1,4 +1,4 @@
-"""Core integration between FastMCP tools and gdansk page resources."""
+"""Core integration between FastMCP tools and gdansk widget resources."""
 
 from __future__ import annotations
 
@@ -42,9 +42,9 @@ def _validate_plugins(plugins: Sequence[Plugin] | None) -> None:
 
 @dataclass(frozen=True, slots=True)
 class Amber:
-    """Registers page-backed MCP tools and serves their bundled assets."""
+    """Registers widget-backed MCP tools and serves their bundled assets."""
 
-    _apps: set[Page] = field(default_factory=set, init=False)
+    _widgets: set[Page] = field(default_factory=set, init=False)
     _template: ClassVar[str] = "template.html"
     _page_min_parts: ClassVar[int] = 2
 
@@ -66,7 +66,7 @@ class Amber:
         object.__setattr__(self, "output", self.views / ".gdansk")
 
     async def _run_build_pipeline(self, *, dev: bool) -> None:
-        pages = sorted(self._apps, key=lambda page: page.path.as_posix())
+        pages = sorted(self._widgets, key=lambda page: page.path.as_posix())
         await bundle(
             pages=pages,
             dev=dev,
@@ -99,57 +99,63 @@ class Amber:
                 await asyncio.gather(*tasks, return_exceptions=True)
 
     @staticmethod
-    def _normalize_page_input(page: str | PathLike[str]) -> Path:
-        page_path = Path(page)
-        if page_path.is_absolute():
-            msg = f"The page (i.e. {page}) must be a relative path"
+    def _normalize_widget_input(widget: str | PathLike[str]) -> Path:
+        widget_path = Path(widget)
+        if widget_path.is_absolute():
+            msg = f"The widget path (i.e. {widget}) must be a relative path"
             raise ValueError(msg)
 
-        page_posix = PurePosixPath(page_path.as_posix())
-        if any(part in {"", ".", ".."} for part in page_posix.parts):
-            msg = f"The page (i.e. {page}) must not contain traversal segments"
+        widget_posix = PurePosixPath(widget_path.as_posix())
+        if any(part in {"", ".", ".."} for part in widget_posix.parts):
+            msg = f"The widget path (i.e. {widget}) must not contain traversal segments"
             raise ValueError(msg)
 
-        if page_posix.parts and page_posix.parts[0] == "apps":
-            msg = f"The page (i.e. {page}) must not start with apps/"
+        if widget_posix.parts and widget_posix.parts[0] == "widgets":
+            msg = f"The widget path (i.e. {widget}) must not start with widgets/"
             raise ValueError(msg)
 
-        return Path(*page_posix.parts)
+        return Path(*widget_posix.parts)
 
     @staticmethod
-    def _resolve_page_candidates(page: Path) -> tuple[Path, ...]:
-        if page.suffix:
-            if page.suffix not in {".tsx", ".jsx"}:
-                msg = f"The page (i.e. {page}) must be a .tsx or .jsx file"
+    def _resolve_widget_path_candidates(widget: Path) -> tuple[Path, ...]:
+        if widget.suffix:
+            if widget.suffix not in {".tsx", ".jsx"}:
+                msg = f"The widget path (i.e. {widget}) must be a .tsx or .jsx file"
                 raise ValueError(msg)
-            if page.name not in {"page.tsx", "page.jsx"}:
-                msg = f"The page (i.e. {page}) must match **/page.tsx or **/page.jsx and must not start with apps/"
+            if widget.name not in {"widget.tsx", "widget.jsx"}:
+                msg = (
+                    f"The widget path (i.e. {widget}) must match **/widget.tsx or **/widget.jsx "
+                    "and must not start with widgets/"
+                )
                 raise ValueError(msg)
-            return (page,)
+            return (widget,)
 
-        return (page / "page.tsx", page / "page.jsx")
+        return (widget / "widget.tsx", widget / "widget.jsx")
 
     @staticmethod
-    def _normalize_page_path_and_uri(page: Path) -> tuple[Path, Path, str]:
-        page_posix = PurePosixPath(page.as_posix())
+    def _normalize_widget_path_and_uri(widget: Path) -> tuple[Path, Path, str]:
+        widget_posix = PurePosixPath(widget.as_posix())
 
         if (
-            len(page_posix.parts) < Amber._page_min_parts
-            or page_posix.parts[0] == "apps"
-            or page_posix.name not in {"page.tsx", "page.jsx"}
+            len(widget_posix.parts) < Amber._page_min_parts
+            or widget_posix.parts[0] == "widgets"
+            or widget_posix.name not in {"widget.tsx", "widget.jsx"}
         ):
-            msg = f"The page (i.e. {page}) must match **/page.tsx or **/page.jsx and must not start with apps/"
+            msg = (
+                f"The widget path (i.e. {widget}) must match **/widget.tsx or **/widget.jsx "
+                "and must not start with widgets/"
+            )
             raise ValueError(msg)
 
-        normalized_page = Path(*page_posix.parts)
-        bundle_page = Path("apps", *page_posix.parts)
-        uri = f"ui://{PurePosixPath(*page_posix.parts[:-1])}"
-        return normalized_page, bundle_page, uri
+        normalized_widget = Path(*widget_posix.parts)
+        bundle_page = Path("widgets", *widget_posix.parts)
+        uri = f"ui://{PurePosixPath(*widget_posix.parts[:-1])}"
+        return normalized_widget, bundle_page, uri
 
     def __call__(self, *, dev: bool = False) -> Starlette:
         """Build and return the Starlette app that serves registered resources."""
         app = self.mcp.streamable_http_app()
-        if not self._apps:
+        if not self._widgets:
             return app
 
         bundle_task: asyncio.Task[None] | None = None
@@ -176,7 +182,7 @@ class Amber:
 
     def tool(  # noqa: C901, PLR0913, PLR0915
         self,
-        page: str | PathLike[str],
+        widget: str | PathLike[str],
         name: str | None = None,
         *,
         title: str | None = None,
@@ -188,35 +194,35 @@ class Amber:
         ssr: bool | None = None,
         structured_output: bool | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-        """Register a tool and bind its page resource into the MCP server."""
-        page_path = self._normalize_page_input(page)
-        page_candidates = self._resolve_page_candidates(page_path)
+        """Register a tool and bind its widget resource into the MCP server."""
+        widget_path = self._normalize_widget_input(widget)
+        widget_candidates = self._resolve_widget_path_candidates(widget_path)
 
         bundle_page: Path | None = None
         uri: str | None = None
 
-        for page_candidate in page_candidates:
-            _, candidate_bundle_page, candidate_uri = self._normalize_page_path_and_uri(page_candidate)
+        for widget_candidate in widget_candidates:
+            _, candidate_bundle_page, candidate_uri = self._normalize_widget_path_and_uri(widget_candidate)
             if (self.views / candidate_bundle_page).is_file():
                 bundle_page = candidate_bundle_page
                 uri = candidate_uri
                 break
 
         if bundle_page is None or uri is None:
-            if len(page_candidates) == 1:
-                msg = f"The page (i.e. {page_path}) was not found"
+            if len(widget_candidates) == 1:
+                msg = f"The widget path (i.e. {widget_path}) was not found"
             else:
                 msg = (
-                    f"The page (i.e. {page_path}) was not found. "
-                    f"Expected one of: {page_candidates[0]}, {page_candidates[1]}"
+                    f"The widget path (i.e. {widget_path}) was not found. "
+                    f"Expected one of: {widget_candidates[0]}, {widget_candidates[1]}"
                 )
             raise FileNotFoundError(msg)
 
         ssr = self.ssr if ssr is None else ssr
-        page_spec = Page(path=bundle_page, app=True, ssr=ssr)
-        stale_pages = {registered for registered in self._apps if registered.path == page_spec.path}
-        self._apps.difference_update(stale_pages)
-        self._apps.add(page_spec)
+        page_spec = Page(path=bundle_page, is_widget=True, ssr=ssr)
+        stale_pages = {registered for registered in self._widgets if registered.path == page_spec.path}
+        self._widgets.difference_update(stale_pages)
+        self._widgets.add(page_spec)
 
         # Preserve protocol metadata key/scheme for MCP compatibility.
         meta = meta or {}
@@ -231,20 +237,20 @@ class Amber:
         async def _compute_fingerprint() -> tuple[tuple[str, bool, int | None, int | None], ...]:
             client_exists = await client_path.exists()
             if not client_exists:
-                msg = f"Client bundled output for {page} not found. Has the bundler been run?"
+                msg = f"Client bundled output for {widget} not found. Has the bundler been run?"
                 raise FileNotFoundError(msg)
             client_stat = await client_path.stat()
 
             if server_path is None:
                 if ssr:
-                    msg = f"SSR bundled output for {page} not found. Has the bundler been run?"
+                    msg = f"SSR bundled output for {widget} not found. Has the bundler been run?"
                     raise FileNotFoundError(msg)
                 server_fingerprint = ("server", False, None, None)
             else:
                 server_exists = await server_path.exists()
                 if not server_exists:
                     if ssr:
-                        msg = f"SSR bundled output for {page} not found. Has the bundler been run?"
+                        msg = f"SSR bundled output for {widget} not found. Has the bundler been run?"
                         raise FileNotFoundError(msg)
                     server_fingerprint = ("server", False, None, None)
                 else:
@@ -267,7 +273,7 @@ class Amber:
             client = None if not await client_path.exists() else await client_path.read_text(encoding="utf-8")
 
             if not client:
-                msg = f"Client bundled output for {page} not found. Has the bundler been run?"
+                msg = f"Client bundled output for {widget} not found. Has the bundler been run?"
                 raise FileNotFoundError(msg)
 
             server = None
@@ -276,7 +282,7 @@ class Amber:
             html = await run(server) if server else None
 
             if (not html) and ssr:
-                msg = f"SSR bundled output for {page} not found. Has the bundler been run?"
+                msg = f"SSR bundled output for {widget} not found. Has the bundler been run?"
                 raise FileNotFoundError(msg)
 
             css = None if not await css_path.exists() else await css_path.read_text(encoding="utf-8")

@@ -28,7 +28,7 @@ def test_valid_construction(mock_mcp, pages_dir):
 
 
 def test_raises_when_pages_not_directory(mock_mcp, pages_dir):
-    file_path = pages_dir / "apps/simple/page.tsx"
+    file_path = pages_dir / "widgets/simple/widget.tsx"
     with pytest.raises(ValueError, match="does not exist"):
         Amber(mcp=mock_mcp, views=file_path)
 
@@ -95,7 +95,7 @@ def test_amber_defaults_cache_html_true(mock_mcp, pages_dir):
 
 
 def test_registered_views_empty_initially(amber):
-    assert amber._apps == set()
+    assert amber._widgets == set()
 
 
 def test_frozen_dataclass(amber):
@@ -140,7 +140,7 @@ def test_no_plugins_called_when_no_paths_registered(mock_mcp, pages_dir):
 
 @pytest.mark.usefixtures("pages_dir")
 def test_dev_false_blocks_until_bundle_done(amber):
-    amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
+    amber._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
     called = False
 
     async def _fake_bundle(**_kwargs: object):
@@ -161,7 +161,7 @@ def test_vite_plugins_are_forwarded_without_serialization_in_prod(mock_mcp, page
         views=pages_dir,
         plugins=plugins,
     )
-    amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
+    amber._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
@@ -178,7 +178,7 @@ def test_vite_plugins_are_forwarded_without_serialization_in_prod(mock_mcp, page
 
 @pytest.mark.usefixtures("pages_dir")
 def test_dev_true_starts_background_task(amber):
-    amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
+    amber._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
     started = threading.Event()
     created_tasks: list[asyncio.Task[None]] = []
     original_create_task = asyncio.create_task
@@ -205,7 +205,7 @@ def test_dev_true_starts_background_task(amber):
 
 @pytest.mark.usefixtures("pages_dir")
 def test_passes_dev_flag_and_derived_minify(amber):
-    amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
+    amber._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
@@ -225,7 +225,7 @@ def test_passes_dev_flag_and_derived_minify(amber):
 
 def test_default_bundler_plugins_use_public_bundle(mock_mcp, pages_dir):
     amber = Amber(mcp=mock_mcp, views=pages_dir)
-    amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
+    amber._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
@@ -234,14 +234,14 @@ def test_default_bundler_plugins_use_public_bundle(mock_mcp, pages_dir):
     with patch("gdansk.core.bundle", _fake_bundle), _lifespan(amber(dev=False)):
         pass
 
-    assert captured[-1]["pages"] == [Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False)]
+    assert captured[-1]["pages"] == [Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False)]
     assert captured[-1]["plugins"] is None
 
 
 def test_explicit_lightningcss_plugin_is_forwarded_to_bundle_payload(mock_mcp, pages_dir):
     plugins = [LightningCSS()]
     amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=plugins)
-    amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
+    amber._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
@@ -256,7 +256,7 @@ def test_explicit_lightningcss_plugin_is_forwarded_to_bundle_payload(mock_mcp, p
 def test_empty_bundler_plugin_list_is_forwarded(mock_mcp, pages_dir):
     plugins: list[LightningCSS] = []
     amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=plugins)
-    amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
+    amber._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
@@ -275,7 +275,7 @@ def test_vite_only_plugins_are_forwarded_without_serialization(mock_mcp, pages_d
         views=pages_dir,
         plugins=plugins,
     )
-    amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
+    amber._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
@@ -294,7 +294,7 @@ def test_mixed_plugins_are_forwarded_without_serialization(mock_mcp, pages_dir):
         views=pages_dir,
         plugins=plugins,
     )
-    amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
+    amber._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
@@ -313,7 +313,7 @@ def test_plugin_errors_propagate_in_prod(mock_mcp, pages_dir):
         views=pages_dir,
         plugins=[VitePlugin(specifier="plugins/append-comment.mjs")],
     )
-    amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
+    amber._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
 
     async def _failing_bundle(**_kwargs: object):
         msg = "plugin boom"
@@ -331,7 +331,7 @@ def test_plugin_errors_propagate_in_prod(mock_mcp, pages_dir):
 
 def test_passes_views_dot_gdansk_as_output(mock_mcp, pages_dir):
     amber = Amber(mcp=mock_mcp, views=pages_dir)
-    amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
+    amber._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
@@ -344,7 +344,7 @@ def test_passes_views_dot_gdansk_as_output(mock_mcp, pages_dir):
 
 
 def test_passes_views_as_cwd(amber, pages_dir):
-    amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
+    amber._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
@@ -358,7 +358,7 @@ def test_passes_views_as_cwd(amber, pages_dir):
 
 @pytest.mark.usefixtures("pages_dir")
 def test_passes_view_specs_for_amber_ui_entries(amber):
-    amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
+    amber._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
@@ -367,13 +367,13 @@ def test_passes_view_specs_for_amber_ui_entries(amber):
     with patch("gdansk.core.bundle", _fake_bundle), _lifespan(amber(dev=False)):
         pass
 
-    assert captured[-1]["pages"] == [Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False)]
+    assert captured[-1]["pages"] == [Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False)]
 
 
 @pytest.mark.usefixtures("pages_dir")
 def test_passes_registered_paths(amber):
-    amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
-    amber._apps.add(Page(path=Path("apps/nested/page/page.tsx"), app=True, ssr=False))
+    amber._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
+    amber._widgets.add(Page(path=Path("widgets/nested/page/widget.tsx"), is_widget=True, ssr=False))
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
@@ -382,9 +382,9 @@ def test_passes_registered_paths(amber):
     with patch("gdansk.core.bundle", _fake_bundle), _lifespan(amber(dev=False)):
         pass
 
-    assert {(view.path, view.app, view.ssr) for view in captured[-1]["pages"]} == {
-        (Path("apps/simple/page.tsx"), True, False),
-        (Path("apps/nested/page/page.tsx"), True, False),
+    assert {(view.path, view.is_widget, view.ssr) for view in captured[-1]["pages"]} == {
+        (Path("widgets/simple/widget.tsx"), True, False),
+        (Path("widgets/nested/page/widget.tsx"), True, False),
     }
 
 
@@ -392,11 +392,11 @@ def test_passes_registered_paths(amber):
 def test_run_build_pipeline_invokes_server_bundle_only_for_ssr_paths(mock_mcp, pages_dir):
     amber = Amber(mcp=mock_mcp, views=pages_dir)
 
-    @amber.tool(Path("simple/page.tsx"))
+    @amber.tool(Path("simple/widget.tsx"))
     def tool_a():
         pass
 
-    @amber.tool(Path("nested/page/page.tsx"), ssr=True)
+    @amber.tool(Path("nested/page/widget.tsx"), ssr=True)
     def tool_b():
         pass
 
@@ -410,9 +410,9 @@ def test_run_build_pipeline_invokes_server_bundle_only_for_ssr_paths(mock_mcp, p
 
     assert len(captured) == 1
     assert captured[0]["output"] == pages_dir / ".gdansk"
-    assert {(view.path, view.app, view.ssr) for view in captured[0]["pages"]} == {
-        (Path("apps/simple/page.tsx"), True, False),
-        (Path("apps/nested/page/page.tsx"), True, True),
+    assert {(view.path, view.is_widget, view.ssr) for view in captured[0]["pages"]} == {
+        (Path("widgets/simple/widget.tsx"), True, False),
+        (Path("widgets/nested/page/widget.tsx"), True, True),
     }
 
 
@@ -424,7 +424,7 @@ def test_dev_vite_bundle_task_cancelled_on_shutdown(mock_mcp, pages_dir):
         views=pages_dir,
         plugins=[VitePlugin(specifier="plugins/append-comment.mjs")],
     )
-    amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
+    amber._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
 
     async def _slow_bundle(**_kwargs: object):
         try:
@@ -451,7 +451,7 @@ def test_dev_vite_bundle_error_is_logged(mock_mcp, pages_dir):
         views=pages_dir,
         plugins=[VitePlugin(specifier="plugins/append-comment.mjs")],
     )
-    amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
+    amber._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
 
     async def _failing_bundle(**_kwargs: object):
         msg = "watch failed"
@@ -471,7 +471,7 @@ def test_dev_vite_bundle_error_is_logged(mock_mcp, pages_dir):
 
 @pytest.mark.usefixtures("pages_dir")
 def test_repeated_startup_shutdown_is_idempotent(amber):
-    amber._apps.add(Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False))
+    amber._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
 
     async def _fake_bundle(**_kwargs: object):
         await asyncio.sleep(0)
@@ -501,88 +501,88 @@ def test_rejects_non_tsx_jsx(amber):
 
 
 def test_accepts_tsx(amber):
-    decorator = amber.tool(Path("simple/page.tsx"))
+    decorator = amber.tool(Path("simple/widget.tsx"))
     assert callable(decorator)
 
 
 def test_accepts_str_page(amber):
-    decorator = amber.tool("simple/page.tsx")
+    decorator = amber.tool("simple/widget.tsx")
     assert callable(decorator)
 
 
 def test_accepts_pathlike_page(amber):
-    decorator = amber.tool(PurePosixPath("simple/page.tsx"))
+    decorator = amber.tool(PurePosixPath("simple/widget.tsx"))
     assert callable(decorator)
 
 
 def test_accepts_directory_and_prefers_page_tsx(mock_mcp, pages_dir):
-    preferred_path = pages_dir / "apps" / "preferred"
+    preferred_path = pages_dir / "widgets" / "preferred"
     preferred_path.mkdir(parents=True, exist_ok=True)
-    (preferred_path / "page.tsx").write_text("export const tsx = 1;\n", encoding="utf-8")
-    (preferred_path / "page.jsx").write_text("export const jsx = 1;\n", encoding="utf-8")
+    (preferred_path / "widget.tsx").write_text("export const tsx = 1;\n", encoding="utf-8")
+    (preferred_path / "widget.jsx").write_text("export const jsx = 1;\n", encoding="utf-8")
     amber = Amber(mcp=mock_mcp, views=pages_dir)
 
     decorator = amber.tool(Path("preferred"))
 
     assert callable(decorator)
-    assert Page(path=Path("apps/preferred/page.tsx"), app=True, ssr=False) in amber._apps
+    assert Page(path=Path("widgets/preferred/widget.tsx"), is_widget=True, ssr=False) in amber._widgets
 
 
 def test_accepts_directory_with_page_jsx_fallback(mock_mcp, pages_dir):
-    jsx_only_path = pages_dir / "apps" / "jsx-only"
+    jsx_only_path = pages_dir / "widgets" / "jsx-only"
     jsx_only_path.mkdir(parents=True, exist_ok=True)
-    (jsx_only_path / "page.jsx").write_text("export const jsx = 1;\n", encoding="utf-8")
+    (jsx_only_path / "widget.jsx").write_text("export const jsx = 1;\n", encoding="utf-8")
     amber = Amber(mcp=mock_mcp, views=pages_dir)
 
     decorator = amber.tool(Path("jsx-only"))
 
     assert callable(decorator)
-    assert Page(path=Path("apps/jsx-only/page.jsx"), app=True, ssr=False) in amber._apps
+    assert Page(path=Path("widgets/jsx-only/widget.jsx"), is_widget=True, ssr=False) in amber._widgets
 
 
-def test_rejects_non_apps_path(amber):
-    with pytest.raises(ValueError, match=r"must match \*\*/page\.tsx or \*\*/page\.jsx"):
+def test_rejects_non_widget_path(amber):
+    with pytest.raises(ValueError, match=r"must match \*\*/widget\.tsx or \*\*/widget\.jsx"):
         amber.tool(Path("simple.tsx"))
 
 
-def test_rejects_apps_prefixed_path(amber):
-    with pytest.raises(ValueError, match="must not start with apps/"):
-        amber.tool(Path("apps/simple/page.tsx"))
+def test_rejects_widgets_prefixed_path(amber):
+    with pytest.raises(ValueError, match="must not start with widgets/"):
+        amber.tool(Path("widgets/simple/widget.tsx"))
 
 
-def test_rejects_non_app_entry_filename(mock_mcp, pages_dir):
-    wrong_entry = pages_dir / "apps" / "wrong" / "app.tsx"
+def test_rejects_non_widget_entry_filename(mock_mcp, pages_dir):
+    wrong_entry = pages_dir / "widgets" / "wrong" / "app.tsx"
     wrong_entry.parent.mkdir(parents=True, exist_ok=True)
     wrong_entry.write_text("export const page = 1;\n", encoding="utf-8")
 
     amber = Amber(mcp=mock_mcp, views=pages_dir)
-    with pytest.raises(ValueError, match=r"must match \*\*/page\.tsx or \*\*/page\.jsx"):
+    with pytest.raises(ValueError, match=r"must match \*\*/widget\.tsx or \*\*/widget\.jsx"):
         amber.tool(Path("wrong/app.tsx"))
 
 
 def test_rejects_absolute_page_path(amber, pages_dir):
     with pytest.raises(ValueError, match="must be a relative path"):
-        amber.tool(pages_dir / "apps/simple/page.tsx")
+        amber.tool(pages_dir / "widgets/simple/widget.tsx")
 
 
 def test_rejects_traversal_segments(amber):
     with pytest.raises(ValueError, match="must not contain traversal segments"):
-        amber.tool(Path("simple/../simple/page.tsx"))
+        amber.tool(Path("simple/../simple/widget.tsx"))
 
 
 def test_accepts_jsx(mock_mcp, pages_dir):
-    jsx_path = pages_dir / "apps" / "jsx" / "page.jsx"
+    jsx_path = pages_dir / "widgets" / "jsx" / "widget.jsx"
     jsx_path.parent.mkdir(parents=True, exist_ok=True)
     jsx_path.write_text("export const app = 1;\n", encoding="utf-8")
 
     amber = Amber(mcp=mock_mcp, views=pages_dir)
-    decorator = amber.tool(Path("jsx/page.jsx"))
+    decorator = amber.tool(Path("jsx/widget.jsx"))
     assert callable(decorator)
 
 
 def test_raises_when_file_not_found(amber):
     with pytest.raises(FileNotFoundError, match="was not found"):
-        amber.tool(Path("missing/page.tsx"))
+        amber.tool(Path("missing/widget.tsx"))
 
 
 def test_raises_when_directory_missing_page_files(amber):
@@ -590,72 +590,72 @@ def test_raises_when_directory_missing_page_files(amber):
         amber.tool(Path("missing"))
 
 
-def test_rejects_ui_keyword_argument(amber):
-    with pytest.raises(TypeError, match="ui"):
-        amber.tool(ui=Path("simple/page.tsx"))
+def test_rejects_page_keyword_argument(amber):
+    with pytest.raises(TypeError, match="page"):
+        amber.tool(page=Path("simple/widget.tsx"))
 
 
 def test_adds_bundle_path_to_registered_views(amber):
-    assert Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False) not in amber._apps
+    assert Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False) not in amber._widgets
 
-    @amber.tool(Path("simple/page.tsx"))
+    @amber.tool(Path("simple/widget.tsx"))
     def my_tool():
         pass
 
-    assert Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False) in amber._apps
+    assert Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False) in amber._widgets
 
 
 def test_tool_ssr_none_inherits_amber_value(mock_mcp, pages_dir):
     amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=True)
 
-    @amber.tool(Path("simple/page.tsx"))
+    @amber.tool(Path("simple/widget.tsx"))
     def my_tool():
         pass
 
     _ = my_tool
-    assert Page(path=Path("apps/simple/page.tsx"), app=True, ssr=True) in amber._apps
+    assert Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=True) in amber._widgets
 
 
 def test_tool_ssr_true_overrides_amber_false(mock_mcp, pages_dir):
     amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=False)
 
-    @amber.tool(Path("simple/page.tsx"), ssr=True)
+    @amber.tool(Path("simple/widget.tsx"), ssr=True)
     def my_tool():
         pass
 
     _ = my_tool
-    assert Page(path=Path("apps/simple/page.tsx"), app=True, ssr=True) in amber._apps
+    assert Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=True) in amber._widgets
 
 
 def test_tool_ssr_false_overrides_amber_true(mock_mcp, pages_dir):
     amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=True)
 
-    @amber.tool(Path("simple/page.tsx"), ssr=False)
+    @amber.tool(Path("simple/widget.tsx"), ssr=False)
     def my_tool():
         pass
 
     _ = my_tool
-    assert Page(path=Path("apps/simple/page.tsx"), app=True, ssr=False) in amber._apps
+    assert Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False) in amber._widgets
 
 
 def test_tool_reregistration_overwrites_ssr_for_same_path(mock_mcp, pages_dir):
     amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=False)
 
-    @amber.tool(Path("simple/page.tsx"), ssr=False)
+    @amber.tool(Path("simple/widget.tsx"), ssr=False)
     def first_tool():
         pass
 
-    @amber.tool(Path("simple/page.tsx"), ssr=True)
+    @amber.tool(Path("simple/widget.tsx"), ssr=True)
     def second_tool():
         pass
 
     _ = (first_tool, second_tool)
-    assert Page(path=Path("apps/simple/page.tsx"), app=True, ssr=True) in amber._apps
-    assert sum(1 for view in amber._apps if view.path == Path("apps/simple/page.tsx")) == 1
+    assert Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=True) in amber._widgets
+    assert sum(1 for view in amber._widgets if view.path == Path("widgets/simple/widget.tsx")) == 1
 
 
 def test_uri_top_level(amber, mock_mcp):
-    @amber.tool(Path("simple/page.tsx"))
+    @amber.tool(Path("simple/widget.tsx"))
     def my_tool():
         pass
 
@@ -664,7 +664,7 @@ def test_uri_top_level(amber, mock_mcp):
 
 
 def test_uri_nested(amber, mock_mcp):
-    @amber.tool(Path("nested/page/page.tsx"))
+    @amber.tool(Path("nested/page/widget.tsx"))
     def my_tool():
         pass
 
@@ -673,7 +673,7 @@ def test_uri_nested(amber, mock_mcp):
 
 
 def test_sets_meta_ui(amber, mock_mcp):
-    @amber.tool(Path("simple/page.tsx"))
+    @amber.tool(Path("simple/widget.tsx"))
     def my_tool():
         pass
 
@@ -683,7 +683,7 @@ def test_sets_meta_ui(amber, mock_mcp):
 
 
 def test_preserves_existing_meta(amber, mock_mcp):
-    @amber.tool(Path("simple/page.tsx"), meta={"custom": "value"})
+    @amber.tool(Path("simple/widget.tsx"), meta={"custom": "value"})
     def my_tool():
         pass
 
@@ -693,7 +693,7 @@ def test_preserves_existing_meta(amber, mock_mcp):
 
 
 def test_registers_mcp_tool(amber, mock_mcp):
-    @amber.tool(Path("simple/page.tsx"), name="my_tool", title="My Tool", description="desc")
+    @amber.tool(Path("simple/widget.tsx"), name="my_tool", title="My Tool", description="desc")
     def my_tool():
         pass
 
@@ -705,7 +705,7 @@ def test_registers_mcp_tool(amber, mock_mcp):
 
 
 def test_registers_mcp_resource(amber, mock_mcp):
-    @amber.tool(Path("simple/page.tsx"), name="my_tool", title="My Tool", description="desc")
+    @amber.tool(Path("simple/widget.tsx"), name="my_tool", title="My Tool", description="desc")
     def my_tool():
         pass
 
@@ -720,7 +720,7 @@ async def test_resource_reads_js(amber, mock_mcp, tmp_path):
     amber_output = tmp_path / "output"
     object.__setattr__(amber, "output", amber_output)
 
-    @amber.tool(Path("simple/page.tsx"))
+    @amber.tool(Path("simple/widget.tsx"))
     def my_tool():
         pass
 
@@ -740,7 +740,7 @@ async def test_resource_includes_css_when_present(amber, mock_mcp, tmp_path):
     amber_output = tmp_path / "output"
     object.__setattr__(amber, "output", amber_output)
 
-    @amber.tool(Path("simple/page.tsx"))
+    @amber.tool(Path("simple/widget.tsx"))
     def my_tool():
         pass
 
@@ -761,7 +761,7 @@ async def test_resource_omits_css_when_absent(amber, mock_mcp, tmp_path):
     amber_output = tmp_path / "output"
     object.__setattr__(amber, "output", amber_output)
 
-    @amber.tool(Path("simple/page.tsx"))
+    @amber.tool(Path("simple/widget.tsx"))
     def my_tool():
         pass
 
@@ -780,7 +780,7 @@ async def test_resource_uses_views_dot_gdansk_output(mock_mcp, pages_dir):
     amber = Amber(mcp=mock_mcp, views=pages_dir)
     assert amber.output == pages_dir / ".gdansk"
 
-    @amber.tool(Path("simple/page.tsx"))
+    @amber.tool(Path("simple/widget.tsx"))
     def my_tool():
         pass
 
@@ -799,7 +799,7 @@ async def test_resource_raises_friendly_error_when_js_missing(amber, mock_mcp, t
     amber_output = tmp_path / "output"
     object.__setattr__(amber, "output", amber_output)
 
-    @amber.tool(Path("simple/page.tsx"))
+    @amber.tool(Path("simple/widget.tsx"))
     def my_tool():
         pass
 
@@ -815,7 +815,7 @@ async def test_resource_injects_html_when_effective_ssr_true(mock_mcp, pages_dir
     amber_output = tmp_path / "output"
     object.__setattr__(amber, "output", amber_output)
 
-    @amber.tool(Path("simple/page.tsx"))
+    @amber.tool(Path("simple/widget.tsx"))
     def my_tool():
         pass
 
@@ -840,7 +840,7 @@ async def test_resource_caches_ssr_html_by_default(mock_mcp, pages_dir, tmp_path
     amber_output = tmp_path / "output"
     object.__setattr__(amber, "output", amber_output)
 
-    @amber.tool(Path("simple/page.tsx"))
+    @amber.tool(Path("simple/widget.tsx"))
     def my_tool():
         pass
 
@@ -867,7 +867,7 @@ async def test_resource_does_not_cache_when_disabled(mock_mcp, pages_dir, tmp_pa
     amber_output = tmp_path / "output"
     object.__setattr__(amber, "output", amber_output)
 
-    @amber.tool(Path("simple/page.tsx"))
+    @amber.tool(Path("simple/widget.tsx"))
     def my_tool():
         pass
 
@@ -892,7 +892,7 @@ async def test_resource_invalidates_cache_when_client_bundle_changes(amber, mock
     amber_output = tmp_path / "output"
     object.__setattr__(amber, "output", amber_output)
 
-    @amber.tool(Path("simple/page.tsx"))
+    @amber.tool(Path("simple/widget.tsx"))
     def my_tool():
         pass
 
@@ -914,7 +914,7 @@ async def test_resource_invalidates_cache_when_css_presence_changes(amber, mock_
     amber_output = tmp_path / "output"
     object.__setattr__(amber, "output", amber_output)
 
-    @amber.tool(Path("simple/page.tsx"))
+    @amber.tool(Path("simple/widget.tsx"))
     def my_tool():
         pass
 
@@ -937,7 +937,7 @@ async def test_resource_skips_runtime_and_html_when_effective_ssr_false(amber, m
     amber_output = tmp_path / "output"
     object.__setattr__(amber, "output", amber_output)
 
-    @amber.tool(Path("simple/page.tsx"))
+    @amber.tool(Path("simple/widget.tsx"))
     def my_tool():
         pass
 
@@ -959,7 +959,7 @@ async def test_resource_raises_when_ssr_bundle_missing(mock_mcp, pages_dir, tmp_
     amber_output = tmp_path / "output"
     object.__setattr__(amber, "output", amber_output)
 
-    @amber.tool(Path("simple/page.tsx"))
+    @amber.tool(Path("simple/widget.tsx"))
     def my_tool():
         pass
 
@@ -978,7 +978,7 @@ async def test_resource_propagates_runtime_error_fail_fast(mock_mcp, pages_dir, 
     amber_output = tmp_path / "output"
     object.__setattr__(amber, "output", amber_output)
 
-    @amber.tool(Path("simple/page.tsx"))
+    @amber.tool(Path("simple/widget.tsx"))
     def my_tool():
         pass
 
@@ -1009,7 +1009,7 @@ async def test_constructor_metadata_applies_to_tool_resource(mock_mcp, pages_dir
     )
     object.__setattr__(amber, "output", tmp_path / "output")
 
-    @amber.tool(Path("simple/page.tsx"))
+    @amber.tool(Path("simple/widget.tsx"))
     def my_tool():
         pass
 
@@ -1038,7 +1038,7 @@ async def test_tool_metadata_overrides_constructor_metadata_shallowly(mock_mcp, 
     object.__setattr__(amber, "output", tmp_path / "output")
 
     @amber.tool(
-        Path("simple/page.tsx"),
+        Path("simple/widget.tsx"),
         metadata={"title": "Tool Title", "openGraph": {"title": "Tool OG"}},
     )
     def my_tool():
@@ -1064,7 +1064,7 @@ async def test_metadata_merge_is_non_mutating(mock_mcp, pages_dir, tmp_path):
     amber = Amber(mcp=mock_mcp, views=pages_dir, metadata=base_metadata)
     object.__setattr__(amber, "output", tmp_path / "output")
 
-    @amber.tool(Path("simple/page.tsx"), metadata=tool_metadata)
+    @amber.tool(Path("simple/widget.tsx"), metadata=tool_metadata)
     def my_tool():
         pass
 
@@ -1083,7 +1083,7 @@ def test_returns_original_function(amber):
     def my_tool():
         return "original"
 
-    result = amber.tool(Path("simple/page.tsx"))(my_tool)
+    result = amber.tool(Path("simple/widget.tsx"))(my_tool)
     assert result is my_tool
     assert result() == "original"
 

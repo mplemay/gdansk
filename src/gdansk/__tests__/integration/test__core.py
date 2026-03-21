@@ -117,15 +117,15 @@ def test_view_requires_keyword_only_arguments():
 
 
 def test_view_is_hashable_and_equatable():
-    first = Page(path=Path("apps/simple/page.tsx"), app=True, ssr=True)
-    second = Page(path=Path("apps/simple/page.tsx"), app=True, ssr=True)
+    first = Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=True)
+    second = Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=True)
 
     assert first == second
     assert len({first, second}) == 1
 
 
 def test_view_exposes_derived_bundle_paths():
-    app_view = Page(path=Path("apps/simple/page.tsx"), app=True, ssr=True)
+    app_view = Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=True)
     assert app_view.client == Path("simple/client.js")
     assert app_view.css == Path("simple/client.css")
     assert app_view.server == Path("simple/server.js")
@@ -374,8 +374,8 @@ async def test_bundle_accepts_minify_false(tmp_path, monkeypatch):
 async def test_bundle_app_ssr_view_writes_executable_server_output(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _write_ssr_modules(tmp_path)
-    (tmp_path / "apps" / "simple").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "apps" / "simple" / "page.tsx").write_text(
+    (tmp_path / "widgets" / "simple").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "widgets" / "simple" / "widget.tsx").write_text(
         'import { createElement } from "react";\n'
         "export default function App() {\n"
         "  return createElement('div', null, 'ok');\n"
@@ -383,7 +383,7 @@ async def test_bundle_app_ssr_view_writes_executable_server_output(tmp_path, mon
         encoding="utf-8",
     )
 
-    result = await bundle([Page(path=Path("apps/simple/page.tsx"), app=True, ssr=True)])
+    result = await bundle([Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=True)])
 
     client_output_js = tmp_path / ".gdansk" / "simple" / "client.js"
     output_js = tmp_path / ".gdansk" / "simple" / "server.js"
@@ -400,10 +400,10 @@ async def test_bundle_app_ssr_view_writes_executable_server_output(tmp_path, mon
 async def test_bundle_app_ssr_view_writes_css_output_when_page_imports_css(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _write_ssr_modules(tmp_path)
-    app_dir = tmp_path / "apps" / "simple"
+    app_dir = tmp_path / "widgets" / "simple"
     app_dir.mkdir(parents=True, exist_ok=True)
     (app_dir / "simple.css").write_text("body { color: red; }\n", encoding="utf-8")
-    (app_dir / "page.tsx").write_text(
+    (app_dir / "widget.tsx").write_text(
         'import "./simple.css";\n'
         'import { createElement } from "react";\n'
         "export default function App() {\n"
@@ -412,7 +412,7 @@ async def test_bundle_app_ssr_view_writes_css_output_when_page_imports_css(tmp_p
         encoding="utf-8",
     )
 
-    await bundle([Page(path=Path("apps/simple/page.tsx"), app=True, ssr=True)])
+    await bundle([Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=True)])
 
     assert (tmp_path / ".gdansk" / "simple" / "client.js").exists()
     assert (tmp_path / ".gdansk" / "simple" / "client.css").exists()
@@ -424,8 +424,8 @@ async def test_bundle_app_ssr_view_writes_css_output_when_page_imports_css(tmp_p
 async def test_bundle_app_ssr_view_supports_message_channel_at_import(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _write_ssr_modules(tmp_path, use_message_channel_at_import=True)
-    (tmp_path / "apps" / "simple").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "apps" / "simple" / "page.tsx").write_text(
+    (tmp_path / "widgets" / "simple").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "widgets" / "simple" / "widget.tsx").write_text(
         'import { createElement } from "react";\n'
         "export default function App() {\n"
         "  return createElement('div', null, 'ok');\n"
@@ -433,7 +433,7 @@ async def test_bundle_app_ssr_view_supports_message_channel_at_import(tmp_path, 
         encoding="utf-8",
     )
 
-    await bundle([Page(path=Path("apps/simple/page.tsx"), app=True, ssr=True)])
+    await bundle([Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=True)])
 
     output_js = tmp_path / ".gdansk" / "simple" / "server.js"
     assert output_js.exists()
@@ -447,13 +447,13 @@ async def test_bundle_app_ssr_view_supports_message_channel_at_import(tmp_path, 
 async def test_bundle_app_ssr_view_runtime_error_surfaces(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _write_ssr_modules(tmp_path, throw_on_render=True)
-    (tmp_path / "apps" / "simple").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "apps" / "simple" / "page.tsx").write_text(
+    (tmp_path / "widgets" / "simple").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "widgets" / "simple" / "widget.tsx").write_text(
         "export default function App() {\n  return null;\n}\n",
         encoding="utf-8",
     )
 
-    await bundle([Page(path=Path("apps/simple/page.tsx"), app=True, ssr=True)])
+    await bundle([Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=True)])
 
     output_js = tmp_path / ".gdansk" / "simple" / "server.js"
     with pytest.raises(RuntimeError, match="Execution error"):

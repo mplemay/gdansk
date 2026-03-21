@@ -1,6 +1,6 @@
 use std::path::Path;
 
-pub(crate) const APP_ENTRYPOINT_QUERY: &str = "?gdansk-app-entry";
+pub(crate) const WIDGET_ENTRYPOINT_QUERY: &str = "?gdansk-widget-entry";
 pub(crate) const SERVER_ENTRYPOINT_QUERY: &str = "?gdansk-server-entry";
 pub(crate) const GDANSK_RUNTIME_SPECIFIER: &str = "gdansk:runtime";
 pub(crate) const GDANSK_CSS_STUB_PREFIX: &str = "gdansk:css-stub:";
@@ -9,9 +9,9 @@ pub(crate) const LIGHTNINGCSS_PLUGIN_ID: &str = "lightningcss";
 #[cfg(not(test))]
 pub(crate) const GDANSK_RUNTIME_MODULE_SOURCE: &str = include_str!("../runtime.js");
 
-pub(crate) fn client_entry_import(import: &str, app: bool) -> String {
-    if app {
-        format!("{import}{APP_ENTRYPOINT_QUERY}")
+pub(crate) fn client_entry_import(import: &str, is_widget: bool) -> String {
+    if is_widget {
+        format!("{import}{WIDGET_ENTRYPOINT_QUERY}")
     } else {
         import.to_owned()
     }

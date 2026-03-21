@@ -80,7 +80,7 @@ mod tests {
 
     #[test]
     fn wrapper_source_imports_runtime_module() {
-        let wrapper = wrapper_source("apps/simple/page.tsx").expect("expected server wrapper");
+        let wrapper = wrapper_source("widgets/simple/widget.tsx").expect("expected server wrapper");
         assert!(wrapper.contains(&format!(
             r#"import {{ setSsrHtml }} from "{GDANSK_RUNTIME_SPECIFIER}";"#
         )));
@@ -88,13 +88,13 @@ mod tests {
 
     #[test]
     fn wrapper_source_does_not_call_deno_ops_directly() {
-        let wrapper = wrapper_source("apps/simple/page.tsx").expect("expected server wrapper");
+        let wrapper = wrapper_source("widgets/simple/widget.tsx").expect("expected server wrapper");
         assert!(!wrapper.contains("Deno.core.ops.op_gdansk_set_html"));
     }
 
     #[test]
     fn wrapper_source_does_not_use_global_marker() {
-        let wrapper = wrapper_source("apps/simple/page.tsx").expect("expected server wrapper");
+        let wrapper = wrapper_source("widgets/simple/widget.tsx").expect("expected server wrapper");
         assert!(!wrapper.contains("globalThis.__gdansk_html"));
     }
 }

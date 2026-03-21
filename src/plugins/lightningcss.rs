@@ -424,7 +424,7 @@ fn find_client_entry_module_id(
     page: &NormalizedPage,
     entry_module_ids: &[String],
 ) -> Option<String> {
-    let entry_import = client_entry_import(&page.import, page.app);
+    let entry_import = client_entry_import(&page.import, page.is_widget);
     for module_id in entry_module_ids {
         let normalized_module_id = module_id.replace('\\', "/");
         if normalized_module_id == entry_import
@@ -877,13 +877,13 @@ mod tests {
 
     fn normalized_page(
         import: &str,
-        app: bool,
+        is_widget: bool,
         client_name: &str,
         client_css_path: &str,
     ) -> NormalizedPage {
         NormalizedPage {
             import: import.to_string(),
-            app,
+            is_widget,
             ssr: false,
             client_name: client_name.to_string(),
             client_css_path: PathBuf::from(client_css_path),
@@ -903,14 +903,14 @@ mod tests {
     }
 
     #[test]
-    fn client_entry_lookup_matches_windows_app_entry_paths() {
+    fn client_entry_lookup_matches_windows_widget_entry_paths() {
         let page = normalized_page(
-            "apps/simple/page.tsx",
+            "widgets/simple/widget.tsx",
             true,
             "simple/client",
             "simple/client.css",
         );
-        let module_id = r"D:\work\proj\apps\simple\page.tsx?gdansk-app-entry".to_string();
+        let module_id = r"D:\work\proj\widgets\simple\widget.tsx?gdansk-widget-entry".to_string();
 
         assert_eq!(
             find_client_entry_module_id(&page, std::slice::from_ref(&module_id)),

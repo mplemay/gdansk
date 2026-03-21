@@ -92,7 +92,7 @@ def test_js_plugin_transforms_bundled_css(mock_mcp, pages_dir, tmp_path, monkeyp
         plugins=[VitePlugin(specifier=Path("plugins/append-comment.mjs"), options={"comment": "from-js"})],
     )
 
-    @amber.tool(Path("with_css/page.tsx"))
+    @amber.tool(Path("with_css/widget.tsx"))
     def my_tool():
         return "result"
 
@@ -118,7 +118,7 @@ def test_js_plugin_transforms_bundled_css_without_node_in_path(
         plugins=[VitePlugin(specifier=Path("plugins/append-comment.mjs"), options={"comment": "no-node"})],
     )
 
-    @amber.tool(Path("with_css/page.tsx"))
+    @amber.tool(Path("with_css/widget.tsx"))
     def my_tool():
         return "result"
 
@@ -138,7 +138,7 @@ def test_js_plugin_watch_runs_in_dev(mock_mcp, pages_dir, tmp_path, monkeypatch)
         plugins=[VitePlugin(specifier=Path("plugins/append-comment.mjs"), options={"comment": "dev-js"})],
     )
 
-    @amber.tool(Path("with_css/page.tsx"))
+    @amber.tool(Path("with_css/widget.tsx"))
     def my_tool():
         return "result"
 
@@ -161,7 +161,7 @@ def test_js_plugins_apply_in_declared_order(mock_mcp, pages_dir, tmp_path, monke
         ],
     )
 
-    @amber.tool(Path("with_css/page.tsx"))
+    @amber.tool(Path("with_css/widget.tsx"))
     def my_tool():
         return "result"
 
@@ -222,7 +222,7 @@ export default function (options) {
         ],
     )
 
-    @amber.tool(Path("with_css/page.tsx"))
+    @amber.tool(Path("with_css/widget.tsx"))
     def my_tool():
         return "result"
 
@@ -258,7 +258,7 @@ export default {
 
     amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=[VitePlugin(specifier=Path("plugins/boom.mjs"))])
 
-    @amber.tool(Path("with_css/page.tsx"))
+    @amber.tool(Path("with_css/widget.tsx"))
     def my_tool():
         return "result"
 
@@ -269,9 +269,9 @@ export default {
 @pytest.mark.integration
 def test_js_plugin_uses_local_tailwind_vite_package(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    todo_dir = pages_dir / "apps" / "todo"
+    todo_dir = pages_dir / "widgets" / "todo"
     todo_dir.mkdir(parents=True, exist_ok=True)
-    todo_dir.joinpath("page.tsx").write_text(
+    todo_dir.joinpath("widget.tsx").write_text(
         """
 import "./global.css";
 
@@ -299,7 +299,7 @@ body {
         plugins=[VitePlugin(specifier="@tailwindcss/vite")],
     )
 
-    @amber.tool(Path("todo/page.tsx"))
+    @amber.tool(Path("todo/widget.tsx"))
     def my_tool():
         return "result"
 
@@ -321,7 +321,7 @@ async def test_js_plugin_smoke_uses_repo_shadcn_tailwind_package(tmp_path, monke
     output = tmp_path / "shadcn-out"
 
     await bundle(
-        pages=[Page(path=Path("apps/todo/page.tsx"), app=True, ssr=False)],
+        pages=[Page(path=Path("widgets/todo/widget.tsx"), is_widget=True, ssr=False)],
         dev=False,
         minify=False,
         output=output,
