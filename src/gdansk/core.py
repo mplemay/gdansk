@@ -7,7 +7,7 @@ import logging
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Any, ClassVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from anyio import Path as APath
 
@@ -66,14 +66,21 @@ class Amber:
         _validate_plugins(self.plugins)
         object.__setattr__(self, "output", views_path / ".gdansk")
 
+    def _views_path(self) -> Path:
+        if not isinstance(self.views, Path):
+            msg = "internal error: Amber.views was not normalized to pathlib.Path"
+            raise TypeError(msg)
+        return self.views
+
     async def _run_build_pipeline(self, *, dev: bool) -> None:
+        views_root = self._views_path()
         pages = sorted(self._widgets, key=lambda page: page.path.as_posix())
         await bundle(
             pages=pages,
             dev=dev,
             minify=not dev,
             output=self.output,
-            cwd=cast("Path", self.views),
+            cwd=views_root,
             plugins=self.plugins,
         )
 
@@ -196,6 +203,7 @@ class Amber:
         structured_output: bool | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         """Register a tool and bind its widget resource into the MCP server."""
+        views_root = self._views_path()
         widget_path = self._normalize_widget_input(widget)
         widget_candidates = self._resolve_widget_path_candidates(widget_path)
 
@@ -204,7 +212,7 @@ class Amber:
 
         for widget_candidate in widget_candidates:
             _, candidate_bundle_page, candidate_uri = self._normalize_widget_path_and_uri(widget_candidate)
-            if (cast("Path", self.views) / candidate_bundle_page).is_file():
+            if (views_root / candidate_bundle_page).is_file():
                 bundle_page = candidate_bundle_page
                 uri = candidate_uri
                 break
