@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import sys
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
@@ -57,7 +59,13 @@ class Amber:
 
     def __post_init__(self) -> None:
         """Validate required paths and initialize derived output paths."""
-        views_path = Path(self.views)
+        # Python 3.11 + Windows: Path(PurePosixPath("C:/...")) is built from POSIX parts and
+        # mangles drive letters; 3.12+ pathlib handles cross-flavour paths. Remove this branch
+        # when the minimum supported version is 3.12 (then use Path(self.views) only).
+        if sys.version_info[:2] == (3, 11):
+            views_path = Path(os.fspath(self.views))
+        else:
+            views_path = Path(self.views)
         object.__setattr__(self, "views", views_path)
         if not views_path.is_dir():
             msg = f"The views directory {views_path} does not exist"
