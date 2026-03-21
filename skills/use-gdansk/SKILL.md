@@ -1,6 +1,6 @@
 ---
 name: use-gdansk
-description: Comprehensive gdansk implementation and debugging guide for MCP app UIs. Use when adding or fixing Amber and FastMCP tool UIs, wiring `@amber.tool(..., page=...)` to React `views/apps/**/page.tsx` or `page.jsx` entries, enabling SSR, configuring metadata or `cache_html`, adding the PostCSS plugin, mounting under FastAPI, or diagnosing gdansk bundling and runtime errors.
+description: Comprehensive gdansk implementation and debugging guide for MCP app UIs. Use when adding or fixing Amber and FastMCP tool UIs, wiring `@amber.tool(..., page=...)` to React `views/apps/**/page.tsx` or `page.jsx` entries, enabling SSR, configuring metadata or `cache_html`, adding a JS plugin adapter such as Tailwind CSS, mounting under FastAPI, or diagnosing gdansk bundling and runtime errors.
 ---
 
 # Use Gdansk
@@ -21,7 +21,7 @@ Map the request to one primary workflow before coding:
 3. Add advanced integration:
    - Enable SSR globally or per tool.
    - Add metadata or disable cache.
-   - Add PostCSS plugin handling.
+   - Add JS plugin adapter handling.
    - Mount inside FastAPI.
 
 If the user asks for multiple outcomes, implement one complete path first, then layer additional changes.
@@ -69,9 +69,9 @@ Choose the smallest integration needed:
 - FastAPI:
   - Mount `mcp_app` and run its lifespan.
   - Use `streamable_http_path="/"` in `FastMCP` when mounted.
-- PostCSS:
-  - Add `PostCSS()` plugin.
-  - Ensure `postcss-cli` is installed under `views/node_modules/.bin`.
+- Vite CSS plugins:
+  - Add them through `plugins=[VitePlugin(...)]`.
+  - Install plugin dependencies in the `views` package, such as `@tailwindcss/vite` and `tailwindcss`.
 
 Use [integration-options.md](references/integration-options.md) for exact implementation shapes.
 
@@ -92,11 +92,11 @@ If anything fails, match the exact error string and follow [troubleshooting.md](
 - Do not pass filesystem-absolute paths to `@amber.tool(page=...)`.
 - Do not use `apps/...` as the decorator input prefix.
 - Do not enable SSR without checking that the page has a default export and that dependencies are SSR-compatible.
-- Do not add PostCSS plugin without installing CLI dependencies in the views package.
+- Do not add a JS plugin adapter without installing its npm dependencies in the views package.
 
 ## Reference map
 
 - Baseline templates and run commands: [quickstart.md](references/quickstart.md)
 - Strict page contract and URI behavior: [page-contract-and-tool-wiring.md](references/page-contract-and-tool-wiring.md)
-- SSR, metadata, FastAPI, PostCSS options: [integration-options.md](references/integration-options.md)
+- SSR, metadata, FastAPI, JS plugin adapter options: [integration-options.md](references/integration-options.md)
 - Error-driven diagnosis: [troubleshooting.md](references/troubleshooting.md)

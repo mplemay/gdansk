@@ -3,22 +3,20 @@
 from __future__ import annotations
 
 import asyncio
-import concurrent.futures
 import logging
-import threading
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from anyio import Path as APath
 
-from gdansk._core import Page, bundle, run
+from gdansk._core import LightningCSS, Page, VitePlugin, bundle, run
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import ENV
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable, Coroutine, Sequence
+    from collections.abc import AsyncIterator, Callable, Sequence
     from os import PathLike
 
     from mcp.server import MCPServer as FastMCP
@@ -27,57 +25,19 @@ if TYPE_CHECKING:
 
     from gdansk.protocol import Plugin
 
-
 logger = logging.getLogger(__name__)
-_T = TypeVar("_T")
 
 
-class _AsyncThreadRunner:
-    def __init__(self) -> None:
-        self._loop: asyncio.AbstractEventLoop | None = None
-        self._thread: threading.Thread | None = None
-        self._started = threading.Event()
+def _validate_plugins(plugins: Sequence[Plugin] | None) -> None:
+    if plugins is None:
+        return
 
-    def start(self) -> None:
-        if self._thread is not None and self._thread.is_alive():
-            return
-        self._started.clear()
-        self._thread = threading.Thread(target=self._run, daemon=True)
-        self._thread.start()
-        self._started.wait()
+    for plugin in plugins:
+        if isinstance(plugin, (LightningCSS, VitePlugin)):
+            continue
 
-    def _run(self) -> None:
-        loop = asyncio.new_event_loop()
-        self._loop = loop
-        asyncio.set_event_loop(loop)
-        self._started.set()
-        try:
-            loop.run_forever()
-        finally:
-            pending = [task for task in asyncio.all_tasks(loop) if not task.done()]
-            for task in pending:
-                task.cancel()
-            if pending:
-                with suppress(asyncio.CancelledError):
-                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-            loop.close()
-
-    def run(self, coro: Coroutine[Any, Any, _T]) -> _T:
-        self.start()
-        loop = self._loop
-        if loop is None:
-            msg = "Runner event loop was not started"
-            raise RuntimeError(msg)
-        future = asyncio.run_coroutine_threadsafe(coro, loop)
-        return future.result()
-
-    def stop(self) -> None:
-        if self._loop is None or self._thread is None:
-            return
-        self._loop.call_soon_threadsafe(self._loop.stop)
-        self._thread.join()
-        self._loop = None
-        self._thread = None
+        msg = "Amber plugins must be LightningCSS or VitePlugin instances"
+        raise TypeError(msg)
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,7 +54,7 @@ class Amber:
     ssr: bool = field(default=False, kw_only=True)
     cache_html: bool = field(default=True, kw_only=True)
     metadata: Metadata | None = field(default=None, kw_only=True)
-    plugins: Sequence[Plugin] = field(default=(), kw_only=True)
+    plugins: Sequence[Plugin] | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
         """Validate required paths and initialize derived output paths."""
@@ -102,42 +62,19 @@ class Amber:
             msg = f"The views directory {self.views} does not exist"
             raise ValueError(msg)
 
+        _validate_plugins(self.plugins)
         object.__setattr__(self, "output", self.views / ".gdansk")
 
-    def _schedule_watcher_tasks(
-        self,
-        *,
-        dev: bool,
-    ) -> tuple[asyncio.Event | None, list[asyncio.Task[None]]]:
-        if not dev or not self.plugins:
-            return None, []
-
-        stop_event = asyncio.Event()
-        watcher_tasks: list[asyncio.Task[None]] = [
-            asyncio.create_task(
-                plugin.watch(
-                    pages=self.views,
-                    output=self.output,
-                    stop_event=stop_event,
-                ),
-            )
-            for plugin in self.plugins
-        ]
-
-        return stop_event, watcher_tasks
-
     async def _run_build_pipeline(self, *, dev: bool) -> None:
+        pages = sorted(self._apps, key=lambda page: page.path.as_posix())
         await bundle(
-            pages=sorted(self._apps, key=lambda page: page.path.as_posix()),
+            pages=pages,
             dev=dev,
             minify=not dev,
             output=self.output,
             cwd=self.views,
+            plugins=self.plugins,
         )
-        if dev:
-            return
-        for plugin in self.plugins:
-            await plugin.build(pages=self.views, output=self.output)
 
     @staticmethod
     def _log_background_task_error(task: asyncio.Task[None]) -> None:
@@ -151,13 +88,9 @@ class Amber:
     @staticmethod
     async def _shutdown_dev_tasks(
         *,
-        stop_event: asyncio.Event | None,
         bundle_task: asyncio.Task[None] | None,
-        watcher_tasks: list[asyncio.Task[None]],
     ) -> None:
-        if stop_event is not None:
-            stop_event.set()
-        tasks = [candidate for candidate in [bundle_task, *watcher_tasks] if candidate is not None]
+        tasks = [candidate for candidate in [bundle_task] if candidate is not None]
         for task in tasks:
             if not task.done():
                 task.cancel()
@@ -219,43 +152,24 @@ class Amber:
         if not self._apps:
             return app
 
-        runner = _AsyncThreadRunner()
-        stop_event: asyncio.Event | None = None
-        watcher_tasks: list[asyncio.Task[None]] = []
         bundle_task: asyncio.Task[None] | None = None
         original_lifespan = app.router.lifespan_context
-
-        async def _start_dev() -> None:
-            nonlocal stop_event
-            nonlocal watcher_tasks
-            nonlocal bundle_task
-            stop_event, watcher_tasks = self._schedule_watcher_tasks(dev=True)
-            bundle_task = asyncio.create_task(self._run_build_pipeline(dev=True))
-            bundle_task.add_done_callback(self._log_background_task_error)
-            for watcher_task in watcher_tasks:
-                watcher_task.add_done_callback(self._log_background_task_error)
 
         @asynccontextmanager
         async def _lifespan(starlette_app: Starlette) -> AsyncIterator[None]:
             if dev:
-                runner.run(_start_dev())
+                nonlocal bundle_task
+                bundle_task = asyncio.create_task(self._run_build_pipeline(dev=True))
+                bundle_task.add_done_callback(self._log_background_task_error)
             else:
-                runner.run(self._run_build_pipeline(dev=False))
+                await self._run_build_pipeline(dev=False)
 
             async with original_lifespan(starlette_app):
                 try:
                     yield
                 finally:
                     if dev:
-                        with suppress(concurrent.futures.CancelledError):
-                            runner.run(
-                                Amber._shutdown_dev_tasks(
-                                    stop_event=stop_event,
-                                    bundle_task=bundle_task,
-                                    watcher_tasks=watcher_tasks,
-                                ),
-                            )
-                    runner.stop()
+                        await Amber._shutdown_dev_tasks(bundle_task=bundle_task)
 
         app.router.lifespan_context = _lifespan
         return app

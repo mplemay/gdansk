@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  lint:
+  prek:
     name: lint
     runs-on: ubuntu-latest
     steps:
@@ -23,25 +23,12 @@ jobs:
 
       - uses: astral-sh/setup-uv@v7
         with:
-          python-version: "3.11"
+          enable-cache: true
 
-      - name: Rust format
-        run: cargo fmt -- --check
+      - name: Install dependencies
+        run: uv sync --all-groups --all-extras --all-packages
 
-      - name: Rust clippy
-        run: cargo clippy -- -D warnings
-
-      - name: Python lint
-        run: uv run ruff check .
-
-      - name: Python format
-        run: uv run ruff format --check .
-
-      - name: Python types
-        run: uv run ty check src
-
-      - name: Markdown lint
-        run: uv run rumdl check .
+      - uses: j178/prek-action@v1
 
   test-rust:
     name: test (rust, ${{ matrix.os }})
@@ -57,7 +44,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: test-rust-${{ matrix.os }}
+          shared-key: test-rust-${{ matrix.os }}-${{ runner.arch }}
 
       - name: Run tests
         run: cargo test
@@ -79,11 +66,21 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: test-python-${{ matrix.os }}
+          shared-key: test-python-${{ matrix.os }}-${{ runner.arch }}
 
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ matrix.python-version }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: examples/shadcn/src/shadcn/views/package-lock.json
+
+      - name: Install shadcn example npm dependencies
+        working-directory: examples/shadcn/src/shadcn/views
+        run: npm ci
 
       - name: Run tests
         run: uv run pytest

@@ -12,11 +12,14 @@ except ImportError:
     from mcp.server import MCPServer as FastMCP
 from starlette.middleware.cors import CORSMiddleware
 
-from gdansk import Amber
-from gdansk.experimental.postcss import PostCSS
+from gdansk import Amber, VitePlugin
 
 mcp = FastMCP("Todo Server")
-amber = Amber(mcp=mcp, views=Path(__file__).parent / "views", plugins=[PostCSS()])
+amber = Amber(
+    mcp=mcp,
+    views=Path(__file__).parent / "views",
+    plugins=[VitePlugin(specifier="@tailwindcss/vite")],
+)
 
 
 @dataclass(slots=True, kw_only=True)

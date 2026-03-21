@@ -1,43 +1,45 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     ffi::OsStr,
-    fmt, fs,
+    fmt,
     path::{Path, PathBuf},
 };
 
 #[cfg(not(test))]
+use std::collections::HashSet;
+#[cfg(not(test))]
 use std::hash::{Hash, Hasher};
+#[cfg(not(test))]
+use std::time::{Duration, UNIX_EPOCH};
 
-use deno_core::serde_json::Value;
-use lightningcss::{
-    bundler::{
-        BundleErrorKind as CssBundleErrorKind, Bundler as CssBundler,
-        FileProvider as CssFileProvider, ResolveResult, SourceProvider,
-    },
-    printer::PrinterOptions,
-    stylesheet::{MinifyOptions, ParserOptions},
+#[cfg(not(test))]
+use crate::plugins::{
+    ClientEntrypointPluginOptions, client_entrypoint_plugins, parse_plugin_selection,
+    server_entrypoint_plugins,
 };
+use crate::plugins::{client_entry_import, server_entry_import};
 #[cfg(not(test))]
 use pyo3::{
+    FromPyObject,
     basic::CompareOp,
-    exceptions::{PyRuntimeError, PyValueError},
+    exceptions::{PyRuntimeError, PyTypeError, PyValueError},
     prelude::*,
-    types::PyModule,
+    types::{
+        PyBool, PyDict, PyFloat, PyInt, PyList, PyModule, PyNotImplemented, PyString, PyTuple,
+    },
 };
 #[cfg(not(test))]
-use rolldown::plugin::{
-    __inner::SharedPluginable, HookBuildEndArgs, HookBuildStartArgs, HookLoadArgs, HookLoadOutput,
-    HookLoadReturn, HookResolveIdArgs, HookResolveIdOutput, HookResolveIdReturn, HookUsage, Plugin,
-    PluginContext, PluginContextResolveOptions, SharedLoadPluginContext,
-};
+use rolldown::plugin::__inner::SharedPluginable;
 #[cfg(not(test))]
 use rolldown::{
     Bundler, BundlerOptions, ExperimentalOptions, InputItem, OutputFormat, ResolveOptions,
 };
 #[cfg(not(test))]
-use rolldown_dev::{BundlerConfig, DevEngine, DevOptions, RebuildStrategy};
+use rolldown_common::ScanMode;
 #[cfg(not(test))]
-use std::{borrow::Cow, sync::Arc};
+use rolldown_dev::{BundlerConfig, DevEngine, DevOptions, DevWatchOptions, RebuildStrategy};
+#[cfg(not(test))]
+use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 struct PageSpec {
@@ -60,123 +62,20 @@ pub(crate) struct Page {
 
 #[cfg_attr(test, allow(dead_code))]
 #[derive(Debug, Clone)]
-struct NormalizedPage {
-    import: String,
-    app: bool,
-    ssr: bool,
-    client_name: String,
-    client_css_path: PathBuf,
-    server_name: Option<String>,
+pub(crate) struct NormalizedPage {
+    pub(crate) import: String,
+    pub(crate) app: bool,
+    pub(crate) ssr: bool,
+    pub(crate) client_name: String,
+    pub(crate) client_css_path: PathBuf,
+    pub(crate) server_name: Option<String>,
 }
 
 #[derive(Debug, Clone)]
-enum BundleError {
+pub(crate) enum BundleError {
     Validation(String),
     Runtime(String),
 }
-
-#[derive(Debug)]
-enum CssProviderError {
-    Io(std::io::Error),
-    Bundle(BundleError),
-}
-
-impl fmt::Display for CssProviderError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Io(err) => err.fmt(f),
-            Self::Bundle(err) => err.fmt(f),
-        }
-    }
-}
-
-impl std::error::Error for CssProviderError {}
-
-impl From<std::io::Error> for CssProviderError {
-    fn from(err: std::io::Error) -> Self {
-        Self::Io(err)
-    }
-}
-
-impl From<BundleError> for CssProviderError {
-    fn from(err: BundleError) -> Self {
-        Self::Bundle(err)
-    }
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-struct CssGraphModule {
-    imported_ids: Vec<String>,
-    css_imports: Vec<String>,
-}
-
-struct CssSourceProvider {
-    cwd: PathBuf,
-    inner: CssFileProvider,
-    virtual_sources: HashMap<PathBuf, String>,
-    virtual_resolutions: HashMap<PathBuf, HashMap<String, PathBuf>>,
-}
-
-impl CssSourceProvider {
-    fn new(cwd: &Path) -> Self {
-        Self {
-            cwd: cwd.to_path_buf(),
-            inner: CssFileProvider::new(),
-            virtual_sources: HashMap::new(),
-            virtual_resolutions: HashMap::new(),
-        }
-    }
-
-    fn with_virtual_entry(
-        cwd: &Path,
-        entry_path: PathBuf,
-        entry_source: String,
-        resolutions: HashMap<String, PathBuf>,
-    ) -> Self {
-        let mut provider = Self::new(cwd);
-        provider
-            .virtual_sources
-            .insert(entry_path.clone(), entry_source);
-        provider.virtual_resolutions.insert(entry_path, resolutions);
-        provider
-    }
-}
-
-impl SourceProvider for CssSourceProvider {
-    type Error = CssProviderError;
-
-    fn read<'a>(&'a self, file: &Path) -> Result<&'a str, Self::Error> {
-        if let Some(source) = self.virtual_sources.get(file) {
-            return Ok(source.as_str());
-        }
-
-        self.inner.read(file).map_err(CssProviderError::from)
-    }
-
-    fn resolve(
-        &self,
-        specifier: &str,
-        originating_file: &Path,
-    ) -> Result<ResolveResult, Self::Error> {
-        if let Some(resolutions) = self.virtual_resolutions.get(originating_file)
-            && let Some(resolved) = resolutions.get(specifier)
-        {
-            return Ok(ResolveResult::File(resolved.clone()));
-        }
-
-        let importer_dir = originating_file.parent().unwrap_or(self.cwd.as_path());
-        resolve_css_import_path(specifier, importer_dir, &self.cwd)
-            .map(ResolveResult::File)
-            .map_err(CssProviderError::from)
-    }
-}
-
-const APP_ENTRYPOINT_QUERY: &str = "?gdansk-app-entry";
-const SERVER_ENTRYPOINT_QUERY: &str = "?gdansk-server-entry";
-const GDANSK_RUNTIME_SPECIFIER: &str = "gdansk:runtime";
-const GDANSK_CSS_STUB_PREFIX: &str = "gdansk:css-stub:";
-#[cfg(not(test))]
-const GDANSK_RUNTIME_MODULE_SOURCE: &str = include_str!("runtime.js");
 
 #[cfg(not(test))]
 fn derive_output_stems(path: &Path, app: bool, ssr: bool) -> (PathBuf, Option<PathBuf>) {
@@ -284,6 +183,317 @@ impl Page {
 }
 
 #[cfg(not(test))]
+#[pyclass(module = "gdansk._core", frozen, skip_from_py_object)]
+#[derive(Debug)]
+pub(crate) struct VitePlugin {
+    specifier: String,
+    options: Py<PyAny>,
+}
+
+#[cfg(not(test))]
+#[pyclass(module = "gdansk.plugins.lightningcss", frozen, skip_from_py_object)]
+#[derive(Debug)]
+pub(crate) struct LightningCSS;
+
+#[cfg(not(test))]
+pub(crate) fn invalid_plugin_message() -> &'static str {
+    "Amber plugins must be LightningCSS or VitePlugin instances"
+}
+
+#[cfg(not(test))]
+fn invalid_vite_options_message() -> &'static str {
+    "VitePlugin.options must be JSON serializable"
+}
+
+#[cfg(not(test))]
+fn py_any_to_json_value(value: &Bound<'_, PyAny>) -> PyResult<deno_core::serde_json::Value> {
+    let mut seen = HashSet::new();
+    py_any_to_json_value_inner(value, &mut seen)
+}
+
+#[cfg(not(test))]
+fn py_any_to_json_value_inner(
+    value: &Bound<'_, PyAny>,
+    seen: &mut HashSet<usize>,
+) -> PyResult<deno_core::serde_json::Value> {
+    if value.is_none() {
+        return Ok(deno_core::serde_json::Value::Null);
+    }
+
+    if value.is_instance_of::<PyBool>() {
+        return Ok(deno_core::serde_json::Value::Bool(
+            value.cast::<PyBool>()?.extract::<bool>()?,
+        ));
+    }
+
+    if value.is_instance_of::<PyString>() {
+        return Ok(deno_core::serde_json::Value::String(
+            value.cast::<PyString>()?.to_str()?.to_owned(),
+        ));
+    }
+
+    if value.is_instance_of::<PyInt>() {
+        let integer = value.cast::<PyInt>()?;
+        if let Ok(integer) = integer.extract::<i64>() {
+            return Ok(deno_core::serde_json::Value::Number(integer.into()));
+        }
+        if let Ok(integer) = integer.extract::<u64>() {
+            return Ok(deno_core::serde_json::Value::Number(integer.into()));
+        }
+        return Err(PyTypeError::new_err(invalid_vite_options_message()));
+    }
+
+    if value.is_instance_of::<PyFloat>() {
+        let number = value.cast::<PyFloat>()?.extract::<f64>()?;
+        let Some(number) = deno_core::serde_json::Number::from_f64(number) else {
+            return Err(PyTypeError::new_err(invalid_vite_options_message()));
+        };
+        return Ok(deno_core::serde_json::Value::Number(number));
+    }
+
+    if value.is_instance_of::<PyDict>() {
+        let dict = value.cast::<PyDict>()?;
+        let object_id = dict.as_ptr() as usize;
+        if !seen.insert(object_id) {
+            return Err(PyTypeError::new_err(invalid_vite_options_message()));
+        }
+        let mut entries = deno_core::serde_json::Map::new();
+        for (key, item) in dict.iter() {
+            let key = key
+                .cast::<PyString>()
+                .map_err(|_| PyTypeError::new_err(invalid_vite_options_message()))?
+                .to_str()
+                .map_err(|_| PyTypeError::new_err(invalid_vite_options_message()))?
+                .to_owned();
+            entries.insert(key, py_any_to_json_value_inner(&item, seen)?);
+        }
+        seen.remove(&object_id);
+        return Ok(deno_core::serde_json::Value::Object(entries));
+    }
+
+    if value.is_instance_of::<PyList>() {
+        let list = value.cast::<PyList>()?;
+        let object_id = list.as_ptr() as usize;
+        if !seen.insert(object_id) {
+            return Err(PyTypeError::new_err(invalid_vite_options_message()));
+        }
+        let items = deno_core::serde_json::Value::Array(
+            list.iter()
+                .map(|item| py_any_to_json_value_inner(&item, seen))
+                .collect::<PyResult<Vec<_>>>()?,
+        );
+        seen.remove(&object_id);
+        return Ok(items);
+    }
+
+    if value.is_instance_of::<PyTuple>() {
+        let tuple = value.cast::<PyTuple>()?;
+        let object_id = tuple.as_ptr() as usize;
+        if !seen.insert(object_id) {
+            return Err(PyTypeError::new_err(invalid_vite_options_message()));
+        }
+        let items = deno_core::serde_json::Value::Array(
+            tuple
+                .iter()
+                .map(|item| py_any_to_json_value_inner(&item, seen))
+                .collect::<PyResult<Vec<_>>>()?,
+        );
+        seen.remove(&object_id);
+        return Ok(items);
+    }
+
+    Err(PyTypeError::new_err(invalid_vite_options_message()))
+}
+
+fn is_explicit_relative_specifier(specifier: &str) -> bool {
+    specifier.starts_with("./") || specifier.starts_with("../")
+}
+
+fn vite_specifier_file_candidate(specifier: &str, base: &Path) -> Result<Option<PathBuf>, String> {
+    if specifier.starts_with("file://") {
+        let url = url::Url::parse(specifier)
+            .map_err(|_| format!("failed to resolve VitePlugin.specifier `{specifier}`"))?;
+        let path = url
+            .to_file_path()
+            .map_err(|_| format!("failed to resolve VitePlugin.specifier `{specifier}`"))?;
+        return Ok(Some(path));
+    }
+
+    let path = Path::new(specifier);
+    if path.is_absolute() || is_explicit_relative_specifier(specifier) {
+        return Ok(Some(if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            base.join(path)
+        }));
+    }
+
+    let local_candidate = base.join(path);
+    Ok(local_candidate.exists().then_some(local_candidate))
+}
+
+#[cfg(not(test))]
+fn resolve_vite_specifier_as_file(path: &Path, specifier: &str) -> pyo3::PyResult<String> {
+    let canonical = dunce::simplified(&path.canonicalize().map_err(|err| {
+        pyo3::exceptions::PyFileNotFoundError::new_err(format!(
+            "failed to resolve VitePlugin.specifier `{specifier}`: {err}"
+        ))
+    })?)
+    .to_path_buf();
+    let url = url::Url::from_file_path(&canonical).map_err(|_| {
+        pyo3::exceptions::PyFileNotFoundError::new_err(format!(
+            "failed to resolve VitePlugin.specifier `{specifier}`"
+        ))
+    })?;
+    Ok(url.to_string())
+}
+
+#[cfg(not(test))]
+fn resolve_vite_specifier(specifier: &str, base: &Path) -> pyo3::PyResult<String> {
+    let candidate = vite_specifier_file_candidate(specifier, base)
+        .map_err(pyo3::exceptions::PyFileNotFoundError::new_err)?;
+    if let Some(candidate) = candidate {
+        return resolve_vite_specifier_as_file(&candidate, specifier);
+    }
+
+    Ok(specifier.to_owned())
+}
+
+#[cfg(not(test))]
+#[pymethods]
+impl LightningCSS {
+    #[new]
+    fn new() -> Self {
+        Self
+    }
+
+    #[getter]
+    fn id(&self) -> &'static str {
+        "lightningcss"
+    }
+
+    fn __repr__(&self) -> String {
+        "LightningCSS()".to_owned()
+    }
+}
+
+#[cfg(not(test))]
+#[pymethods]
+impl VitePlugin {
+    #[new]
+    #[pyo3(signature = (*, specifier, options = None))]
+    fn new(py: Python<'_>, specifier: PathBuf, options: Option<Py<PyAny>>) -> PyResult<Self> {
+        let specifier = specifier.to_str().ok_or_else(|| {
+            PyValueError::new_err("VitePlugin.specifier must be a non-empty string or path")
+        })?;
+        if specifier.trim().is_empty() {
+            return Err(PyValueError::new_err(
+                "VitePlugin.specifier must be a non-empty string or path",
+            ));
+        }
+        let specifier = specifier.replace('\\', "/");
+
+        let options = match options {
+            Some(options) => options,
+            None => PyDict::new(py).into_any().unbind(),
+        };
+        let options_bound = options.bind(py);
+        py_any_to_json_value(options_bound)?;
+
+        Ok(Self {
+            specifier: specifier.to_owned(),
+            options,
+        })
+    }
+
+    #[getter]
+    fn specifier(&self) -> String {
+        self.specifier.clone()
+    }
+
+    #[getter]
+    fn options(&self, py: Python<'_>) -> Py<PyAny> {
+        self.options.clone_ref(py)
+    }
+
+    fn __richcmp__(&self, other: &Bound<'_, PyAny>, op: CompareOp) -> PyResult<Py<PyAny>> {
+        let py = other.py();
+        let Ok(other) = other.cast::<VitePlugin>() else {
+            return Ok(PyNotImplemented::get(py).to_owned().into_any().unbind());
+        };
+        let other = other.borrow();
+        let options_equal = self
+            .options
+            .bind(py)
+            .rich_compare(other.options.bind(py), CompareOp::Eq)?
+            .is_truthy()?;
+        let equal = self.specifier == other.specifier && options_equal;
+
+        match op {
+            CompareOp::Eq => Ok(PyBool::new(py, equal).to_owned().into_any().unbind()),
+            CompareOp::Ne => Ok(PyBool::new(py, !equal).to_owned().into_any().unbind()),
+            _ => Ok(PyNotImplemented::get(py).to_owned().into_any().unbind()),
+        }
+    }
+
+    fn __hash__(&self, py: Python<'_>) -> PyResult<isize> {
+        let specifier = PyString::new(py, &self.specifier)
+            .to_owned()
+            .into_any()
+            .unbind();
+        let options = self.options.clone_ref(py);
+        PyTuple::new(py, [specifier, options])?.hash()
+    }
+
+    fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
+        let specifier = PyString::new(py, &self.specifier)
+            .repr()?
+            .to_str()?
+            .to_owned();
+        let options = self.options.bind(py).repr()?.to_str()?.to_owned();
+        Ok(format!(
+            "VitePlugin(specifier={specifier}, options={options})"
+        ))
+    }
+}
+
+#[cfg(not(test))]
+impl VitePlugin {
+    pub(crate) fn to_spec(
+        &self,
+        py: Python<'_>,
+        cwd: &Path,
+    ) -> PyResult<crate::plugins::VitePluginSpec> {
+        let specifier = resolve_vite_specifier(&self.specifier, cwd)?;
+        let options_bound = self.options.bind(py);
+        let options = py_any_to_json_value(options_bound)?;
+        Ok(crate::plugins::VitePluginSpec { specifier, options })
+    }
+}
+
+#[cfg(not(test))]
+pub(crate) enum PluginInput {
+    LightningCSS,
+    VitePlugin(Py<VitePlugin>),
+}
+
+#[cfg(not(test))]
+impl<'a, 'py> FromPyObject<'a, 'py> for PluginInput {
+    type Error = PyErr;
+
+    fn extract(obj: pyo3::Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
+        if obj.cast::<LightningCSS>().is_ok() {
+            return Ok(Self::LightningCSS);
+        }
+
+        let plugin = obj
+            .cast::<VitePlugin>()
+            .map_err(|_| PyTypeError::new_err(invalid_plugin_message()))?;
+        Ok(Self::VitePlugin(plugin.to_owned().unbind()))
+    }
+}
+
+#[cfg(not(test))]
 impl Page {
     fn as_spec(&self) -> PageSpec {
         PageSpec {
@@ -295,11 +505,11 @@ impl Page {
 }
 
 impl BundleError {
-    fn validation(message: impl Into<String>) -> Self {
+    pub(crate) fn validation(message: impl Into<String>) -> Self {
         Self::Validation(message.into())
     }
 
-    fn runtime(message: impl Into<String>) -> Self {
+    pub(crate) fn runtime(message: impl Into<String>) -> Self {
         Self::Runtime(message.into())
     }
 }
@@ -312,392 +522,13 @@ impl fmt::Display for BundleError {
     }
 }
 
-fn canonicalize_existing_file(path: &Path, label: &str) -> Result<PathBuf, BundleError> {
-    if !path.exists() {
-        return Err(BundleError::validation(format!(
-            "{label} does not exist: {}",
-            path.display()
-        )));
-    }
-
-    if !path.is_file() {
-        return Err(BundleError::validation(format!(
-            "{label} is not a file: {}",
-            path.display()
-        )));
-    }
-
-    let canonical = path.canonicalize().map_err(|err| {
-        BundleError::runtime(format!(
-            "failed to canonicalize {label} {}: {err}",
-            path.display()
-        ))
-    })?;
-    Ok(dunce::simplified(&canonical).to_path_buf())
-}
-
-fn split_package_specifier(specifier: &str) -> Option<(&str, Option<&str>)> {
-    if specifier.starts_with("./")
-        || specifier.starts_with("../")
-        || Path::new(specifier).is_absolute()
-    {
-        return None;
-    }
-
-    if let Some(remainder) = specifier.strip_prefix('@') {
-        let (scope, tail) = remainder.split_once('/')?;
-        let (name, subpath) = match tail.split_once('/') {
-            Some((name, subpath)) => (name, Some(subpath)),
-            None => (tail, None),
-        };
-        return Some((&specifier[..scope.len() + name.len() + 2], subpath));
-    }
-
-    match specifier.split_once('/') {
-        Some((package_name, subpath)) => Some((package_name, Some(subpath))),
-        None => Some((specifier, None)),
-    }
-}
-
-fn find_node_modules_package_dir(
-    package_name: &str,
-    importer_dir: &Path,
-    cwd: &Path,
-) -> Option<PathBuf> {
-    let mut current = Some(importer_dir);
-    while let Some(directory) = current {
-        let candidate = directory.join("node_modules").join(package_name);
-        if candidate.is_dir() {
-            return Some(candidate);
-        }
-
-        if directory == cwd {
-            break;
-        }
-
-        current = directory.parent().filter(|parent| parent.starts_with(cwd));
-    }
-
-    None
-}
-
-fn extract_style_export_target<'a>(
-    entry: &'a Value,
-    specifier: &str,
-    export_key: &str,
-) -> Result<&'a str, BundleError> {
-    match entry {
-        Value::String(path) => Ok(path),
-        Value::Object(_) => entry.get("style").and_then(Value::as_str).ok_or_else(|| {
-            BundleError::validation(format!(
-                "package \"{specifier}\" does not define exports[\"{export_key}\"].style"
-            ))
-        }),
-        _ => Err(BundleError::validation(format!(
-            "package \"{specifier}\" has an unsupported exports[\"{export_key}\"] value"
-        ))),
-    }
-}
-
-fn resolve_package_style_export(
-    package_dir: &Path,
-    specifier: &str,
-    subpath: Option<&str>,
-) -> Result<PathBuf, BundleError> {
-    let package_json_path = package_dir.join("package.json");
-    let package_json = fs::read_to_string(&package_json_path).map_err(|err| {
-        BundleError::runtime(format!(
-            "failed to read package.json for css import \"{specifier}\": {} ({err})",
-            package_json_path.display()
-        ))
-    })?;
-    let parsed: Value = deno_core::serde_json::from_str(&package_json).map_err(|err| {
-        BundleError::runtime(format!(
-            "failed to parse package.json for css import \"{specifier}\": {} ({err})",
-            package_json_path.display()
-        ))
-    })?;
-    let export_key = subpath
-        .map(|value| format!("./{value}"))
-        .unwrap_or_else(|| ".".to_string());
-    let style_path = parsed
-        .get("exports")
-        .and_then(|exports| exports.get(&export_key))
-        .ok_or_else(|| {
-            BundleError::validation(format!(
-                "package \"{specifier}\" does not define exports[\"{export_key}\"]"
-            ))
-        })
-        .and_then(|entry| extract_style_export_target(entry, specifier, &export_key))?;
-
-    Ok(package_dir.join(style_path))
-}
-
-fn resolve_css_import_path(
-    specifier: &str,
-    importer_dir: &Path,
-    cwd: &Path,
-) -> Result<PathBuf, BundleError> {
-    if specifier.starts_with("./") || specifier.starts_with("../") {
-        return canonicalize_existing_file(&importer_dir.join(specifier), "css import");
-    }
-
-    if Path::new(specifier).is_absolute() {
-        return canonicalize_existing_file(Path::new(specifier), "css import");
-    }
-
-    let (package_name, subpath) = split_package_specifier(specifier).ok_or_else(|| {
-        BundleError::validation(format!("failed to resolve css import \"{specifier}\""))
-    })?;
-    let package_dir =
-        find_node_modules_package_dir(package_name, importer_dir, cwd).ok_or_else(|| {
-            BundleError::validation(format!("failed to resolve css import \"{specifier}\""))
-        })?;
-
-    if let Some(subpath) = subpath {
-        let candidate = package_dir.join(subpath);
-        if candidate.exists() {
-            return canonicalize_existing_file(&candidate, "css import");
-        }
-    }
-
-    let style_path = resolve_package_style_export(&package_dir, specifier, subpath)?;
-    canonicalize_existing_file(&style_path, "css import")
-}
-
-fn synthetic_css_bundle_entry(
-    cwd: &Path,
-    css_paths: &[PathBuf],
-) -> (PathBuf, String, HashMap<String, PathBuf>) {
-    let entry_path = cwd.join(".gdansk").join("__gdansk_virtual_bundle.css");
-    let mut source = String::new();
-    let mut resolutions = HashMap::with_capacity(css_paths.len());
-
-    for (index, path) in css_paths.iter().enumerate() {
-        let specifier = format!("__gdansk_virtual_import_{index}.css");
-        source.push_str("@import \"");
-        source.push_str(&specifier);
-        source.push_str("\";\n");
-        resolutions.insert(specifier, path.clone());
-    }
-
-    (entry_path, source, resolutions)
-}
-
-fn render_css_bundle(
-    css_paths: &[String],
-    cwd: &Path,
-    minify: bool,
-) -> Result<String, BundleError> {
-    let resolved_paths = css_paths
-        .iter()
-        .map(|css_path| {
-            let path = Path::new(css_path);
-            let candidate = if path.is_absolute() {
-                path.to_path_buf()
-            } else {
-                cwd.join(path)
-            };
-            canonicalize_existing_file(&candidate, "css import")
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let (entry_path, entry_source, resolutions) = synthetic_css_bundle_entry(cwd, &resolved_paths);
-    let provider =
-        CssSourceProvider::with_virtual_entry(cwd, entry_path.clone(), entry_source, resolutions);
-    let parser_options = ParserOptions {
-        filename: path_to_utf8(&entry_path, "css path")?,
-        ..ParserOptions::default()
-    };
-    let mut bundler = CssBundler::new(&provider, None, parser_options);
-    let mut stylesheet = bundler.bundle(&entry_path).map_err(|err| {
-        let err_message = err.to_string();
-        match err.kind {
-            CssBundleErrorKind::ResolverError(provider_err) => match provider_err {
-                CssProviderError::Bundle(bundle_err) => bundle_err,
-                CssProviderError::Io(io_err) => BundleError::runtime(format!(
-                    "failed to read css bundle input {}: {io_err}",
-                    entry_path.display()
-                )),
-            },
-            _ => BundleError::runtime(format!(
-                "failed to bundle css for {}: {err_message}",
-                entry_path.display()
-            )),
-        }
-    })?;
-
-    if minify {
-        stylesheet.minify(MinifyOptions::default()).map_err(|err| {
-            BundleError::runtime(format!(
-                "failed to minify css bundle {}: {err}",
-                entry_path.display()
-            ))
-        })?;
-    }
-
-    stylesheet
-        .to_css(PrinterOptions {
-            minify,
-            ..PrinterOptions::default()
-        })
-        .map(|result| result.code)
-        .map_err(|err| {
-            BundleError::runtime(format!(
-                "failed to serialize css bundle {}: {err}",
-                entry_path.display()
-            ))
-        })
-}
-
-fn collect_entry_css_imports(
-    entry_id: &str,
-    modules: &HashMap<String, CssGraphModule>,
-) -> Vec<String> {
-    fn visit(
-        module_id: &str,
-        modules: &HashMap<String, CssGraphModule>,
-        visited_modules: &mut HashSet<String>,
-        visited_css: &mut HashSet<String>,
-        ordered_css: &mut Vec<String>,
-    ) {
-        if !visited_modules.insert(module_id.to_owned()) {
-            return;
-        }
-
-        let Some(module) = modules.get(module_id) else {
-            return;
-        };
-
-        for css_import in &module.css_imports {
-            if visited_css.insert(css_import.clone()) {
-                ordered_css.push(css_import.clone());
-            }
-        }
-
-        for imported_id in &module.imported_ids {
-            if imported_id.starts_with(GDANSK_CSS_STUB_PREFIX) {
-                continue;
-            }
-            visit(
-                imported_id,
-                modules,
-                visited_modules,
-                visited_css,
-                ordered_css,
-            );
-        }
-    }
-
-    let mut ordered_css = Vec::new();
-    let mut visited_modules = HashSet::new();
-    let mut visited_css = HashSet::new();
-    visit(
-        entry_id,
-        modules,
-        &mut visited_modules,
-        &mut visited_css,
-        &mut ordered_css,
-    );
-    ordered_css
-}
-
-fn find_client_entry_module_id(
-    page: &NormalizedPage,
-    entry_module_ids: &[String],
-) -> Option<String> {
-    let entry_import = entry_import_for_client(&page.import, page.app);
-    for module_id in entry_module_ids {
-        let normalized_module_id = module_id.replace('\\', "/");
-        if normalized_module_id == entry_import
-            || normalized_module_id.ends_with(&entry_import)
-            || normalized_module_id.ends_with(&page.import)
-        {
-            return Some(module_id.clone());
-        }
-    }
-
-    None
-}
-
-fn build_css_outputs(
-    normalized: &[NormalizedPage],
-    entry_module_ids: &HashMap<String, String>,
-    modules: &HashMap<String, CssGraphModule>,
-    cwd: &Path,
-    output_dir: &Path,
-    minify: bool,
-) -> Result<(), BundleError> {
-    let output_root = if output_dir.is_absolute() {
-        output_dir.to_path_buf()
-    } else {
-        cwd.join(output_dir)
-    };
-
-    for page in normalized {
-        let entry_id = entry_module_ids.get(&page.import).ok_or_else(|| {
-            BundleError::runtime(format!(
-                "failed to resolve client entry for css output: {}",
-                page.import
-            ))
-        })?;
-        let css_imports = collect_entry_css_imports(entry_id, modules);
-        let output_path = output_root.join(&page.client_css_path);
-
-        if css_imports.is_empty() {
-            if output_path.exists() {
-                fs::remove_file(&output_path).map_err(|err| {
-                    BundleError::runtime(format!(
-                        "failed to remove stale css output {}: {err}",
-                        output_path.display()
-                    ))
-                })?;
-            }
-            continue;
-        }
-
-        let mut bundled = render_css_bundle(&css_imports, cwd, minify)?;
-        if !bundled.ends_with('\n') {
-            bundled.push('\n');
-        }
-
-        if let Some(parent) = output_path.parent() {
-            fs::create_dir_all(parent).map_err(|err| {
-                BundleError::runtime(format!(
-                    "failed to create css output directory {}: {err}",
-                    parent.display()
-                ))
-            })?;
-        }
-        fs::write(&output_path, bundled).map_err(|err| {
-            BundleError::runtime(format!(
-                "failed to write css output {}: {err}",
-                output_path.display()
-            ))
-        })?;
-    }
-
-    Ok(())
-}
-
-fn entry_import_for_client(import: &str, app: bool) -> String {
-    if app {
-        format!("{import}{APP_ENTRYPOINT_QUERY}")
-    } else {
-        import.to_owned()
-    }
-}
-
-fn entry_import_for_server(import: &str) -> String {
-    format!("{import}{SERVER_ENTRYPOINT_QUERY}")
-}
-
 fn build_client_input_item_fields(normalized: &[NormalizedPage]) -> Vec<(String, String)> {
     normalized
         .iter()
         .map(|item| {
             (
                 item.client_name.clone(),
-                entry_import_for_client(&item.import, item.app),
+                client_entry_import(&item.import, item.app),
             )
         })
         .collect()
@@ -712,444 +543,15 @@ fn build_server_input_item_fields(normalized: &[NormalizedPage]) -> Vec<(String,
                 item.server_name
                     .clone()
                     .expect("ssr page must have server name"),
-                entry_import_for_server(&item.import),
+                server_entry_import(&item.import),
             )
         })
         .collect()
 }
 
-fn server_entrypoint_wrapper_source(source_id: &str) -> Option<String> {
-    let file_name = Path::new(source_id).file_name()?.to_str()?;
-    let import_path = format!("./{file_name}");
-    Some(format!(
-        r#"import {{ createElement }} from "react";
-import {{ renderToString }} from "react-dom/server";
-import {{ setSsrHtml }} from "gdansk:runtime";
-import App from "{import_path}";
-
-setSsrHtml(renderToString(createElement(App)));
-"#
-    ))
-}
-
 #[cfg(not(test))]
 struct DevEngineCloseGuard {
     engine: Option<Arc<DevEngine>>,
-}
-
-#[cfg(not(test))]
-#[derive(Debug, Default)]
-struct GdanskCssStubPlugin;
-
-#[cfg(not(test))]
-impl GdanskCssStubPlugin {
-    fn resolve_virtual_id(specifier: &str, importer: Option<&str>) -> String {
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        std::hash::Hash::hash(&importer, &mut hasher);
-        std::hash::Hash::hash(&specifier, &mut hasher);
-        format!(
-            "{GDANSK_CSS_STUB_PREFIX}{:016x}",
-            std::hash::Hasher::finish(&hasher)
-        )
-    }
-}
-
-#[cfg(not(test))]
-impl Plugin for GdanskCssStubPlugin {
-    fn name(&self) -> Cow<'static, str> {
-        Cow::Borrowed("gdansk:css-stub")
-    }
-
-    async fn resolve_id(
-        &self,
-        _ctx: &PluginContext,
-        args: &HookResolveIdArgs<'_>,
-    ) -> HookResolveIdReturn {
-        if !args.specifier.ends_with(".css") {
-            return Ok(None);
-        }
-
-        Ok(Some(HookResolveIdOutput::from_id(
-            Self::resolve_virtual_id(args.specifier, args.importer),
-        )))
-    }
-
-    async fn load(&self, _ctx: SharedLoadPluginContext, args: &HookLoadArgs<'_>) -> HookLoadReturn {
-        if !args.id.starts_with(GDANSK_CSS_STUB_PREFIX) {
-            return Ok(None);
-        }
-
-        Ok(Some(HookLoadOutput {
-            code: "export {};".into(),
-            ..Default::default()
-        }))
-    }
-
-    fn register_hook_usage(&self) -> HookUsage {
-        HookUsage::ResolveId | HookUsage::Load
-    }
-}
-
-#[cfg(not(test))]
-#[derive(Debug)]
-struct GdanskCssGraphPlugin {
-    normalized: Vec<NormalizedPage>,
-    cwd: PathBuf,
-    output_dir: PathBuf,
-    minify: bool,
-    css_imports: std::sync::Mutex<HashMap<String, Vec<String>>>,
-}
-
-#[cfg(not(test))]
-impl GdanskCssGraphPlugin {
-    fn new(normalized: &[NormalizedPage], cwd: &Path, output_dir: &Path, minify: bool) -> Self {
-        Self {
-            normalized: normalized.to_vec(),
-            cwd: cwd.to_path_buf(),
-            output_dir: output_dir.to_path_buf(),
-            minify,
-            css_imports: std::sync::Mutex::new(HashMap::new()),
-        }
-    }
-
-    fn is_bare_specifier(specifier: &str) -> bool {
-        !specifier.starts_with("./")
-            && !specifier.starts_with("../")
-            && !Path::new(specifier).is_absolute()
-    }
-}
-
-#[cfg(not(test))]
-impl Plugin for GdanskCssGraphPlugin {
-    fn name(&self) -> Cow<'static, str> {
-        Cow::Borrowed("gdansk:css-graph")
-    }
-
-    async fn build_start(
-        &self,
-        _ctx: &PluginContext,
-        _args: &HookBuildStartArgs<'_>,
-    ) -> rolldown::plugin::HookNoopReturn {
-        self.css_imports.lock().expect("css graph poisoned").clear();
-        Ok(())
-    }
-
-    async fn resolve_id(
-        &self,
-        ctx: &PluginContext,
-        args: &HookResolveIdArgs<'_>,
-    ) -> HookResolveIdReturn {
-        if args.kind != PluginContextResolveOptions::default().import_kind {
-            return Ok(None);
-        }
-
-        let should_probe =
-            args.specifier.ends_with(".css") || Self::is_bare_specifier(args.specifier);
-        if !should_probe {
-            return Ok(None);
-        }
-
-        let resolution = match ctx
-            .resolve(
-                args.specifier,
-                args.importer,
-                Some(PluginContextResolveOptions::default()),
-            )
-            .await
-        {
-            Ok(resolution) => resolution,
-            Err(err) => {
-                if args.specifier.ends_with(".css") {
-                    return Err(std::io::Error::other(format!(
-                        "failed to resolve css import \"{}\": {err}",
-                        args.specifier
-                    ))
-                    .into());
-                }
-                return Ok(None);
-            }
-        };
-        let resolved = match resolution {
-            Ok(resolved) => resolved,
-            Err(err) => {
-                if args.specifier.ends_with(".css") {
-                    return Err(std::io::Error::other(format!(
-                        "failed to resolve css import \"{}\": {err}",
-                        args.specifier
-                    ))
-                    .into());
-                }
-                return Ok(None);
-            }
-        };
-
-        if !resolved.id.as_str().ends_with(".css") {
-            return Ok(None);
-        }
-
-        let Some(importer) = args.importer else {
-            return Ok(None);
-        };
-
-        self.css_imports
-            .lock()
-            .expect("css graph poisoned")
-            .entry(importer.to_owned())
-            .or_default()
-            .push(resolved.id.to_string());
-
-        Ok(Some(HookResolveIdOutput::from_id(
-            GdanskCssStubPlugin::resolve_virtual_id(args.specifier, args.importer),
-        )))
-    }
-
-    async fn load(&self, _ctx: SharedLoadPluginContext, args: &HookLoadArgs<'_>) -> HookLoadReturn {
-        if !args.id.starts_with(GDANSK_CSS_STUB_PREFIX) {
-            return Ok(None);
-        }
-
-        Ok(Some(HookLoadOutput {
-            code: "export {};".into(),
-            ..Default::default()
-        }))
-    }
-
-    async fn build_end(
-        &self,
-        ctx: &PluginContext,
-        _args: Option<&HookBuildEndArgs<'_>>,
-    ) -> rolldown::plugin::HookNoopReturn {
-        let mut modules = HashMap::new();
-        let mut discovered_entry_modules = Vec::new();
-        for module_id in ctx.get_module_ids() {
-            if let Some(module_info) = ctx.get_module_info(module_id.as_ref()) {
-                if module_info.is_entry {
-                    discovered_entry_modules.push(module_id.to_string());
-                }
-                modules.insert(
-                    module_id.to_string(),
-                    CssGraphModule {
-                        imported_ids: module_info
-                            .imported_ids
-                            .iter()
-                            .map(ToString::to_string)
-                            .collect(),
-                        css_imports: Vec::new(),
-                    },
-                );
-            }
-        }
-
-        for (importer, css_imports) in self.css_imports.lock().expect("css graph poisoned").iter() {
-            modules.entry(importer.clone()).or_default().css_imports = css_imports.clone();
-        }
-
-        let mut entry_module_ids = HashMap::with_capacity(self.normalized.len());
-        for page in &self.normalized {
-            let entry_module_id = find_client_entry_module_id(page, &discovered_entry_modules)
-                .ok_or_else(|| {
-                    std::io::Error::other(format!(
-                        "failed to find client entry in module graph: {}",
-                        page.import
-                    ))
-                })?;
-            entry_module_ids.insert(page.import.clone(), entry_module_id);
-        }
-
-        build_css_outputs(
-            &self.normalized,
-            &entry_module_ids,
-            &modules,
-            &self.cwd,
-            &self.output_dir,
-            self.minify,
-        )
-        .map_err(|err| std::io::Error::other(err.to_string()))?;
-
-        Ok(())
-    }
-
-    fn register_hook_usage(&self) -> HookUsage {
-        HookUsage::BuildStart | HookUsage::ResolveId | HookUsage::Load | HookUsage::BuildEnd
-    }
-}
-
-#[cfg(not(test))]
-#[derive(Debug, Default)]
-struct GdanskAppEntrypointPlugin;
-
-#[cfg(not(test))]
-impl GdanskAppEntrypointPlugin {
-    fn source_id(id: &str) -> Option<&str> {
-        id.strip_suffix(APP_ENTRYPOINT_QUERY)
-    }
-
-    fn wrapper_source(source_id: &str) -> Option<String> {
-        let file_name = Path::new(source_id).file_name()?.to_str()?;
-        let import_path = format!("./{file_name}");
-        Some(format!(
-            r#"import {{ StrictMode, createElement }} from "react";
-import {{ createRoot, hydrateRoot }} from "react-dom/client";
-import App from "{import_path}";
-
-const root = document.getElementById("root");
-if (!root) throw new Error("Expected #root element");
-const element = createElement(StrictMode, null, createElement(App));
-if (root.hasChildNodes()) {{
-  hydrateRoot(root, element);
-}} else {{
-  createRoot(root).render(element);
-}}
-"#
-        ))
-    }
-}
-
-#[cfg(not(test))]
-impl Plugin for GdanskAppEntrypointPlugin {
-    fn name(&self) -> Cow<'static, str> {
-        Cow::Borrowed("gdansk:app-entrypoint")
-    }
-
-    async fn resolve_id(
-        &self,
-        _ctx: &PluginContext,
-        args: &HookResolveIdArgs<'_>,
-    ) -> HookResolveIdReturn {
-        if args.specifier.ends_with(APP_ENTRYPOINT_QUERY) {
-            return Ok(Some(HookResolveIdOutput::from_id(args.specifier)));
-        }
-        Ok(None)
-    }
-
-    async fn load(&self, _ctx: SharedLoadPluginContext, args: &HookLoadArgs<'_>) -> HookLoadReturn {
-        let Some(source_id) = Self::source_id(args.id) else {
-            return Ok(None);
-        };
-        let Some(wrapper_source) = Self::wrapper_source(source_id) else {
-            return Ok(None);
-        };
-        Ok(Some(HookLoadOutput {
-            code: wrapper_source.into(),
-            ..Default::default()
-        }))
-    }
-
-    fn register_hook_usage(&self) -> HookUsage {
-        HookUsage::ResolveId | HookUsage::Load
-    }
-}
-
-#[cfg(not(test))]
-#[derive(Debug, Default)]
-struct GdanskServerEntrypointPlugin;
-
-#[cfg(not(test))]
-#[derive(Debug, Default)]
-struct GdanskRuntimeModulePlugin;
-
-#[cfg(not(test))]
-impl GdanskServerEntrypointPlugin {
-    fn source_id(id: &str) -> Option<&str> {
-        id.strip_suffix(SERVER_ENTRYPOINT_QUERY)
-    }
-
-    fn wrapper_source(source_id: &str) -> Option<String> {
-        server_entrypoint_wrapper_source(source_id)
-    }
-}
-
-#[cfg(not(test))]
-impl Plugin for GdanskRuntimeModulePlugin {
-    fn name(&self) -> Cow<'static, str> {
-        Cow::Borrowed("gdansk:runtime-module")
-    }
-
-    async fn resolve_id(
-        &self,
-        _ctx: &PluginContext,
-        args: &HookResolveIdArgs<'_>,
-    ) -> HookResolveIdReturn {
-        if args.specifier == GDANSK_RUNTIME_SPECIFIER {
-            return Ok(Some(HookResolveIdOutput::from_id(GDANSK_RUNTIME_SPECIFIER)));
-        }
-        Ok(None)
-    }
-
-    async fn load(&self, _ctx: SharedLoadPluginContext, args: &HookLoadArgs<'_>) -> HookLoadReturn {
-        if args.id != GDANSK_RUNTIME_SPECIFIER {
-            return Ok(None);
-        }
-        Ok(Some(HookLoadOutput {
-            code: GDANSK_RUNTIME_MODULE_SOURCE.into(),
-            ..Default::default()
-        }))
-    }
-
-    fn register_hook_usage(&self) -> HookUsage {
-        HookUsage::ResolveId | HookUsage::Load
-    }
-}
-
-#[cfg(not(test))]
-impl Plugin for GdanskServerEntrypointPlugin {
-    fn name(&self) -> Cow<'static, str> {
-        Cow::Borrowed("gdansk:server-entrypoint")
-    }
-
-    async fn resolve_id(
-        &self,
-        _ctx: &PluginContext,
-        args: &HookResolveIdArgs<'_>,
-    ) -> HookResolveIdReturn {
-        if args.specifier.ends_with(SERVER_ENTRYPOINT_QUERY) {
-            return Ok(Some(HookResolveIdOutput::from_id(args.specifier)));
-        }
-        Ok(None)
-    }
-
-    async fn load(&self, _ctx: SharedLoadPluginContext, args: &HookLoadArgs<'_>) -> HookLoadReturn {
-        let Some(source_id) = Self::source_id(args.id) else {
-            return Ok(None);
-        };
-        let Some(wrapper_source) = Self::wrapper_source(source_id) else {
-            return Ok(None);
-        };
-        Ok(Some(HookLoadOutput {
-            code: wrapper_source.into(),
-            ..Default::default()
-        }))
-    }
-
-    fn register_hook_usage(&self) -> HookUsage {
-        HookUsage::ResolveId | HookUsage::Load
-    }
-}
-
-#[cfg(not(test))]
-fn client_entrypoint_plugins(
-    normalized: &[NormalizedPage],
-    cwd: &Path,
-    output_dir: &Path,
-    minify: bool,
-    include_app_entrypoint_plugin: bool,
-) -> Vec<SharedPluginable> {
-    let mut plugins: Vec<SharedPluginable> = vec![Arc::new(GdanskCssGraphPlugin::new(
-        normalized, cwd, output_dir, minify,
-    ))];
-    if include_app_entrypoint_plugin {
-        plugins.push(Arc::new(GdanskAppEntrypointPlugin));
-    }
-    plugins
-}
-
-#[cfg(not(test))]
-fn server_entrypoint_plugins() -> Vec<SharedPluginable> {
-    vec![
-        Arc::new(GdanskCssStubPlugin),
-        Arc::new(GdanskRuntimeModulePlugin),
-        Arc::new(GdanskServerEntrypointPlugin),
-    ]
 }
 
 #[cfg(not(test))]
@@ -1187,7 +589,56 @@ fn py_runtime_error(context: &str, err: impl std::fmt::Display) -> PyErr {
     PyRuntimeError::new_err(format!("{context}: {err}"))
 }
 
-fn path_to_utf8(path: &Path, label: &str) -> Result<String, BundleError> {
+#[cfg(not(test))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum WatchFileState {
+    Missing,
+    Present {
+        len: u64,
+        modified_millis: Option<u128>,
+    },
+}
+
+#[cfg(not(test))]
+fn read_watch_file_state(path: &Path) -> Result<WatchFileState, PyErr> {
+    let metadata = match std::fs::metadata(path) {
+        Ok(metadata) => metadata,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(WatchFileState::Missing);
+        }
+        Err(err) => {
+            return Err(py_runtime_error(
+                "failed to read watched file metadata",
+                err,
+            ));
+        }
+    };
+
+    let modified_millis = metadata
+        .modified()
+        .ok()
+        .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis());
+    Ok(WatchFileState::Present {
+        len: metadata.len(),
+        modified_millis,
+    })
+}
+
+#[cfg(not(test))]
+fn collect_watch_states(bundler: &Bundler) -> Result<HashMap<PathBuf, WatchFileState>, PyErr> {
+    bundler
+        .watch_files()
+        .iter()
+        .map(|path| {
+            let path = PathBuf::from(path.as_str());
+            let state = read_watch_file_state(&path)?;
+            Ok((path, state))
+        })
+        .collect()
+}
+
+pub(crate) fn path_to_utf8(path: &Path, label: &str) -> Result<String, BundleError> {
     path.to_str().map(ToOwned::to_owned).ok_or_else(|| {
         BundleError::validation(format!(
             "{label} must be UTF-8 encodable: {}",
@@ -1415,23 +866,29 @@ fn build_input_items(fields: Vec<(String, String)>) -> Vec<InputItem> {
 }
 
 #[cfg(not(test))]
+struct RunBundlerOptions {
+    minify: bool,
+    dev: bool,
+    format: Option<OutputFormat>,
+    use_polling_watcher: bool,
+}
+
+#[cfg(not(test))]
 async fn run_bundler(
     input_items: Vec<InputItem>,
     cwd: PathBuf,
     output_dir_string: String,
-    minify: bool,
-    dev: bool,
-    format: Option<OutputFormat>,
     plugins: Vec<SharedPluginable>,
+    options: RunBundlerOptions,
 ) -> Result<(), PyErr> {
-    let mut options = BundlerOptions {
+    let mut bundler_options = BundlerOptions {
         input: Some(input_items),
         cwd: Some(cwd),
         dir: Some(output_dir_string),
         entry_filenames: Some("[name].js".to_string().into()),
         asset_filenames: Some("[name].css".to_string().into()),
-        minify: Some(minify.into()),
-        format,
+        minify: Some(options.minify.into()),
+        format: options.format,
         resolve: Some(ResolveOptions {
             condition_names: Some(vec!["module".to_string(), "style".to_string()]),
             ..Default::default()
@@ -1439,18 +896,47 @@ async fn run_bundler(
         ..Default::default()
     };
 
-    if dev {
-        options.experimental = Some(ExperimentalOptions {
+    if options.dev {
+        bundler_options.experimental = Some(ExperimentalOptions {
             incremental_build: Some(true),
             ..Default::default()
         });
 
-        let bundler_config = BundlerConfig::new(options, plugins);
+        if options.use_polling_watcher {
+            let mut bundler = Bundler::with_plugins(bundler_options, plugins)
+                .map_err(|err| py_runtime_error("failed to initialize Bundler", err))?;
+            bundler
+                .write()
+                .await
+                .map_err(|err| py_runtime_error("bundling failed", err))?;
+
+            let mut watched_files = collect_watch_states(&bundler)?;
+            loop {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                let current_states = collect_watch_states(&bundler)?;
+                if current_states == watched_files {
+                    continue;
+                }
+
+                bundler
+                    .incremental_write(ScanMode::Full)
+                    .await
+                    .map_err(|err| py_runtime_error("bundling failed", err))?;
+                watched_files = collect_watch_states(&bundler)?;
+            }
+        }
+
+        let bundler_config = BundlerConfig::new(bundler_options, plugins);
         let dev_engine = Arc::new(
             DevEngine::new(
                 bundler_config,
                 DevOptions {
                     rebuild_strategy: Some(RebuildStrategy::Always),
+                    watch: options.use_polling_watcher.then_some(DevWatchOptions {
+                        use_polling: Some(true),
+                        compare_contents_for_polling: Some(true),
+                        ..Default::default()
+                    }),
                     ..Default::default()
                 },
             )
@@ -1472,7 +958,7 @@ async fn run_bundler(
         return Ok(());
     }
 
-    let mut bundler = Bundler::with_plugins(options, plugins)
+    let mut bundler = Bundler::with_plugins(bundler_options, plugins)
         .map_err(|err| py_runtime_error("failed to initialize Bundler", err))?;
     bundler
         .write()
@@ -1482,7 +968,114 @@ async fn run_bundler(
 }
 
 #[cfg(not(test))]
-#[pyfunction(signature = (pages, dev = false, minify = true, output = None, cwd = None))]
+async fn bundle_impl(
+    parsed_pages: Vec<PageSpec>,
+    dev: bool,
+    minify: bool,
+    output: Option<PathBuf>,
+    cwd: Option<PathBuf>,
+    plugins: Option<Vec<PluginInput>>,
+) -> Result<(), PyErr> {
+    let cwd = match cwd {
+        Some(dir) => dunce::simplified(
+            &dir.canonicalize()
+                .map_err(|err| py_runtime_error("failed to resolve provided cwd", err))?,
+        )
+        .to_path_buf(),
+        None => std::env::current_dir()
+            .map_err(|err| py_runtime_error("failed to read current working directory", err))?,
+    };
+    let plugin_selection = Python::attach(|py| parse_plugin_selection(py, plugins, &cwd))?;
+    let output_dir = output.unwrap_or_else(|| PathBuf::from(".gdansk"));
+    let output_dir_string = path_to_utf8(&output_dir, "output path").map_err(map_bundle_error)?;
+    let normalized = normalize_pages(parsed_pages, &cwd, &output_dir).map_err(map_bundle_error)?;
+
+    let client_items = build_input_items(build_client_input_item_fields(&normalized));
+    let server_items = build_input_items(build_server_input_item_fields(&normalized));
+    let has_app_entries = normalized.iter().any(|page| page.app);
+    let client_plugins = client_entrypoint_plugins(
+        &normalized,
+        &cwd,
+        &output_dir,
+        ClientEntrypointPluginOptions {
+            dev,
+            minify,
+            selection: &plugin_selection,
+            include_app_entrypoint_plugin: has_app_entries,
+        },
+    )?;
+    let client_bundler_options = RunBundlerOptions {
+        minify,
+        dev,
+        format: None,
+        use_polling_watcher: !plugin_selection.vite_plugin_specs.is_empty(),
+    };
+    let server_bundler_options = RunBundlerOptions {
+        minify,
+        dev,
+        format: Some(OutputFormat::Iife),
+        use_polling_watcher: false,
+    };
+
+    if dev {
+        if server_items.is_empty() {
+            run_bundler(
+                client_items,
+                cwd,
+                output_dir_string,
+                client_plugins,
+                client_bundler_options,
+            )
+            .await?;
+        } else {
+            let server_plugins = server_entrypoint_plugins(&plugin_selection)?;
+            tokio::try_join!(
+                run_bundler(
+                    client_items,
+                    cwd.clone(),
+                    output_dir_string.clone(),
+                    client_plugins,
+                    client_bundler_options,
+                ),
+                run_bundler(
+                    server_items,
+                    cwd,
+                    output_dir_string,
+                    server_plugins,
+                    server_bundler_options,
+                ),
+            )?;
+        }
+        return Ok(());
+    }
+
+    run_bundler(
+        client_items,
+        cwd.clone(),
+        output_dir_string.clone(),
+        client_plugins,
+        RunBundlerOptions {
+            use_polling_watcher: false,
+            ..client_bundler_options
+        },
+    )
+    .await?;
+    if !server_items.is_empty() {
+        let server_plugins = server_entrypoint_plugins(&plugin_selection)?;
+        run_bundler(
+            server_items,
+            cwd,
+            output_dir_string,
+            server_plugins,
+            server_bundler_options,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+#[cfg(not(test))]
+#[pyfunction(signature = (pages, dev = false, minify = true, output = None, cwd = None, plugins = None))]
 pub(crate) fn bundle(
     py: Python<'_>,
     pages: Vec<Py<Page>>,
@@ -1490,90 +1083,12 @@ pub(crate) fn bundle(
     minify: bool,
     output: Option<PathBuf>,
     cwd: Option<PathBuf>,
+    plugins: Option<Vec<PluginInput>>,
 ) -> PyResult<Bound<'_, PyAny>> {
     let parsed_pages = parse_pages_from_python(py, pages);
 
     pyo3_async_runtimes::tokio::future_into_py(py, async move {
-        let cwd = match cwd {
-            Some(dir) => dunce::simplified(
-                &dir.canonicalize()
-                    .map_err(|err| py_runtime_error("failed to resolve provided cwd", err))?,
-            )
-            .to_path_buf(),
-            None => std::env::current_dir()
-                .map_err(|err| py_runtime_error("failed to read current working directory", err))?,
-        };
-        let output_dir = output.unwrap_or_else(|| PathBuf::from(".gdansk"));
-        let output_dir_string =
-            path_to_utf8(&output_dir, "output path").map_err(map_bundle_error)?;
-        let normalized =
-            normalize_pages(parsed_pages, &cwd, &output_dir).map_err(map_bundle_error)?;
-
-        let client_items = build_input_items(build_client_input_item_fields(&normalized));
-        let server_items = build_input_items(build_server_input_item_fields(&normalized));
-        let has_app_entries = normalized.iter().any(|page| page.app);
-        let client_plugins =
-            client_entrypoint_plugins(&normalized, &cwd, &output_dir, minify, has_app_entries);
-
-        if dev {
-            if server_items.is_empty() {
-                run_bundler(
-                    client_items,
-                    cwd,
-                    output_dir_string,
-                    minify,
-                    dev,
-                    None,
-                    client_plugins,
-                )
-                .await?;
-            } else {
-                tokio::try_join!(
-                    run_bundler(
-                        client_items,
-                        cwd.clone(),
-                        output_dir_string.clone(),
-                        minify,
-                        dev,
-                        None,
-                        client_plugins,
-                    ),
-                    run_bundler(
-                        server_items,
-                        cwd,
-                        output_dir_string,
-                        minify,
-                        dev,
-                        Some(OutputFormat::Iife),
-                        server_entrypoint_plugins(),
-                    ),
-                )?;
-            }
-            return Python::attach(|py| Ok(py.None()));
-        }
-
-        run_bundler(
-            client_items,
-            cwd.clone(),
-            output_dir_string.clone(),
-            minify,
-            dev,
-            None,
-            client_plugins,
-        )
-        .await?;
-        if !server_items.is_empty() {
-            run_bundler(
-                server_items,
-                cwd,
-                output_dir_string,
-                minify,
-                dev,
-                Some(OutputFormat::Iife),
-                server_entrypoint_plugins(),
-            )
-            .await?;
-        }
+        bundle_impl(parsed_pages, dev, minify, output, cwd, plugins).await?;
         Python::attach(|py| Ok(py.None()))
     })
 }
@@ -1596,8 +1111,11 @@ mod tests {
     impl TempProject {
         fn new() -> Self {
             let id = NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed);
-            let root =
-                std::env::temp_dir().join(format!("gdansk-test-{}-{}", std::process::id(), id));
+            let root = std::env::temp_dir().join(format!(
+                "gdansk-bundle-test-{}-{}",
+                std::process::id(),
+                id
+            ));
             fs::create_dir_all(&root).expect("failed to create temp project root");
             Self { root }
         }
@@ -1626,25 +1144,6 @@ mod tests {
             path: PathBuf::from(path),
             app,
             ssr,
-        }
-    }
-
-    fn canonical(path: &Path) -> PathBuf {
-        dunce::simplified(
-            &path
-                .canonicalize()
-                .expect("expected path to be canonicalizable"),
-        )
-        .to_path_buf()
-    }
-
-    fn css_graph_module(imported_ids: &[&str], css_imports: Vec<String>) -> CssGraphModule {
-        CssGraphModule {
-            imported_ids: imported_ids
-                .iter()
-                .map(|value| (*value).to_string())
-                .collect(),
-            css_imports,
         }
     }
 
@@ -1820,327 +1319,6 @@ mod tests {
     }
 
     #[test]
-    fn client_entry_lookup_matches_windows_nested_non_app_paths() {
-        let project = TempProject::new();
-        project.create_file("home/page.tsx");
-
-        let normalized = normalize_pages(
-            vec![page("home/page.tsx", false, false)],
-            &project.root,
-            Path::new(".gdansk"),
-        )
-        .expect("expected normalized pages");
-
-        let module_id = r"D:\work\proj\home\page.tsx".to_string();
-
-        assert_eq!(
-            find_client_entry_module_id(&normalized[0], std::slice::from_ref(&module_id)),
-            Some(module_id)
-        );
-    }
-
-    #[test]
-    fn client_entry_lookup_matches_windows_app_entry_paths() {
-        let project = TempProject::new();
-        project.create_file("apps/simple/page.tsx");
-
-        let normalized = normalize_pages(
-            vec![page("apps/simple/page.tsx", true, false)],
-            &project.root,
-            Path::new(".gdansk"),
-        )
-        .expect("expected normalized pages");
-
-        let module_id = r"D:\work\proj\apps\simple\page.tsx?gdansk-app-entry".to_string();
-
-        assert_eq!(
-            find_client_entry_module_id(&normalized[0], std::slice::from_ref(&module_id)),
-            Some(module_id)
-        );
-    }
-
-    #[test]
-    fn css_graph_collects_nested_component_styles() {
-        let modules = HashMap::from([
-            (
-                "page".to_string(),
-                css_graph_module(&["button", "layout"], vec!["page.css".to_string()]),
-            ),
-            (
-                "button".to_string(),
-                css_graph_module(&["shared"], vec!["button.css".to_string()]),
-            ),
-            (
-                "layout".to_string(),
-                css_graph_module(&[], vec!["layout.css".to_string()]),
-            ),
-            (
-                "shared".to_string(),
-                css_graph_module(&[], vec!["shared.css".to_string()]),
-            ),
-        ]);
-
-        let imports = collect_entry_css_imports("page", &modules);
-
-        assert_eq!(
-            imports,
-            vec![
-                "page.css".to_string(),
-                "button.css".to_string(),
-                "shared.css".to_string(),
-                "layout.css".to_string(),
-            ]
-        );
-    }
-
-    #[test]
-    fn css_graph_deduplicates_shared_child_styles() {
-        let modules = HashMap::from([
-            (
-                "page".to_string(),
-                css_graph_module(&["left", "right"], Vec::new()),
-            ),
-            (
-                "left".to_string(),
-                css_graph_module(&["shared"], vec!["left.css".to_string()]),
-            ),
-            (
-                "right".to_string(),
-                css_graph_module(&["shared"], vec!["right.css".to_string()]),
-            ),
-            (
-                "shared".to_string(),
-                css_graph_module(&[], vec!["shared.css".to_string()]),
-            ),
-        ]);
-
-        let imports = collect_entry_css_imports("page", &modules);
-
-        assert_eq!(
-            imports,
-            vec![
-                "left.css".to_string(),
-                "shared.css".to_string(),
-                "right.css".to_string(),
-            ]
-        );
-    }
-
-    #[test]
-    fn css_graph_preserves_import_order_within_a_module() {
-        let modules = HashMap::from([(
-            "page".to_string(),
-            css_graph_module(&[], vec!["first.css".to_string(), "second.css".to_string()]),
-        )]);
-
-        let imports = collect_entry_css_imports("page", &modules);
-
-        assert_eq!(
-            imports,
-            vec!["first.css".to_string(), "second.css".to_string()]
-        );
-    }
-
-    #[test]
-    fn css_graph_skips_virtual_css_stub_modules() {
-        let modules = HashMap::from([(
-            "page".to_string(),
-            css_graph_module(
-                &[&format!("{GDANSK_CSS_STUB_PREFIX}deadbeef")],
-                vec!["page.css".to_string()],
-            ),
-        )]);
-
-        let imports = collect_entry_css_imports("page", &modules);
-
-        assert_eq!(imports, vec!["page.css".to_string()]);
-    }
-
-    #[test]
-    fn resolve_css_import_path_resolves_package_root_style_export() {
-        let project = TempProject::new();
-        project.create_file("src/page.tsx");
-        project.write_file(
-            "node_modules/pkg/package.json",
-            r#"{"exports":{".":{"style":"./dist/root.css"}}}"#,
-        );
-        project.write_file("node_modules/pkg/dist/root.css", ".root { color: red; }\n");
-
-        let resolved =
-            resolve_css_import_path("pkg", &project.root.join("src"), &project.root).unwrap();
-
-        assert_eq!(
-            resolved,
-            canonical(&project.root.join("node_modules/pkg/dist/root.css"))
-        );
-    }
-
-    #[test]
-    fn resolve_css_import_path_resolves_exported_subpath_without_physical_directory() {
-        let project = TempProject::new();
-        project.create_file("src/page.tsx");
-        project.write_file(
-            "node_modules/pkg/package.json",
-            r#"{"exports":{"./theme":"./dist/theme.css"}}"#,
-        );
-        project.write_file(
-            "node_modules/pkg/dist/theme.css",
-            ".theme { color: blue; }\n",
-        );
-
-        let resolved =
-            resolve_css_import_path("pkg/theme", &project.root.join("src"), &project.root).unwrap();
-
-        assert_eq!(
-            resolved,
-            canonical(&project.root.join("node_modules/pkg/dist/theme.css"))
-        );
-    }
-
-    #[test]
-    fn resolve_css_import_path_prefers_physical_package_subpaths() {
-        let project = TempProject::new();
-        project.create_file("src/page.tsx");
-        project.write_file(
-            "node_modules/pkg/package.json",
-            r#"{"exports":{"./theme":"./dist/theme.css"}}"#,
-        );
-        project.write_file(
-            "node_modules/pkg/theme.css",
-            ".physical { color: black; }\n",
-        );
-        project.write_file(
-            "node_modules/pkg/dist/theme.css",
-            ".exported { color: green; }\n",
-        );
-
-        let resolved =
-            resolve_css_import_path("pkg/theme.css", &project.root.join("src"), &project.root)
-                .unwrap();
-
-        assert_eq!(
-            resolved,
-            canonical(&project.root.join("node_modules/pkg/theme.css"))
-        );
-    }
-
-    #[test]
-    fn resolve_css_import_path_handles_scoped_package_subpaths() {
-        let project = TempProject::new();
-        project.create_file("src/page.tsx");
-        project.write_file(
-            "node_modules/@scope/pkg/package.json",
-            r#"{"exports":{"./theme":"./dist/theme.css"}}"#,
-        );
-        project.write_file(
-            "node_modules/@scope/pkg/dist/theme.css",
-            ".scoped { color: purple; }\n",
-        );
-
-        let resolved =
-            resolve_css_import_path("@scope/pkg/theme", &project.root.join("src"), &project.root)
-                .unwrap();
-
-        assert_eq!(
-            resolved,
-            canonical(&project.root.join("node_modules/@scope/pkg/dist/theme.css"))
-        );
-    }
-
-    #[test]
-    fn build_css_outputs_includes_child_component_styles() {
-        let project = TempProject::new();
-        project.create_file("page.tsx");
-        project.write_file("Button.css", ".button { color: red; }\n");
-
-        let normalized = normalize_pages(
-            vec![page("page.tsx", false, false)],
-            &project.root,
-            Path::new(".gdansk"),
-        )
-        .expect("expected normalized pages");
-        let entry_module_ids = HashMap::from([("page.tsx".to_string(), "page.tsx".to_string())]);
-        let modules = HashMap::from([
-            (
-                "page.tsx".to_string(),
-                css_graph_module(&["Button.tsx"], Vec::new()),
-            ),
-            (
-                "Button.tsx".to_string(),
-                css_graph_module(
-                    &[],
-                    vec![
-                        project
-                            .root
-                            .join("Button.css")
-                            .to_string_lossy()
-                            .into_owned(),
-                    ],
-                ),
-            ),
-        ]);
-
-        build_css_outputs(
-            &normalized,
-            &entry_module_ids,
-            &modules,
-            &project.root,
-            Path::new(".gdansk"),
-            false,
-        )
-        .expect("expected css output to build");
-
-        let css_output = fs::read_to_string(project.root.join(".gdansk/page.css"))
-            .expect("expected css output file");
-        assert!(css_output.contains(".button"));
-    }
-
-    #[test]
-    fn build_css_outputs_includes_package_styles_reached_from_js() {
-        let project = TempProject::new();
-        project.create_file("page.tsx");
-        project.write_file(
-            "node_modules/my-lib/dist/theme.css",
-            ".theme { color: orange; }\n",
-        );
-
-        let normalized = normalize_pages(
-            vec![page("page.tsx", false, false)],
-            &project.root,
-            Path::new(".gdansk"),
-        )
-        .expect("expected normalized pages");
-        let entry_module_ids = HashMap::from([("page.tsx".to_string(), "page.tsx".to_string())]);
-        let modules = HashMap::from([(
-            "page.tsx".to_string(),
-            css_graph_module(
-                &[],
-                vec![
-                    project
-                        .root
-                        .join("node_modules/my-lib/dist/theme.css")
-                        .to_string_lossy()
-                        .into_owned(),
-                ],
-            ),
-        )]);
-
-        build_css_outputs(
-            &normalized,
-            &entry_module_ids,
-            &modules,
-            &project.root,
-            Path::new(".gdansk"),
-            false,
-        )
-        .expect("expected css output to build");
-
-        let css_output = fs::read_to_string(project.root.join(".gdansk/page.css"))
-            .expect("expected css output file");
-        assert!(css_output.contains(".theme"));
-    }
-
-    #[test]
     fn server_input_fields_include_only_ssr_views() {
         let project = TempProject::new();
         project.create_file("apps/simple/page.tsx");
@@ -2163,25 +1341,34 @@ mod tests {
     }
 
     #[test]
-    fn server_entrypoint_wrapper_imports_runtime_module() {
-        let wrapper = server_entrypoint_wrapper_source("apps/simple/page.tsx")
-            .expect("expected server wrapper");
-        assert!(wrapper.contains(&format!(
-            r#"import {{ setSsrHtml }} from "{GDANSK_RUNTIME_SPECIFIER}";"#
-        )));
+    fn resolve_vite_specifier_resolves_existing_local_relative_path() {
+        let project = TempProject::new();
+        project.create_file("plugins/append-comment.mjs");
+
+        let resolved =
+            vite_specifier_file_candidate("plugins/append-comment.mjs", &project.root).unwrap();
+
+        assert_eq!(
+            resolved,
+            Some(project.root.join("plugins/append-comment.mjs"))
+        );
     }
 
     #[test]
-    fn server_entrypoint_wrapper_does_not_call_deno_ops_directly() {
-        let wrapper = server_entrypoint_wrapper_source("apps/simple/page.tsx")
-            .expect("expected server wrapper");
-        assert!(!wrapper.contains("Deno.core.ops.op_gdansk_set_html"));
+    fn resolve_vite_specifier_leaves_bare_package_root_unchanged() {
+        let project = TempProject::new();
+
+        let resolved = vite_specifier_file_candidate("@tailwindcss/vite", &project.root).unwrap();
+
+        assert_eq!(resolved, None);
     }
 
     #[test]
-    fn server_entrypoint_wrapper_does_not_use_global_marker() {
-        let wrapper = server_entrypoint_wrapper_source("apps/simple/page.tsx")
-            .expect("expected server wrapper");
-        assert!(!wrapper.contains("globalThis.__gdansk_html"));
+    fn resolve_vite_specifier_leaves_package_subpath_with_extension_unchanged() {
+        let project = TempProject::new();
+
+        let resolved = vite_specifier_file_candidate("my-pkg/plugin.mjs", &project.root).unwrap();
+
+        assert_eq!(resolved, None);
     }
 }

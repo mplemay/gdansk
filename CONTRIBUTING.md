@@ -14,8 +14,8 @@ cd gdansk
 # Install dependencies (including dev dependencies)
 uv sync --all-extras
 
-# Install pre-commit hooks
-uv run pre-commit install
+# Install prek hooks
+uv run prek install
 ```
 
 ## Running Tests
@@ -52,18 +52,18 @@ uv run ty check src
 uv run rumdl .
 ```
 
-## Pre-commit Hooks
+## Prek Hooks
 
-We use pre-commit hooks to ensure code quality. Install them with:
+We use prek hooks to ensure code quality. Install them with:
 
 ```bash
-uv run pre-commit install
+uv run prek install
 ```
 
 The hooks will run automatically on `git commit`. You can also run them manually:
 
 ```bash
-uv run pre-commit run --all-files
+uv run prek run --all-files
 ```
 
 ## Project Structure

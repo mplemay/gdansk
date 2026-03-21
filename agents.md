@@ -118,3 +118,8 @@ For multistep tasks, state a brief plan:
 - Do not name test files by functionality (e.g. avoid `test_amber_init.py`, `test_template.py`)
 - Tests live under `__tests__/` with `unit/` and `integration/` subdirectories
 - Integration tests are marked with `@pytest.mark.integration`
+
+## Final Workflow
+
+Run `cargo test`, `uv run pytest`, and `uv run prek run --all-files` with elevated permissions when needed.
+If you fix anything, rerun those same commands until they pass, then `git commit` and `git push`.

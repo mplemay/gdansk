@@ -1,6 +1,8 @@
 use deno_core::{
     JsRuntime, OpState, PollEventLoopOptions, RuntimeOptions, op2, serde_json::Value, v8,
 };
+use deno_error::JsErrorBox;
+use std::fs;
 
 #[cfg(not(test))]
 use pyo3::{
@@ -36,9 +38,28 @@ fn op_gdansk_set_html(state: &mut OpState, #[string] html: String) {
     state.borrow_mut::<SsrCapture>().html = Some(html);
 }
 
+#[op2]
+#[string]
+fn op_gdansk_read_text_file(#[string] path: String) -> Result<String, JsErrorBox> {
+    fs::read_to_string(path).map_err(|err| JsErrorBox::generic(err.to_string()))
+}
+
+#[op2(fast)]
+fn op_gdansk_write_text_file(
+    #[string] path: String,
+    #[string] content: String,
+) -> Result<(), JsErrorBox> {
+    fs::write(path, content).map_err(|err| JsErrorBox::generic(err.to_string()))?;
+    Ok(())
+}
+
 deno_core::extension!(
     gdansk_runtime_ext,
-    ops = [op_gdansk_set_html],
+    ops = [
+        op_gdansk_set_html,
+        op_gdansk_read_text_file,
+        op_gdansk_write_text_file,
+    ],
     state = |state| state.put(SsrCapture::default())
 );
 
@@ -204,6 +225,9 @@ mod tests {
     use super::*;
 
     fn run_value(code: &str) -> Result<Value, RuntimeError> {
+        let _guard = crate::test_support::js_runtime_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()

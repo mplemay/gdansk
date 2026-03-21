@@ -111,30 +111,31 @@ app = FastAPI(lifespan=lifespan)
 app.mount(path="/mcp", app=mcp_app)
 ```
 
-## PostCSS plugin
+## Vite CSS plugins
 
-Attach plugin:
+Attach a Vite plugin through `plugins`:
 
 ```python
-from gdansk.experimental.postcss import PostCSS
+from gdansk import Amber, VitePlugin
 
-amber = Amber(mcp=mcp, views=views_path, plugins=[PostCSS()])
+amber = Amber(
+    mcp=mcp,
+    views=views_path,
+    plugins=[VitePlugin(specifier="@tailwindcss/vite")],
+)
 ```
+
+Use this pattern for Tailwind CSS or any other build-time CSS transform that can run as a Vite plugin.
 
 Requirements in `views/`:
 
-- `node_modules/.bin/postcss` must exist
-- install with:
-
-```bash
-cd views
-npm install -D postcss postcss-cli
-```
+- install the adapter package dependencies, such as `@tailwindcss/vite` and `tailwindcss`
+- the `views` package must already have its regular bundling dependencies installed
 
 Behavior summary:
 
-- `build`: transforms discovered `.gdansk/**/*.css` once after bundle.
-- `watch` in dev: polls CSS outputs and re-runs transform on changes.
+- `build`: runs matching Vite CSS transform hooks once after the bundle and can rewrite generated `.gdansk/**/*.css`
+- `watch` in dev: polls CSS outputs and re-runs the transforms when generated CSS changes
 
 ## Decision matrix
 
@@ -147,4 +148,4 @@ Behavior summary:
 | Shared head metadata across tools | constructor `metadata=` |
 | Per-tool title or OG override | `@amber.tool(..., metadata=...)` |
 | Running inside existing FastAPI service | mount `mcp_app` + lifespan wrapper |
-| Tailwind/PostCSS transform on generated CSS | add `PostCSS()` plugin and CLI deps |
+| Tailwind CSS transform on generated CSS | add `plugins=[VitePlugin(specifier="@tailwindcss/vite")]` |
