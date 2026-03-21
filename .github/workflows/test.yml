@@ -72,5 +72,15 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: examples/shadcn/src/shadcn/views/package-lock.json
+
+      - name: Install shadcn example npm dependencies
+        working-directory: examples/shadcn/src/shadcn/views
+        run: npm ci
+
       - name: Run tests
         run: uv run pytest
