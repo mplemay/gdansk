@@ -191,7 +191,7 @@ pub(crate) struct VitePlugin {
 }
 
 #[cfg(not(test))]
-#[pyclass(module = "gdansk.plugins.lightningcss", frozen, skip_from_py_object)]
+#[pyclass(module = "gdansk._core", frozen, skip_from_py_object)]
 #[derive(Debug)]
 pub(crate) struct LightningCSS;
 
