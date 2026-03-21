@@ -9,10 +9,12 @@ my-server/
 ├── server.py
 └── views/
     ├── package.json
-    └── apps/
+    └── widgets/
         └── hello/
-            └── page.tsx
+            └── widget.tsx
 ```
+
+The `views` directory name is arbitrary: `Amber(..., views=...)` accepts any path to the npm package root.
 
 ## Minimal Python server
 
@@ -29,7 +31,7 @@ mcp = FastMCP("Hello Server")
 amber = Amber(mcp=mcp, views=Path(__file__).parent / "views")
 
 
-@amber.tool(name="hello", page=Path("hello"))
+@amber.tool(name="hello", widget=Path("hello"))
 def hello(name: str = "world") -> list[TextContent]:
     return [TextContent(type="text", text=f"Hello, {name}!")]
 
@@ -39,9 +41,9 @@ if __name__ == "__main__":
     uvicorn.run(app, port=3001)
 ```
 
-## Minimal React page
+## Minimal React widget
 
-`views/apps/hello/page.tsx`
+`views/widgets/hello/widget.tsx`
 
 ```tsx
 import { useApp } from "@modelcontextprotocol/ext-apps/react";
@@ -132,7 +134,7 @@ from gdansk import Amber
 mcp = FastMCP("FastAPI Example Server", streamable_http_path="/")
 amber = Amber(mcp=mcp, views=Path(__file__).parent / "views")
 
-@amber.tool(name="hello", page=Path("hello"))
+@amber.tool(name="hello", widget=Path("hello"))
 def hello(name: str = "world") -> list[TextContent]:
     return [TextContent(type="text", text=f"Hello, {name}!")]
 

@@ -17,11 +17,11 @@ amber = Amber(mcp=mcp, views=views_path, ssr=True)
 Override the global setting on specific tools:
 
 ```python
-@amber.tool(page=Path("reports"), ssr=True)
+@amber.tool(widget=Path("reports"), ssr=True)
 def reports():
     ...
 
-@amber.tool(page=Path("settings"), ssr=False)
+@amber.tool(widget=Path("settings"), ssr=False)
 def settings():
     ...
 ```
@@ -72,7 +72,7 @@ Override per tool:
 
 ```python
 @amber.tool(
-    page=Path("hello"),
+    widget=Path("hello"),
     metadata={"title": "Tool Title", "openGraph": {"title": "Tool OG"}},
 )
 def hello():

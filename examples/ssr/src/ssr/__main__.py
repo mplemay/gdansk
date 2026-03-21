@@ -17,7 +17,7 @@ mcp = FastMCP("SSR Example Server")
 amber = Amber(mcp=mcp, views=Path(__file__).parent / "views", ssr=True)
 
 
-@amber.tool(name="hello-ssr", page=Path("hello-ssr"))
+@amber.tool(name="hello-ssr", widget=Path("hello-ssr"))
 def hello_ssr() -> list[TextContent]:
     """Return a static greeting rendered from the SSR example."""
     return [TextContent(type="text", text="Hello from the SSR example")]

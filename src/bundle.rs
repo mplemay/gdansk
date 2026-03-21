@@ -44,7 +44,7 @@ use std::sync::Arc;
 #[derive(Debug, Clone)]
 struct PageSpec {
     path: PathBuf,
-    app: bool,
+    is_widget: bool,
     ssr: bool,
 }
 
@@ -53,7 +53,7 @@ struct PageSpec {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct Page {
     path: PathBuf,
-    app: bool,
+    is_widget: bool,
     ssr: bool,
     client: PathBuf,
     server: Option<PathBuf>,
@@ -64,7 +64,7 @@ pub(crate) struct Page {
 #[derive(Debug, Clone)]
 pub(crate) struct NormalizedPage {
     pub(crate) import: String,
-    pub(crate) app: bool,
+    pub(crate) is_widget: bool,
     pub(crate) ssr: bool,
     pub(crate) client_name: String,
     pub(crate) client_css_path: PathBuf,
@@ -78,8 +78,8 @@ pub(crate) enum BundleError {
 }
 
 #[cfg(not(test))]
-fn derive_output_stems(path: &Path, app: bool, ssr: bool) -> (PathBuf, Option<PathBuf>) {
-    if !app {
+fn derive_output_stems(path: &Path, is_widget: bool, ssr: bool) -> (PathBuf, Option<PathBuf>) {
+    if !is_widget {
         let stem = path.with_extension("");
         let server = if ssr { Some(stem.clone()) } else { None };
         return (stem, server);
@@ -114,12 +114,12 @@ fn to_py_path<'py>(py: Python<'py>, path: &Path) -> PyResult<Bound<'py, PyAny>> 
 #[pymethods]
 impl Page {
     #[new]
-    #[pyo3(signature = (*, path, app = false, ssr = false))]
-    fn new(path: PathBuf, app: bool, ssr: bool) -> Self {
-        let (client_stem, server_stem) = derive_output_stems(&path, app, ssr);
+    #[pyo3(signature = (*, path, is_widget = false, ssr = false))]
+    fn new(path: PathBuf, is_widget: bool, ssr: bool) -> Self {
+        let (client_stem, server_stem) = derive_output_stems(&path, is_widget, ssr);
         Self {
             path,
-            app,
+            is_widget,
             ssr,
             client: client_stem.with_extension("js"),
             server: server_stem.map(|stem| stem.with_extension("js")),
@@ -133,8 +133,8 @@ impl Page {
     }
 
     #[getter]
-    fn app(&self) -> bool {
-        self.app
+    fn is_widget(&self) -> bool {
+        self.is_widget
     }
 
     #[getter]
@@ -176,8 +176,8 @@ impl Page {
 
     fn __repr__(&self) -> String {
         format!(
-            "Page(path={:?}, app={}, ssr={}, client={:?}, server={:?}, css={:?})",
-            self.path, self.app, self.ssr, self.client, self.server, self.css
+            "Page(path={:?}, is_widget={}, ssr={}, client={:?}, server={:?}, css={:?})",
+            self.path, self.is_widget, self.ssr, self.client, self.server, self.css
         )
     }
 }
@@ -498,7 +498,7 @@ impl Page {
     fn as_spec(&self) -> PageSpec {
         PageSpec {
             path: self.path.clone(),
-            app: self.app,
+            is_widget: self.is_widget,
             ssr: self.ssr,
         }
     }
@@ -528,7 +528,7 @@ fn build_client_input_item_fields(normalized: &[NormalizedPage]) -> Vec<(String,
         .map(|item| {
             (
                 item.client_name.clone(),
-                client_entry_import(&item.import, item.app),
+                client_entry_import(&item.import, item.is_widget),
             )
         })
         .collect()
@@ -729,37 +729,37 @@ fn normalize_pages(
         let import = normalize_relative_for_rolldown(relative_path, "input path")?;
         let key = import.clone();
 
-        if provided_page.ssr && !provided_page.app {
+        if provided_page.ssr && !provided_page.is_widget {
             return Err(BundleError::validation(format!(
-                "page cannot set ssr=true when app=false: {}",
+                "page cannot set ssr=true when is_widget=false: {}",
                 provided_path.display()
             )));
         }
 
-        let (client_stem_path, server_stem_path) = if provided_page.app {
+        let (client_stem_path, server_stem_path) = if provided_page.is_widget {
             let file_name = relative_path
                 .file_name()
                 .and_then(|name| name.to_str())
                 .ok_or_else(|| {
                     BundleError::validation(format!(
-                        "app pages must target page.tsx or page.jsx: {}",
+                        "widget pages must target widget.tsx or widget.jsx: {}",
                         provided_path.display()
                     ))
                 })?;
-            if file_name != "page.tsx" && file_name != "page.jsx" {
+            if file_name != "widget.tsx" && file_name != "widget.jsx" {
                 return Err(BundleError::validation(format!(
-                    "app pages must target page.tsx or page.jsx: {}",
+                    "widget pages must target widget.tsx or widget.jsx: {}",
                     provided_path.display()
                 )));
             }
 
             let mut relative_components = relative_path.components();
-            let starts_with_apps = relative_components
+            let starts_with_widgets = relative_components
                 .next()
-                .is_some_and(|component| component.as_os_str() == OsStr::new("apps"));
-            if !starts_with_apps {
+                .is_some_and(|component| component.as_os_str() == OsStr::new("widgets"));
+            if !starts_with_widgets {
                 return Err(BundleError::validation(format!(
-                    "app pages must be inside an apps/ directory: {}",
+                    "widget pages must be inside a widgets/ directory: {}",
                     provided_path.display()
                 )));
             }
@@ -772,7 +772,7 @@ fn normalize_pages(
             }
             if tool_directory.as_os_str().is_empty() {
                 return Err(BundleError::validation(format!(
-                    "app pages must include at least one segment below apps/: {}",
+                    "widget pages must include at least one segment below widgets/: {}",
                     provided_path.display()
                 )));
             }
@@ -826,7 +826,7 @@ fn normalize_pages(
 
         normalized_pages.push(NormalizedPage {
             import,
-            app: provided_page.app,
+            is_widget: provided_page.is_widget,
             ssr: provided_page.ssr,
             client_name,
             client_css_path,
@@ -992,7 +992,7 @@ async fn bundle_impl(
 
     let client_items = build_input_items(build_client_input_item_fields(&normalized));
     let server_items = build_input_items(build_server_input_item_fields(&normalized));
-    let has_app_entries = normalized.iter().any(|page| page.app);
+    let has_widget_entries = normalized.iter().any(|page| page.is_widget);
     let client_plugins = client_entrypoint_plugins(
         &normalized,
         &cwd,
@@ -1001,7 +1001,7 @@ async fn bundle_impl(
             dev,
             minify,
             selection: &plugin_selection,
-            include_app_entrypoint_plugin: has_app_entries,
+            include_widget_entrypoint_plugin: has_widget_entries,
         },
     )?;
     let client_bundler_options = RunBundlerOptions {
@@ -1139,10 +1139,10 @@ mod tests {
         }
     }
 
-    fn page(path: &str, app: bool, ssr: bool) -> PageSpec {
+    fn page(path: &str, is_widget: bool, ssr: bool) -> PageSpec {
         PageSpec {
             path: PathBuf::from(path),
-            app,
+            is_widget,
             ssr,
         }
     }
@@ -1178,7 +1178,7 @@ mod tests {
         let result = normalize_pages(
             vec![PageSpec {
                 path: outside.root.join("outside.tsx"),
-                app: false,
+                is_widget: false,
                 ssr: false,
             }],
             &project.root,
@@ -1204,7 +1204,7 @@ mod tests {
     }
 
     #[test]
-    fn preserves_non_app_relative_structure_for_output_mapping() {
+    fn preserves_non_widget_relative_structure_for_output_mapping() {
         let project = TempProject::new();
         project.create_file("main.tsx");
         project.create_file("home/page.tsx");
@@ -1242,12 +1242,12 @@ mod tests {
     }
 
     #[test]
-    fn app_view_maps_to_per_tool_client_and_server_outputs() {
+    fn widget_view_maps_to_per_tool_client_and_server_outputs() {
         let project = TempProject::new();
-        project.create_file("apps/get-time/page.tsx");
+        project.create_file("widgets/get-time/widget.tsx");
 
         let normalized = normalize_pages(
-            vec![page("apps/get-time/page.tsx", true, true)],
+            vec![page("widgets/get-time/widget.tsx", true, true)],
             &project.root,
             Path::new(".gdansk"),
         )
@@ -1265,7 +1265,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_ssr_when_app_is_false() {
+    fn rejects_ssr_when_is_widget_is_false() {
         let project = TempProject::new();
         project.create_file("main.tsx");
 
@@ -1279,28 +1279,28 @@ mod tests {
     }
 
     #[test]
-    fn rejects_app_view_that_is_not_under_apps() {
+    fn rejects_widget_view_that_is_not_under_widgets() {
         let project = TempProject::new();
-        project.create_file("simple/page.tsx");
+        project.create_file("simple/widget.tsx");
 
         let result = normalize_pages(
-            vec![page("simple/page.tsx", true, false)],
+            vec![page("simple/widget.tsx", true, false)],
             &project.root,
             Path::new(".gdansk"),
         );
-        let err = result.expect_err("expected app path validation error");
-        assert!(err.to_string().contains("inside an apps/ directory"));
+        let err = result.expect_err("expected widget path validation error");
+        assert!(err.to_string().contains("inside a widgets/ directory"));
     }
 
     #[test]
-    fn client_input_fields_rewrite_only_app_views() {
+    fn client_input_fields_rewrite_only_widget_views() {
         let project = TempProject::new();
-        project.create_file("apps/simple/page.tsx");
+        project.create_file("widgets/simple/widget.tsx");
         project.create_file("main.tsx");
 
         let normalized = normalize_pages(
             vec![
-                page("apps/simple/page.tsx", true, false),
+                page("widgets/simple/widget.tsx", true, false),
                 page("main.tsx", false, false),
             ],
             &project.root,
@@ -1313,7 +1313,7 @@ mod tests {
             .collect::<HashMap<_, _>>();
         assert_eq!(
             fields.get("simple/client"),
-            Some(&"apps/simple/page.tsx?gdansk-app-entry".to_string())
+            Some(&"widgets/simple/widget.tsx?gdansk-widget-entry".to_string())
         );
         assert_eq!(fields.get("main"), Some(&"main.tsx".to_string()));
     }
@@ -1321,13 +1321,13 @@ mod tests {
     #[test]
     fn server_input_fields_include_only_ssr_views() {
         let project = TempProject::new();
-        project.create_file("apps/simple/page.tsx");
-        project.create_file("apps/other/page.tsx");
+        project.create_file("widgets/simple/widget.tsx");
+        project.create_file("widgets/other/widget.tsx");
 
         let normalized = normalize_pages(
             vec![
-                page("apps/simple/page.tsx", true, true),
-                page("apps/other/page.tsx", true, false),
+                page("widgets/simple/widget.tsx", true, true),
+                page("widgets/other/widget.tsx", true, false),
             ],
             &project.root,
             Path::new(".gdansk"),
@@ -1337,7 +1337,7 @@ mod tests {
         let fields = build_server_input_item_fields(&normalized);
         assert_eq!(fields.len(), 1);
         assert_eq!(fields[0].0, "simple/server");
-        assert_eq!(fields[0].1, "apps/simple/page.tsx?gdansk-server-entry");
+        assert_eq!(fields[0].1, "widgets/simple/widget.tsx?gdansk-server-entry");
     }
 
     #[test]

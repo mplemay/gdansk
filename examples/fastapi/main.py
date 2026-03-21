@@ -28,7 +28,7 @@ mcp = FastMCP("FastAPI Example Server", streamable_http_path="/")
 amber = Amber(mcp=mcp, views=Path(__file__).parent / "src/mount/views")
 
 
-@amber.tool(name="hello", page=Path("hello"))
+@amber.tool(name="hello", widget=Path("hello"))
 def hello(name: str = "world") -> list[TextContent]:
     """Return a greeting message."""
     return [TextContent(type="text", text=f"Hello, {name}!")]

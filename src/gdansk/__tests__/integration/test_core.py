@@ -85,7 +85,7 @@ def test_with_css_bundles_and_serves_html(mock_mcp, pages_dir, tmp_path, monkeyp
     output = pages_dir / ".gdansk"
     amber = Amber(mcp=mock_mcp, views=pages_dir)
 
-    @amber.tool(Path("with_css/page.tsx"))
+    @amber.tool(Path("with_css/widget.tsx"))
     def my_tool():
         return "result"
 
@@ -111,7 +111,7 @@ def test_with_css_bundles_when_plugin_list_is_empty(mock_mcp, pages_dir, tmp_pat
     output = pages_dir / ".gdansk"
     amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=[])
 
-    @amber.tool(Path("with_css/page.tsx"))
+    @amber.tool(Path("with_css/widget.tsx"))
     def my_tool():
         return "result"
 
@@ -125,7 +125,7 @@ def test_with_css_bundles_when_plugin_list_is_empty(mock_mcp, pages_dir, tmp_pat
 def test_with_css_default_import_bundles(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     output = pages_dir / ".gdansk"
-    (pages_dir / "apps/with_css/page.tsx").write_text(
+    (pages_dir / "widgets/with_css/widget.tsx").write_text(
         """
 import styles from "./simple.css";
 
@@ -139,7 +139,7 @@ export default function App() {
     )
     amber = Amber(mcp=mock_mcp, views=pages_dir)
 
-    @amber.tool(Path("with_css/page.tsx"))
+    @amber.tool(Path("with_css/widget.tsx"))
     def my_tool():
         return "result"
 
@@ -155,7 +155,7 @@ def test_dev_bundles_in_background(mock_mcp, pages_dir, tmp_path, monkeypatch):
     output = pages_dir / ".gdansk"
     amber = Amber(mcp=mock_mcp, views=pages_dir)
 
-    @amber.tool(Path("simple/page.tsx"))
+    @amber.tool(Path("simple/widget.tsx"))
     def my_tool():
         return "result"
 
@@ -177,11 +177,11 @@ def test_multiple_tools_all_bundled(mock_mcp, pages_dir, tmp_path, monkeypatch):
     output = pages_dir / ".gdansk"
     amber = Amber(mcp=mock_mcp, views=pages_dir)
 
-    @amber.tool(Path("simple/page.tsx"))
+    @amber.tool(Path("simple/widget.tsx"))
     def tool_a():
         return "a"
 
-    @amber.tool(Path("nested/page/page.tsx"))
+    @amber.tool(Path("nested/page/widget.tsx"))
     def tool_b():
         return "b"
 
@@ -195,13 +195,13 @@ def test_multiple_tools_all_bundled(mock_mcp, pages_dir, tmp_path, monkeypatch):
 def test_directory_resolution_prefers_page_tsx(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     output = pages_dir / ".gdansk"
-    preferred = pages_dir / "apps" / "preferred"
+    preferred = pages_dir / "widgets" / "preferred"
     preferred.mkdir(parents=True, exist_ok=True)
-    (preferred / "page.tsx").write_text(
+    (preferred / "widget.tsx").write_text(
         "export default function App() { return <div>tsx-version</div>; }\n",
         encoding="utf-8",
     )
-    (preferred / "page.jsx").write_text(
+    (preferred / "widget.jsx").write_text(
         "export default function App() { return <div>jsx-version</div>; }\n",
         encoding="utf-8",
     )
@@ -223,10 +223,10 @@ def test_directory_resolution_prefers_page_tsx(mock_mcp, pages_dir, tmp_path, mo
 @pytest.mark.integration
 def test_prod_fails_when_ui_has_no_default_export(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    (pages_dir / "apps/simple/page.tsx").write_text("export const value = 1;\n", encoding="utf-8")
+    (pages_dir / "widgets/simple/widget.tsx").write_text("export const value = 1;\n", encoding="utf-8")
     amber = Amber(mcp=mock_mcp, views=pages_dir)
 
-    @amber.tool(Path("simple/page.tsx"))
+    @amber.tool(Path("simple/widget.tsx"))
     def my_tool():
         return "result"
 
@@ -241,7 +241,7 @@ def test_tool_ssr_true_overrides_amber_false(mock_mcp, pages_dir, tmp_path, monk
     output = pages_dir / ".gdansk"
     amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=False)
 
-    @amber.tool(Path("simple/page.tsx"), ssr=True)
+    @amber.tool(Path("simple/widget.tsx"), ssr=True)
     def my_tool():
         return "result"
 
@@ -265,7 +265,7 @@ def test_tool_ssr_false_overrides_amber_true(mock_mcp, pages_dir, tmp_path, monk
     output = pages_dir / ".gdansk"
     amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=True)
 
-    @amber.tool(Path("simple/page.tsx"), ssr=False)
+    @amber.tool(Path("simple/widget.tsx"), ssr=False)
     def my_tool():
         return "result"
 
@@ -289,7 +289,7 @@ def test_ssr_runtime_failure_fails_fast(mock_mcp, pages_dir, tmp_path, monkeypat
     output = pages_dir / ".gdansk"
     amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=True)
 
-    @amber.tool(Path("simple/page.tsx"))
+    @amber.tool(Path("simple/widget.tsx"))
     def my_tool():
         return "result"
 

@@ -1,10 +1,10 @@
-mod app_entrypoint;
 mod lightningcss;
 mod runtime_module;
 mod server_entrypoint;
 mod shared;
 mod vite;
 mod vite_runtime;
+mod widget_entrypoint;
 
 pub(crate) use shared::{client_entry_import, server_entry_import};
 pub(crate) use vite::VitePluginSpec;
@@ -72,7 +72,7 @@ pub(crate) struct ClientEntrypointPluginOptions<'a> {
     pub(crate) dev: bool,
     pub(crate) minify: bool,
     pub(crate) selection: &'a PluginSelection,
-    pub(crate) include_app_entrypoint_plugin: bool,
+    pub(crate) include_widget_entrypoint_plugin: bool,
 }
 
 #[cfg(not(test))]
@@ -91,8 +91,8 @@ pub(crate) fn client_entrypoint_plugins(
             options.minify,
         ));
     }
-    if options.include_app_entrypoint_plugin {
-        plugins.push(app_entrypoint::plugin());
+    if options.include_widget_entrypoint_plugin {
+        plugins.push(widget_entrypoint::plugin());
     }
     if !options.selection.vite_plugin_specs.is_empty() {
         plugins.push(vite::client_plugin(

@@ -3,9 +3,9 @@ from os import PathLike
 from pathlib import Path
 
 class Page:
-    def __init__(self, *, path: Path, app: bool = False, ssr: bool = False) -> None: ...
+    def __init__(self, *, path: Path, is_widget: bool = False, ssr: bool = False) -> None: ...
     path: Path
-    app: bool
+    is_widget: bool
     ssr: bool
     client: Path
     server: Path | None

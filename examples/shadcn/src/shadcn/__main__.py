@@ -47,7 +47,7 @@ def _get_todo(todo_id: str) -> Todo:
     raise ValueError(msg)
 
 
-@amber.tool(name="list-todos", page=Path("todo"), structured_output=True)
+@amber.tool(name="list-todos", widget=Path("todo"), structured_output=True)
 def list_todos() -> list[Todo]:
     """Return all todos."""
     return _serialize_todos()

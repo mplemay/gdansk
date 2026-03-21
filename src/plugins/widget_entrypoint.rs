@@ -1,5 +1,5 @@
 #[cfg(not(test))]
-use super::shared::APP_ENTRYPOINT_QUERY;
+use super::shared::WIDGET_ENTRYPOINT_QUERY;
 use super::shared::file_name_import_path;
 
 #[cfg(not(test))]
@@ -14,11 +14,11 @@ use rolldown::plugin::{
 
 #[cfg(not(test))]
 #[derive(Debug, Default)]
-struct GdanskAppEntrypointPlugin;
+struct GdanskWidgetEntrypointPlugin;
 
 #[cfg(not(test))]
 fn source_id(id: &str) -> Option<&str> {
-    id.strip_suffix(APP_ENTRYPOINT_QUERY)
+    id.strip_suffix(WIDGET_ENTRYPOINT_QUERY)
 }
 
 fn wrapper_source(source_id: &str) -> Option<String> {
@@ -42,13 +42,13 @@ if (root.hasChildNodes()) {{
 
 #[cfg(not(test))]
 pub(super) fn plugin() -> SharedPluginable {
-    Arc::new(GdanskAppEntrypointPlugin)
+    Arc::new(GdanskWidgetEntrypointPlugin)
 }
 
 #[cfg(not(test))]
-impl Plugin for GdanskAppEntrypointPlugin {
+impl Plugin for GdanskWidgetEntrypointPlugin {
     fn name(&self) -> Cow<'static, str> {
-        Cow::Borrowed("gdansk:app-entrypoint")
+        Cow::Borrowed("gdansk:widget-entrypoint")
     }
 
     async fn resolve_id(
@@ -56,7 +56,7 @@ impl Plugin for GdanskAppEntrypointPlugin {
         _ctx: &PluginContext,
         args: &HookResolveIdArgs<'_>,
     ) -> HookResolveIdReturn {
-        if args.specifier.ends_with(APP_ENTRYPOINT_QUERY) {
+        if args.specifier.ends_with(WIDGET_ENTRYPOINT_QUERY) {
             return Ok(Some(HookResolveIdOutput::from_id(args.specifier)));
         }
         Ok(None)
@@ -85,10 +85,10 @@ mod tests {
     use super::wrapper_source;
 
     #[test]
-    fn wrapper_source_bootstraps_client_app() {
-        let wrapper = wrapper_source("apps/simple/page.tsx").expect("expected app wrapper");
+    fn wrapper_source_bootstraps_client_widget() {
+        let wrapper = wrapper_source("widgets/simple/widget.tsx").expect("expected widget wrapper");
 
-        assert!(wrapper.contains(r#"import App from "./page.tsx";"#));
+        assert!(wrapper.contains(r#"import App from "./widget.tsx";"#));
         assert!(wrapper.contains("hydrateRoot"));
         assert!(wrapper.contains("createRoot"));
     }
