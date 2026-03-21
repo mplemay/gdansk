@@ -7,7 +7,7 @@ import logging
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 from anyio import Path as APath
 
@@ -17,13 +17,12 @@ from gdansk.render import ENV
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable, Sequence
-    from os import PathLike
 
     from mcp.server import MCPServer as FastMCP
     from mcp.types import Icon, ToolAnnotations
     from starlette.applications import Starlette
 
-    from gdansk.protocol import Plugin
+    from gdansk.protocol import PathType, Plugin
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +48,7 @@ class Amber:
     _page_min_parts: ClassVar[int] = 2
 
     mcp: FastMCP
-    views: Path
+    views: PathType
     output: Path = field(init=False)
     ssr: bool = field(default=False, kw_only=True)
     cache_html: bool = field(default=True, kw_only=True)
@@ -58,12 +57,14 @@ class Amber:
 
     def __post_init__(self) -> None:
         """Validate required paths and initialize derived output paths."""
-        if not self.views.is_dir():
-            msg = f"The views directory {self.views} does not exist"
+        views_path = Path(self.views)
+        object.__setattr__(self, "views", views_path)
+        if not views_path.is_dir():
+            msg = f"The views directory {views_path} does not exist"
             raise ValueError(msg)
 
         _validate_plugins(self.plugins)
-        object.__setattr__(self, "output", self.views / ".gdansk")
+        object.__setattr__(self, "output", views_path / ".gdansk")
 
     async def _run_build_pipeline(self, *, dev: bool) -> None:
         pages = sorted(self._widgets, key=lambda page: page.path.as_posix())
@@ -72,7 +73,7 @@ class Amber:
             dev=dev,
             minify=not dev,
             output=self.output,
-            cwd=self.views,
+            cwd=cast("Path", self.views),
             plugins=self.plugins,
         )
 
@@ -99,7 +100,7 @@ class Amber:
                 await asyncio.gather(*tasks, return_exceptions=True)
 
     @staticmethod
-    def _normalize_widget_input(widget: str | PathLike[str]) -> Path:
+    def _normalize_widget_input(widget: PathType) -> Path:
         widget_path = Path(widget)
         if widget_path.is_absolute():
             msg = f"The widget path (i.e. {widget}) must be a relative path"
@@ -182,7 +183,7 @@ class Amber:
 
     def tool(  # noqa: C901, PLR0913, PLR0915
         self,
-        widget: str | PathLike[str],
+        widget: PathType,
         name: str | None = None,
         *,
         title: str | None = None,
@@ -203,7 +204,7 @@ class Amber:
 
         for widget_candidate in widget_candidates:
             _, candidate_bundle_page, candidate_uri = self._normalize_widget_path_and_uri(widget_candidate)
-            if (self.views / candidate_bundle_page).is_file():
+            if (cast("Path", self.views) / candidate_bundle_page).is_file():
                 bundle_page = candidate_bundle_page
                 uri = candidate_uri
                 break
