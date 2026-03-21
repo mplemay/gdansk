@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import os
 import threading
 import time
 from contextlib import contextmanager
@@ -24,6 +25,18 @@ if TYPE_CHECKING:
 def test_valid_construction(mock_mcp, pages_dir):
     amber = Amber(mcp=mock_mcp, views=pages_dir)
     assert amber.mcp is mock_mcp
+    assert amber.views == pages_dir
+
+
+def test_amber_views_accepts_str(mock_mcp, pages_dir):
+    amber = Amber(mcp=mock_mcp, views=os.fspath(pages_dir))
+    assert isinstance(amber.views, Path)
+    assert amber.views == pages_dir
+
+
+def test_amber_views_accepts_pure_posix_path(mock_mcp, pages_dir):
+    amber = Amber(mcp=mock_mcp, views=PurePosixPath(pages_dir.as_posix()))
+    assert isinstance(amber.views, Path)
     assert amber.views == pages_dir
 
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import sys
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
@@ -17,13 +19,12 @@ from gdansk.render import ENV
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable, Sequence
-    from os import PathLike
 
     from mcp.server import MCPServer as FastMCP
     from mcp.types import Icon, ToolAnnotations
     from starlette.applications import Starlette
 
-    from gdansk.protocol import Plugin
+    from gdansk.protocol import PathType, Plugin
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +50,7 @@ class Amber:
     _page_min_parts: ClassVar[int] = 2
 
     mcp: FastMCP
-    views: Path
+    views: PathType
     output: Path = field(init=False)
     ssr: bool = field(default=False, kw_only=True)
     cache_html: bool = field(default=True, kw_only=True)
@@ -58,21 +59,36 @@ class Amber:
 
     def __post_init__(self) -> None:
         """Validate required paths and initialize derived output paths."""
-        if not self.views.is_dir():
-            msg = f"The views directory {self.views} does not exist"
+        # Python 3.11 + Windows: Path(PurePosixPath("C:/...")) is built from POSIX parts and
+        # mangles drive letters; 3.12+ pathlib handles cross-flavour paths. Remove this branch
+        # when the minimum supported version is 3.12 (then use Path(self.views) only).
+        if sys.version_info[:2] == (3, 11):
+            views_path = Path(os.fspath(self.views))
+        else:
+            views_path = Path(self.views)
+        object.__setattr__(self, "views", views_path)
+        if not views_path.is_dir():
+            msg = f"The views directory {views_path} does not exist"
             raise ValueError(msg)
 
         _validate_plugins(self.plugins)
-        object.__setattr__(self, "output", self.views / ".gdansk")
+        object.__setattr__(self, "output", views_path / ".gdansk")
+
+    def _views_path(self) -> Path:
+        if not isinstance(self.views, Path):
+            msg = "internal error: Amber.views was not normalized to pathlib.Path"
+            raise TypeError(msg)
+        return self.views
 
     async def _run_build_pipeline(self, *, dev: bool) -> None:
+        views_root = self._views_path()
         pages = sorted(self._widgets, key=lambda page: page.path.as_posix())
         await bundle(
             pages=pages,
             dev=dev,
             minify=not dev,
             output=self.output,
-            cwd=self.views,
+            cwd=views_root,
             plugins=self.plugins,
         )
 
@@ -99,7 +115,7 @@ class Amber:
                 await asyncio.gather(*tasks, return_exceptions=True)
 
     @staticmethod
-    def _normalize_widget_input(widget: str | PathLike[str]) -> Path:
+    def _normalize_widget_input(widget: PathType) -> Path:
         widget_path = Path(widget)
         if widget_path.is_absolute():
             msg = f"The widget path (i.e. {widget}) must be a relative path"
@@ -182,7 +198,7 @@ class Amber:
 
     def tool(  # noqa: C901, PLR0913, PLR0915
         self,
-        widget: str | PathLike[str],
+        widget: PathType,
         name: str | None = None,
         *,
         title: str | None = None,
@@ -195,6 +211,7 @@ class Amber:
         structured_output: bool | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         """Register a tool and bind its widget resource into the MCP server."""
+        views_root = self._views_path()
         widget_path = self._normalize_widget_input(widget)
         widget_candidates = self._resolve_widget_path_candidates(widget_path)
 
@@ -203,7 +220,7 @@ class Amber:
 
         for widget_candidate in widget_candidates:
             _, candidate_bundle_page, candidate_uri = self._normalize_widget_path_and_uri(widget_candidate)
-            if (self.views / candidate_bundle_page).is_file():
+            if (views_root / candidate_bundle_page).is_file():
                 bundle_page = candidate_bundle_page
                 uri = candidate_uri
                 break
