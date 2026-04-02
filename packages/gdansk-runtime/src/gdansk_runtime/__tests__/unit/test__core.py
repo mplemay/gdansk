@@ -78,6 +78,12 @@ export default function() {
         assert run("ping") == "pong"
 
 
+@pytest.mark.parametrize("contents", ["", " \n\t "])
+def test_script_rejects_blank_contents(contents):
+    with pytest.raises(ValueError, match="must not be empty"):
+        Script(contents=contents, inputs=int, outputs=int)
+
+
 def test_runtime_executes_inline_script_with_pydantic_io():
     class Output(BaseModel):
         value: int
@@ -191,6 +197,60 @@ export default function(input) {
         assert run(2) == 2
 
 
+def test_runtime_context_rejects_calls_before_enter():
+    script = Script(
+        contents="""
+export default function(input) {
+    return input + 1;
+}
+""".strip(),
+        inputs=int,
+        outputs=int,
+    )
+    context = Runtime()(script)
+
+    with pytest.raises(RuntimeError, match="not active"):
+        context(1)
+
+
+def test_runtime_context_rejects_reentry_while_active():
+    script = Script(
+        contents="""
+export default function(input) {
+    return input + 1;
+}
+""".strip(),
+        inputs=int,
+        outputs=int,
+    )
+    context = Runtime()(script)
+
+    with context, pytest.raises(RuntimeError, match="already active"):
+        context.__enter__()
+
+
+def test_runtime_context_can_be_reused_after_exit():
+    script = Script(
+        contents="""
+let counter = 0;
+
+export default function(input) {
+    counter += input;
+    return counter;
+}
+""".strip(),
+        inputs=int,
+        outputs=int,
+    )
+    context = Runtime()(script)
+
+    with context:
+        assert context(2) == 2
+
+    with context:
+        assert context(2) == 2
+
+
 def test_runtime_rejects_missing_default_export():
     script = Script(
         contents="export const value = 1;",
@@ -241,6 +301,128 @@ export default function() {
 
     with Runtime()(script) as run, pytest.raises(ValueError, match="unsupported JavaScript value"):
         run(1)
+
+
+def test_runtime_does_not_run_javascript_when_input_validation_fails():
+    script = Script(
+        contents="""
+let calls = 0;
+
+export default function(input) {
+    calls += 1;
+    return calls + input;
+}
+""".strip(),
+        inputs=int,
+        outputs=int,
+    )
+
+    with Runtime()(script) as run:
+        with pytest.raises(ValidationError):
+            run("bad")
+
+        assert run(1) == 2
+
+
+def test_runtime_does_not_run_javascript_when_input_cannot_serialize():
+    script = Script(
+        contents="""
+let calls = 0;
+
+export default function(input) {
+    calls += 1;
+    return calls + input;
+}
+""".strip(),
+        inputs=int,
+        outputs=int,
+    )
+
+    with Runtime()(script) as run:
+        with pytest.raises(TypeError, match="JSON-compatible"):
+            run(10**100)
+
+        assert run(1) == 2
+
+
+def test_runtime_supports_async_default_export():
+    script = Script(
+        contents="""
+export default async function(input) {
+    return await Promise.resolve(input + 1);
+}
+""".strip(),
+        inputs=int,
+        outputs=int,
+    )
+
+    with Runtime()(script) as run:
+        assert run(1) == 2
+
+
+def test_runtime_honors_top_level_await_before_calls():
+    script = Script(
+        contents="""
+const offset = await Promise.resolve(41);
+
+export default function(input) {
+    return offset + input;
+}
+""".strip(),
+        inputs=int,
+        outputs=int,
+    )
+
+    with Runtime()(script) as run:
+        assert run(1) == 42
+
+
+def test_runtime_recovers_after_javascript_error_within_context():
+    script = Script(
+        contents="""
+let calls = 0;
+
+export default function(input) {
+    if (input < 0) {
+        throw new Error("boom");
+    }
+    calls += input;
+    return calls;
+}
+""".strip(),
+        inputs=int,
+        outputs=int,
+    )
+
+    with Runtime()(script) as run:
+        with pytest.raises(RuntimeError, match="boom"):
+            run(-1)
+
+        assert run(2) == 2
+
+
+def test_runtime_recovers_after_deserialize_error_within_context():
+    script = Script(
+        contents="""
+let calls = 0;
+
+export default function(input) {
+    if (input < 0) {
+        return undefined;
+    }
+    calls += input;
+    return calls;
+}
+""".strip(),
+        inputs=int,
+        outputs=int,
+    )
+
+    with Runtime()(script) as run:
+        with pytest.raises(ValueError, match="unsupported JavaScript value"):
+            run(-1)
+
+        assert run(2) == 2
 
 
 def test_runtime_rejects_dependencies_for_now():
