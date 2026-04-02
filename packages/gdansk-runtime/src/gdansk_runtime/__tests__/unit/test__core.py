@@ -1,10 +1,27 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import pytest
-from gdansk_runtime import Runtime, Script
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, TypeAdapter, ValidationError
+
+from gdansk_runtime import Runtime, RuntimeContext, Script
+
+if TYPE_CHECKING:
+    _TYPING_CONTENTS = "export default function(input) { return input; }"
+
+    _typing_script = Script(contents=_TYPING_CONTENTS, inputs=int, outputs=str)
+    _typing_inputs: TypeAdapter[int] = _typing_script.inputs
+    _typing_outputs: TypeAdapter[str] = _typing_script.outputs
+    _typing_context: RuntimeContext[int, str] = Runtime()(_typing_script)
+
+    _typing_literal_script = Script(
+        contents=_TYPING_CONTENTS,
+        inputs=TypeAdapter(Literal["ping"]),
+        outputs=str,
+    )
+    _typing_literal_inputs: TypeAdapter[Literal["ping"]] = _typing_literal_script.inputs
 
 
 def test_script_accepts_non_model_annotations():
@@ -24,6 +41,43 @@ export default function(input) {
     assert result == ("two", 1)
 
 
+def test_script_normalizes_annotations_to_type_adapters():
+    script = Script(
+        contents="""
+export default function(input) {
+    return input;
+}
+""".strip(),
+        inputs=int,
+        outputs=tuple[str, int],
+    )
+
+    assert isinstance(script.inputs, TypeAdapter)
+    assert isinstance(script.outputs, TypeAdapter)
+    assert script.inputs.validate_python("1") == 1
+    assert script.outputs.validate_python(["two", 2]) == ("two", 2)
+
+
+def test_script_reuses_explicit_type_adapters():
+    input_adapter = TypeAdapter(Literal["ping"])
+    output_adapter = TypeAdapter(Literal["pong"])
+    script = Script(
+        contents="""
+export default function() {
+    return "pong";
+}
+""".strip(),
+        inputs=input_adapter,
+        outputs=output_adapter,
+    )
+
+    assert script.inputs is input_adapter
+    assert script.outputs is output_adapter
+
+    with Runtime()(script) as run:
+        assert run("ping") == "pong"
+
+
 def test_runtime_executes_inline_script_with_pydantic_io():
     class Output(BaseModel):
         value: int
@@ -40,7 +94,7 @@ export default function(input) {
     )
 
     with Runtime()(script) as run:
-        result = run("2")
+        result = run(cast("Any", "2"))
 
     assert result == Output(value=2, kind="number")
 
@@ -64,7 +118,7 @@ export default function(input) {
     )
 
     with Runtime()(script) as run:
-        result = list(run({"a": "1", "b": ["2", "3"]}))
+        result = list(run(cast("Any", {"a": "1", "b": ["2", "3"]})))
 
     assert result == [ScriptOutput(total=6)]
 

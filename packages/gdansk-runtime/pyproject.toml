@@ -6,8 +6,10 @@ readme = "README.md"
 authors = [
     { name = "Matt LeMay", email = "mplemay@users.noreply.github.com" }
 ]
-requires-python = ">=3.11,<3.15"
-dependencies = []
+requires-python = ">=3.12,<3.15"
+dependencies = [
+    "pydantic>=2,<3",
+]
 
 [project.scripts]
 gdansk-runtime = "gdansk_runtime:main"
@@ -19,6 +21,10 @@ python-source = "src"
 
 [tool.uv]
 cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.rs" }, { file = "Cargo.toml" }, { file = "Cargo.lock" }]
+
+[tool.ruff]
+extend = "../../pyproject.toml"
+target-version = "py312"
 
 [build-system]
 requires = ["maturin>=1.0,<2.0"]

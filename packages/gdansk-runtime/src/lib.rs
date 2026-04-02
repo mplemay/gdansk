@@ -34,8 +34,6 @@ struct Script {
     contents: String,
     inputs: Py<PyAny>,
     outputs: Py<PyAny>,
-    input_adapter: Py<PyAny>,
-    output_adapter: Py<PyAny>,
 }
 
 #[pyclass(module = "gdansk_runtime._core", frozen, skip_from_py_object)]
@@ -311,17 +309,26 @@ impl JsContext {
 }
 
 impl Script {
+    fn normalize_type_adapter(
+        py: Python<'_>,
+        value: Py<PyAny>,
+        type_adapter: &Bound<'_, PyAny>,
+    ) -> PyResult<Py<PyAny>> {
+        if value.bind(py).is_instance(type_adapter)? {
+            return Ok(value);
+        }
+
+        Ok(type_adapter.call1((value.bind(py),))?.unbind())
+    }
+
     fn serialize_input(&self, py: Python<'_>, input: &Bound<'_, PyAny>) -> PyResult<Value> {
-        let validated = self
-            .input_adapter
-            .bind(py)
-            .call_method1("validate_python", (input,))?;
+        let validated = self.inputs.bind(py).call_method1("validate_python", (input,))?;
         let kwargs = PyDict::new(py);
         kwargs.set_item("mode", "json")?;
-        let dumped =
-            self.input_adapter
-                .bind(py)
-                .call_method("dump_python", (validated,), Some(&kwargs))?;
+        let dumped = self
+            .inputs
+            .bind(py)
+            .call_method("dump_python", (validated,), Some(&kwargs))?;
         py_any_to_json_value(
             &dumped,
             "Script input must serialize to JSON-compatible Python values",
@@ -333,7 +340,7 @@ impl Script {
         py: Python<'py>,
         output: Py<PyAny>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        self.output_adapter
+        self.outputs
             .bind(py)
             .call_method1("validate_python", (output.bind(py),))
     }
@@ -382,15 +389,13 @@ impl Script {
 
         let pydantic = PyModule::import(py, "pydantic")?;
         let type_adapter = pydantic.getattr("TypeAdapter")?;
-        let input_adapter = type_adapter.call1((inputs.bind(py),))?.unbind();
-        let output_adapter = type_adapter.call1((outputs.bind(py),))?.unbind();
+        let inputs = Self::normalize_type_adapter(py, inputs, &type_adapter)?;
+        let outputs = Self::normalize_type_adapter(py, outputs, &type_adapter)?;
 
         Ok(Self {
             contents,
             inputs,
             outputs,
-            input_adapter,
-            output_adapter,
         })
     }
 
