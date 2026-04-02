@@ -25,6 +25,11 @@ cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.rs" }, { file = "C
 [tool.uv.sources]
 mcp = { git = "https://github.com/modelcontextprotocol/python-sdk.git", rev = "main" }
 
+[tool.uv.workspace]
+members = [
+    "packages/gdansk-runtime",
+]
+
 [build-system]
 requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"

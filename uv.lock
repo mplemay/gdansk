@@ -6,6 +6,12 @@ resolution-markers = [
     "python_full_version < '3.14'",
 ]
 
+[manifest]
+members = [
+    "gdansk",
+    "gdansk-runtime",
+]
+
 [[package]]
 name = "annotated-types"
 version = "0.7.0"
@@ -230,6 +236,11 @@ dev = [
     { name = "rumdl", specifier = ">=0.1.21" },
     { name = "ty", specifier = ">=0.0.17" },
 ]
+
+[[package]]
+name = "gdansk-runtime"
+version = "0.1.0"
+source = { editable = "packages/gdansk-runtime" }
 
 [[package]]
 name = "h11"
