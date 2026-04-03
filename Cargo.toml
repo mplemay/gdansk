@@ -15,7 +15,7 @@ dunce = "1.0"
 serde = { version = "1", features = ["derive"] }
 
 # python
-pyo3 = { version = "0.28", features = ["extension-module", "abi3-py311"] }
+pyo3 = { version = "0.28", features = ["extension-module", "abi3-py312"] }
 pyo3-async-runtimes = { version = "0.28", features = ["tokio-runtime"] }
 
 # javascript
