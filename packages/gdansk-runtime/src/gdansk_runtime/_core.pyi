@@ -8,8 +8,8 @@ class Script[I, O]:
     def __init__(
         self,
         contents: str,
-        inputs: type[I] | TypeAdapter[I],
-        outputs: type[O] | TypeAdapter[O],
+        inputs: type[I],
+        outputs: type[O],
     ) -> None: ...
     @overload
     def __init__(self, contents: str, inputs: object, outputs: object) -> None: ...
@@ -17,8 +17,8 @@ class Script[I, O]:
     def from_file(
         cls: type[Self],
         path: str | PathLike[str],
-        inputs: type[I] | TypeAdapter[I],
-        outputs: type[O] | TypeAdapter[O],
+        inputs: type[I],
+        outputs: type[O],
     ) -> Self: ...
     @property
     def contents(self) -> str: ...

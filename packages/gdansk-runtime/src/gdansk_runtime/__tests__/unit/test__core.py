@@ -21,13 +21,6 @@ if TYPE_CHECKING:
     _typing_context: RuntimeContext[int, str] = Runtime()(_typing_script)
     _typing_file_script: Script[int, str] = Script.from_file("script.js", inputs=int, outputs=str)
 
-    _typing_literal_script = Script(
-        contents=_TYPING_CONTENTS,
-        inputs=TypeAdapter(Literal["ping"]),
-        outputs=str,
-    )
-    _typing_literal_inputs: TypeAdapter[Literal["ping"]] = _typing_literal_script.inputs
-
     async def _typing_async() -> None:
         async with Runtime()(_typing_script) as run:
             _typing_async_context: AsyncRuntimeContext[int, str] = run
@@ -68,21 +61,24 @@ export default function(input) {
     assert script.outputs.validate_python(["two", 2]) == ("two", 2)
 
 
-def test_script_reuses_explicit_type_adapters():
-    input_adapter = TypeAdapter(Literal["ping"])
-    output_adapter = TypeAdapter(Literal["pong"])
+def test_script_accepts_literal_annotations():
     script = Script(
         contents="""
 export default function() {
     return "pong";
 }
 """.strip(),
-        inputs=input_adapter,
-        outputs=output_adapter,
+        inputs=Literal["ping"],
+        outputs=Literal["pong"],
     )
 
-    assert script.inputs is input_adapter
-    assert script.outputs is output_adapter
+    assert isinstance(script.inputs, TypeAdapter)
+    assert isinstance(script.outputs, TypeAdapter)
+    assert script.inputs.validate_python("ping") == "ping"
+    assert script.outputs.validate_python("pong") == "pong"
+
+    with pytest.raises(ValidationError):
+        script.inputs.validate_python("pong")
 
     with Runtime()(script) as run:
         assert run("ping") == "pong"

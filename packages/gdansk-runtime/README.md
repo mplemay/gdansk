@@ -9,8 +9,8 @@ class Script[I, O]:
     def __init__(
         self,
         contents: str,
-        inputs: type[I] | TypeAdapter[I],
-        outputs: type[O] | TypeAdapter[O],
+        inputs: type[I],
+        outputs: type[O],
     ) -> None: …
     @property
     def inputs(self) -> TypeAdapter[I]: …
@@ -20,8 +20,8 @@ class Script[I, O]:
     def from_file(
         cls: type[Self],
         path: str | PathLike[str],
-        inputs: type[I] | TypeAdapter[I],
-        outputs: type[O] | TypeAdapter[O],
+        inputs: type[I],
+        outputs: type[O],
     ) -> Self: …
     @property
     def contents(self) -> str: …
@@ -66,9 +66,8 @@ async with runtime(script) as run:
     out = await run(…)
 ````
 
-`Script` normalizes `inputs` and `outputs` to `TypeAdapter` instances. If you want precise
-static typing for special forms such as `Literal[...]` or `Annotated[...]`, pass an explicit
-`TypeAdapter[...]` when constructing the script.
+`Script` wraps the provided `inputs` and `outputs` types in `TypeAdapter` instances and exposes
+those adapters through the corresponding properties.
 
 When `package_json` is configured, `Runtime.lock()` and `Runtime.alock()` write `deno.lock` next
 to that `package.json`. `Runtime.sync()` resolves the same dependencies and installs them into a

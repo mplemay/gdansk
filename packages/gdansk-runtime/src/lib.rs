@@ -502,16 +502,12 @@ impl AsyncWorker {
 }
 
 impl Script {
-    fn normalize_type_adapter(
+    fn build_type_adapter(
         py: Python<'_>,
-        value: Py<PyAny>,
+        value_type: Py<PyAny>,
         type_adapter: &Bound<'_, PyAny>,
     ) -> PyResult<Py<PyAny>> {
-        if value.bind(py).is_instance(type_adapter)? {
-            return Ok(value);
-        }
-
-        Ok(type_adapter.call1((value.bind(py),))?.unbind())
+        Ok(type_adapter.call1((value_type.bind(py),))?.unbind())
     }
 
     fn normalize_path(py: Python<'_>, path: &Bound<'_, PyAny>) -> PyResult<String> {
@@ -646,8 +642,8 @@ impl Script {
 
         let pydantic = PyModule::import(py, "pydantic")?;
         let type_adapter = pydantic.getattr("TypeAdapter")?;
-        let inputs = Self::normalize_type_adapter(py, inputs, &type_adapter)?;
-        let outputs = Self::normalize_type_adapter(py, outputs, &type_adapter)?;
+        let inputs = Self::build_type_adapter(py, inputs, &type_adapter)?;
+        let outputs = Self::build_type_adapter(py, outputs, &type_adapter)?;
 
         Ok(Self {
             contents,
