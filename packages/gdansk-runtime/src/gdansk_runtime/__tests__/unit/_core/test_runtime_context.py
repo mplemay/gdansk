@@ -400,14 +400,28 @@ export default function() {
     }
 
 
-def test_runtime_bootstraps_web_globals_before_module_evaluation():
+def test_runtime_bootstraps_expanded_web_globals_before_module_evaluation():
     script = Script(
         contents="""
-const encoded = new TextEncoder().encode("ok");
-const channel = new MessageChannel();
 const bootstrapped =
-    encoded.length === 2 &&
-    typeof channel.port1.postMessage === "function";
+    [
+        typeof Event === "function",
+        typeof EventTarget === "function",
+        typeof BroadcastChannel === "function",
+        typeof URLPattern === "function",
+        typeof FileReader === "function",
+        typeof CompressionStream === "function",
+        typeof ImageData === "function",
+        typeof ByteLengthQueuingStrategy === "function",
+        typeof TextDecoderStream === "function",
+        typeof PerformanceObserver === "function",
+        typeof Window === "function",
+        typeof Location === "function",
+        typeof reportError === "function",
+        typeof globalThis.addEventListener === "function",
+        globalThis instanceof Window,
+        location === undefined,
+    ].every(Boolean);
 
 export default function() {
     return bootstrapped;
@@ -419,6 +433,99 @@ export default function() {
 
     with Runtime()(script) as run:
         assert run(0) is True
+
+
+def test_runtime_supports_report_error_with_global_event_target():
+    script = Script(
+        contents="""
+export default function() {
+    let message = null;
+    let targetMatches = false;
+
+    globalThis.addEventListener("error", (event) => {
+        message = event.message;
+        targetMatches = event.target === globalThis;
+        event.preventDefault();
+    }, { once: true });
+
+    reportError(new Error("boom"));
+
+    return {
+        message,
+        targetMatches,
+    };
+}
+""".strip(),
+        inputs=int,
+        outputs=dict[str, object],
+    )
+
+    with Runtime()(script) as run:
+        assert run(0) == {
+            "message": "Uncaught Error: boom",
+            "targetMatches": True,
+        }
+
+
+def test_runtime_supports_url_pattern():
+    script = Script(
+        contents="""
+export default function() {
+    const pattern = new URLPattern({
+        pathname: "/posts/:id",
+        search: "?draft=:draft",
+    });
+    const match = pattern.exec("https://example.com/posts/42?draft=yes");
+
+    return {
+        matched: match !== null,
+        id: match?.pathname.groups.id ?? null,
+        draft: match?.search.groups.draft ?? null,
+        tested: pattern.test("https://example.com/posts/42?draft=yes"),
+    };
+}
+""".strip(),
+        inputs=int,
+        outputs=dict[str, object],
+    )
+
+    with Runtime()(script) as run:
+        assert run(0) == {
+            "matched": True,
+            "id": "42",
+            "draft": "yes",
+            "tested": True,
+        }
+
+
+def test_runtime_supports_file_reader_binary_string():
+    script = Script(
+        contents="""
+export default async function() {
+    const reader = new FileReader();
+    return await new Promise((resolve, reject) => {
+        reader.addEventListener("load", () => {
+            resolve({
+                readyState: reader.readyState,
+                result: reader.result,
+            });
+        }, { once: true });
+        reader.addEventListener("error", () => {
+            reject(reader.error ?? new Error("read failed"));
+        }, { once: true });
+        reader.readAsBinaryString(new Blob(["hello"]));
+    });
+}
+""".strip(),
+        inputs=int,
+        outputs=dict[str, object],
+    )
+
+    with Runtime()(script) as run:
+        assert run(0) == {
+            "readyState": 2,
+            "result": "hello",
+        }
 
 
 def test_runtime_supports_timers():
@@ -436,6 +543,41 @@ export default async function(input) {
 
     with Runtime()(script) as run:
         assert run(1) == 2
+
+
+def test_runtime_uses_global_this_for_timer_callbacks_and_string_timers():
+    script = Script(
+        contents="""
+export default async function() {
+    const functionThis = await new Promise((resolve) => {
+        setTimeout(function() {
+            resolve(this === globalThis);
+        }, 0);
+    });
+
+    globalThis.timerValue = 0;
+    await new Promise((resolve) => {
+        setTimeout("globalThis.timerValue = 42", 0);
+        setTimeout(resolve, 0);
+    });
+    const timerValue = globalThis.timerValue;
+    delete globalThis.timerValue;
+
+    return {
+        functionThis,
+        timerValue,
+    };
+}
+""".strip(),
+        inputs=int,
+        outputs=dict[str, object],
+    )
+
+    with Runtime()(script) as run:
+        assert run(0) == {
+            "functionThis": True,
+            "timerValue": 42,
+        }
 
 
 def test_runtime_recovers_after_javascript_error_within_context():
