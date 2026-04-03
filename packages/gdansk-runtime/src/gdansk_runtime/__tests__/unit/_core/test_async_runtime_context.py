@@ -9,6 +9,8 @@ from pydantic import BaseModel
 from gdansk_runtime import AsyncRuntimeContext, Runtime, Script
 
 if TYPE_CHECKING:
+    from typing import assert_type
+
     _TYPING_CONTENTS = "export default function(input) { return input; }"
 
     _typing_script = Script(contents=_TYPING_CONTENTS, inputs=int, outputs=str)
@@ -17,6 +19,8 @@ if TYPE_CHECKING:
         async with Runtime()(_typing_script) as run:
             _typing_async_context: AsyncRuntimeContext[int, str] = run
             _typing_async_result: str = await run(1)
+            assert_type(_typing_async_context, AsyncRuntimeContext[int, str])
+            assert_type(_typing_async_result, str)
 
 
 @pytest.mark.anyio

@@ -9,10 +9,18 @@ from pydantic import BaseModel, ValidationError
 from gdansk_runtime import Runtime, RuntimeContext, Script
 
 if TYPE_CHECKING:
+    from typing import assert_type
+
     _TYPING_CONTENTS = "export default function(input) { return input; }"
 
     _typing_script = Script(contents=_TYPING_CONTENTS, inputs=int, outputs=str)
     _typing_context: RuntimeContext[int, str] = Runtime()(_typing_script)
+    assert_type(_typing_context, RuntimeContext[int, str])
+
+    with _typing_context as _typing_run:
+        assert_type(_typing_run, RuntimeContext[int, str])
+        _typing_result: str = _typing_run(1)
+        assert_type(_typing_result, str)
 
 
 def test_runtime_executes_inline_script_with_pydantic_io():
@@ -300,7 +308,7 @@ export default function(input) {
 
     with Runtime()(script) as run:
         with pytest.raises(ValidationError):
-            run("bad")
+            run(cast("Any", "bad"))
 
         assert run(1) == 2
 

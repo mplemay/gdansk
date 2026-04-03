@@ -9,6 +9,7 @@ from gdansk_runtime import Runtime, Script
 
 if TYPE_CHECKING:
     from pathlib import Path
+    from typing import assert_type
 
     _TYPING_CONTENTS = "export default function(input) { return input; }"
 
@@ -16,6 +17,10 @@ if TYPE_CHECKING:
     _typing_inputs: TypeAdapter[int] = _typing_script.inputs
     _typing_outputs: TypeAdapter[str] = _typing_script.outputs
     _typing_file_script: Script[int, str] = Script.from_file("script.js", inputs=int, outputs=str)
+    assert_type(_typing_script, Script[int, str])
+    assert_type(_typing_inputs, TypeAdapter[int])
+    assert_type(_typing_outputs, TypeAdapter[str])
+    assert_type(_typing_file_script, Script[int, str])
 
 
 def test_script_accepts_non_model_annotations():

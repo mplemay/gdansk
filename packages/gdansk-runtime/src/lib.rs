@@ -1,6 +1,5 @@
 use std::{
     collections::HashSet,
-    fs,
     path::PathBuf,
     sync::{
         Arc,
@@ -14,7 +13,7 @@ use deno_core::{JsRuntime, PollEventLoopOptions, RuntimeOptions, serde_json::Val
 use pyo3::{
     exceptions::{PyRuntimeError, PyTypeError, PyValueError},
     prelude::*,
-    types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyModule, PyString, PyTuple, PyType},
+    types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyString, PyTuple},
 };
 use tokio::sync::oneshot;
 
@@ -78,29 +77,26 @@ enum AsyncWorkerMessage {
     },
 }
 
-#[pyclass(module = "gdansk_runtime._core", frozen, skip_from_py_object)]
+#[pyclass(module = "gdansk_runtime._core", frozen, subclass, skip_from_py_object)]
 struct Script {
     contents: String,
-    inputs: Py<PyAny>,
-    outputs: Py<PyAny>,
 }
 
-#[pyclass(module = "gdansk_runtime._core", frozen, skip_from_py_object)]
+#[pyclass(module = "gdansk_runtime._core", frozen, subclass, skip_from_py_object)]
 struct Runtime {
     package_json: Option<PathBuf>,
 }
 
-#[pyclass(module = "gdansk_runtime._core", unsendable, skip_from_py_object)]
+#[pyclass(module = "gdansk_runtime._core", unsendable, subclass, skip_from_py_object)]
 struct RuntimeContext {
-    script: Py<Script>,
+    contents: String,
     context: Option<JsContext>,
-    async_context: Option<AsyncWorker>,
 }
 
-#[pyclass(module = "gdansk_runtime._core", frozen, skip_from_py_object)]
+#[pyclass(module = "gdansk_runtime._core", subclass, skip_from_py_object)]
 struct AsyncRuntimeContext {
-    script: Py<Script>,
-    worker: AsyncWorkerClient,
+    contents: String,
+    worker: Option<AsyncWorker>,
 }
 
 fn execution_error(err: impl std::fmt::Debug) -> ScriptRuntimeError {
@@ -116,15 +112,6 @@ fn map_runtime_error(err: ScriptRuntimeError) -> PyErr {
 
 fn map_runtime_npm_error(err: RuntimeNpmError) -> PyErr {
     PyRuntimeError::new_err(err.to_string())
-}
-
-fn normalize_runtime_path(py: Python<'_>, path: &Bound<'_, PyAny>) -> PyResult<PathBuf> {
-    let path = PathBuf::from(Script::normalize_path(py, path)?);
-    if path.is_absolute() {
-        return Ok(path);
-    }
-
-    Ok(std::env::current_dir()?.join(path))
 }
 
 fn py_any_to_json_value(
@@ -501,86 +488,25 @@ impl AsyncWorker {
     }
 }
 
-impl Script {
-    fn build_type_adapter(
-        py: Python<'_>,
-        value_type: Py<PyAny>,
-        type_adapter: &Bound<'_, PyAny>,
-    ) -> PyResult<Py<PyAny>> {
-        Ok(type_adapter.call1((value_type.bind(py),))?.unbind())
-    }
-
-    fn normalize_path(py: Python<'_>, path: &Bound<'_, PyAny>) -> PyResult<String> {
-        let os = PyModule::import(py, "os")?;
-        os.getattr("fspath")?.call1((path,))?.extract()
-    }
-
-    fn read_contents_from_path(py: Python<'_>, path: &Bound<'_, PyAny>) -> PyResult<String> {
-        let path = Self::normalize_path(py, path)?;
-        fs::read_to_string(path).map_err(PyErr::from)
-    }
-
-    fn serialize_input(&self, py: Python<'_>, input: &Bound<'_, PyAny>) -> PyResult<Value> {
-        let validated = self
-            .inputs
-            .bind(py)
-            .call_method1("validate_python", (input,))?;
-        let kwargs = PyDict::new(py);
-        kwargs.set_item("mode", "json")?;
-        let dumped =
-            self.inputs
-                .bind(py)
-                .call_method("dump_python", (validated,), Some(&kwargs))?;
-        py_any_to_json_value(
-            &dumped,
-            "Script input must serialize to JSON-compatible Python values",
-        )
-    }
-
-    fn validate_output<'py>(
-        &self,
-        py: Python<'py>,
-        output: Py<PyAny>,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        self.outputs
-            .bind(py)
-            .call_method1("validate_python", (output.bind(py),))
-    }
-
-    fn deserialize_output<'py>(
-        &self,
-        py: Python<'py>,
-        output: &Value,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let output = json_to_py(py, output)?;
-        self.validate_output(py, output)
-    }
-}
-
 impl RuntimeContext {
-    fn new(script: Py<Script>) -> Self {
+    fn from_contents(contents: String) -> Self {
         Self {
-            script,
+            contents,
             context: None,
-            async_context: None,
         }
     }
 
     fn ensure_inactive(&self) -> PyResult<()> {
-        if self.context.is_some() || self.async_context.is_some() {
+        if self.context.is_some() {
             return Err(PyRuntimeError::new_err(RUNTIME_CONTEXT_ALREADY_ACTIVE));
         }
 
         Ok(())
     }
 
-    fn enter(&mut self, py: Python<'_>) -> PyResult<()> {
+    fn enter(&mut self) -> PyResult<()> {
         self.ensure_inactive()?;
-        let contents = {
-            let script = self.script.bind(py).borrow();
-            script.contents.clone()
-        };
-        let context = JsContext::new(&contents).map_err(map_runtime_error)?;
+        let context = JsContext::new(&self.contents).map_err(map_runtime_error)?;
         self.context = Some(context);
         Ok(())
     }
@@ -590,26 +516,40 @@ impl RuntimeContext {
             .as_mut()
             .ok_or_else(|| PyRuntimeError::new_err(RUNTIME_CONTEXT_NOT_ACTIVE))
     }
+}
 
-    fn activate_async_context(
-        &mut self,
-        worker: AsyncWorker,
-        py: Python<'_>,
-    ) -> PyResult<AsyncRuntimeContext> {
-        self.ensure_inactive()?;
-
-        let worker_client = worker.client();
-        let script = self.script.clone_ref(py);
-        self.async_context = Some(worker);
-
-        Ok(AsyncRuntimeContext {
-            script,
-            worker: worker_client,
-        })
+impl AsyncRuntimeContext {
+    fn from_contents(contents: String) -> Self {
+        Self {
+            contents,
+            worker: None,
+        }
     }
 
-    fn take_async_context(&mut self) -> Option<AsyncWorker> {
-        let worker = self.async_context.take();
+    fn ensure_inactive(&self) -> PyResult<()> {
+        if self.worker.is_some() {
+            return Err(PyRuntimeError::new_err(RUNTIME_CONTEXT_ALREADY_ACTIVE));
+        }
+
+        Ok(())
+    }
+
+    fn enter(&mut self) -> PyResult<()> {
+        self.ensure_inactive()?;
+        let worker = AsyncWorker::spawn(self.contents.clone()).map_err(map_runtime_error)?;
+        self.worker = Some(worker);
+        Ok(())
+    }
+
+    fn active_worker(&self) -> PyResult<AsyncWorkerClient> {
+        self.worker
+            .as_ref()
+            .map(AsyncWorker::client)
+            .ok_or_else(|| PyRuntimeError::new_err(RUNTIME_CONTEXT_NOT_ACTIVE))
+    }
+
+    fn take_worker(&mut self) -> Option<AsyncWorker> {
+        let worker = self.worker.take();
         if let Some(worker) = &worker {
             worker.deactivate();
         }
@@ -630,53 +570,13 @@ impl Runtime {
 #[pymethods]
 impl Script {
     #[new]
-    fn new(
-        py: Python<'_>,
-        contents: String,
-        inputs: Py<PyAny>,
-        outputs: Py<PyAny>,
-    ) -> PyResult<Self> {
-        if contents.trim().is_empty() {
-            return Err(PyValueError::new_err("Script.contents must not be empty"));
-        }
-
-        let pydantic = PyModule::import(py, "pydantic")?;
-        let type_adapter = pydantic.getattr("TypeAdapter")?;
-        let inputs = Self::build_type_adapter(py, inputs, &type_adapter)?;
-        let outputs = Self::build_type_adapter(py, outputs, &type_adapter)?;
-
-        Ok(Self {
-            contents,
-            inputs,
-            outputs,
-        })
-    }
-
-    #[classmethod]
-    fn from_file(
-        _cls: &Bound<'_, PyType>,
-        path: &Bound<'_, PyAny>,
-        inputs: Py<PyAny>,
-        outputs: Py<PyAny>,
-    ) -> PyResult<Self> {
-        let py = path.py();
-        let contents = Self::read_contents_from_path(py, path)?;
-        Self::new(py, contents, inputs, outputs)
+    fn new(contents: String) -> Self {
+        Self { contents }
     }
 
     #[getter]
     fn contents(&self) -> &str {
         &self.contents
-    }
-
-    #[getter]
-    fn inputs(&self, py: Python<'_>) -> Py<PyAny> {
-        self.inputs.clone_ref(py)
-    }
-
-    #[getter]
-    fn outputs(&self, py: Python<'_>) -> Py<PyAny> {
-        self.outputs.clone_ref(py)
     }
 }
 
@@ -684,12 +584,10 @@ impl Script {
 impl Runtime {
     #[new]
     #[pyo3(signature = (*, package_json = None))]
-    fn new(py: Python<'_>, package_json: Option<Py<PyAny>>) -> PyResult<Self> {
-        let package_json = package_json
-            .map(|path| normalize_runtime_path(py, path.bind(py)))
-            .transpose()?;
-
-        Ok(Self { package_json })
+    fn new(package_json: Option<String>) -> Self {
+        Self {
+            package_json: package_json.map(PathBuf::from),
+        }
     }
 
     fn lock(&self) -> PyResult<()> {
@@ -715,30 +613,22 @@ impl Runtime {
             .sync()
             .map_err(map_runtime_npm_error)
     }
-
-    fn __call__(&self, script: Py<Script>) -> RuntimeContext {
-        RuntimeContext::new(script)
-    }
 }
 
 #[pymethods]
 impl RuntimeContext {
-    fn __enter__(slf: Py<Self>, py: Python<'_>) -> PyResult<Py<Self>> {
-        slf.borrow_mut(py).enter(py)?;
-        Ok(slf)
+    #[new]
+    fn new(contents: String) -> Self {
+        Self::from_contents(contents)
     }
 
-    fn __aenter__<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        self.ensure_inactive()?;
-        let contents = {
-            let script = self.script.bind(py).borrow();
-            script.contents.clone()
-        };
-        let worker = AsyncWorker::spawn(contents).map_err(map_runtime_error)?;
-        let async_context = self.activate_async_context(worker, py)?;
-        let async_context = Py::new(py, async_context)?;
+    fn _ensure_inactive(&self) -> PyResult<()> {
+        self.ensure_inactive()
+    }
 
-        pyo3_async_runtimes::tokio::future_into_py(py, async move { Ok(async_context) })
+    fn __enter__(slf: Py<Self>, py: Python<'_>) -> PyResult<Py<Self>> {
+        slf.borrow_mut(py).enter()?;
+        Ok(slf)
     }
 
     fn __exit__(
@@ -750,6 +640,35 @@ impl RuntimeContext {
         self.context = None;
     }
 
+    fn __call__<'py>(
+        &mut self,
+        py: Python<'py>,
+        input: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let input_json = py_any_to_json_value(
+            input,
+            "RuntimeContext input must serialize to JSON-compatible Python values",
+        )?;
+        let output_json = self
+            .active_context()?
+            .call(input_json)
+            .map_err(map_runtime_error)?;
+        Ok(json_to_py(py, &output_json)?.into_bound(py))
+    }
+}
+
+#[pymethods]
+impl AsyncRuntimeContext {
+    #[new]
+    fn new(contents: String) -> Self {
+        Self::from_contents(contents)
+    }
+
+    fn __aenter__<'py>(slf: Py<Self>, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        slf.borrow_mut(py).enter()?;
+        pyo3_async_runtimes::tokio::future_into_py(py, async move { Ok(slf) })
+    }
+
     fn __aexit__<'py>(
         &mut self,
         py: Python<'py>,
@@ -757,7 +676,7 @@ impl RuntimeContext {
         _exc_value: &Bound<'_, PyAny>,
         _traceback: &Bound<'_, PyAny>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let worker = self.take_async_context();
+        let worker = self.take_worker();
 
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             if let Some(worker) = worker {
@@ -772,50 +691,20 @@ impl RuntimeContext {
     }
 
     fn __call__<'py>(
-        &mut self,
-        py: Python<'py>,
-        input: &Bound<'py, PyAny>,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let input_json = {
-            let script = self.script.bind(py).borrow();
-            script.serialize_input(py, input)?
-        };
-        let output_json = self
-            .active_context()?
-            .call(input_json)
-            .map_err(map_runtime_error)?;
-        let script = self.script.bind(py).borrow();
-        script.deserialize_output(py, &output_json)
-    }
-}
-
-#[pymethods]
-impl AsyncRuntimeContext {
-    fn __call__<'py>(
         &self,
         py: Python<'py>,
         input: &Bound<'py, PyAny>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        if !self.worker.is_active() {
-            return Err(PyRuntimeError::new_err(RUNTIME_CONTEXT_NOT_ACTIVE));
-        }
-
-        let input_json = {
-            let script = self.script.bind(py).borrow();
-            script.serialize_input(py, input)?
-        };
-        let script = self.script.clone_ref(py);
-        let worker = self.worker.clone();
+        let input_json = py_any_to_json_value(
+            input,
+            "AsyncRuntimeContext input must serialize to JSON-compatible Python values",
+        )?;
+        let worker = self.active_worker()?;
 
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let output_json = worker.call(input_json).await.map_err(map_runtime_error)?;
 
-            Python::attach(|py| {
-                let script = script.bind(py).borrow();
-                script
-                    .deserialize_output(py, &output_json)
-                    .map(Bound::unbind)
-            })
+            Python::attach(|py| json_to_py(py, &output_json))
         })
     }
 }
