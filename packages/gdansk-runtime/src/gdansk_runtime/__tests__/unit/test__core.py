@@ -435,6 +435,86 @@ export default function(input) {
         assert run(1) == 42
 
 
+def test_runtime_exposes_web_api_globals():
+    script = Script(
+        contents="""
+export default function() {
+    const bytes = new TextEncoder().encode("hello");
+    const text = new TextDecoder().decode(bytes);
+    const location = new URL("/runtime?value=1", "https://example.com/base");
+    const channel = new MessageChannel();
+    const blob = new Blob(["hello"]);
+    return {
+        text,
+        href: location.href,
+        search: location.searchParams.get("value"),
+        hasMessagePort:
+            typeof channel.port1.postMessage === "function" &&
+            typeof channel.port2.postMessage === "function",
+        blobSize: blob.size,
+        streamTypes: [
+            typeof ReadableStream === "function",
+            typeof WritableStream === "function",
+            typeof TransformStream === "function",
+        ],
+    };
+}
+""".strip(),
+        inputs=int,
+        outputs=dict[str, object],
+    )
+
+    with Runtime()(script) as run:
+        result = run(0)
+
+    assert result == {
+        "text": "hello",
+        "href": "https://example.com/runtime?value=1",
+        "search": "1",
+        "hasMessagePort": True,
+        "blobSize": 5,
+        "streamTypes": [True, True, True],
+    }
+
+
+def test_runtime_bootstraps_web_globals_before_module_evaluation():
+    script = Script(
+        contents="""
+const encoded = new TextEncoder().encode("ok");
+const channel = new MessageChannel();
+const bootstrapped =
+    encoded.length === 2 &&
+    typeof channel.port1.postMessage === "function";
+
+export default function() {
+    return bootstrapped;
+}
+""".strip(),
+        inputs=int,
+        outputs=bool,
+    )
+
+    with Runtime()(script) as run:
+        assert run(0) is True
+
+
+def test_runtime_supports_timers():
+    script = Script(
+        contents="""
+export default async function(input) {
+    return await new Promise((resolve) => {
+        setTimeout(() => resolve(input + 1), 0);
+    });
+}
+""".strip(),
+        inputs=int,
+        outputs=int,
+    )
+
+    with Runtime()(script) as run:
+        assert run(1) == 2
+
+
 def test_runtime_recovers_after_javascript_error_within_context():
     script = Script(
         contents="""

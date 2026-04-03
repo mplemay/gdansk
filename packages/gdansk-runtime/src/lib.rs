@@ -26,6 +26,15 @@ const RUNTIME_CONTEXT_ALREADY_ACTIVE: &str = "RuntimeContext is already active";
 const RUNTIME_CONTEXT_NOT_ACTIVE: &str = "RuntimeContext is not active";
 const RUNTIME_PACKAGE_JSON_NOT_CONFIGURED: &str = "Runtime.package_json is not configured";
 
+deno_core::extension!(
+    gdansk_runtime_web_ext,
+    esm_entry_point = "ext:gdansk_runtime_web_ext/runtime_web.js",
+    esm = [
+        dir "src",
+        "runtime_web.js",
+    ],
+);
+
 #[derive(Debug)]
 enum ScriptRuntimeError {
     Execution(String),
@@ -337,7 +346,18 @@ impl JsContext {
             .enable_all()
             .build()
             .map_err(execution_error)?;
-        let mut js_runtime = JsRuntime::new(RuntimeOptions::default());
+        let mut js_runtime = JsRuntime::new(RuntimeOptions {
+            extensions: vec![
+                deno_webidl::deno_webidl::init(),
+                deno_web::deno_web::init(
+                    Default::default(),
+                    None,
+                    deno_web::InMemoryBroadcastChannel::default(),
+                ),
+                gdansk_runtime_web_ext::init(),
+            ],
+            ..Default::default()
+        });
         let default_function =
             tokio_runtime.block_on(load_default_function(&mut js_runtime, code))?;
         Ok(Self {
