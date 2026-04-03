@@ -9,5 +9,6 @@ crate-type = ["cdylib"]
 
 [dependencies]
 pyo3 = { version = "0.28.2", features = ["extension-module", "abi3-py311"] }
+pyo3-async-runtimes = { version = "0.28", features = ["attributes", "tokio-runtime"] }
 tokio = "1.40"
 deno_core = "0.396"

@@ -1,4 +1,13 @@
-use std::{collections::HashSet, fs};
+use std::{
+    collections::HashSet,
+    fs,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+        mpsc::{self, SyncSender},
+    },
+    thread::{self, JoinHandle},
+};
 
 use deno_core::{JsRuntime, PollEventLoopOptions, RuntimeOptions, serde_json::Value, serde_v8, v8};
 use pyo3::{
@@ -6,6 +15,10 @@ use pyo3::{
     prelude::*,
     types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyModule, PyString, PyTuple, PyType},
 };
+use tokio::sync::oneshot;
+
+const RUNTIME_CONTEXT_ALREADY_ACTIVE: &str = "RuntimeContext is already active";
+const RUNTIME_CONTEXT_NOT_ACTIVE: &str = "RuntimeContext is not active";
 
 #[derive(Debug)]
 enum ScriptRuntimeError {
@@ -29,6 +42,27 @@ struct JsContext {
     tokio_runtime: tokio::runtime::Runtime,
 }
 
+#[derive(Clone)]
+struct AsyncWorkerClient {
+    active: Arc<AtomicBool>,
+    sender: mpsc::Sender<AsyncWorkerMessage>,
+}
+
+struct AsyncWorker {
+    client: AsyncWorkerClient,
+    join_handle: Option<JoinHandle<()>>,
+}
+
+enum AsyncWorkerMessage {
+    Call {
+        input: Value,
+        reply: oneshot::Sender<Result<Value, ScriptRuntimeError>>,
+    },
+    Close {
+        reply: SyncSender<()>,
+    },
+}
+
 #[pyclass(module = "gdansk_runtime._core", frozen, skip_from_py_object)]
 struct Script {
     contents: String,
@@ -43,6 +77,13 @@ struct Runtime;
 struct RuntimeContext {
     script: Py<Script>,
     context: Option<JsContext>,
+    async_context: Option<AsyncWorker>,
+}
+
+#[pyclass(module = "gdansk_runtime._core", frozen, skip_from_py_object)]
+struct AsyncRuntimeContext {
+    script: Py<Script>,
+    worker: AsyncWorkerClient,
 }
 
 fn execution_error(err: impl std::fmt::Debug) -> ScriptRuntimeError {
@@ -308,6 +349,117 @@ impl JsContext {
     }
 }
 
+impl AsyncWorkerClient {
+    fn new(sender: mpsc::Sender<AsyncWorkerMessage>) -> Self {
+        Self {
+            active: Arc::new(AtomicBool::new(true)),
+            sender,
+        }
+    }
+
+    fn deactivate(&self) {
+        self.active.store(false, Ordering::Release);
+    }
+
+    fn is_active(&self) -> bool {
+        self.active.load(Ordering::Acquire)
+    }
+
+    async fn call(&self, input: Value) -> Result<Value, ScriptRuntimeError> {
+        if !self.is_active() {
+            return Err(ScriptRuntimeError::execution(RUNTIME_CONTEXT_NOT_ACTIVE));
+        }
+
+        let (reply, response) = oneshot::channel();
+        self.sender
+            .send(AsyncWorkerMessage::Call { input, reply })
+            .map_err(|_| ScriptRuntimeError::execution(RUNTIME_CONTEXT_NOT_ACTIVE))?;
+
+        response
+            .await
+            .map_err(|_| ScriptRuntimeError::execution(RUNTIME_CONTEXT_NOT_ACTIVE))?
+    }
+}
+
+impl AsyncWorker {
+    fn spawn(code: String) -> Result<Self, ScriptRuntimeError> {
+        let (sender, receiver) = mpsc::channel();
+        let client = AsyncWorkerClient::new(sender);
+        let (ready, initialized) = mpsc::sync_channel(1);
+        let join_handle = thread::spawn(move || {
+            let mut context = match JsContext::new(&code) {
+                Ok(context) => {
+                    let _ = ready.send(Ok(()));
+                    context
+                }
+                Err(err) => {
+                    let _ = ready.send(Err(err));
+                    return;
+                }
+            };
+
+            while let Ok(message) = receiver.recv() {
+                match message {
+                    AsyncWorkerMessage::Call { input, reply } => {
+                        let _ = reply.send(context.call(input));
+                    }
+                    AsyncWorkerMessage::Close { reply } => {
+                        let _ = reply.send(());
+                        break;
+                    }
+                }
+            }
+        });
+
+        match initialized.recv() {
+            Ok(Ok(())) => Ok(Self {
+                client,
+                join_handle: Some(join_handle),
+            }),
+            Ok(Err(err)) => {
+                let _ = join_handle.join();
+                Err(err)
+            }
+            Err(_) => {
+                let _ = join_handle.join();
+                Err(ScriptRuntimeError::execution(
+                    "Async runtime worker failed to initialize",
+                ))
+            }
+        }
+    }
+
+    fn client(&self) -> AsyncWorkerClient {
+        self.client.clone()
+    }
+
+    fn deactivate(&self) {
+        self.client.deactivate();
+    }
+
+    fn close(mut self) -> Result<(), ScriptRuntimeError> {
+        self.deactivate();
+
+        if let Some(join_handle) = self.join_handle.take() {
+            let (reply, response) = mpsc::sync_channel(1);
+            if self
+                .client
+                .sender
+                .send(AsyncWorkerMessage::Close { reply })
+                .is_ok()
+            {
+                let _ = response.recv();
+            }
+
+            join_handle
+                .join()
+                .map_err(|_| ScriptRuntimeError::execution("Async runtime worker panicked"))?;
+        }
+
+        Ok(())
+    }
+}
+
 impl Script {
     fn normalize_type_adapter(
         py: Python<'_>,
@@ -354,6 +506,15 @@ impl Script {
             .bind(py)
             .call_method1("validate_python", (output.bind(py),))
     }
+
+    fn deserialize_output<'py>(
+        &self,
+        py: Python<'py>,
+        output: &Value,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let output = json_to_py(py, output)?;
+        self.validate_output(py, output)
+    }
 }
 
 impl RuntimeContext {
@@ -361,13 +522,20 @@ impl RuntimeContext {
         Self {
             script,
             context: None,
+            async_context: None,
         }
     }
 
-    fn enter(&mut self, py: Python<'_>) -> PyResult<()> {
-        if self.context.is_some() {
-            return Err(PyRuntimeError::new_err("RuntimeContext is already active"));
+    fn ensure_inactive(&self) -> PyResult<()> {
+        if self.context.is_some() || self.async_context.is_some() {
+            return Err(PyRuntimeError::new_err(RUNTIME_CONTEXT_ALREADY_ACTIVE));
         }
+
+        Ok(())
+    }
+
+    fn enter(&mut self, py: Python<'_>) -> PyResult<()> {
+        self.ensure_inactive()?;
         let contents = {
             let script = self.script.bind(py).borrow();
             script.contents.clone()
@@ -380,7 +548,28 @@ impl RuntimeContext {
     fn active_context(&mut self) -> PyResult<&mut JsContext> {
         self.context
             .as_mut()
-            .ok_or_else(|| PyRuntimeError::new_err("RuntimeContext is not active"))
+            .ok_or_else(|| PyRuntimeError::new_err(RUNTIME_CONTEXT_NOT_ACTIVE))
+    }
+
+    fn activate_async_context(&mut self, worker: AsyncWorker, py: Python<'_>) -> PyResult<AsyncRuntimeContext> {
+        self.ensure_inactive()?;
+
+        let worker_client = worker.client();
+        let script = self.script.clone_ref(py);
+        self.async_context = Some(worker);
+
+        Ok(AsyncRuntimeContext {
+            script,
+            worker: worker_client,
+        })
+    }
+
+    fn take_async_context(&mut self) -> Option<AsyncWorker> {
+        let worker = self.async_context.take();
+        if let Some(worker) = &worker {
+            worker.deactivate();
+        }
+        worker
     }
 }
 
@@ -462,6 +651,19 @@ impl RuntimeContext {
         Ok(slf)
     }
 
+    fn __aenter__<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        self.ensure_inactive()?;
+        let contents = {
+            let script = self.script.bind(py).borrow();
+            script.contents.clone()
+        };
+        let worker = AsyncWorker::spawn(contents).map_err(map_runtime_error)?;
+        let async_context = self.activate_async_context(worker, py)?;
+        let async_context = Py::new(py, async_context)?;
+
+        pyo3_async_runtimes::tokio::future_into_py(py, async move { Ok(async_context) })
+    }
+
     fn __exit__(
         &mut self,
         _exc_type: &Bound<'_, PyAny>,
@@ -469,6 +671,27 @@ impl RuntimeContext {
         _traceback: &Bound<'_, PyAny>,
     ) {
         self.context = None;
+    }
+
+    fn __aexit__<'py>(
+        &mut self,
+        py: Python<'py>,
+        _exc_type: &Bound<'_, PyAny>,
+        _exc_value: &Bound<'_, PyAny>,
+        _traceback: &Bound<'_, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let worker = self.take_async_context();
+
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            if let Some(worker) = worker {
+                tokio::task::spawn_blocking(move || worker.close())
+                    .await
+                    .map_err(|err| map_runtime_error(execution_error(err)))?
+                    .map_err(map_runtime_error)?;
+            }
+
+            Python::attach(|py| Ok(py.None()))
+        })
     }
 
     fn __call__<'py>(
@@ -484,14 +707,42 @@ impl RuntimeContext {
             .active_context()?
             .call(input_json)
             .map_err(map_runtime_error)?;
-        let output = json_to_py(py, &output_json)?;
         let script = self.script.bind(py).borrow();
-        script.validate_output(py, output)
+        script.deserialize_output(py, &output_json)
+    }
+}
+
+#[pymethods]
+impl AsyncRuntimeContext {
+    fn __call__<'py>(
+        &self,
+        py: Python<'py>,
+        input: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        if !self.worker.is_active() {
+            return Err(PyRuntimeError::new_err(RUNTIME_CONTEXT_NOT_ACTIVE));
+        }
+
+        let input_json = {
+            let script = self.script.bind(py).borrow();
+            script.serialize_input(py, input)?
+        };
+        let script = self.script.clone_ref(py);
+        let worker = self.worker.clone();
+
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let output_json = worker.call(input_json).await.map_err(map_runtime_error)?;
+
+            Python::attach(|py| {
+                let script = script.bind(py).borrow();
+                script.deserialize_output(py, &output_json).map(Bound::unbind)
+            })
+        })
     }
 }
 
 #[pymodule]
 mod _core {
     #[pymodule_export]
-    use super::{Runtime, RuntimeContext, Script};
+    use super::{AsyncRuntimeContext, Runtime, RuntimeContext, Script};
 }
