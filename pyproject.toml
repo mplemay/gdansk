@@ -88,7 +88,7 @@ quote-style = "double"
 
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
-norecursedirs = ["target", "dist", "build", ".venv", "node_modules"]
+norecursedirs = ["target", "dist", "build", ".venv", "node_modules", "deno"]
 python_files = ["test_*.py"]
 markers = [
     "integration: marks tests that hit the database or external services",

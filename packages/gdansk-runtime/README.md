@@ -23,15 +23,14 @@ class Script[I, O]:
         inputs: type[I] | TypeAdapter[I],
         outputs: type[O] | TypeAdapter[O],
     ) -> Self: …
-
-type Deps = Mapper[str, str]
+    @property
+    def contents(self) -> str: …
 
 class Runtime:
-    def __init__(self, *, dependencies: Deps | None = None) -> None: …
+    def __init__(self, *, package_json: str | PathLike[str] | None = None) -> None: …
     def lock(self) -> None: …
     async def alock(self) -> None: …
     def sync(self) -> None: …
-    async def async(self) -> None: …
     def __call__[I, O](self, script: Script[I, O], /) -> RuntimeContext[I, O]: …
 
 class RuntimeContext[I, O]:
@@ -44,13 +43,6 @@ class RuntimeContext[I, O]:
 class AsyncRuntimeContext[I, O]:
     async def __call__(self, value: I, /) -> O: …
 
-runtime = Runtime(…)
-if not await runtime.locked():
-    await runtime.alock()
-
-if not await runtime.asynced():
-    await runtime.async()
-
 class MyScriptInput(BaseModel):
     a: int
     b: tuple[int, int]
@@ -59,6 +51,10 @@ class MyScriptOutput(BaseModel):
     pass
 
 type MyScriptOutputs = Iterable[MyScriptOutput]
+
+runtime = Runtime(package_json="package.json")
+runtime.lock()
+runtime.sync()
 
 script = Script(contents="...", inputs=MyScriptInput, outputs=MyScriptOutputs)
 input_adapter = script.inputs
@@ -73,3 +69,8 @@ async with runtime(script) as run:
 `Script` normalizes `inputs` and `outputs` to `TypeAdapter` instances. If you want precise
 static typing for special forms such as `Literal[...]` or `Annotated[...]`, pass an explicit
 `TypeAdapter[...]` when constructing the script.
+
+When `package_json` is configured, `Runtime.lock()` and `Runtime.alock()` write `deno.lock` next
+to that `package.json`. `Runtime.sync()` resolves the same dependencies and installs them into a
+`node_modules/` directory in that same folder. Locking and syncing are explicit operations in this
+slice; entering a runtime context does not install dependencies.

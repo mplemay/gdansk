@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
     _TYPING_CONTENTS = "export default function(input) { return input; }"
 
+    _typing_runtime = Runtime(package_json="package.json")
     _typing_script = Script(contents=_TYPING_CONTENTS, inputs=int, outputs=str)
     _typing_inputs: TypeAdapter[int] = _typing_script.inputs
     _typing_outputs: TypeAdapter[str] = _typing_script.outputs
@@ -247,6 +248,13 @@ export default function(input) {
         assert run(2) == 2
 
 
+def test_runtime_accepts_package_json_paths(tmp_path: Path):
+    package_json = tmp_path / "package.json"
+
+    assert isinstance(Runtime(package_json=package_json), Runtime)
+    assert isinstance(Runtime(package_json=str(package_json)), Runtime)
+
+
 def test_runtime_context_rejects_calls_before_enter():
     script = Script(
         contents="""
@@ -475,9 +483,14 @@ export default function(input) {
         assert run(2) == 2
 
 
-def test_runtime_rejects_dependencies_for_now():
-    with pytest.raises(NotImplementedError, match="dependencies"):
-        Runtime(dependencies={"react": "18"})
+def test_runtime_lock_requires_package_json():
+    with pytest.raises(RuntimeError, match="package_json"):
+        Runtime().lock()
+
+
+def test_runtime_sync_requires_package_json():
+    with pytest.raises(RuntimeError, match="package_json"):
+        Runtime().sync()
 
 
 @pytest.mark.asyncio
@@ -500,6 +513,12 @@ export default function(input) {
         result = await run(cast("Any", "2"))
 
     assert result == Output(value=2, kind="number")
+
+
+@pytest.mark.asyncio
+async def test_runtime_alock_requires_package_json():
+    with pytest.raises(RuntimeError, match="package_json"):
+        await Runtime().alock()
 
 
 @pytest.mark.asyncio

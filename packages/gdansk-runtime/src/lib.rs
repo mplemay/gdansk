@@ -1,6 +1,7 @@
 use std::{
     collections::HashSet,
     fs,
+    path::PathBuf,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -11,14 +12,19 @@ use std::{
 
 use deno_core::{JsRuntime, PollEventLoopOptions, RuntimeOptions, serde_json::Value, serde_v8, v8};
 use pyo3::{
-    exceptions::{PyNotImplementedError, PyRuntimeError, PyTypeError, PyValueError},
+    exceptions::{PyRuntimeError, PyTypeError, PyValueError},
     prelude::*,
     types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyModule, PyString, PyTuple, PyType},
 };
 use tokio::sync::oneshot;
 
+mod runtime_npm;
+
+use runtime_npm::{RuntimeNpm, RuntimeNpmError};
+
 const RUNTIME_CONTEXT_ALREADY_ACTIVE: &str = "RuntimeContext is already active";
 const RUNTIME_CONTEXT_NOT_ACTIVE: &str = "RuntimeContext is not active";
+const RUNTIME_PACKAGE_JSON_NOT_CONFIGURED: &str = "Runtime.package_json is not configured";
 
 #[derive(Debug)]
 enum ScriptRuntimeError {
@@ -71,7 +77,9 @@ struct Script {
 }
 
 #[pyclass(module = "gdansk_runtime._core", frozen, skip_from_py_object)]
-struct Runtime;
+struct Runtime {
+    package_json: Option<PathBuf>,
+}
 
 #[pyclass(module = "gdansk_runtime._core", unsendable, skip_from_py_object)]
 struct RuntimeContext {
@@ -95,6 +103,19 @@ fn map_runtime_error(err: ScriptRuntimeError) -> PyErr {
         ScriptRuntimeError::Execution(message) => PyRuntimeError::new_err(message),
         ScriptRuntimeError::Deserialize(message) => PyValueError::new_err(message),
     }
+}
+
+fn map_runtime_npm_error(err: RuntimeNpmError) -> PyErr {
+    PyRuntimeError::new_err(err.to_string())
+}
+
+fn normalize_runtime_path(py: Python<'_>, path: &Bound<'_, PyAny>) -> PyResult<PathBuf> {
+    let path = PathBuf::from(Script::normalize_path(py, path)?);
+    if path.is_absolute() {
+        return Ok(path);
+    }
+
+    Ok(std::env::current_dir()?.join(path))
 }
 
 fn py_any_to_json_value(
@@ -484,13 +505,16 @@ impl Script {
     }
 
     fn serialize_input(&self, py: Python<'_>, input: &Bound<'_, PyAny>) -> PyResult<Value> {
-        let validated = self.inputs.bind(py).call_method1("validate_python", (input,))?;
-        let kwargs = PyDict::new(py);
-        kwargs.set_item("mode", "json")?;
-        let dumped = self
+        let validated = self
             .inputs
             .bind(py)
-            .call_method("dump_python", (validated,), Some(&kwargs))?;
+            .call_method1("validate_python", (input,))?;
+        let kwargs = PyDict::new(py);
+        kwargs.set_item("mode", "json")?;
+        let dumped =
+            self.inputs
+                .bind(py)
+                .call_method("dump_python", (validated,), Some(&kwargs))?;
         py_any_to_json_value(
             &dumped,
             "Script input must serialize to JSON-compatible Python values",
@@ -551,7 +575,11 @@ impl RuntimeContext {
             .ok_or_else(|| PyRuntimeError::new_err(RUNTIME_CONTEXT_NOT_ACTIVE))
     }
 
-    fn activate_async_context(&mut self, worker: AsyncWorker, py: Python<'_>) -> PyResult<AsyncRuntimeContext> {
+    fn activate_async_context(
+        &mut self,
+        worker: AsyncWorker,
+        py: Python<'_>,
+    ) -> PyResult<AsyncRuntimeContext> {
         self.ensure_inactive()?;
 
         let worker_client = worker.client();
@@ -570,6 +598,16 @@ impl RuntimeContext {
             worker.deactivate();
         }
         worker
+    }
+}
+
+impl Runtime {
+    fn package_manager(&self) -> PyResult<RuntimeNpm> {
+        let package_json = self
+            .package_json
+            .clone()
+            .ok_or_else(|| PyRuntimeError::new_err(RUNTIME_PACKAGE_JSON_NOT_CONFIGURED))?;
+        Ok(RuntimeNpm::new(package_json))
     }
 }
 
@@ -629,14 +667,37 @@ impl Script {
 #[pymethods]
 impl Runtime {
     #[new]
-    #[pyo3(signature = (*, dependencies = None))]
-    fn new(dependencies: Option<Py<PyAny>>) -> PyResult<Self> {
-        if dependencies.is_some() {
-            return Err(PyNotImplementedError::new_err(
-                "Runtime dependencies are not implemented yet",
-            ));
-        }
-        Ok(Self)
+    #[pyo3(signature = (*, package_json = None))]
+    fn new(py: Python<'_>, package_json: Option<Py<PyAny>>) -> PyResult<Self> {
+        let package_json = package_json
+            .map(|path| normalize_runtime_path(py, path.bind(py)))
+            .transpose()?;
+
+        Ok(Self { package_json })
+    }
+
+    fn lock(&self) -> PyResult<()> {
+        self.package_manager()?
+            .lock()
+            .map_err(map_runtime_npm_error)
+    }
+
+    fn alock<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let package_manager = self.package_manager()?;
+
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            tokio::task::spawn_blocking(move || package_manager.lock())
+                .await
+                .map_err(|err| map_runtime_error(execution_error(err)))?
+                .map_err(map_runtime_npm_error)?;
+            Python::attach(|py| Ok(py.None()))
+        })
+    }
+
+    fn sync(&self) -> PyResult<()> {
+        self.package_manager()?
+            .sync()
+            .map_err(map_runtime_npm_error)
     }
 
     fn __call__(&self, script: Py<Script>) -> RuntimeContext {
@@ -735,7 +796,9 @@ impl AsyncRuntimeContext {
 
             Python::attach(|py| {
                 let script = script.bind(py).borrow();
-                script.deserialize_output(py, &output_json).map(Bound::unbind)
+                script
+                    .deserialize_output(py, &output_json)
+                    .map(Bound::unbind)
             })
         })
     }
