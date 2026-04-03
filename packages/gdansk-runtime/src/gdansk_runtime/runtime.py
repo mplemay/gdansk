@@ -56,24 +56,24 @@ else:
         return await AsyncRuntimeContextImpl.__call__(context, value)
 
 
-def _normalize_runtime_path(path: str | PathLike[str] | None) -> str | None:
-    if path is None:
-        return None
-
-    normalized_path = fspath(path)
-    if not isinstance(normalized_path, str):
-        msg = "Runtime.package_json must be a string path"
-        raise TypeError(msg)
-
-    if Path(normalized_path).is_absolute():
-        return normalized_path
-
-    return str(Path.cwd() / normalized_path)
-
-
 class Runtime(RuntimeBase):
+    @staticmethod
+    def _normalize_runtime_path(path: str | PathLike[str] | None) -> str | None:
+        if path is None:
+            return None
+
+        normalized_path = fspath(path)
+        if not isinstance(normalized_path, str):
+            msg = "Runtime.package_json must be a string path"
+            raise TypeError(msg)
+
+        if Path(normalized_path).is_absolute():
+            return normalized_path
+
+        return str(Path.cwd() / normalized_path)
+
     def __new__(cls, *, package_json: str | PathLike[str] | None = None) -> Self:
-        return super().__new__(cls, package_json=_normalize_runtime_path(package_json))
+        return super().__new__(cls, package_json=cls._normalize_runtime_path(package_json))
 
     def __call__[I, O](self, script: Script[I, O], /) -> RuntimeContext[I, O]:
         return RuntimeContext(script)
