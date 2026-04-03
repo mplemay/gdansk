@@ -87,6 +87,7 @@ docstring-code-format = true
 quote-style = "double"
 
 [tool.pytest.ini_options]
+anyio_mode = "auto"
 norecursedirs = ["target", "dist", "build", ".venv", "node_modules"]
 python_files = ["test_*.py"]
 markers = [
