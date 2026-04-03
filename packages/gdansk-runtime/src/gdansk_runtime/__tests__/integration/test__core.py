@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from gdansk_runtime import Runtime
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 pytestmark = [
     pytest.mark.integration,
@@ -106,3 +109,46 @@ def test_runtime_sync_updates_lockfile_and_installed_packages_after_package_json
     assert not (project_dir / "node_modules" / "picocolors").exists()
     assert (project_dir / "deno.lock").read_text(encoding="utf-8") != first_lockfile
     assert read_installed_package_version(project_dir, "kleur") == "4.1.5"
+
+
+def test_runtime_lock_then_sync_supports_linked_packages_with_peer_dependencies(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    configure_npm_test_env(monkeypatch, tmp_path)
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    shared_dir = project_dir / "shared"
+    shared_dir.mkdir()
+    (shared_dir / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "@myorg/shared",
+                "version": "1.0.0",
+                "type": "module",
+                "exports": "./index.js",
+                "peerDependencies": {"zod": "^4.3.6"},
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (shared_dir / "index.js").write_text("export const shared = true;\n", encoding="utf-8")
+    package_json = write_package_json(
+        project_dir,
+        {
+            "@myorg/shared": "file:./shared",
+            "zod": "4.3.6",
+        },
+    )
+
+    Runtime(package_json=package_json).lock()
+
+    lockfile = json.loads((project_dir / "deno.lock").read_text(encoding="utf-8"))
+    assert "npm:zod@4.3.6" in lockfile["workspace"]["packageJson"]["dependencies"]
+
+    Runtime(package_json=package_json).sync()
+
+    assert (project_dir / "node_modules" / "@myorg" / "shared" / "package.json").exists()
+    assert read_installed_package_version(project_dir, "@myorg/shared") == "1.0.0"
+    assert read_installed_package_version(project_dir, "zod") == "4.3.6"

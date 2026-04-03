@@ -140,7 +140,9 @@ impl RuntimeNpm {
             sys,
             package_json_dir.to_path_buf(),
             WorkspaceFactoryOptions {
-                config_discovery: ConfigDiscoveryOption::Path(self.package_json_path.clone()),
+                config_discovery: ConfigDiscoveryOption::Discover {
+                    start_paths: vec![package_json_dir.to_path_buf()],
+                },
                 is_package_manager_subcommand: true,
                 lock_arg: Some(package_json_dir.join("deno.lock")),
                 node_modules_dir: Some(NodeModulesDirMode::Auto),
@@ -184,8 +186,6 @@ impl RuntimeNpm {
                     explicit_install: true,
                     ..Default::default()
                 },
-                production: false,
-                skip_types: false,
                 resolve_npm_resolution_snapshot: Box::new(|| Ok(None)),
             },
         ))
