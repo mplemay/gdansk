@@ -64,6 +64,13 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - name: Shorten Cargo home on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path 'D:\.cargo' | Out-Null
+          "CARGO_HOME=D:\.cargo" >> $env:GITHUB_ENV
+
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: test-python-${{ matrix.os }}-${{ runner.arch }}
