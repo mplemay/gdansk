@@ -29,7 +29,6 @@ def test_runtime_sync_requires_package_json():
         Runtime().sync()
 
 
-@pytest.mark.anyio
 async def test_runtime_alock_requires_package_json():
     with pytest.raises(RuntimeError, match="package_json"):
         await Runtime().alock()

@@ -23,7 +23,6 @@ if TYPE_CHECKING:
             assert_type(_typing_async_result, str)
 
 
-@pytest.mark.anyio
 async def test_async_runtime_executes_inline_script_with_pydantic_io():
     class Output(BaseModel):
         value: int
@@ -45,7 +44,6 @@ export default function(input) {
     assert result == Output(value=2, kind="number")
 
 
-@pytest.mark.anyio
 async def test_async_runtime_context_shares_state_within_block():
     script = Script(
         contents="""
@@ -65,7 +63,6 @@ export default function(input) {
         assert await run(2) == 3
 
 
-@pytest.mark.anyio
 async def test_async_runtime_context_resets_state_across_blocks():
     script = Script(
         contents="""
@@ -89,7 +86,6 @@ export default function(input) {
         assert await run(2) == 2
 
 
-@pytest.mark.anyio
 async def test_async_runtime_context_rejects_calls_after_exit():
     script = Script(
         contents="""
@@ -112,7 +108,6 @@ export default function(input) {
         await run(1)
 
 
-@pytest.mark.anyio
 async def test_async_runtime_context_rejects_reentry_while_active():
     script = Script(
         contents="""
@@ -130,7 +125,6 @@ export default function(input) {
             await context.__aenter__()
 
 
-@pytest.mark.anyio
 async def test_async_runtime_context_can_be_reused_after_exit():
     script = Script(
         contents="""
@@ -153,7 +147,6 @@ export default function(input) {
         assert await run(2) == 2
 
 
-@pytest.mark.anyio
 async def test_async_runtime_rejects_missing_default_export():
     script = Script(
         contents="export const value = 1;",
@@ -166,7 +159,6 @@ async def test_async_runtime_rejects_missing_default_export():
             pass
 
 
-@pytest.mark.anyio
 async def test_async_runtime_rejects_non_function_default_export():
     script = Script(
         contents="export default 1;",
@@ -179,7 +171,6 @@ async def test_async_runtime_rejects_non_function_default_export():
             pass
 
 
-@pytest.mark.anyio
 async def test_async_runtime_supports_async_default_export():
     script = Script(
         contents="""
@@ -195,7 +186,6 @@ export default async function(input) {
         assert await run(1) == 2
 
 
-@pytest.mark.anyio
 async def test_async_runtime_honors_top_level_await_before_calls():
     script = Script(
         contents="""
@@ -213,7 +203,6 @@ export default function(input) {
         assert await run(1) == 42
 
 
-@pytest.mark.anyio
 async def test_async_runtime_surfaces_javascript_errors():
     script = Script(
         contents="""
@@ -230,7 +219,6 @@ export default function() {
             await run(1)
 
 
-@pytest.mark.anyio
 async def test_async_runtime_rejects_unsupported_javascript_values():
     script = Script(
         contents="""
@@ -247,7 +235,6 @@ export default function() {
             await run(1)
 
 
-@pytest.mark.anyio
 async def test_async_runtime_recovers_after_javascript_error_within_context():
     script = Script(
         contents="""
@@ -272,7 +259,6 @@ export default function(input) {
         assert await run(2) == 2
 
 
-@pytest.mark.anyio
 async def test_async_runtime_recovers_after_deserialize_error_within_context():
     script = Script(
         contents="""
@@ -297,7 +283,6 @@ export default function(input) {
         assert await run(2) == 2
 
 
-@pytest.mark.anyio
 async def test_async_runtime_serializes_concurrent_calls():
     script = Script(
         contents="""

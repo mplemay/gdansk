@@ -25,7 +25,6 @@ def test_hello_returns_default_text():
     assert content[0].text == "Hello, world!"
 
 
-@pytest.mark.anyio
 async def test_mcp_call_tool_returns_structured_hello():
     structured = _structured_from_call_result(await fastapi_main.mcp.call_tool("hello", {}))
     assert structured["result"][0]["text"] == "Hello, world!"

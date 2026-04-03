@@ -314,7 +314,6 @@ body {
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_js_plugin_smoke_uses_repo_shadcn_tailwind_package(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     views = REPO_ROOT / "examples" / "shadcn" / "src" / "shadcn" / "views"

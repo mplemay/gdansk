@@ -137,7 +137,6 @@ def test_view_exposes_derived_bundle_paths():
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_bundle_writes_default_output(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "main.tsx").write_text("export const value = 1;\n", encoding="utf-8")
@@ -149,7 +148,6 @@ async def test_bundle_writes_default_output(tmp_path, monkeypatch):
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_bundle_writes_nested_output_in_custom_dir(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     source = tmp_path / "home" / "page.tsx"
@@ -163,7 +161,6 @@ async def test_bundle_writes_nested_output_in_custom_dir(tmp_path, monkeypatch):
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_bundle_rejects_empty_input(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
@@ -172,7 +169,6 @@ async def test_bundle_rejects_empty_input(tmp_path, monkeypatch):
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_bundle_rejects_views_keyword(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
@@ -181,7 +177,6 @@ async def test_bundle_rejects_views_keyword(tmp_path, monkeypatch):
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_bundle_rejects_non_jsx_or_tsx(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "main.ts").write_text("export const value = 1;\n", encoding="utf-8")
@@ -191,7 +186,6 @@ async def test_bundle_rejects_non_jsx_or_tsx(tmp_path, monkeypatch):
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_bundle_rejects_input_outside_cwd(tmp_path, tmp_path_factory, monkeypatch):
     monkeypatch.chdir(tmp_path)
     outside_root = tmp_path_factory.mktemp("outside")
@@ -203,7 +197,6 @@ async def test_bundle_rejects_input_outside_cwd(tmp_path, tmp_path_factory, monk
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_bundle_rejects_output_collisions(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "a.tsx").write_text("export const a = 1;\n", encoding="utf-8")
@@ -214,7 +207,6 @@ async def test_bundle_rejects_output_collisions(tmp_path, monkeypatch):
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_bundle_dev_mode_can_run_in_background_and_cancel(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "main.tsx").write_text("export const value = 1;\n", encoding="utf-8")
@@ -228,7 +220,6 @@ async def test_bundle_dev_mode_can_run_in_background_and_cancel(tmp_path, monkey
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_bundle_outputs_css_file(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "page.css").write_text("body { color: red; }\n", encoding="utf-8")
@@ -244,7 +235,6 @@ async def test_bundle_outputs_css_file(tmp_path, monkeypatch):
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_bundle_resolves_css_package_style_exports(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
@@ -283,7 +273,6 @@ async def test_bundle_resolves_css_package_style_exports(tmp_path, monkeypatch):
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_bundle_removes_stale_css_output_when_import_is_removed(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "page.css").write_text("body { color: red; }\n", encoding="utf-8")
@@ -306,7 +295,6 @@ async def test_bundle_removes_stale_css_output_when_import_is_removed(tmp_path, 
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_bundle_minifies_css_output_by_default(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "page.css").write_text("body { color: red; }\n", encoding="utf-8")
@@ -322,7 +310,6 @@ async def test_bundle_minifies_css_output_by_default(tmp_path, monkeypatch):
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_bundle_preserves_readable_css_when_minify_is_false(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "page.css").write_text("body { color: red; }\n", encoding="utf-8")
@@ -340,7 +327,6 @@ async def test_bundle_preserves_readable_css_when_minify_is_false(tmp_path, monk
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_bundle_preserves_nested_conditional_css_imports(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "nested.css").write_text(".inner { color: blue; }\n", encoding="utf-8")
@@ -359,7 +345,6 @@ async def test_bundle_preserves_nested_conditional_css_imports(tmp_path, monkeyp
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_bundle_accepts_minify_false(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "main.tsx").write_text("export const value = 1;\n", encoding="utf-8")
@@ -370,7 +355,6 @@ async def test_bundle_accepts_minify_false(tmp_path, monkeypatch):
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_bundle_app_ssr_view_writes_executable_server_output(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _write_ssr_modules(tmp_path)
@@ -396,7 +380,6 @@ async def test_bundle_app_ssr_view_writes_executable_server_output(tmp_path, mon
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_bundle_app_ssr_view_writes_css_output_when_page_imports_css(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _write_ssr_modules(tmp_path)
@@ -420,7 +403,6 @@ async def test_bundle_app_ssr_view_writes_css_output_when_page_imports_css(tmp_p
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_bundle_app_ssr_view_supports_message_channel_at_import(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _write_ssr_modules(tmp_path, use_message_channel_at_import=True)
@@ -443,7 +425,6 @@ async def test_bundle_app_ssr_view_supports_message_channel_at_import(tmp_path, 
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_bundle_app_ssr_view_runtime_error_surfaces(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _write_ssr_modules(tmp_path, throw_on_render=True)
@@ -461,32 +442,27 @@ async def test_bundle_app_ssr_view_runtime_error_surfaces(tmp_path, monkeypatch)
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_runtime_ssr_capture_takes_precedence_and_does_not_leak_between_calls():
     assert await run('Deno.core.ops.op_gdansk_set_html("<div>ok</div>"); 1 + 1') == "<div>ok</div>"
     assert await run("1 + 1") == 2
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_runtime_constructs_and_evaluates_expression():
     assert await run("1 + 2") == 3
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_runtime_exposes_message_channel_shim():
     assert await run("typeof MessageChannel") == "function"
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_runtime_exposes_text_encoder_shim():
     assert await run("Array.from(new TextEncoder().encode('hé'))") == [104, 195, 169]
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_runtime_is_stateless_across_calls():
     await run("globalThis.counter = 1")
     with pytest.raises(RuntimeError, match="Execution error"):
@@ -494,7 +470,6 @@ async def test_runtime_is_stateless_across_calls():
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_runtime_converts_nested_json_like_values():
     assert await run('({ ok: true, values: [1, { name: "gdansk" }, null] })') == {
         "ok": True,
@@ -503,21 +478,18 @@ async def test_runtime_converts_nested_json_like_values():
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_runtime_reports_execution_errors():
     with pytest.raises(RuntimeError, match="Execution error"):
         await run("throw new Error('boom')")
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_runtime_rejects_unsupported_values():
     with pytest.raises(ValueError, match="Cannot deserialize value"):
         await run("undefined")
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_runtime_returns_expected_python_types():
     assert type(await run("true")) is bool
     assert type(await run("123")) is int
@@ -530,14 +502,12 @@ async def test_runtime_returns_expected_python_types():
 
 @pytest.mark.integration
 @pytest.mark.parametrize("code", ["Symbol('x')", "1n", "Promise.resolve(1)", "0/0", "1/0"])
-@pytest.mark.anyio
 async def test_runtime_rejects_additional_unsupported_values(code):
     with pytest.raises(ValueError, match="Cannot deserialize value"):
         await run(code)
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_runtime_recovers_after_execution_error():
     with pytest.raises(RuntimeError, match="Execution error"):
         await run("throw new Error('boom')")
@@ -545,7 +515,6 @@ async def test_runtime_recovers_after_execution_error():
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_runtime_recovers_after_deserialize_error():
     with pytest.raises(ValueError, match="Cannot deserialize value"):
         await run("Symbol('x')")
@@ -553,13 +522,11 @@ async def test_runtime_recovers_after_deserialize_error():
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_runtime_supports_empty_containers():
     assert await run("({})") == {}
     assert await run("[]") == []
 
 
 @pytest.mark.integration
-@pytest.mark.anyio
 async def test_runtime_supports_unicode_strings():
     assert await run("'café 👋'") == "café 👋"

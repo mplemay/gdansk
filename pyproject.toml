@@ -91,7 +91,6 @@ anyio_mode = "auto"
 norecursedirs = ["target", "dist", "build", ".venv", "node_modules"]
 python_files = ["test_*.py"]
 markers = [
-    "anyio: async tests run via AnyIO's pytest plugin",
     "integration: marks tests that hit the database or external services",
 ]
 filterwarnings = [
