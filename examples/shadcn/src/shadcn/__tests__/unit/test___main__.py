@@ -63,7 +63,7 @@ def test_delete_todo_errors_when_todo_not_found():
         todo_main.delete_todo("missing")
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_list_tools_exposes_todo_output_schema():
     tools = await todo_main.mcp.list_tools()
     schemas = {tool.name: getattr(tool, "output_schema", getattr(tool, "outputSchema", None)) for tool in tools}
@@ -75,7 +75,7 @@ async def test_list_tools_exposes_todo_output_schema():
         assert "result" in schema["properties"]
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_mcp_call_tool_returns_structured_todos():
     structured = _structured_from_call_result(await todo_main.mcp.call_tool("list-todos", {}))
     assert structured == {"result": []}

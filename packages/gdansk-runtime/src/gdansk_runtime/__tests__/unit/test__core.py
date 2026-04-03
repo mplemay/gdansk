@@ -573,7 +573,7 @@ def test_runtime_sync_requires_package_json():
         Runtime().sync()
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_async_runtime_executes_inline_script_with_pydantic_io():
     class Output(BaseModel):
         value: int
@@ -595,13 +595,13 @@ export default function(input) {
     assert result == Output(value=2, kind="number")
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_runtime_alock_requires_package_json():
     with pytest.raises(RuntimeError, match="package_json"):
         await Runtime().alock()
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_async_runtime_context_shares_state_within_block():
     script = Script(
         contents="""
@@ -621,7 +621,7 @@ export default function(input) {
         assert await run(2) == 3
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_async_runtime_context_resets_state_across_blocks():
     script = Script(
         contents="""
@@ -645,7 +645,7 @@ export default function(input) {
         assert await run(2) == 2
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_async_runtime_context_rejects_calls_after_exit():
     script = Script(
         contents="""
@@ -668,7 +668,7 @@ export default function(input) {
         await run(1)
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_async_runtime_context_rejects_reentry_while_active():
     script = Script(
         contents="""
@@ -686,7 +686,7 @@ export default function(input) {
             await context.__aenter__()
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_async_runtime_context_can_be_reused_after_exit():
     script = Script(
         contents="""
@@ -709,7 +709,7 @@ export default function(input) {
         assert await run(2) == 2
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_async_runtime_rejects_missing_default_export():
     script = Script(
         contents="export const value = 1;",
@@ -722,7 +722,7 @@ async def test_async_runtime_rejects_missing_default_export():
             pass
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_async_runtime_rejects_non_function_default_export():
     script = Script(
         contents="export default 1;",
@@ -735,7 +735,7 @@ async def test_async_runtime_rejects_non_function_default_export():
             pass
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_async_runtime_supports_async_default_export():
     script = Script(
         contents="""
@@ -751,7 +751,7 @@ export default async function(input) {
         assert await run(1) == 2
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_async_runtime_honors_top_level_await_before_calls():
     script = Script(
         contents="""
@@ -769,7 +769,7 @@ export default function(input) {
         assert await run(1) == 42
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_async_runtime_surfaces_javascript_errors():
     script = Script(
         contents="""
@@ -786,7 +786,7 @@ export default function() {
             await run(1)
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_async_runtime_rejects_unsupported_javascript_values():
     script = Script(
         contents="""
@@ -803,7 +803,7 @@ export default function() {
             await run(1)
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_async_runtime_recovers_after_javascript_error_within_context():
     script = Script(
         contents="""
@@ -828,7 +828,7 @@ export default function(input) {
         assert await run(2) == 2
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_async_runtime_recovers_after_deserialize_error_within_context():
     script = Script(
         contents="""
@@ -853,7 +853,7 @@ export default function(input) {
         assert await run(2) == 2
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_async_runtime_serializes_concurrent_calls():
     script = Script(
         contents="""
@@ -871,7 +871,7 @@ export default async function(input) {
     )
 
     async with Runtime()(script) as run:
-        first, second = await asyncio.gather(run(1), run(2))
+        a, b = await asyncio.gather(run(1), run(2))
 
-    assert first == (0, 1)
-    assert second == (1, 3)
+    # Worker serializes JS; gather does not order which call reaches the worker first.
+    assert {a, b} == {(0, 1), (1, 3)} or {a, b} == {(0, 2), (2, 3)}

@@ -728,7 +728,7 @@ def test_registers_mcp_resource(amber, mock_mcp):
     assert call_kwargs["mime_type"] == "text/html;profile=mcp-app"
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_resource_reads_js(amber, mock_mcp, tmp_path):
     amber_output = tmp_path / "output"
     object.__setattr__(amber, "output", amber_output)
@@ -748,7 +748,7 @@ async def test_resource_reads_js(amber, mock_mcp, tmp_path):
     assert '<script type="module">' in html
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_resource_includes_css_when_present(amber, mock_mcp, tmp_path):
     amber_output = tmp_path / "output"
     object.__setattr__(amber, "output", amber_output)
@@ -769,7 +769,7 @@ async def test_resource_includes_css_when_present(amber, mock_mcp, tmp_path):
     assert "body { color: red; }" in html
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_resource_omits_css_when_absent(amber, mock_mcp, tmp_path):
     amber_output = tmp_path / "output"
     object.__setattr__(amber, "output", amber_output)
@@ -788,7 +788,7 @@ async def test_resource_omits_css_when_absent(amber, mock_mcp, tmp_path):
     assert "<style>" not in html
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_resource_uses_views_dot_gdansk_output(mock_mcp, pages_dir):
     amber = Amber(mcp=mock_mcp, views=pages_dir)
     assert amber.output == pages_dir / ".gdansk"
@@ -807,7 +807,7 @@ async def test_resource_uses_views_dot_gdansk_output(mock_mcp, pages_dir):
     assert "console.log('resolved');" in html
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_resource_raises_friendly_error_when_js_missing(amber, mock_mcp, tmp_path):
     amber_output = tmp_path / "output"
     object.__setattr__(amber, "output", amber_output)
@@ -822,7 +822,7 @@ async def test_resource_raises_friendly_error_when_js_missing(amber, mock_mcp, t
         await handler()
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_resource_injects_html_when_effective_ssr_true(mock_mcp, pages_dir, tmp_path):
     amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=True)
     amber_output = tmp_path / "output"
@@ -847,7 +847,7 @@ async def test_resource_injects_html_when_effective_ssr_true(mock_mcp, pages_dir
     assert '<div id="root"><p>server</p></div>' in html
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_resource_caches_ssr_html_by_default(mock_mcp, pages_dir, tmp_path):
     amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=True)
     amber_output = tmp_path / "output"
@@ -874,7 +874,7 @@ async def test_resource_caches_ssr_html_by_default(mock_mcp, pages_dir, tmp_path
     mock_run.assert_awaited_once()
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_resource_does_not_cache_when_disabled(mock_mcp, pages_dir, tmp_path):
     amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=True, cache_html=False)
     amber_output = tmp_path / "output"
@@ -900,7 +900,7 @@ async def test_resource_does_not_cache_when_disabled(mock_mcp, pages_dir, tmp_pa
     assert mock_run.await_count == 2
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_resource_invalidates_cache_when_client_bundle_changes(amber, mock_mcp, tmp_path):
     amber_output = tmp_path / "output"
     object.__setattr__(amber, "output", amber_output)
@@ -922,7 +922,7 @@ async def test_resource_invalidates_cache_when_client_bundle_changes(amber, mock
     assert "console.log('two two');" in second_html
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_resource_invalidates_cache_when_css_presence_changes(amber, mock_mcp, tmp_path):
     amber_output = tmp_path / "output"
     object.__setattr__(amber, "output", amber_output)
@@ -945,7 +945,7 @@ async def test_resource_invalidates_cache_when_css_presence_changes(amber, mock_
     assert "body { color: blue; }" in second_html
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_resource_skips_runtime_and_html_when_effective_ssr_false(amber, mock_mcp, tmp_path):
     amber_output = tmp_path / "output"
     object.__setattr__(amber, "output", amber_output)
@@ -966,7 +966,7 @@ async def test_resource_skips_runtime_and_html_when_effective_ssr_false(amber, m
     mock_run.assert_not_awaited()
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_resource_raises_when_ssr_bundle_missing(mock_mcp, pages_dir, tmp_path):
     amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=True)
     amber_output = tmp_path / "output"
@@ -985,7 +985,7 @@ async def test_resource_raises_when_ssr_bundle_missing(mock_mcp, pages_dir, tmp_
         await handler()
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_resource_propagates_runtime_error_fail_fast(mock_mcp, pages_dir, tmp_path):
     amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=True)
     amber_output = tmp_path / "output"
@@ -1009,7 +1009,7 @@ async def test_resource_propagates_runtime_error_fail_fast(mock_mcp, pages_dir, 
             await handler()
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_constructor_metadata_applies_to_tool_resource(mock_mcp, pages_dir, tmp_path):
     amber = Amber(
         mcp=mock_mcp,
@@ -1038,7 +1038,7 @@ async def test_constructor_metadata_applies_to_tool_resource(mock_mcp, pages_dir
     assert '<meta property="og:title" content="Shared OG" />' in html
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_tool_metadata_overrides_constructor_metadata_shallowly(mock_mcp, pages_dir, tmp_path):
     amber = Amber(
         mcp=mock_mcp,
@@ -1070,7 +1070,7 @@ async def test_tool_metadata_overrides_constructor_metadata_shallowly(mock_mcp, 
     assert "Shared OG description" not in html
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_metadata_merge_is_non_mutating(mock_mcp, pages_dir, tmp_path):
     base_metadata: Metadata = {"openGraph": {"title": "Shared OG"}}
     tool_metadata: Metadata = {"openGraph": {"title": "Tool OG"}}
