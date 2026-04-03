@@ -9,12 +9,15 @@ from pydantic import BaseModel, TypeAdapter, ValidationError
 from gdansk_runtime import Runtime, RuntimeContext, Script
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     _TYPING_CONTENTS = "export default function(input) { return input; }"
 
     _typing_script = Script(contents=_TYPING_CONTENTS, inputs=int, outputs=str)
     _typing_inputs: TypeAdapter[int] = _typing_script.inputs
     _typing_outputs: TypeAdapter[str] = _typing_script.outputs
     _typing_context: RuntimeContext[int, str] = Runtime()(_typing_script)
+    _typing_file_script: Script[int, str] = Script.from_file("script.js", inputs=int, outputs=str)
 
     _typing_literal_script = Script(
         contents=_TYPING_CONTENTS,
@@ -82,6 +85,47 @@ export default function() {
 def test_script_rejects_blank_contents(contents):
     with pytest.raises(ValueError, match="must not be empty"):
         Script(contents=contents, inputs=int, outputs=int)
+
+
+def test_script_from_file_loads_contents_and_executes(tmp_path: Path):
+    script_path = tmp_path / "script.js"
+    script_path.write_text(
+        """
+export default function(input) {
+    return input + 1;
+}
+""".strip(),
+        encoding="utf-8",
+    )
+
+    script = Script.from_file(script_path, inputs=int, outputs=int)
+
+    assert script.contents == script_path.read_text(encoding="utf-8")
+
+    with Runtime()(script) as run:
+        assert run(1) == 2
+
+
+def test_script_from_file_accepts_string_paths(tmp_path: Path):
+    script_path = tmp_path / "script.js"
+    script_path.write_text("export default function(input) { return input; }", encoding="utf-8")
+
+    script = Script.from_file(str(script_path), inputs=int, outputs=int)
+
+    assert script.contents == "export default function(input) { return input; }"
+
+
+def test_script_from_file_rejects_blank_file(tmp_path: Path):
+    script_path = tmp_path / "script.js"
+    script_path.write_text(" \n\t ", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="must not be empty"):
+        Script.from_file(script_path, inputs=int, outputs=int)
+
+
+def test_script_from_file_raises_for_missing_file(tmp_path: Path):
+    with pytest.raises(FileNotFoundError):
+        Script.from_file(tmp_path / "missing.js", inputs=int, outputs=int)
 
 
 def test_runtime_executes_inline_script_with_pydantic_io():

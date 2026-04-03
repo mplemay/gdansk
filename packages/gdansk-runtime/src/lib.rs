@@ -1,10 +1,10 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, fs};
 
 use deno_core::{JsRuntime, PollEventLoopOptions, RuntimeOptions, serde_json::Value, serde_v8, v8};
 use pyo3::{
     exceptions::{PyNotImplementedError, PyRuntimeError, PyTypeError, PyValueError},
     prelude::*,
-    types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyModule, PyString, PyTuple},
+    types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyModule, PyString, PyTuple, PyType},
 };
 
 #[derive(Debug)]
@@ -321,6 +321,16 @@ impl Script {
         Ok(type_adapter.call1((value.bind(py),))?.unbind())
     }
 
+    fn normalize_path(py: Python<'_>, path: &Bound<'_, PyAny>) -> PyResult<String> {
+        let os = PyModule::import(py, "os")?;
+        os.getattr("fspath")?.call1((path,))?.extract()
+    }
+
+    fn read_contents_from_path(py: Python<'_>, path: &Bound<'_, PyAny>) -> PyResult<String> {
+        let path = Self::normalize_path(py, path)?;
+        fs::read_to_string(path).map_err(PyErr::from)
+    }
+
     fn serialize_input(&self, py: Python<'_>, input: &Bound<'_, PyAny>) -> PyResult<Value> {
         let validated = self.inputs.bind(py).call_method1("validate_python", (input,))?;
         let kwargs = PyDict::new(py);
@@ -397,6 +407,18 @@ impl Script {
             inputs,
             outputs,
         })
+    }
+
+    #[classmethod]
+    fn from_file(
+        _cls: &Bound<'_, PyType>,
+        path: &Bound<'_, PyAny>,
+        inputs: Py<PyAny>,
+        outputs: Py<PyAny>,
+    ) -> PyResult<Self> {
+        let py = path.py();
+        let contents = Self::read_contents_from_path(py, path)?;
+        Self::new(py, contents, inputs, outputs)
     }
 
     #[getter]

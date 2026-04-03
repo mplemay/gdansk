@@ -1,4 +1,5 @@
-from typing import overload
+from os import PathLike
+from typing import Self, overload
 
 from pydantic import TypeAdapter
 
@@ -12,6 +13,13 @@ class Script[I, O]:
     ) -> None: ...
     @overload
     def __init__(self, contents: str, inputs: object, outputs: object) -> None: ...
+    @classmethod
+    def from_file(
+        cls: type[Self],
+        path: str | PathLike[str],
+        inputs: type[I] | TypeAdapter[I],
+        outputs: type[O] | TypeAdapter[O],
+    ) -> Self: ...
     @property
     def contents(self) -> str: ...
     @property
