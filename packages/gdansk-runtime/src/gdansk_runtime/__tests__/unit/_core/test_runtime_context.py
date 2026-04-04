@@ -714,6 +714,82 @@ export default async function() {
     assert result["afterWait"] == 3
 
 
+def test_runtime_timeout_exceptions_report_error_without_aborting():
+    script = Script(
+        contents="""
+export default async function() {
+    const errors = [];
+
+    globalThis.addEventListener("error", (event) => {
+        errors.push(event.message);
+        event.preventDefault();
+    });
+
+    setTimeout(() => {
+        throw new Error("boom");
+    }, 0);
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    return {
+        errors,
+        completed: true,
+    };
+}
+""".strip(),
+        inputs=int,
+        outputs=dict[str, object],
+    )
+
+    with Runtime()(script) as run:
+        assert run(0) == {
+            "errors": ["Uncaught Error: boom"],
+            "completed": True,
+        }
+
+
+def test_runtime_interval_exceptions_report_error_and_keep_running():
+    script = Script(
+        contents="""
+export default async function() {
+    const errors = [];
+    let ticks = 0;
+
+    globalThis.addEventListener("error", (event) => {
+        errors.push(event.message);
+        event.preventDefault();
+    });
+
+    await new Promise((resolve) => {
+        const handle = setInterval(() => {
+            ticks += 1;
+            if (ticks === 1) {
+                throw new Error("boom");
+            }
+            if (ticks === 3) {
+                clearInterval(handle);
+                resolve();
+            }
+        }, 0);
+    });
+
+    return {
+        errors,
+        ticks,
+    };
+}
+""".strip(),
+        inputs=int,
+        outputs=dict[str, object],
+    )
+
+    with Runtime()(script) as run:
+        assert run(0) == {
+            "errors": ["Uncaught Error: boom"],
+            "ticks": 3,
+        }
+
+
 def test_runtime_recovers_after_javascript_error_within_context():
     script = Script(
         contents="""

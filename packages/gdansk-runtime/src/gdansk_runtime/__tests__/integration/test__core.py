@@ -36,6 +36,29 @@ def write_package_json(project_dir: Path, dependencies: dict[str, str]) -> Path:
     return package_json
 
 
+def write_local_package(
+    package_dir: Path,
+    *,
+    name: str,
+    index_contents: str,
+    scripts: dict[str, str] | None = None,
+) -> None:
+    payload: dict[str, object] = {
+        "name": name,
+        "version": "1.0.0",
+        "type": "module",
+        "exports": "./index.js",
+    }
+    if scripts is not None:
+        payload["scripts"] = scripts
+
+    (package_dir / "package.json").write_text(
+        json.dumps(payload, indent=2),
+        encoding="utf-8",
+    )
+    (package_dir / "index.js").write_text(index_contents, encoding="utf-8")
+
+
 def read_installed_package_version(project_dir: Path, package_name: str) -> str:
     package_json = project_dir / "node_modules" / package_name / "package.json"
     return json.loads(package_json.read_text(encoding="utf-8"))["version"]
@@ -64,6 +87,37 @@ def test_runtime_lock_writes_deno_lock_without_node_modules(
     assert not (project_dir / "node_modules").exists()
 
 
+def test_runtime_lock_does_not_run_lifecycle_scripts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    configure_npm_test_env(monkeypatch, tmp_path)
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    package_dir = project_dir / "shared"
+    package_dir.mkdir()
+    write_local_package(
+        package_dir,
+        name="needs-build",
+        index_contents='export { value } from "./generated.js";\n',
+        scripts={"install": "node build.js"},
+    )
+    (package_dir / "build.js").write_text(
+        """
+import { writeFileSync } from "node:fs";
+
+writeFileSync(new URL("./generated.js", import.meta.url), "export const value = 42;\\n");
+""".strip(),
+        encoding="utf-8",
+    )
+    package_json = write_package_json(project_dir, {"needs-build": "file:./shared"})
+
+    Runtime(package_json=package_json).lock()
+
+    assert not (project_dir / "node_modules").exists()
+    assert not (package_dir / "generated.js").exists()
+
+
 def test_runtime_sync_installs_node_modules_and_is_idempotent(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -87,6 +141,50 @@ def test_runtime_sync_installs_node_modules_and_is_idempotent(
     assert (node_modules / "picocolors" / "package.json").exists()
     assert lockfile.read_text(encoding="utf-8") == first_lockfile
     assert read_installed_package_version(project_dir, "picocolors") == first_version
+
+
+def test_runtime_sync_runs_lifecycle_scripts_for_local_packages(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    configure_npm_test_env(monkeypatch, tmp_path)
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    package_dir = project_dir / "shared"
+    package_dir.mkdir()
+    write_local_package(
+        package_dir,
+        name="needs-build",
+        index_contents='export { value } from "./generated.js";\n',
+        scripts={"install": "node build.js"},
+    )
+    (package_dir / "build.js").write_text(
+        """
+import { writeFileSync } from "node:fs";
+
+writeFileSync(new URL("./generated.js", import.meta.url), "export const value = 42;\\n");
+""".strip(),
+        encoding="utf-8",
+    )
+    package_json = write_package_json(project_dir, {"needs-build": "file:./shared"})
+    runtime = Runtime(package_json=package_json)
+
+    runtime.sync()
+
+    script = Script(
+        contents="""
+import { value } from "needs-build";
+
+export default function() {
+    return value;
+}
+""".strip(),
+        inputs=int,
+        outputs=int,
+    )
+
+    with runtime(script) as run:
+        assert run(0) == 42
 
 
 def test_runtime_sync_updates_lockfile_and_installed_packages_after_package_json_change(
@@ -160,21 +258,10 @@ def test_runtime_sync_allows_bare_package_imports(tmp_path: Path, monkeypatch: p
     project_dir.mkdir()
     shared_dir = project_dir / "shared"
     shared_dir.mkdir()
-    (shared_dir / "package.json").write_text(
-        json.dumps(
-            {
-                "name": "sample-package",
-                "version": "1.0.0",
-                "type": "module",
-                "exports": "./index.js",
-            },
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-    (shared_dir / "index.js").write_text(
-        "export default { greet(value) { return `hello ${value}`; } };\n",
-        encoding="utf-8",
+    write_local_package(
+        shared_dir,
+        name="sample-package",
+        index_contents="export default { greet(value) { return `hello ${value}`; } };\n",
     )
     package_json = write_package_json(project_dir, {"sample-package": "file:./shared"})
     runtime = Runtime(package_json=package_json)
@@ -196,6 +283,42 @@ export default function(input) {
         assert run("gdansk") == "hello gdansk"
 
 
+def test_runtime_sync_resolves_bare_imports_for_external_script_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    configure_npm_test_env(monkeypatch, tmp_path)
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    shared_dir = project_dir / "shared"
+    shared_dir.mkdir()
+    external_dir = tmp_path / "external"
+    external_dir.mkdir()
+    write_local_package(
+        shared_dir,
+        name="sample-package",
+        index_contents="export default { greet(value) { return `hello ${value}`; } };\n",
+    )
+    package_json = write_package_json(project_dir, {"sample-package": "file:./shared"})
+    runtime = Runtime(package_json=package_json)
+    runtime.sync()
+    script_path = external_dir / "script.js"
+    script_path.write_text(
+        """
+import samplePackage from "sample-package";
+
+export default function(input) {
+    return samplePackage.greet(input);
+}
+""".strip(),
+        encoding="utf-8",
+    )
+    script = Script.from_file(script_path, inputs=str, outputs=str)
+
+    with runtime(script) as run:
+        assert run("gdansk") == "hello gdansk"
+
+
 async def test_async_runtime_sync_allows_bare_package_imports(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -205,21 +328,10 @@ async def test_async_runtime_sync_allows_bare_package_imports(
     project_dir.mkdir()
     shared_dir = project_dir / "shared"
     shared_dir.mkdir()
-    (shared_dir / "package.json").write_text(
-        json.dumps(
-            {
-                "name": "sample-package",
-                "version": "1.0.0",
-                "type": "module",
-                "exports": "./index.js",
-            },
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-    (shared_dir / "index.js").write_text(
-        "export default { greet(value) { return `hello ${value}`; } };\n",
-        encoding="utf-8",
+    write_local_package(
+        shared_dir,
+        name="sample-package",
+        index_contents="export default { greet(value) { return `hello ${value}`; } };\n",
     )
     package_json = write_package_json(project_dir, {"sample-package": "file:./shared"})
     runtime = Runtime(package_json=package_json)
@@ -236,6 +348,42 @@ export default function(input) {
         inputs=str,
         outputs=str,
     )
+
+    async with runtime(script) as run:
+        assert await run("gdansk") == "hello gdansk"
+
+
+async def test_async_runtime_sync_resolves_bare_imports_for_external_script_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    configure_npm_test_env(monkeypatch, tmp_path)
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    shared_dir = project_dir / "shared"
+    shared_dir.mkdir()
+    external_dir = tmp_path / "external"
+    external_dir.mkdir()
+    write_local_package(
+        shared_dir,
+        name="sample-package",
+        index_contents="export default { greet(value) { return `hello ${value}`; } };\n",
+    )
+    package_json = write_package_json(project_dir, {"sample-package": "file:./shared"})
+    runtime = Runtime(package_json=package_json)
+    runtime.sync()
+    script_path = external_dir / "script.js"
+    script_path.write_text(
+        """
+import samplePackage from "sample-package";
+
+export default function(input) {
+    return samplePackage.greet(input);
+}
+""".strip(),
+        encoding="utf-8",
+    )
+    script = Script.from_file(script_path, inputs=str, outputs=str)
 
     async with runtime(script) as run:
         assert await run("gdansk") == "hello gdansk"

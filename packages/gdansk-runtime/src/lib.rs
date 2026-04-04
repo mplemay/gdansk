@@ -68,9 +68,10 @@ impl ScriptRuntimeError {
 }
 
 impl ScriptModuleLoader {
-    fn new(root_dir: PathBuf) -> Self {
+    fn new(module_root_dir: PathBuf, package_root_dir: PathBuf) -> Self {
         Self {
-            root_dir,
+            module_root_dir,
+            package_root_dir,
             resolver: Resolver::new(
                 ResolveOptions::default().with_condition_names(&["node", "import", "default"]),
             ),
@@ -91,7 +92,33 @@ impl ScriptModuleLoader {
             return Ok(path.to_path_buf());
         }
 
-        Ok(self.root_dir.join(path))
+        Ok(self.module_root_dir.join(path))
+    }
+
+    fn resolve_referrer_base_dir(&self, referrer: &str) -> Result<PathBuf, JsErrorBox> {
+        self.resolve_input_path(referrer).map(|path| {
+            if path.is_dir() {
+                path
+            } else {
+                path.parent().unwrap_or(path.as_path()).to_path_buf()
+            }
+        })
+    }
+
+    fn resolve_bare_specifier_base_dir(
+        &self,
+        referrer: Option<&str>,
+    ) -> Result<PathBuf, JsErrorBox> {
+        let Some(referrer) = referrer else {
+            return Ok(self.package_root_dir.clone());
+        };
+        let referrer_base_dir = self.resolve_referrer_base_dir(referrer)?;
+
+        if referrer_base_dir.starts_with(&self.package_root_dir) {
+            Ok(referrer_base_dir)
+        } else {
+            Ok(self.package_root_dir.clone())
+        }
     }
 
     fn resolve_specifier(
@@ -115,32 +142,13 @@ impl ScriptModuleLoader {
 
         if is_relative_specifier(specifier) {
             let base_dir = referrer
-                .map(|value| {
-                    self.resolve_input_path(value).map(|path| {
-                        if path.is_dir() {
-                            path
-                        } else {
-                            path.parent().unwrap_or(path.as_path()).to_path_buf()
-                        }
-                    })
-                })
+                .map(|value| self.resolve_referrer_base_dir(value))
                 .transpose()?
-                .unwrap_or_else(|| self.root_dir.clone());
+                .unwrap_or_else(|| self.module_root_dir.clone());
             return path_to_module_specifier(&canonicalize_existing_file(&base_dir.join(specifier))?);
         }
 
-        let base_dir = referrer
-            .map(|value| {
-                self.resolve_input_path(value).map(|path| {
-                    if path.is_dir() {
-                        path
-                    } else {
-                        path.parent().unwrap_or(path.as_path()).to_path_buf()
-                    }
-                })
-            })
-            .transpose()?
-            .unwrap_or_else(|| self.root_dir.clone());
+        let base_dir = self.resolve_bare_specifier_base_dir(referrer)?;
         let resolution = self
             .resolver
             .resolve(&base_dir, specifier)
@@ -207,7 +215,8 @@ struct JsContext {
 }
 
 struct ScriptModuleLoader {
-    root_dir: PathBuf,
+    module_root_dir: PathBuf,
+    package_root_dir: PathBuf,
     resolver: Resolver,
 }
 
@@ -513,7 +522,14 @@ impl JsContext {
             .enable_all()
             .build()
             .map_err(execution_error)?;
-        let module_loader = Rc::new(ScriptModuleLoader::new(root_path.to_path_buf()));
+        let module_root_dir = entry_path
+            .parent()
+            .unwrap_or(root_path)
+            .to_path_buf();
+        let module_loader = Rc::new(ScriptModuleLoader::new(
+            module_root_dir,
+            root_path.to_path_buf(),
+        ));
         let mut js_runtime = JsRuntime::new(RuntimeOptions {
             module_loader: Some(module_loader),
             extensions: vec![

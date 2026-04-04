@@ -47,7 +47,11 @@ async function runTimer(id, handler) {
     if (!activeTimers.has(id)) {
       return;
     }
-    handler();
+    await Promise.resolve()
+      .then(handler)
+      .catch((error) => {
+        reportError(error);
+      });
     if (!activeTimers.has(id)) {
       return;
     }

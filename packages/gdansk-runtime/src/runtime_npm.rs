@@ -1,9 +1,17 @@
 use std::{
+    collections::HashMap,
+    ffi::{OsStr, OsString},
+    fs,
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
 };
 
+use deno_core::{
+    anyhow::{Context, anyhow},
+    error::AnyError,
+    serde_json::Value,
+};
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_error::JsErrorBox;
 use deno_npm_cache::{
@@ -12,15 +20,24 @@ use deno_npm_cache::{
 };
 use deno_npm_installer::{
     LifecycleScriptsConfig, LogReporter, NpmInstallerFactory, NpmInstallerFactoryOptions,
-    PackageCaching, graph::NpmCachingStrategy, lifecycle_scripts::NullLifecycleScriptsExecutor,
+    PackagesAllowedScripts,
+    PackageCaching,
+    graph::NpmCachingStrategy,
+    lifecycle_scripts::{
+        LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR, LifecycleScriptsExecutor,
+        LifecycleScriptsExecutorOptions, NullLifecycleScriptsExecutor, PackageWithScript,
+        compute_lifecycle_script_layers,
+    },
 };
 use deno_npmrc::RegistryConfig;
 use deno_resolver::factory::{
     ConfigDiscoveryOption, ResolverFactory, ResolverFactoryOptions, WorkspaceFactory,
     WorkspaceFactoryOptions,
 };
+use deno_task_shell::{KillSignal, ShellPipeReader, ShellState, execute_with_pipes, parser};
 use http::header;
 use sys_traits::impls::RealSys;
+use tokio::task::{JoinHandle, LocalSet};
 use url::Url;
 
 const NPM_CACHE_RETRY_DELAY: Duration = Duration::from_millis(250);
@@ -44,6 +61,22 @@ enum RuntimeNpmOperation {
 
 type RuntimeNpmInstallerFactory =
     NpmInstallerFactory<ReqwestNpmCacheHttpClient, LogReporter, RealSys>;
+
+#[derive(Clone, Debug, Default)]
+struct RuntimeLifecycleScriptsExecutor;
+
+struct RuntimeShellTaskResult {
+    exit_code: i32,
+    stderr: Vec<u8>,
+    stdout: Vec<u8>,
+}
+
+struct RuntimeLinkedLifecyclePackage {
+    name: String,
+    package_folder: PathBuf,
+    scripts: HashMap<String, String>,
+    version: String,
+}
 
 impl RuntimeNpm {
     pub(crate) fn new(package_json_path: PathBuf) -> Self {
@@ -102,6 +135,8 @@ impl RuntimeNpm {
                     .cache_packages(PackageCaching::All)
                     .await
                     .map_err(|err| RuntimeNpmError::new(err.to_string()))?;
+                self.run_linked_lifecycle_scripts(&package_json_dir)
+                    .await?;
             }
         }
 
@@ -169,11 +204,16 @@ impl RuntimeNpm {
             NpmPackumentFormat::Abbreviated
         };
         let package_json_dir = package_json_dir.to_path_buf();
+        let lifecycle_scripts_executor: Arc<dyn LifecycleScriptsExecutor> = if clean_on_install {
+            Arc::new(RuntimeLifecycleScriptsExecutor)
+        } else {
+            Arc::new(NullLifecycleScriptsExecutor)
+        };
 
         Ok(NpmInstallerFactory::new(
             resolver_factory,
             Arc::new(ReqwestNpmCacheHttpClient::new(packument_format)?),
-            Arc::new(NullLifecycleScriptsExecutor),
+            lifecycle_scripts_executor,
             LogReporter,
             None,
             NpmInstallerFactoryOptions {
@@ -181,6 +221,11 @@ impl RuntimeNpm {
                 caching_strategy: NpmCachingStrategy::Manual,
                 clean_on_install,
                 lifecycle_scripts_config: LifecycleScriptsConfig {
+                    allowed: if clean_on_install {
+                        PackagesAllowedScripts::All
+                    } else {
+                        PackagesAllowedScripts::None
+                    },
                     initial_cwd: package_json_dir.clone(),
                     root_dir: package_json_dir,
                     explicit_install: true,
@@ -189,6 +234,114 @@ impl RuntimeNpm {
                 resolve_npm_resolution_snapshot: Box::new(|| Ok(None)),
             },
         ))
+    }
+
+    async fn run_linked_lifecycle_scripts(
+        &self,
+        package_json_dir: &Path,
+    ) -> Result<(), RuntimeNpmError> {
+        let root_node_modules_dir = package_json_dir.join("node_modules");
+
+        for package in linked_lifecycle_packages(package_json_dir)? {
+            let base_env_vars = lifecycle_base_env_vars(
+                &package.name,
+                &package.version,
+                &package.package_folder,
+                package_json_dir,
+                &root_node_modules_dir,
+            );
+
+            for script_name in ["preinstall", "install", "postinstall"] {
+                let Some(script) = package.scripts.get(script_name) else {
+                    continue;
+                };
+                let mut env_vars = base_env_vars.clone();
+                env_vars.insert("npm_lifecycle_event".into(), script_name.into());
+                env_vars.insert("npm_lifecycle_script".into(), script.into());
+
+                let result = run_shell_task(
+                    script_name,
+                    script,
+                    package.package_folder.clone(),
+                    env_vars,
+                )
+                .await
+                .map_err(|err| RuntimeNpmError::new(err.to_string()))?;
+                if result.exit_code != 0 {
+                    return Err(RuntimeNpmError::new(format!(
+                        "lifecycle script '{}' failed for '{}' with exit code {}{}{}",
+                        script_name,
+                        package.name,
+                        result.exit_code,
+                        format_task_output("stdout", &result.stdout),
+                        format_task_output("stderr", &result.stderr),
+                    )));
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[async_trait::async_trait(?Send)]
+impl LifecycleScriptsExecutor for RuntimeLifecycleScriptsExecutor {
+    async fn execute(&self, options: LifecycleScriptsExecutorOptions<'_>) -> Result<(), AnyError> {
+        for layer in compute_lifecycle_script_layers(options.packages_with_scripts, options.snapshot) {
+            for package in layer {
+                self.run_package_scripts(package, &options).await?;
+                (options.on_ran_pkg_scripts)(package.package)?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl RuntimeLifecycleScriptsExecutor {
+    async fn run_package_scripts(
+        &self,
+        package: &PackageWithScript<'_>,
+        options: &LifecycleScriptsExecutorOptions<'_>,
+    ) -> Result<(), AnyError> {
+        let base_env_vars = self.base_env_vars(package, options);
+
+        for script_name in ["preinstall", "install", "postinstall"] {
+            let Some(script) = package.scripts.get(script_name) else {
+                continue;
+            };
+            let mut env_vars = base_env_vars.clone();
+            env_vars.insert("npm_lifecycle_event".into(), script_name.into());
+            env_vars.insert("npm_lifecycle_script".into(), script.into());
+
+            let result = run_shell_task(script_name, script, package.package_folder.clone(), env_vars).await?;
+            if result.exit_code != 0 {
+                return Err(anyhow!(
+                    "lifecycle script '{}' failed for '{}' with exit code {}{}{}",
+                    script_name,
+                    package.package.id.nv,
+                    result.exit_code,
+                    format_task_output("stdout", &result.stdout),
+                    format_task_output("stderr", &result.stderr),
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
+    fn base_env_vars(
+        &self,
+        package: &PackageWithScript<'_>,
+        options: &LifecycleScriptsExecutorOptions<'_>,
+    ) -> HashMap<OsString, OsString> {
+        lifecycle_base_env_vars(
+            &package.package.id.nv.name.to_string(),
+            &package.package.id.nv.version.to_string(),
+            &package.package_folder,
+            options.init_cwd,
+            options.root_node_modules_dir_path,
+        )
     }
 }
 
@@ -324,5 +477,235 @@ fn download_error(status_code: Option<u16>, message: impl Into<String>) -> Downl
     DownloadError {
         status_code,
         error: JsErrorBox::generic(message.into()),
+    }
+}
+
+fn lifecycle_script_path_entries(package_folder: &Path, root_node_modules_dir_path: &Path) -> Vec<PathBuf> {
+    let mut paths = vec![package_folder.join("node_modules").join(".bin")];
+
+    for ancestor in package_folder.ancestors() {
+        if ancestor.file_name() == Some(OsStr::new("node_modules")) {
+            let candidate = ancestor.join(".bin");
+            if !paths.contains(&candidate) {
+                paths.push(candidate);
+            }
+        }
+        if ancestor == root_node_modules_dir_path {
+            break;
+        }
+    }
+
+    let root_bin = root_node_modules_dir_path.join(".bin");
+    if !paths.contains(&root_bin) {
+        paths.push(root_bin);
+    }
+
+    paths
+}
+
+fn lifecycle_base_env_vars(
+    package_name: &str,
+    package_version: &str,
+    package_folder: &Path,
+    init_cwd: &Path,
+    root_node_modules_dir_path: &Path,
+) -> HashMap<OsString, OsString> {
+    let mut env_vars = std::env::vars_os().collect::<HashMap<_, _>>();
+    env_vars.insert("INIT_CWD".into(), init_cwd.as_os_str().into());
+    env_vars.insert(LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR.into(), "1".into());
+    env_vars.insert(
+        "npm_config_user_agent".into(),
+        format!("gdansk-runtime/{}", env!("CARGO_PKG_VERSION")).into(),
+    );
+    env_vars.insert("npm_execpath".into(), "gdansk-runtime".into());
+    env_vars.insert(
+        "npm_package_json".into(),
+        package_folder.join("package.json").into_os_string(),
+    );
+    env_vars.insert("npm_package_name".into(), package_name.into());
+    env_vars.insert("npm_package_version".into(), package_version.into());
+    prepend_to_path(
+        &mut env_vars,
+        lifecycle_script_path_entries(package_folder, root_node_modules_dir_path),
+    );
+    env_vars
+}
+
+fn linked_lifecycle_packages(
+    package_json_dir: &Path,
+) -> Result<Vec<RuntimeLinkedLifecyclePackage>, RuntimeNpmError> {
+    let root_package_json = fs::read_to_string(package_json_dir.join("package.json"))
+        .map_err(|err| RuntimeNpmError::new(err.to_string()))?;
+    let root_package_json = deno_core::serde_json::from_str::<Value>(&root_package_json)
+        .map_err(|err| RuntimeNpmError::new(err.to_string()))?;
+    let mut packages = Vec::new();
+
+    for dependencies_key in [
+        "dependencies",
+        "devDependencies",
+        "optionalDependencies",
+        "peerDependencies",
+    ] {
+        let Some(dependencies) = root_package_json
+            .get(dependencies_key)
+            .and_then(Value::as_object)
+        else {
+            continue;
+        };
+
+        for dependency_specifier in dependencies.values() {
+            let Some(dependency_specifier) = dependency_specifier.as_str() else {
+                continue;
+            };
+            let Some(path_specifier) = dependency_specifier.strip_prefix("file:") else {
+                continue;
+            };
+            let package_folder = package_json_dir.join(path_specifier);
+            let package = linked_lifecycle_package(&package_folder)?;
+            if let Some(package) = package
+                && !packages
+                    .iter()
+                    .any(|candidate: &RuntimeLinkedLifecyclePackage| candidate.package_folder == package.package_folder)
+            {
+                packages.push(package);
+            }
+        }
+    }
+
+    Ok(packages)
+}
+
+fn linked_lifecycle_package(
+    package_folder: &Path,
+) -> Result<Option<RuntimeLinkedLifecyclePackage>, RuntimeNpmError> {
+    let package_json = fs::read_to_string(package_folder.join("package.json"))
+        .map_err(|err| RuntimeNpmError::new(err.to_string()))?;
+    let package_json = deno_core::serde_json::from_str::<Value>(&package_json)
+        .map_err(|err| RuntimeNpmError::new(err.to_string()))?;
+    let Some(scripts) = package_json.get("scripts").and_then(Value::as_object) else {
+        return Ok(None);
+    };
+
+    let scripts = scripts
+        .iter()
+        .filter_map(|(name, value)| match value.as_str() {
+            Some(value)
+                if matches!(name.as_str(), "preinstall" | "install" | "postinstall") =>
+            {
+                Some((name.clone(), value.to_owned()))
+            }
+            _ => None,
+        })
+        .collect::<HashMap<_, _>>();
+    if scripts.is_empty() {
+        return Ok(None);
+    }
+
+    let name = package_json
+        .get("name")
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| package_folder.display().to_string());
+    let version = package_json
+        .get("version")
+        .and_then(Value::as_str)
+        .unwrap_or("0.0.0")
+        .to_owned();
+
+    Ok(Some(RuntimeLinkedLifecyclePackage {
+        name,
+        package_folder: package_folder.to_path_buf(),
+        scripts,
+        version,
+    }))
+}
+
+fn prepend_to_path(
+    env_vars: &mut HashMap<OsString, OsString>,
+    values: impl IntoIterator<Item = PathBuf>,
+) {
+    let separator = if cfg!(windows) { ";" } else { ":" };
+    let new_path = values
+        .into_iter()
+        .map(PathBuf::into_os_string)
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>();
+
+    if new_path.is_empty() {
+        return;
+    }
+
+    let mut joined = OsString::new();
+    for (index, value) in new_path.into_iter().enumerate() {
+        if index > 0 {
+            joined.push(separator);
+        }
+        joined.push(value);
+    }
+
+    match env_vars.get_mut(OsStr::new("PATH")) {
+        Some(path) if !path.is_empty() => {
+            joined.push(separator);
+            joined.push(path.as_os_str());
+            *path = joined;
+        }
+        Some(path) => {
+            *path = joined;
+        }
+        None => {
+            env_vars.insert("PATH".into(), joined);
+        }
+    }
+}
+
+fn read_pipe(reader: ShellPipeReader) -> JoinHandle<Result<Vec<u8>, AnyError>> {
+    tokio::task::spawn_blocking(move || {
+        let mut buffer = Vec::new();
+        reader.pipe_to(&mut buffer)?;
+        Ok(buffer)
+    })
+}
+
+async fn run_shell_task(
+    task_name: &str,
+    script: &str,
+    cwd: PathBuf,
+    env_vars: HashMap<OsString, OsString>,
+) -> Result<RuntimeShellTaskResult, AnyError> {
+    let parsed = parser::parse(script)
+        .with_context(|| format!("failed to parse lifecycle script '{task_name}'"))?;
+    let state = ShellState::new(env_vars, cwd, HashMap::new(), KillSignal::default());
+    let (stdout_reader, stdout_writer) = deno_task_shell::pipe();
+    let (stderr_reader, stderr_writer) = deno_task_shell::pipe();
+    let stdout = read_pipe(stdout_reader);
+    let stderr = read_pipe(stderr_reader);
+    let local = LocalSet::new();
+
+    local
+        .run_until(async move {
+            let exit_code = execute_with_pipes(
+                parsed,
+                state,
+                ShellPipeReader::stdin(),
+                stdout_writer,
+                stderr_writer,
+            )
+            .await;
+            Ok(RuntimeShellTaskResult {
+                exit_code,
+                stderr: stderr.await??,
+                stdout: stdout.await??,
+            })
+        })
+        .await
+}
+
+fn format_task_output(label: &str, bytes: &[u8]) -> String {
+    let output = String::from_utf8_lossy(bytes);
+    let trimmed = output.trim();
+    if trimmed.is_empty() {
+        String::new()
+    } else {
+        format!("\n{label}:\n{trimmed}")
     }
 }
