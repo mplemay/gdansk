@@ -105,6 +105,17 @@ export default function(input) {
         assert run(1) == 2
 
 
+def test_script_from_file_normalizes_windows_newlines(tmp_path: Path):
+    script_path = tmp_path / "script.js"
+    script_path.write_bytes(
+        b"export default function(input) {\r\n    return input + 1;\r\n}",
+    )
+
+    script = Script.from_file(script_path, inputs=int, outputs=int)
+
+    assert script.contents == "export default function(input) {\n    return input + 1;\n}"
+
+
 def test_script_from_file_accepts_string_paths(tmp_path: Path):
     script_path = tmp_path / "script.js"
     script_path.write_text("export default function(input) { return input; }", encoding="utf-8")

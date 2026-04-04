@@ -53,7 +53,7 @@ class Script[I, O](ScriptImpl):
             contents = file.read()
 
         try:
-            return contents.decode("utf-8")
+            return contents.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
         except UnicodeDecodeError as err:
             msg = "Script file must contain valid UTF-8"
             raise OSError(msg) from err
