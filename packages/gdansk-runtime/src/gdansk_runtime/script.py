@@ -36,15 +36,20 @@ class Script[I, O](ScriptImpl):
     def __init__(self, contents: str, inputs: object, outputs: object) -> None:
         self._inputs: TypeAdapter[I] = TypeAdapter[I](inputs)
         self._outputs: TypeAdapter[O] = TypeAdapter[O](outputs)
+        self._source_path: str | None = None
 
     @staticmethod
-    def _read_contents_from_path(path: str | PathLike[str]) -> str:
+    def _normalize_source_path(path: str | PathLike[str]) -> str:
         normalized_path = fspath(path)
         if not isinstance(normalized_path, str):
             msg = "Script.from_file path must be a string path"
             raise TypeError(msg)
 
-        with Path(normalized_path).open("rb") as file:
+        return str(Path(normalized_path).resolve())
+
+    @staticmethod
+    def _read_contents_from_path(path: str | PathLike[str]) -> str:
+        with Path(Script._normalize_source_path(path)).open("rb") as file:
             contents = file.read()
 
         try:
@@ -78,7 +83,10 @@ class Script[I, O](ScriptImpl):
         inputs: object,
         outputs: object,
     ) -> Self:
-        return cls(cls._read_contents_from_path(path), inputs, outputs)
+        source_path = cls._normalize_source_path(path)
+        script = cls(cls._read_contents_from_path(source_path), inputs, outputs)
+        script._source_path = source_path
+        return script
 
     def _serialize_input(self, value: I, /) -> object:
         validated = self._inputs.validate_python(value)

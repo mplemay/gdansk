@@ -203,6 +203,28 @@ export default function(input) {
         assert await run(1) == 42
 
 
+async def test_async_runtime_from_file_resolves_sibling_imports(tmp_path):
+    (tmp_path / "other.js").write_text(
+        "export function increment(value) { return value + 1; }\n",
+        encoding="utf-8",
+    )
+    script_path = tmp_path / "script.js"
+    script_path.write_text(
+        """
+import { increment } from "./other.js";
+
+export default function(input) {
+    return increment(input);
+}
+""".strip(),
+        encoding="utf-8",
+    )
+    script = Script.from_file(script_path, inputs=int, outputs=int)
+
+    async with Runtime()(script) as run:
+        assert await run(1) == 2
+
+
 async def test_async_runtime_surfaces_javascript_errors():
     script = Script(
         contents="""

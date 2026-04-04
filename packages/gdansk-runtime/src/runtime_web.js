@@ -1,5 +1,6 @@
 import { core, primordials } from "ext:core/mod.js";
 const { indirectEval, ObjectSetPrototypeOf, ReflectApply } = primordials;
+const { op_gdansk_runtime_sleep } = core.ops;
 
 import * as url from "ext:deno_web/00_url.js";
 import { DOMException, QuotaExceededError } from "ext:deno_web/01_dom_exception.js";
@@ -31,38 +32,49 @@ function timerCallback(callback, args) {
   return () => ReflectApply(callback, globalThis, args);
 }
 
-function defer(callback) {
-  Promise.resolve().then(() => callback());
+function normalizeTimerDelay(delay) {
+  const timeout = Number(delay);
+  if (!Number.isFinite(timeout) || timeout <= 0) {
+    return 0;
+  }
+  return Math.trunc(timeout);
 }
 
-function scheduleTimer(callback, args, repeat) {
-  const id = nextTimerId;
-  nextTimerId += 1;
-  const handler = timerCallback(callback, args);
-  activeTimers.set(id, repeat);
-
-  const tick = () => {
+async function runTimer(id, handler) {
+  while (activeTimers.has(id)) {
+    const { delay } = activeTimers.get(id);
+    await op_gdansk_runtime_sleep(delay);
     if (!activeTimers.has(id)) {
       return;
     }
     handler();
-    if (activeTimers.get(id)) {
-      defer(tick);
+    if (!activeTimers.has(id)) {
       return;
     }
-    activeTimers.delete(id);
-  };
+    if (!activeTimers.get(id).repeat) {
+      activeTimers.delete(id);
+      return;
+    }
+  }
+}
 
-  defer(tick);
+function scheduleTimer(callback, delay, args, repeat) {
+  const id = nextTimerId;
+  nextTimerId += 1;
+  activeTimers.set(id, {
+    delay: normalizeTimerDelay(delay),
+    repeat,
+  });
+  void runTimer(id, timerCallback(callback, args));
   return id;
 }
 
 function setTimeout(callback, _delay = 0, ...args) {
-  return scheduleTimer(callback, args, false);
+  return scheduleTimer(callback, _delay, args, false);
 }
 
 function setInterval(callback, _delay = 0, ...args) {
-  return scheduleTimer(callback, args, true);
+  return scheduleTimer(callback, _delay, args, true);
 }
 
 function clearTimeout(timerId = 0) {

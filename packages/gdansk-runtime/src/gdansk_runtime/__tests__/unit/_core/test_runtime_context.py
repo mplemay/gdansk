@@ -366,6 +366,52 @@ export default function(input) {
         assert run(1) == 42
 
 
+def test_runtime_from_file_resolves_sibling_imports(tmp_path):
+    (tmp_path / "other.js").write_text(
+        "export function increment(value) { return value + 1; }\n",
+        encoding="utf-8",
+    )
+    script_path = tmp_path / "script.js"
+    script_path.write_text(
+        """
+import { increment } from "./other.js";
+
+export default function(input) {
+    return increment(input);
+}
+""".strip(),
+        encoding="utf-8",
+    )
+    script = Script.from_file(script_path, inputs=int, outputs=int)
+
+    with Runtime()(script) as run:
+        assert run(1) == 2
+
+
+def test_runtime_inline_script_resolves_relative_imports_from_package_json_directory(tmp_path):
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    (project_dir / "package.json").write_text(
+        '{"name":"gdansk-runtime-test","private":true}\n',
+        encoding="utf-8",
+    )
+    (project_dir / "other.js").write_text("export const offset = 41;\n", encoding="utf-8")
+    script = Script(
+        contents="""
+import { offset } from "./other.js";
+
+export default function(input) {
+    return offset + input;
+}
+""".strip(),
+        inputs=int,
+        outputs=int,
+    )
+
+    with Runtime(package_json=project_dir / "package.json")(script) as run:
+        assert run(1) == 42
+
+
 def test_runtime_exposes_web_api_globals():
     script = Script(
         contents="""
@@ -586,6 +632,86 @@ export default async function() {
             "functionThis": True,
             "timerValue": 42,
         }
+
+
+def test_runtime_set_timeout_honors_delay():
+    script = Script(
+        contents="""
+export default async function() {
+    const started = Date.now();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    return Date.now() - started;
+}
+""".strip(),
+        inputs=int,
+        outputs=int,
+    )
+
+    with Runtime()(script) as run:
+        assert run(0) >= 40
+
+
+def test_runtime_clear_timeout_prevents_callback():
+    script = Script(
+        contents="""
+export default async function() {
+    let called = false;
+    const handle = setTimeout(() => {
+        called = true;
+    }, 20);
+    clearTimeout(handle);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    return called;
+}
+""".strip(),
+        inputs=int,
+        outputs=bool,
+    )
+
+    with Runtime()(script) as run:
+        assert run(0) is False
+
+
+def test_runtime_set_interval_honors_delay_and_clear_interval_stops_repeats():
+    script = Script(
+        contents="""
+export default async function() {
+    const ticks = [];
+    const started = Date.now();
+
+    await new Promise((resolve) => {
+        const handle = setInterval(() => {
+            ticks.push(Date.now() - started);
+            if (ticks.length === 3) {
+                clearInterval(handle);
+                resolve();
+            }
+        }, 20);
+    });
+
+    const beforeWait = ticks.length;
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    return {
+        ticks,
+        beforeWait,
+        afterWait: ticks.length,
+    };
+}
+""".strip(),
+        inputs=int,
+        outputs=dict[str, object],
+    )
+
+    with Runtime()(script) as run:
+        result = run(0)
+
+    ticks = result["ticks"]
+    assert len(ticks) == 3
+    assert ticks[0] >= 15
+    assert ticks[1] >= ticks[0] + 15
+    assert ticks[2] >= ticks[1] + 15
+    assert result["beforeWait"] == 3
+    assert result["afterWait"] == 3
 
 
 def test_runtime_recovers_after_javascript_error_within_context():

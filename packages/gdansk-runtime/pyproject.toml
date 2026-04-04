@@ -11,9 +11,6 @@ dependencies = [
     "pydantic>=2,<3",
 ]
 
-[project.scripts]
-gdansk-runtime = "gdansk_runtime:main"
-
 [tool.maturin]
 module-name = "gdansk_runtime._core"
 python-packages = ["gdansk_runtime"]

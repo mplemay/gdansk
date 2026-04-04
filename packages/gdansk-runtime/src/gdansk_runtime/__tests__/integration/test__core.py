@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from gdansk_runtime import Runtime
+from gdansk_runtime import Runtime, Script
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -152,3 +152,90 @@ def test_runtime_lock_then_sync_supports_linked_packages_with_peer_dependencies(
     assert (project_dir / "node_modules" / "@myorg" / "shared" / "package.json").exists()
     assert read_installed_package_version(project_dir, "@myorg/shared") == "1.0.0"
     assert read_installed_package_version(project_dir, "zod") == "4.3.6"
+
+
+def test_runtime_sync_allows_bare_package_imports(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    configure_npm_test_env(monkeypatch, tmp_path)
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    shared_dir = project_dir / "shared"
+    shared_dir.mkdir()
+    (shared_dir / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "sample-package",
+                "version": "1.0.0",
+                "type": "module",
+                "exports": "./index.js",
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (shared_dir / "index.js").write_text(
+        "export default { greet(value) { return `hello ${value}`; } };\n",
+        encoding="utf-8",
+    )
+    package_json = write_package_json(project_dir, {"sample-package": "file:./shared"})
+    runtime = Runtime(package_json=package_json)
+    runtime.sync()
+
+    script = Script(
+        contents="""
+import samplePackage from "sample-package";
+
+export default function(input) {
+    return samplePackage.greet(input);
+}
+""".strip(),
+        inputs=str,
+        outputs=str,
+    )
+
+    with runtime(script) as run:
+        assert run("gdansk") == "hello gdansk"
+
+
+async def test_async_runtime_sync_allows_bare_package_imports(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    configure_npm_test_env(monkeypatch, tmp_path)
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    shared_dir = project_dir / "shared"
+    shared_dir.mkdir()
+    (shared_dir / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "sample-package",
+                "version": "1.0.0",
+                "type": "module",
+                "exports": "./index.js",
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (shared_dir / "index.js").write_text(
+        "export default { greet(value) { return `hello ${value}`; } };\n",
+        encoding="utf-8",
+    )
+    package_json = write_package_json(project_dir, {"sample-package": "file:./shared"})
+    runtime = Runtime(package_json=package_json)
+    runtime.sync()
+
+    script = Script(
+        contents="""
+import samplePackage from "sample-package";
+
+export default function(input) {
+    return samplePackage.greet(input);
+}
+""".strip(),
+        inputs=str,
+        outputs=str,
+    )
+
+    async with runtime(script) as run:
+        assert await run("gdansk") == "hello gdansk"

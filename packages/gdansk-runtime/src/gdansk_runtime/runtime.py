@@ -23,13 +23,13 @@ if TYPE_CHECKING:
         def __new__(cls, *, package_json: str | None = None) -> Self: ...
 
     class RuntimeContextBase:
-        def __new__(cls, contents: str) -> Self: ...
+        def __new__(cls, contents: str, entry_path: str, root_path: str) -> Self: ...
         def _ensure_inactive(self) -> None: ...
         def __enter__(self) -> Self: ...
         def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None: ...
 
     class AsyncRuntimeContextBase:
-        def __new__(cls, contents: str) -> Self: ...
+        def __new__(cls, contents: str, entry_path: str, root_path: str) -> Self: ...
         async def __aenter__(self) -> Self: ...
         async def __aexit__(self, exc_type: object, exc_value: object, traceback: object) -> None: ...
 
@@ -75,17 +75,49 @@ class Runtime(RuntimeBase):
     def __new__(cls, *, package_json: str | PathLike[str] | None = None) -> Self:
         return super().__new__(cls, package_json=cls._normalize_runtime_path(package_json))
 
+    def __init__(self, *, package_json: str | PathLike[str] | None = None) -> None:
+        normalized_path = self._normalize_runtime_path(package_json)
+        self._package_json_path = Path(normalized_path) if normalized_path is not None else None
+
+    def _execution_paths[I, O](self, script: Script[I, O], /) -> tuple[str, str]:
+        if script._source_path is not None:
+            entry_path = Path(script._source_path)
+            root_path = self._package_json_path.parent if self._package_json_path is not None else entry_path.parent
+            return str(entry_path), str(root_path)
+
+        root_path = self._package_json_path.parent if self._package_json_path is not None else Path.cwd()
+        return str(root_path / "__gdansk_runtime_inline__.js"), str(root_path)
+
     def __call__[I, O](self, script: Script[I, O], /) -> RuntimeContext[I, O]:
-        return RuntimeContext(script)
+        entry_path, root_path = self._execution_paths(script)
+        return RuntimeContext(script, entry_path=entry_path, root_path=root_path)
 
 
 class RuntimeContext[I, O](RuntimeContextBase):
-    def __new__(cls, script: Script[I, O], /) -> Self:
-        return super().__new__(cls, script.contents)
+    def __new__(
+        cls,
+        script: Script[I, O],
+        /,
+        *,
+        entry_path: str | None = None,
+        root_path: str | None = None,
+    ) -> Self:
+        resolved_entry_path = entry_path or script._source_path or str(Path.cwd() / "__gdansk_runtime_inline__.js")
+        resolved_root_path = root_path or str(Path(resolved_entry_path).parent)
+        return super().__new__(cls, script.contents, resolved_entry_path, resolved_root_path)
 
-    def __init__(self, script: Script[I, O], /) -> None:
+    def __init__(
+        self,
+        script: Script[I, O],
+        /,
+        *,
+        entry_path: str | None = None,
+        root_path: str | None = None,
+    ) -> None:
         self._script: Script[I, O] = script
         self._async_context: AsyncRuntimeContext[I, O] | None = None
+        self._entry_path = entry_path or script._source_path or str(Path.cwd() / "__gdansk_runtime_inline__.js")
+        self._root_path = root_path or str(Path(self._entry_path).parent)
 
     def __enter__(self) -> Self:
         if self._async_context is not None:
@@ -99,7 +131,11 @@ class RuntimeContext[I, O](RuntimeContextBase):
             raise RuntimeError(_RUNTIME_CONTEXT_ALREADY_ACTIVE)
 
         self._ensure_inactive()
-        async_context = AsyncRuntimeContext(self._script)
+        async_context = AsyncRuntimeContext(
+            self._script,
+            entry_path=self._entry_path,
+            root_path=self._root_path,
+        )
         self._async_context = async_context
 
         try:
@@ -122,11 +158,29 @@ class RuntimeContext[I, O](RuntimeContextBase):
 
 
 class AsyncRuntimeContext[I, O](AsyncRuntimeContextBase):
-    def __new__(cls, script: Script[I, O], /) -> Self:
-        return super().__new__(cls, script.contents)
+    def __new__(
+        cls,
+        script: Script[I, O],
+        /,
+        *,
+        entry_path: str | None = None,
+        root_path: str | None = None,
+    ) -> Self:
+        resolved_entry_path = entry_path or script._source_path or str(Path.cwd() / "__gdansk_runtime_inline__.js")
+        resolved_root_path = root_path or str(Path(resolved_entry_path).parent)
+        return super().__new__(cls, script.contents, resolved_entry_path, resolved_root_path)
 
-    def __init__(self, script: Script[I, O], /) -> None:
+    def __init__(
+        self,
+        script: Script[I, O],
+        /,
+        *,
+        entry_path: str | None = None,
+        root_path: str | None = None,
+    ) -> None:
         self._script: Script[I, O] = script
+        self._entry_path = entry_path or script._source_path or str(Path.cwd() / "__gdansk_runtime_inline__.js")
+        self._root_path = root_path or str(Path(self._entry_path).parent)
 
     async def __call__(self, value: I, /) -> O:
         result = await _call_async_runtime_context_impl(self, self._script._serialize_input(value))

@@ -1,21 +1,32 @@
 use std::{
     collections::HashSet,
-    path::PathBuf,
+    ffi::OsStr,
+    fs,
+    path::{Path, PathBuf},
+    rc::Rc,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
         mpsc::{self, SyncSender},
     },
     thread::{self, JoinHandle},
+    time::Duration,
 };
 
-use deno_core::{JsRuntime, PollEventLoopOptions, RuntimeOptions, serde_json::Value, serde_v8, v8};
+use deno_core::{
+    JsRuntime, ModuleLoadOptions, ModuleLoadReferrer, ModuleLoadResponse, ModuleLoader,
+    ModuleSource, ModuleSourceCode, ModuleSpecifier, ModuleType, PollEventLoopOptions,
+    ResolutionKind, RuntimeOptions, op2, serde_json::Value, serde_v8, v8,
+};
+use deno_error::JsErrorBox;
+use oxc_resolver::{ResolveOptions, Resolver};
 use pyo3::{
     exceptions::{PyRuntimeError, PyTypeError, PyValueError},
     prelude::*,
     types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyString, PyTuple},
 };
 use tokio::sync::oneshot;
+use url::Url;
 
 mod runtime_npm;
 
@@ -25,8 +36,14 @@ const RUNTIME_CONTEXT_ALREADY_ACTIVE: &str = "RuntimeContext is already active";
 const RUNTIME_CONTEXT_NOT_ACTIVE: &str = "RuntimeContext is not active";
 const RUNTIME_PACKAGE_JSON_NOT_CONFIGURED: &str = "Runtime.package_json is not configured";
 
+#[op2]
+async fn op_gdansk_runtime_sleep(delay_ms: u32) {
+    tokio::time::sleep(Duration::from_millis(u64::from(delay_ms))).await;
+}
+
 deno_core::extension!(
     gdansk_runtime_web_ext,
+    ops = [op_gdansk_runtime_sleep],
     esm_entry_point = "ext:gdansk_runtime_web_ext/runtime_web.js",
     esm = [
         dir "src",
@@ -50,10 +67,148 @@ impl ScriptRuntimeError {
     }
 }
 
+impl ScriptModuleLoader {
+    fn new(root_dir: PathBuf) -> Self {
+        Self {
+            root_dir,
+            resolver: Resolver::new(
+                ResolveOptions::default().with_condition_names(&["node", "import", "default"]),
+            ),
+        }
+    }
+
+    fn resolve_input_path(&self, input: &str) -> Result<PathBuf, JsErrorBox> {
+        if input.starts_with("file://") {
+            let specifier =
+                ModuleSpecifier::parse(input).map_err(|err| JsErrorBox::generic(err.to_string()))?;
+            return specifier
+                .to_file_path()
+                .map_err(|_| JsErrorBox::generic(format!("unsupported file URL: {input}")));
+        }
+
+        let path = Path::new(input);
+        if path.is_absolute() {
+            return Ok(path.to_path_buf());
+        }
+
+        Ok(self.root_dir.join(path))
+    }
+
+    fn resolve_specifier(
+        &self,
+        specifier: &str,
+        referrer: Option<&str>,
+    ) -> Result<ModuleSpecifier, JsErrorBox> {
+        if specifier.starts_with("node:") {
+            return Err(unsupported_node_builtin(specifier));
+        }
+
+        if specifier.starts_with("file://") {
+            return ModuleSpecifier::parse(specifier)
+                .map_err(|err| JsErrorBox::generic(err.to_string()));
+        }
+
+        let path = Path::new(specifier);
+        if path.is_absolute() {
+            return path_to_module_specifier(&canonicalize_existing_file(path)?);
+        }
+
+        if is_relative_specifier(specifier) {
+            let base_dir = referrer
+                .map(|value| {
+                    self.resolve_input_path(value).map(|path| {
+                        if path.is_dir() {
+                            path
+                        } else {
+                            path.parent().unwrap_or(path.as_path()).to_path_buf()
+                        }
+                    })
+                })
+                .transpose()?
+                .unwrap_or_else(|| self.root_dir.clone());
+            return path_to_module_specifier(&canonicalize_existing_file(&base_dir.join(specifier))?);
+        }
+
+        let base_dir = referrer
+            .map(|value| {
+                self.resolve_input_path(value).map(|path| {
+                    if path.is_dir() {
+                        path
+                    } else {
+                        path.parent().unwrap_or(path.as_path()).to_path_buf()
+                    }
+                })
+            })
+            .transpose()?
+            .unwrap_or_else(|| self.root_dir.clone());
+        let resolution = self
+            .resolver
+            .resolve(&base_dir, specifier)
+            .map_err(|err| JsErrorBox::generic(err.to_string()))?;
+        let resolved = resolution.path().to_path_buf();
+        if !resolved.is_file() {
+            return Err(JsErrorBox::generic(format!(
+                "resolved module is not a file: {}",
+                resolved.display()
+            )));
+        }
+
+        path_to_module_specifier(&resolved)
+    }
+}
+
+impl ModuleLoader for ScriptModuleLoader {
+    fn resolve(
+        &self,
+        specifier: &str,
+        referrer: &str,
+        _kind: ResolutionKind,
+    ) -> Result<ModuleSpecifier, JsErrorBox> {
+        self.resolve_specifier(specifier, Some(referrer))
+    }
+
+    fn load(
+        &self,
+        module_specifier: &ModuleSpecifier,
+        _maybe_referrer: Option<&ModuleLoadReferrer>,
+        _options: ModuleLoadOptions,
+    ) -> ModuleLoadResponse {
+        let result = (|| {
+            if module_specifier.scheme() == "node" {
+                return Err(unsupported_node_builtin(module_specifier.as_str()));
+            }
+
+            let path = module_specifier.to_file_path().map_err(|_| {
+                JsErrorBox::generic(format!("unsupported module specifier: {module_specifier}"))
+            })?;
+            let code = fs::read_to_string(&path).map_err(|err| JsErrorBox::generic(err.to_string()))?;
+            let module_type = if path.extension() == Some(OsStr::new("json")) {
+                ModuleType::Json
+            } else {
+                ModuleType::JavaScript
+            };
+
+            Ok(ModuleSource::new(
+                module_type,
+                ModuleSourceCode::String(code.into()),
+                module_specifier,
+                None,
+            ))
+        })();
+
+        ModuleLoadResponse::Sync(result)
+    }
+}
+
 struct JsContext {
     default_function: v8::Global<v8::Function>,
     js_runtime: JsRuntime,
     tokio_runtime: tokio::runtime::Runtime,
+}
+
+struct ScriptModuleLoader {
+    root_dir: PathBuf,
+    resolver: Resolver,
 }
 
 #[derive(Clone)]
@@ -90,12 +245,16 @@ struct Runtime {
 #[pyclass(module = "gdansk_runtime._core", unsendable, subclass, skip_from_py_object)]
 struct RuntimeContext {
     contents: String,
+    entry_path: PathBuf,
+    root_path: PathBuf,
     context: Option<JsContext>,
 }
 
 #[pyclass(module = "gdansk_runtime._core", subclass, skip_from_py_object)]
 struct AsyncRuntimeContext {
     contents: String,
+    entry_path: PathBuf,
+    root_path: PathBuf,
     worker: Option<AsyncWorker>,
 }
 
@@ -112,6 +271,26 @@ fn map_runtime_error(err: ScriptRuntimeError) -> PyErr {
 
 fn map_runtime_npm_error(err: RuntimeNpmError) -> PyErr {
     PyRuntimeError::new_err(err.to_string())
+}
+
+fn is_relative_specifier(specifier: &str) -> bool {
+    specifier.starts_with("./") || specifier.starts_with("../")
+}
+
+fn unsupported_node_builtin(specifier: &str) -> JsErrorBox {
+    JsErrorBox::generic(format!("unsupported node builtin module: {specifier}"))
+}
+
+fn canonicalize_existing_file(path: &Path) -> Result<PathBuf, JsErrorBox> {
+    path.canonicalize()
+        .map_err(|err| JsErrorBox::generic(err.to_string()))
+}
+
+fn path_to_module_specifier(path: &Path) -> Result<ModuleSpecifier, JsErrorBox> {
+    let specifier = Url::from_file_path(path)
+        .map_err(|_| JsErrorBox::generic(format!("failed to resolve path {}", path.display())))?
+        .to_string();
+    ModuleSpecifier::parse(&specifier).map_err(|err| JsErrorBox::generic(err.to_string()))
 }
 
 fn py_any_to_json_value(
@@ -290,9 +469,10 @@ fn read_json_value(
 async fn load_default_function(
     runtime: &mut JsRuntime,
     code: &str,
+    entry_path: &Path,
 ) -> Result<v8::Global<v8::Function>, ScriptRuntimeError> {
-    let module_specifier =
-        deno_core::resolve_url("file:///gdansk-runtime/script.js").map_err(execution_error)?;
+    let module_specifier = path_to_module_specifier(entry_path)
+        .map_err(|err| ScriptRuntimeError::execution(err.to_string()))?;
     let mod_id = runtime
         .load_main_es_module_from_code(&module_specifier, code.to_owned())
         .await
@@ -328,12 +508,14 @@ async fn load_default_function(
 }
 
 impl JsContext {
-    fn new(code: &str) -> Result<Self, ScriptRuntimeError> {
+    fn new(code: &str, entry_path: &Path, root_path: &Path) -> Result<Self, ScriptRuntimeError> {
         let tokio_runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .map_err(execution_error)?;
+        let module_loader = Rc::new(ScriptModuleLoader::new(root_path.to_path_buf()));
         let mut js_runtime = JsRuntime::new(RuntimeOptions {
+            module_loader: Some(module_loader),
             extensions: vec![
                 deno_webidl::deno_webidl::init(),
                 deno_web::deno_web::init(
@@ -345,8 +527,11 @@ impl JsContext {
             ],
             ..Default::default()
         });
-        let default_function =
-            tokio_runtime.block_on(load_default_function(&mut js_runtime, code))?;
+        let default_function = tokio_runtime.block_on(load_default_function(
+            &mut js_runtime,
+            code,
+            entry_path,
+        ))?;
         Ok(Self {
             default_function,
             js_runtime,
@@ -363,15 +548,15 @@ impl JsContext {
             v8::Global::new(scope, local)
         };
         let arguments = [argument];
-        let future = self
-            .js_runtime
-            .call_with_args(&self.default_function, &arguments);
+        let default_function = self.default_function.clone();
         let output = self
             .tokio_runtime
-            .block_on(
+            .block_on(async {
+                let future = self.js_runtime.call_with_args(&default_function, &arguments);
                 self.js_runtime
-                    .with_event_loop_promise(future, PollEventLoopOptions::default()),
-            )
+                    .with_event_loop_promise(future, PollEventLoopOptions::default())
+                    .await
+            })
             .map_err(execution_error)?;
         read_json_value(&mut self.js_runtime, output)
     }
@@ -410,12 +595,16 @@ impl AsyncWorkerClient {
 }
 
 impl AsyncWorker {
-    fn spawn(code: String) -> Result<Self, ScriptRuntimeError> {
+    fn spawn(
+        code: String,
+        entry_path: PathBuf,
+        root_path: PathBuf,
+    ) -> Result<Self, ScriptRuntimeError> {
         let (sender, receiver) = mpsc::channel();
         let client = AsyncWorkerClient::new(sender);
         let (ready, initialized) = mpsc::sync_channel(1);
         let join_handle = thread::spawn(move || {
-            let mut context = match JsContext::new(&code) {
+            let mut context = match JsContext::new(&code, &entry_path, &root_path) {
                 Ok(context) => {
                     let _ = ready.send(Ok(()));
                     context
@@ -489,9 +678,11 @@ impl AsyncWorker {
 }
 
 impl RuntimeContext {
-    fn from_contents(contents: String) -> Self {
+    fn from_contents(contents: String, entry_path: PathBuf, root_path: PathBuf) -> Self {
         Self {
             contents,
+            entry_path,
+            root_path,
             context: None,
         }
     }
@@ -506,7 +697,8 @@ impl RuntimeContext {
 
     fn enter(&mut self) -> PyResult<()> {
         self.ensure_inactive()?;
-        let context = JsContext::new(&self.contents).map_err(map_runtime_error)?;
+        let context = JsContext::new(&self.contents, &self.entry_path, &self.root_path)
+            .map_err(map_runtime_error)?;
         self.context = Some(context);
         Ok(())
     }
@@ -519,9 +711,11 @@ impl RuntimeContext {
 }
 
 impl AsyncRuntimeContext {
-    fn from_contents(contents: String) -> Self {
+    fn from_contents(contents: String, entry_path: PathBuf, root_path: PathBuf) -> Self {
         Self {
             contents,
+            entry_path,
+            root_path,
             worker: None,
         }
     }
@@ -536,7 +730,12 @@ impl AsyncRuntimeContext {
 
     fn enter(&mut self) -> PyResult<()> {
         self.ensure_inactive()?;
-        let worker = AsyncWorker::spawn(self.contents.clone()).map_err(map_runtime_error)?;
+        let worker = AsyncWorker::spawn(
+            self.contents.clone(),
+            self.entry_path.clone(),
+            self.root_path.clone(),
+        )
+        .map_err(map_runtime_error)?;
         self.worker = Some(worker);
         Ok(())
     }
@@ -618,8 +817,8 @@ impl Runtime {
 #[pymethods]
 impl RuntimeContext {
     #[new]
-    fn new(contents: String) -> Self {
-        Self::from_contents(contents)
+    fn new(contents: String, entry_path: String, root_path: String) -> Self {
+        Self::from_contents(contents, PathBuf::from(entry_path), PathBuf::from(root_path))
     }
 
     fn _ensure_inactive(&self) -> PyResult<()> {
@@ -660,8 +859,8 @@ impl RuntimeContext {
 #[pymethods]
 impl AsyncRuntimeContext {
     #[new]
-    fn new(contents: String) -> Self {
-        Self::from_contents(contents)
+    fn new(contents: String, entry_path: String, root_path: String) -> Self {
+        Self::from_contents(contents, PathBuf::from(entry_path), PathBuf::from(root_path))
     }
 
     fn __aenter__<'py>(slf: Py<Self>, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
