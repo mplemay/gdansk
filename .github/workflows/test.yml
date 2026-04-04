@@ -58,7 +58,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ["3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v6
 
@@ -81,6 +81,9 @@ jobs:
       - name: Install shadcn example npm dependencies
         working-directory: examples/shadcn/src/shadcn/views
         run: npm ci
+
+      - name: Install dependencies
+        run: uv sync --all-groups --all-extras --all-packages
 
       - name: Run tests
         run: uv run pytest

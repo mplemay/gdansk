@@ -7,7 +7,7 @@ license = { text = "MIT" }
 authors = [
     { name = "Matt LeMay", email = "mplemay@users.noreply.github.com" }
 ]
-requires-python = ">=3.11,<3.15"
+requires-python = ">=3.12,<3.15"
 dependencies = [
     "mcp>=1.25.1.dev114,<1.26",
     "minijinja>=2,<3",
@@ -25,22 +25,27 @@ cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.rs" }, { file = "C
 [tool.uv.sources]
 mcp = { git = "https://github.com/modelcontextprotocol/python-sdk.git", rev = "main" }
 
+[tool.uv.workspace]
+members = [
+    "packages/gdansk-runtime",
+]
+
 [build-system]
 requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
 [dependency-groups]
 dev = [
+    "anyio>=4",
     "prek>=0.3.6",
     "pytest>=9.0.2",
-    "pytest-asyncio>=1.3.0",
     "ruff>=0.15.1",
     "rumdl>=0.1.21",
     "ty>=0.0.17",
 ]
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py312"
 line-length = 120
 include = ["pyproject.toml"]
 
@@ -82,7 +87,7 @@ docstring-code-format = true
 quote-style = "double"
 
 [tool.pytest.ini_options]
-asyncio_mode = "strict"
+anyio_mode = "auto"
 norecursedirs = ["target", "dist", "build", ".venv", "node_modules"]
 python_files = ["test_*.py"]
 markers = [
