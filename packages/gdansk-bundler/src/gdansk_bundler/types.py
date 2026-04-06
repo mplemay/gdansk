@@ -1,9 +1,16 @@
 from __future__ import annotations
 
-from typing import Literal, TypedDict
+from typing import Literal, NotRequired, TypedDict
 
 # InjectImportEntry: list items use a required "from" key; named vs namespace shapes are documented on Bundler.inject.
 type InjectImportEntry = dict[str, str | None]
+
+
+class BundlerPlugin(TypedDict):
+    name: str
+    resolve_id: NotRequired[object]
+    load: NotRequired[object]
+    transform: NotRequired[object]
 
 
 class ResolveAliasItem(TypedDict):

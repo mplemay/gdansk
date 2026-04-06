@@ -183,3 +183,62 @@ console.log(VERSION, MESSAGE);
     assert len(output.chunks) == 1
     assert "v1" in output.chunks[0].code
     assert "aliased and defined" in output.chunks[0].code
+
+
+def test_bundler_load_plugin_virtual_module(tmp_path: Path) -> None:
+    virtual_id = "\x00virtual:demo"
+    write_fixture_file(
+        tmp_path,
+        "entry.js",
+        'import { answer } from "virtual:demo";\nconsole.log(answer);\n',
+    )
+
+    def resolve_id(spec: str, _importer: str | None) -> str | None:
+        if spec == "virtual:demo":
+            return virtual_id
+        return None
+
+    def load(mid: str) -> dict | None:
+        if mid == virtual_id:
+            return {"code": "export const answer = 99;\n"}
+        return None
+
+    bundler = Bundler(
+        input="./entry.js",
+        cwd=tmp_path,
+        plugins=[{"name": "virtual-load", "resolve_id": resolve_id, "load": load}],
+        output={"format": "esm"},
+    )
+
+    with bundler() as build:
+        output = build(write=False)
+
+    assert isinstance(output, BundlerOutput)
+    assert any("99" in chunk.code for chunk in output.chunks)
+
+
+def test_bundler_transform_plugin(tmp_path: Path) -> None:
+    write_fixture_file(
+        tmp_path,
+        "entry.js",
+        'export const msg = "__MARKER__";\nconsole.log(msg);\n',
+    )
+
+    def transform(code: str, _id: str, _module_type: str) -> dict | None:
+        if "__MARKER__" in code:
+            return {"code": code.replace("__MARKER__", "replaced")}
+        return None
+
+    bundler = Bundler(
+        input="./entry.js",
+        cwd=tmp_path,
+        plugins=[{"name": "rewrite", "transform": transform}],
+        output={"format": "esm"},
+    )
+
+    with bundler() as build:
+        output = build(write=False)
+
+    assert isinstance(output, BundlerOutput)
+    assert any("replaced" in chunk.code for chunk in output.chunks)
+    assert not any("__MARKER__" in chunk.code for chunk in output.chunks)
