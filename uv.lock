@@ -10,6 +10,7 @@ resolution-markers = [
 members = [
     "gdansk",
     "gdansk-bundler",
+    "gdansk-lightningcss",
     "gdansk-runtime",
 ]
 
@@ -223,6 +224,17 @@ dev = [
 name = "gdansk-bundler"
 version = "0.1.0"
 source = { editable = "packages/gdansk-bundler" }
+
+[[package]]
+name = "gdansk-lightningcss"
+version = "0.1.0"
+source = { editable = "packages/gdansk-lightningcss" }
+dependencies = [
+    { name = "gdansk-bundler" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "gdansk-bundler", editable = "packages/gdansk-bundler" }]
 
 [[package]]
 name = "gdansk-runtime"
