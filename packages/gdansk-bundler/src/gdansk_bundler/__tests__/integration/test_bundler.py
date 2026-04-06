@@ -85,3 +85,45 @@ console.log(value);
     assert "console.log(" in output.chunks[0].code
     assert output.chunks[0].file_name == "index.js"
     assert not (tmp_path / "dist").exists()
+
+
+def test_bundler_resolve_alias_and_define(tmp_path: Path) -> None:
+    write_fixture_file(
+        tmp_path,
+        "shim.ts",
+        """
+export const MESSAGE = "aliased and defined";
+""".strip()
+        + "\n",
+    )
+    write_fixture_file(
+        tmp_path,
+        "index.ts",
+        """
+import { MESSAGE } from "virtual-shim";
+
+console.log(VERSION, MESSAGE);
+""".strip()
+        + "\n",
+    )
+
+    bundler = Bundler(
+        input="./index.ts",
+        cwd=tmp_path,
+        resolve={
+            "alias": [
+                {"find": "virtual-shim", "replacements": ["./shim.ts"]},
+            ],
+        },
+        define={"VERSION": "'v1'"},
+        output={"format": "esm"},
+    )
+
+    with bundler() as build:
+        output = build(write=False)
+
+    assert isinstance(output, BundlerOutput)
+    assert output.warnings == []
+    assert len(output.chunks) == 1
+    assert "v1" in output.chunks[0].code
+    assert "aliased and defined" in output.chunks[0].code
