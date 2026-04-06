@@ -1,7 +1,17 @@
 # ruff: noqa: D104
 
-from gdansk_bundler.bundler import AsyncBundlerContext, Bundler, BundlerContext
-from gdansk_bundler.models import BundlerOutput, OutputAsset, OutputChunk, OutputFile
+from __future__ import annotations
+
+from gdansk_bundler._core import (
+    AsyncBundlerContext,
+    Bundler,
+    BundlerContext,
+    BundlerOutput,
+    OutputAsset,
+    OutputChunk,
+)
+
+type OutputFile = OutputChunk | OutputAsset
 
 __all__ = [
     "AsyncBundlerContext",

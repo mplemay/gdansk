@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from gdansk_bundler import Bundler, BundlerOutput
+from gdansk_bundler import AsyncBundlerContext, Bundler, BundlerOutput
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -57,7 +57,7 @@ console.log(message);
         output = build()
 
     assert isinstance(output, BundlerOutput)
-    assert output.warnings == ()
+    assert output.warnings == []
     assert (tmp_path / "dist" / "entry.js").is_file()
     assert any(chunk.file_name == "entry.js" for chunk in output.chunks)
     assert any("from python condition" in chunk.code for chunk in output.chunks)
@@ -76,12 +76,12 @@ console.log(value);
 
     bundler = Bundler(input="./index.ts", cwd=tmp_path)
 
-    async with bundler() as build:
+    async with AsyncBundlerContext(bundler) as build:
         output = await build({"format": "esm"}, write=False)
 
     assert isinstance(output, BundlerOutput)
     assert len(output.chunks) == 1
-    assert output.assets == ()
+    assert output.assets == []
     assert "console.log(" in output.chunks[0].code
     assert output.chunks[0].file_name == "index.js"
     assert not (tmp_path / "dist").exists()

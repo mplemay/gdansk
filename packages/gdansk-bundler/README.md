@@ -1,6 +1,7 @@
 # `gdansk-bundler`
 
-`gdansk-bundler` is a Python-first wrapper around Rolldown for one-shot builds.
+`gdansk-bundler` exposes Rolldown to Python through a PyO3 extension module (`gdansk_bundler._core`). Types such as
+`Bundler` and `BundlerOutput` are native extension classes, not Python duplicates of the Rust types.
 
 ## Usage
 
@@ -20,16 +21,19 @@ with bundler() as build:
 print(output.chunks[0].file_name)
 ```
 
-For async code:
+For async code, construct `AsyncBundlerContext` explicitly:
 
 ```python
-from gdansk_bundler import Bundler
+from gdansk_bundler import AsyncBundlerContext, Bundler
 
 bundler = Bundler(input="./index.ts", cwd=".")
 
-async with bundler() as build:
+async with AsyncBundlerContext(bundler) as build:
     output = await build({"format": "esm"}, write=False)
 ```
+
+`input`, `cwd`, and path-like fields under `output` accept `str` or `os.PathLike` (including `pathlib.Path`). Relative
+`cwd` values are resolved against the process current working directory.
 
 ## Supported First-Milestone Options
 

@@ -7,13 +7,14 @@ class Bundler:
         cls,
         *,
         input: object,
-        cwd: str | None = None,
+        cwd: object | None = None,
         resolve: object | None = None,
         devtools: object | None = None,
         output: object | None = None,
         plugins: object | None = None,
         watch: object | None = None,
     ) -> Self: ...
+    def __call__(self) -> BundlerContext: ...
 
 class BundlerContext:
     def __new__(cls, bundler: Bundler, /) -> Self: ...

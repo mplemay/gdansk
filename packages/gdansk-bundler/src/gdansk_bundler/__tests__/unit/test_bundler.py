@@ -3,14 +3,12 @@ from __future__ import annotations
 import pytest
 
 from gdansk_bundler import AsyncBundlerContext, Bundler, BundlerContext
-from gdansk_bundler._core import AsyncBundlerContext as AsyncBundlerContextImpl, BundlerContext as BundlerContextImpl
 
 
-def test_bundler_returns_python_bundler_context_subclass() -> None:
+def test_bundler_returns_bundler_context() -> None:
     context = Bundler(input="./index.ts")()
 
     assert type(context) is BundlerContext
-    assert isinstance(context, BundlerContextImpl)
 
 
 def test_bundler_context_returns_itself_from_enter() -> None:
@@ -21,12 +19,11 @@ def test_bundler_context_returns_itself_from_enter() -> None:
         assert type(run) is BundlerContext
 
 
-async def test_bundler_returns_python_async_bundler_context_subclass() -> None:
-    context = Bundler(input="./index.ts")()
+async def test_async_bundler_context_from_bundler() -> None:
+    bundler = Bundler(input="./index.ts")
 
-    async with context as run:
+    async with AsyncBundlerContext(bundler) as run:
         assert type(run) is AsyncBundlerContext
-        assert isinstance(run, AsyncBundlerContextImpl)
 
 
 def test_bundler_rejects_plugins_in_first_milestone() -> None:

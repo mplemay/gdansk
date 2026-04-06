@@ -50,18 +50,18 @@ enum OutputAssetSource {
     Bytes(Vec<u8>),
 }
 
-#[pyclass(module = "gdansk_bundler._core", frozen, subclass, skip_from_py_object)]
+#[pyclass(module = "gdansk_bundler._core", frozen, skip_from_py_object)]
 struct Bundler {
     config: Arc<BundlerConfigState>,
 }
 
-#[pyclass(module = "gdansk_bundler._core", unsendable, subclass, skip_from_py_object)]
+#[pyclass(module = "gdansk_bundler._core", unsendable, skip_from_py_object)]
 struct BundlerContext {
     config: Arc<BundlerConfigState>,
     active: bool,
 }
 
-#[pyclass(module = "gdansk_bundler._core", subclass, skip_from_py_object)]
+#[pyclass(module = "gdansk_bundler._core", skip_from_py_object)]
 struct AsyncBundlerContext {
     config: Arc<BundlerConfigState>,
     active: bool,
@@ -112,6 +112,29 @@ fn extract_string(value: &Bound<'_, PyAny>, message: &str) -> PyResult<String> {
         .map_err(|_| PyTypeError::new_err(message.to_owned()))?
         .to_str()?
         .to_owned())
+}
+
+fn extract_path_as_string(value: &Bound<'_, PyAny>, message: &str) -> PyResult<String> {
+    let path: PathBuf = value
+        .extract()
+        .map_err(|_| PyTypeError::new_err(message.to_owned()))?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+fn parse_optional_cwd(value: Option<&Bound<'_, PyAny>>) -> PyResult<Option<PathBuf>> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let path: PathBuf = value.extract().map_err(|_| {
+        PyTypeError::new_err("Bundler.cwd must be a string path or os.PathLike path")
+    })?;
+    if path.is_absolute() {
+        return Ok(Some(path));
+    }
+    let base = std::env::current_dir().map_err(|err| {
+        PyRuntimeError::new_err(format!("failed to read current working directory: {err}"))
+    })?;
+    Ok(Some(base.join(path)))
 }
 
 fn extract_string_sequence(value: &Bound<'_, PyAny>, message: &str) -> PyResult<Vec<String>> {
@@ -190,17 +213,17 @@ fn parse_sourcemap_setting(
 }
 
 fn parse_input(value: &Bound<'_, PyAny>) -> PyResult<Vec<InputItem>> {
-    let message = "Bundler.input must be a string path, a sequence of string paths, or a mapping of entry names to string paths";
+    let message = "Bundler.input must be a path, a sequence of paths, or a mapping of entry names to paths (str or os.PathLike)";
 
     if value.is_instance_of::<PyString>() {
-        let input = extract_string(value, message)?;
+        let input = extract_path_as_string(value, message)?;
         return Ok(vec![InputItem::from(input)]);
     }
 
     if let Ok(list) = value.cast::<PyList>() {
         let input = list
             .iter()
-            .map(|item| extract_string(&item, message).map(InputItem::from))
+            .map(|item| extract_path_as_string(&item, message).map(InputItem::from))
             .collect::<PyResult<Vec<_>>>()?;
         if input.is_empty() {
             return Err(PyValueError::new_err("Bundler.input must not be empty"));
@@ -211,7 +234,7 @@ fn parse_input(value: &Bound<'_, PyAny>) -> PyResult<Vec<InputItem>> {
     if let Ok(tuple) = value.cast::<PyTuple>() {
         let input = tuple
             .iter()
-            .map(|item| extract_string(&item, message).map(InputItem::from))
+            .map(|item| extract_path_as_string(&item, message).map(InputItem::from))
             .collect::<PyResult<Vec<_>>>()?;
         if input.is_empty() {
             return Err(PyValueError::new_err("Bundler.input must not be empty"));
@@ -224,7 +247,7 @@ fn parse_input(value: &Bound<'_, PyAny>) -> PyResult<Vec<InputItem>> {
             .iter()
             .map(|(key, item)| {
                 let key = extract_string(&key, "Bundler.input mapping keys must be strings")?;
-                let import = extract_string(&item, message)?;
+                let import = extract_path_as_string(&item, message)?;
                 Ok(InputItem {
                     name: Some(key),
                     import,
@@ -237,7 +260,8 @@ fn parse_input(value: &Bound<'_, PyAny>) -> PyResult<Vec<InputItem>> {
         return Ok(input);
     }
 
-    Err(PyTypeError::new_err(message.to_owned()))
+    let input = extract_path_as_string(value, message)?;
+    Ok(vec![InputItem::from(input)])
 }
 
 fn parse_resolve_condition_names(resolve: Option<&Bound<'_, PyAny>>) -> PyResult<Option<Vec<String>>> {
@@ -322,10 +346,20 @@ fn parse_output_config(
     )?;
 
     let dir = get_mapping_item(mapping, &["dir"])?
-        .map(|value| extract_string(&value, &format!("{container}.dir must be a string path")))
+        .map(|value| {
+            extract_path_as_string(
+                &value,
+                &format!("{container}.dir must be a string path or os.PathLike path"),
+            )
+        })
         .transpose()?;
     let file = get_mapping_item(mapping, &["file"])?
-        .map(|value| extract_string(&value, &format!("{container}.file must be a string path")))
+        .map(|value| {
+            extract_path_as_string(
+                &value,
+                &format!("{container}.file must be a string path or os.PathLike path"),
+            )
+        })
         .transpose()?;
     let format = get_mapping_item(mapping, &["format"])?
         .map(|value| {
@@ -339,25 +373,31 @@ fn parse_output_config(
         .transpose()?;
     let entry_file_names = get_mapping_item(mapping, &["entryFileNames", "entry_file_names"])?
         .map(|value| {
-            extract_string(
+            extract_path_as_string(
                 &value,
-                &format!("{container}.entry_file_names must be a string"),
+                &format!(
+                    "{container}.entry_file_names must be a string or os.PathLike path",
+                ),
             )
         })
         .transpose()?;
     let chunk_file_names = get_mapping_item(mapping, &["chunkFileNames", "chunk_file_names"])?
         .map(|value| {
-            extract_string(
+            extract_path_as_string(
                 &value,
-                &format!("{container}.chunk_file_names must be a string"),
+                &format!(
+                    "{container}.chunk_file_names must be a string or os.PathLike path",
+                ),
             )
         })
         .transpose()?;
     let asset_file_names = get_mapping_item(mapping, &["assetFileNames", "asset_file_names"])?
         .map(|value| {
-            extract_string(
+            extract_path_as_string(
                 &value,
-                &format!("{container}.asset_file_names must be a string"),
+                &format!(
+                    "{container}.asset_file_names must be a string or os.PathLike path",
+                ),
             )
         })
         .transpose()?;
@@ -390,7 +430,7 @@ fn parse_output_config(
 impl BundlerConfigState {
     fn from_python(
         input: &Bound<'_, PyAny>,
-        cwd: Option<String>,
+        cwd: Option<&Bound<'_, PyAny>>,
         resolve: Option<&Bound<'_, PyAny>>,
         devtools: Option<&Bound<'_, PyAny>>,
         output: Option<&Bound<'_, PyAny>>,
@@ -416,7 +456,7 @@ impl BundlerConfigState {
 
         Ok(Self {
             input,
-            cwd: cwd.map(PathBuf::from),
+            cwd: parse_optional_cwd(cwd)?,
             resolve_condition_names,
             devtools_enabled,
             devtools_session_id,
@@ -710,10 +750,11 @@ impl AsyncBundlerContext {
 impl Bundler {
     #[new]
     #[pyo3(signature = (*, input, cwd = None, resolve = None, devtools = None, output = None, plugins = None, watch = None))]
+    #[allow(clippy::too_many_arguments)]
     fn new(
         py: Python<'_>,
         input: &Bound<'_, PyAny>,
-        cwd: Option<String>,
+        cwd: Option<Py<PyAny>>,
         resolve: Option<Py<PyAny>>,
         devtools: Option<Py<PyAny>>,
         output: Option<Py<PyAny>>,
@@ -722,7 +763,7 @@ impl Bundler {
     ) -> PyResult<Self> {
         let config = BundlerConfigState::from_python(
             input,
-            cwd,
+            cwd.as_ref().map(|value| value.bind(py)),
             resolve.as_ref().map(|value| value.bind(py)),
             devtools.as_ref().map(|value| value.bind(py)),
             output.as_ref().map(|value| value.bind(py)),
@@ -733,6 +774,16 @@ impl Bundler {
         Ok(Self {
             config: Arc::new(config),
         })
+    }
+
+    fn __call__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<Py<BundlerContext>> {
+        Py::new(
+            py,
+            BundlerContext {
+                config: Arc::clone(&slf.config),
+                active: false,
+            },
+        )
     }
 }
 
