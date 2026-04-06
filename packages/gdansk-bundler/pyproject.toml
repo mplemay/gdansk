@@ -1,5 +1,5 @@
 [project]
-name = "gdansk-runtime"
+name = "gdansk-bundler"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -7,13 +7,11 @@ authors = [
     { name = "Matt LeMay", email = "mplemay@users.noreply.github.com" }
 ]
 requires-python = ">=3.12,<3.15"
-dependencies = [
-    "pydantic>=2,<3",
-]
+dependencies = []
 
 [tool.maturin]
-module-name = "gdansk_runtime._core"
-python-packages = ["gdansk_runtime"]
+module-name = "gdansk_bundler._core"
+python-packages = ["gdansk_bundler"]
 python-source = "src"
 
 [tool.uv]

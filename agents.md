@@ -110,6 +110,13 @@ For multistep tasks, state a brief plan:
     - Functions: `foo_impl` (snake_case with `_impl` suffix).
   - Do not use leading-underscore import aliases (`_Foo`, `_foo`) for this re-export pattern.
 - **Don't use** docstrings, instead add inline comments only in places where there is complex or easily breakable logic
+- **No file-wide suppressions** in source: do not use a first-line or module-wide pragma such as `# ruff: noqa: ...` for
+  the whole file, a blanket `# type: ignore` on a module, or equivalent file-scoped pyright/bandit-style ignores.
+- **Prefer fixing the cause**: adjust types or public API, or tooling configuration that matches documented conventions
+  (for example `pyproject.toml`), so the diagnostic does not apply.
+- **If suppression is unavoidable**, use the **smallest scope** (usually a single line) with **explicit rule codes**
+  (for example `# noqa: ARG002`), not a whole-file waiver. This refers to pragmas in `.py` files, not to path-based
+  rules in `pyproject.toml` (which should stay minimal and justified).
 - For type aliases, prefer Python's modern syntax: `type MyAlias = SomeType` (PEP 695 style), especially in new code.
 - URL construction:
   - Use `urllib.parse` methods for URL manipulation (don't use string concatenation or f-strings for query params)

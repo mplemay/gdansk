@@ -28,6 +28,7 @@ mcp = { git = "https://github.com/modelcontextprotocol/python-sdk.git", rev = "m
 [tool.uv.workspace]
 members = [
     "packages/gdansk-runtime",
+    "packages/gdansk-bundler",
 ]
 
 [build-system]
