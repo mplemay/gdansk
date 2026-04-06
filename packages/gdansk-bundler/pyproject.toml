@@ -21,6 +21,10 @@ cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.rs" }, { file = "C
 extend = "../../pyproject.toml"
 target-version = "py312"
 
+[tool.ruff.lint]
+# Matches AGENTS.md: no module/docstrings; pydocstyle (D) rules are disabled for this package only.
+ignore = ["D"]
+
 [build-system]
 requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"

@@ -1,5 +1,3 @@
-# ruff: noqa: D104
-
 from __future__ import annotations
 
 from gdansk_bundler._core import (

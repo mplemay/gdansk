@@ -1,12 +1,10 @@
-# ruff: noqa: A002
-
 from typing import Self
 
 class Bundler:
     def __new__(
         cls,
         *,
-        input: object,
+        input: object,  # noqa: A002
         cwd: object | None = None,
         resolve: object | None = None,
         devtools: object | None = None,
