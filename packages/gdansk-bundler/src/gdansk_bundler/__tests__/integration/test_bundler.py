@@ -14,6 +14,39 @@ def write_fixture_file(root: Path, relative_path: str, contents: str) -> None:
     path.write_text(contents, encoding="utf-8")
 
 
+def test_bundler_resolve_id_plugin(tmp_path: Path) -> None:
+    write_fixture_file(
+        tmp_path,
+        "real.js",
+        "export const x = 42;\n",
+    )
+    write_fixture_file(
+        tmp_path,
+        "index.js",
+        'import { x } from "virtual:x";\nconsole.log(x);\n',
+    )
+
+    real_js = (tmp_path / "real.js").resolve()
+
+    def resolve_id(spec: str, _importer: str | None) -> str | None:
+        if spec == "virtual:x":
+            return str(real_js)
+        return None
+
+    bundler = Bundler(
+        input="./index.js",
+        cwd=tmp_path,
+        plugins=[{"name": "virtual-resolver", "resolve_id": resolve_id}],
+        output={"format": "esm"},
+    )
+
+    with bundler() as build:
+        output = build(write=False)
+
+    assert isinstance(output, BundlerOutput)
+    assert any("42" in chunk.code for chunk in output.chunks)
+
+
 def test_bundler_writes_output_and_uses_condition_names(tmp_path: Path) -> None:
     write_fixture_file(
         tmp_path,
@@ -61,6 +94,29 @@ console.log(message);
     assert (tmp_path / "dist" / "entry.js").is_file()
     assert any(chunk.file_name == "entry.js" for chunk in output.chunks)
     assert any("from python condition" in chunk.code for chunk in output.chunks)
+
+
+def test_bundler_output_override_generates_in_memory_without_default_output(tmp_path: Path) -> None:
+    write_fixture_file(
+        tmp_path,
+        "index.ts",
+        """
+export const value = 1;
+console.log(value);
+""".strip()
+        + "\n",
+    )
+
+    bundler = Bundler(input="./index.ts", cwd=tmp_path)
+
+    with bundler() as build:
+        output = build({"format": "esm"})
+
+    assert isinstance(output, BundlerOutput)
+    assert len(output.chunks) == 1
+    assert output.chunks[0].file_name == "index.js"
+    assert not (tmp_path / "dist").exists()
+    assert not (tmp_path / "index.js").exists()
 
 
 async def test_bundler_generates_output_with_async_context(tmp_path: Path) -> None:

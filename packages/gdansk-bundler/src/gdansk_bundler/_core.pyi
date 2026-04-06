@@ -11,6 +11,18 @@ class Bundler:
         output: object | None = None,
         plugins: object | None = None,
         watch: object | None = None,
+        platform: object | None = None,
+        context: object | None = None,
+        tsconfig: object | None = None,
+        shim_missing_exports: object | None = None,
+        keep_names: object | None = None,
+        profiler_names: object | None = None,
+        define: object | None = None,
+        drop_labels: object | None = None,
+        inject: object | None = None,
+        external: object | None = None,
+        treeshake: object | None = None,
+        manual_code_splitting: object | None = None,
     ) -> Self: ...
     def __call__(self) -> BundlerContext: ...
 

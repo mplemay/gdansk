@@ -28,9 +28,9 @@ async def test_async_bundler_context_from_bundler() -> None:
         assert type(run) is AsyncBundlerContext
 
 
-def test_bundler_rejects_plugins_in_first_milestone() -> None:
-    with pytest.raises(NotImplementedError, match=r"Bundler\.plugins"):
-        Bundler(input="./index.ts", plugins=[])
+def test_bundler_accepts_empty_plugins_list() -> None:
+    b = Bundler(input="./index.ts", plugins=[])
+    assert b is not None
 
 
 def test_bundler_rejects_watch_in_first_milestone() -> None:
