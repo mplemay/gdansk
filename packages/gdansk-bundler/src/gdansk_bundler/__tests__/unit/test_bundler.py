@@ -4,7 +4,7 @@ import re
 
 import pytest
 
-from gdansk_bundler import AsyncBundlerContext, Bundler, BundlerContext
+from gdansk_bundler import AsyncBundlerContext, Bundler, BundlerContext, Plugin
 
 
 def test_bundler_returns_bundler_context() -> None:
@@ -31,6 +31,20 @@ async def test_async_bundler_context_from_bundler() -> None:
 def test_bundler_accepts_empty_plugins_list() -> None:
     b = Bundler(input="./index.ts", plugins=[])
     assert b is not None
+
+
+def test_bundler_accepts_plugins_as_tuple() -> None:
+    class IdlePlugin(Plugin):
+        def __init__(self) -> None:
+            super().__init__(id="idle")
+
+    b = Bundler(input="./index.ts", plugins=(IdlePlugin(),))
+    assert b is not None
+
+
+def test_bundler_rejects_dict_plugin() -> None:
+    with pytest.raises(TypeError, match="Plugin"):
+        Bundler(input="./index.ts", plugins=[{"name": "legacy"}])
 
 
 def test_bundler_rejects_watch_in_first_milestone() -> None:

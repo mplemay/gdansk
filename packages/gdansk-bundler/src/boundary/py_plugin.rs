@@ -6,9 +6,11 @@ use rolldown_common::{ModuleType, ResolvedExternal};
 use rolldown_plugin::{
     HookLoadArgs, HookLoadOutput, HookLoadReturn, HookResolveIdArgs, HookResolveIdOutput,
     HookResolveIdReturn, HookTransformArgs, HookTransformOutput, HookTransformReturn, HookUsage,
-    Plugin, PluginContext, PluginHookMeta, PluginOrder, SharedLoadPluginContext,
+    Plugin as RolldownPlugin, PluginContext, PluginHookMeta, PluginOrder, SharedLoadPluginContext,
     SharedTransformPluginContext,
 };
+
+use crate::plugin::Plugin;
 
 use super::parse::{extract_string, get_mapping_item};
 
@@ -43,7 +45,7 @@ impl PyPlugin {
     }
 }
 
-impl Plugin for PyPlugin {
+impl RolldownPlugin for PyPlugin {
     fn name(&self) -> Cow<'static, str> {
         Cow::Owned(self.inner.name.clone())
     }
@@ -272,36 +274,46 @@ fn parse_transform_bound(out: &Bound<'_, PyAny>) -> HookTransformReturn {
     Ok(Some(output))
 }
 
-fn optional_callable(
-    mapping: &Bound<'_, PyDict>,
+fn optional_attr_callable(
+    obj: &Bound<'_, PyAny>,
     keys: &[&str],
     label: &str,
 ) -> PyResult<Option<Arc<Py<PyAny>>>> {
-    get_mapping_item(mapping, keys)?
-        .map(|v| {
-            if v.is_callable() {
-                Ok(Arc::new(v.clone().unbind()))
-            } else {
-                Err(PyTypeError::new_err(format!("{label} must be callable")))
-            }
-        })
-        .transpose()
+    for key in keys {
+        let v = match obj.getattr(*key) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        if v.is_none() {
+            continue;
+        }
+        if v.is_callable() {
+            return Ok(Some(Arc::new(v.clone().unbind())));
+        }
+        return Err(PyTypeError::new_err(format!("{label} must be callable")));
+    }
+    Ok(None)
 }
 
 pub(crate) fn parse_plugin_item(item: &Bound<'_, PyAny>) -> PyResult<Arc<PyPlugin>> {
-    let mapping = item
-        .cast::<PyDict>()
-        .map_err(|_| PyTypeError::new_err("Each plugin must be a mapping"))?;
-    super::parse::ensure_supported_mapping_fields(
-        mapping,
-        "Bundler.plugins[]",
-        &["name", "resolve_id", "load", "transform"],
-    )?;
-    let name_item = get_mapping_item(mapping, &["name"])?
-        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("plugin.name is required"))?;
+    if !item.is_instance_of::<Plugin>() {
+        return Err(PyTypeError::new_err(
+            "Each plugin must be an instance of Plugin (or a subclass)",
+        ));
+    }
+    let name_item = item.getattr("name")?;
     let name = extract_string(&name_item, "plugin.name must be a string")?;
-    let resolve_id = optional_callable(mapping, &["resolve_id"], "plugin.resolve_id")?;
-    let load = optional_callable(mapping, &["load"], "plugin.load")?;
-    let transform = optional_callable(mapping, &["transform"], "plugin.transform")?;
+    if name.is_empty() {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "plugin name must be non-empty",
+        ));
+    }
+    let resolve_id = optional_attr_callable(
+        item,
+        &["resolve_id", "resolve"],
+        "plugin.resolve_id / plugin.resolve",
+    )?;
+    let load = optional_attr_callable(item, &["load"], "plugin.load")?;
+    let transform = optional_attr_callable(item, &["transform"], "plugin.transform")?;
     Ok(Arc::new(PyPlugin::new(name, resolve_id, load, transform)))
 }

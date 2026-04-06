@@ -157,6 +157,7 @@ pub(crate) fn unsupported_feature_error(path: &str) -> PyErr {
     PyNotImplementedError::new_err(format!("{path} {FIRST_MILESTONE_MESSAGE}"))
 }
 
+mod plugin;
 mod boundary;
 
 impl BundlerConfigState {
@@ -972,6 +973,7 @@ impl BundlerOutput {
 mod _core {
     #[pymodule_export]
     use super::{
-        AsyncBundlerContext, Bundler, BundlerContext, BundlerOutput, OutputAsset, OutputChunk,
+        plugin::Plugin, AsyncBundlerContext, Bundler, BundlerContext, BundlerOutput, OutputAsset,
+        OutputChunk,
     };
 }

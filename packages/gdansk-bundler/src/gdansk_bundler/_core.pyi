@@ -1,4 +1,12 @@
+from collections.abc import Sequence
 from typing import Self
+
+class Plugin:
+    def __init__(self, *, name: str | None = None, id: str | None = None) -> None: ...  # noqa: A002
+    @property
+    def name(self) -> str: ...
+    @property
+    def id(self) -> str: ...
 
 class Bundler:
     def __new__(
@@ -9,7 +17,7 @@ class Bundler:
         resolve: object | None = None,
         devtools: object | None = None,
         output: object | None = None,
-        plugins: object | None = None,
+        plugins: Sequence[Plugin] | None = None,
         watch: object | None = None,
         platform: object | None = None,
         context: object | None = None,

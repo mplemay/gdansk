@@ -29,6 +29,9 @@
 .nfs*
 
 ### macOS ###
+# Rust/maturin debug symbol bundles dropped next to extension builds
+**/*.dSYM/
+
 # General
 .DS_Store
 .AppleDouble

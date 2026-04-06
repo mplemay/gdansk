@@ -7,9 +7,9 @@ from gdansk_bundler._core import (
     BundlerOutput,
     OutputAsset,
     OutputChunk,
+    Plugin,
 )
 from gdansk_bundler.types import (
-    BundlerPlugin,
     CommentsOptions,
     GeneratedCodeOptions,
     InjectImportEntry,
@@ -29,7 +29,6 @@ __all__ = [
     "Bundler",
     "BundlerContext",
     "BundlerOutput",
-    "BundlerPlugin",
     "CommentsOptions",
     "GeneratedCodeOptions",
     "InjectImportEntry",
@@ -39,6 +38,7 @@ __all__ = [
     "OutputChunk",
     "OutputFile",
     "OutputOptions",
+    "Plugin",
     "ResolveAliasItem",
     "ResolveExtensionAliasItem",
     "ResolveOptions",

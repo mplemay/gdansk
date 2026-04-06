@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from gdansk_bundler import AsyncBundlerContext, Bundler, BundlerOutput
+from gdansk_bundler import AsyncBundlerContext, Bundler, BundlerOutput, Plugin
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -28,15 +28,20 @@ def test_bundler_resolve_id_plugin(tmp_path: Path) -> None:
 
     real_js = (tmp_path / "real.js").resolve()
 
-    def resolve_id(spec: str, _importer: str | None) -> str | None:
-        if spec == "virtual:x":
-            return str(real_js)
-        return None
+    class VirtualResolver(Plugin):
+        def __init__(self, target: Path) -> None:
+            super().__init__(name="virtual-resolver")
+            self._target = target
+
+        def resolve_id(self, spec: str, _importer: str | None) -> str | None:
+            if spec == "virtual:x":
+                return str(self._target)
+            return None
 
     bundler = Bundler(
         input="./index.js",
         cwd=tmp_path,
-        plugins=[{"name": "virtual-resolver", "resolve_id": resolve_id}],
+        plugins=[VirtualResolver(real_js)],
         output={"format": "esm"},
     )
 
@@ -193,20 +198,25 @@ def test_bundler_load_plugin_virtual_module(tmp_path: Path) -> None:
         'import { answer } from "virtual:demo";\nconsole.log(answer);\n',
     )
 
-    def resolve_id(spec: str, _importer: str | None) -> str | None:
-        if spec == "virtual:demo":
-            return virtual_id
-        return None
+    class VirtualLoadPlugin(Plugin):
+        def __init__(self, vid: str) -> None:
+            super().__init__(name="virtual-load")
+            self._vid = vid
 
-    def load(mid: str) -> dict | None:
-        if mid == virtual_id:
-            return {"code": "export const answer = 99;\n"}
-        return None
+        def resolve_id(self, spec: str, _importer: str | None) -> str | None:
+            if spec == "virtual:demo":
+                return self._vid
+            return None
+
+        def load(self, mid: str) -> dict | None:
+            if mid == self._vid:
+                return {"code": "export const answer = 99;\n"}
+            return None
 
     bundler = Bundler(
         input="./entry.js",
         cwd=tmp_path,
-        plugins=[{"name": "virtual-load", "resolve_id": resolve_id, "load": load}],
+        plugins=[VirtualLoadPlugin(virtual_id)],
         output={"format": "esm"},
     )
 
@@ -224,15 +234,19 @@ def test_bundler_transform_plugin(tmp_path: Path) -> None:
         'export const msg = "__MARKER__";\nconsole.log(msg);\n',
     )
 
-    def transform(code: str, _id: str, _module_type: str) -> dict | None:
-        if "__MARKER__" in code:
-            return {"code": code.replace("__MARKER__", "replaced")}
-        return None
+    class RewritePlugin(Plugin):
+        def __init__(self) -> None:
+            super().__init__(name="rewrite")
+
+        def transform(self, code: str, _id: str, _module_type: str) -> dict | None:
+            if "__MARKER__" in code:
+                return {"code": code.replace("__MARKER__", "replaced")}
+            return None
 
     bundler = Bundler(
         input="./entry.js",
         cwd=tmp_path,
-        plugins=[{"name": "rewrite", "transform": transform}],
+        plugins=[RewritePlugin()],
         output={"format": "esm"},
     )
 

@@ -55,39 +55,51 @@ memory instead.
 
 ## Plugins
 
-`Bundler(plugins=[...])` accepts a list of plugin mappings. Each plugin must include `name` (string) and may define
-any of these optional callables (Rolldown hook names in `snake_case`). The `resolve_id` hook is registered with
-`PinPost` ordering so it runs after Rolldown’s built-in resolvers (matching typical user-plugin expectations).
+`Bundler(plugins=...)` accepts any **sequence** (for example a list or tuple) of `Plugin` instances. `Plugin` is
+defined in the native extension; subclass it and call `super().__init__(name="...")` or `super().__init__(id="...")`
+(keyword-only; provide one or both, and they must match if both are set). Optional hook **methods** use the same
+semantics as Rolldown’s hooks. Either `resolve_id` or `resolve` may implement the resolve hook (`resolve_id` is tried
+first). The resolve hook is registered with `PinPost` ordering so it runs after Rolldown’s built-in resolvers.
 
-- `resolve_id(specifier: str, importer: str | None) -> None | str | dict` — return `None` to defer; a string sets the
-  resolved module id; a dict must include `id` and may set `external` (`True` / `False` / `"absolute"` / `"relative"`),
-  `normalize_external_id` (bool), or `package_json_path` (str).
+- `resolve_id` / `resolve(specifier: str, importer: str | None) -> None | str | dict` — return `None` to defer; a
+  string sets the resolved module id; a dict must include `id` and may set `external` (`True` / `False` /
+  `"absolute"` / `"relative"`), `normalize_external_id` (bool), or `package_json_path` (str).
 - `load(id: str) -> None | dict` — return `None` to defer; otherwise a dict with required `code` (str) and optional
   `module_type` (str, Rolldown module type such as `js` or `css`).
 - `transform(code: str, id: str, module_type: str) -> None | dict` — same argument order as Rolldown’s JS API;
   return `None` to defer; otherwise a dict with optional `code` and `module_type` to override the module.
 
+Plugin `__call__` is not used as a hook (unlike `Bundler.__call__`, which returns a build context).
+
 Hooks run on a blocking worker thread with the GIL acquired; keep callbacks short and avoid awaiting from inside them.
 
-Example combining `resolve_id` and `load` for a virtual module:
+Example combining resolve and `load` for a virtual module:
 
 ```python
+from gdansk_bundler import Bundler, Plugin
+
 VIRTUAL = "\0virtual:demo"
 
-def resolve_id(spec: str, _importer: str | None) -> str | None:
-    if spec == "virtual:demo":
-        return VIRTUAL
-    return None
 
-def load(mid: str) -> dict | None:
-    if mid == VIRTUAL:
-        return {"code": "export const answer = 42;\n"}
-    return None
+class VirtualDemoPlugin(Plugin):
+    def __init__(self) -> None:
+        super().__init__(id="virtual-demo")
+
+    def resolve(self, spec: str, _importer: str | None) -> str | None:
+        if spec == "virtual:demo":
+            return VIRTUAL
+        return None
+
+    def load(self, mid: str) -> dict | None:
+        if mid == VIRTUAL:
+            return {"code": "export const answer = 42;\n"}
+        return None
+
 
 Bundler(
     input="./entry.js",
     cwd=".",
-    plugins=[{"name": "virtual-demo", "resolve_id": resolve_id, "load": load}],
+    plugins=[VirtualDemoPlugin()],
     output={"format": "esm"},
 )
 ```
