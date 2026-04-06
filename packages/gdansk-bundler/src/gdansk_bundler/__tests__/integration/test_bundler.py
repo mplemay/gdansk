@@ -39,14 +39,13 @@ def test_bundler_resolve_id_plugin(tmp_path: Path) -> None:
             return None
 
     bundler = Bundler(
-        input="./index.js",
         cwd=tmp_path,
         plugins=[VirtualResolver(real_js)],
         output={"format": "esm"},
     )
 
-    with bundler() as build:
-        output = build(write=False)
+    with bundler(write=False) as build:
+        output = build("./index.js")
 
     assert isinstance(output, BundlerOutput)
     assert any("42" in chunk.code for chunk in output.chunks)
@@ -85,14 +84,13 @@ console.log(message);
     )
 
     bundler = Bundler(
-        input={"entry": "./index.ts"},
         cwd=tmp_path,
         resolve={"condition_names": ["python"]},
         output={"dir": "dist", "format": "esm"},
     )
 
     with bundler() as build:
-        output = build()
+        output = build({"entry": "./index.ts"})
 
     assert isinstance(output, BundlerOutput)
     assert output.warnings == []
@@ -112,10 +110,10 @@ console.log(value);
         + "\n",
     )
 
-    bundler = Bundler(input="./index.ts", cwd=tmp_path)
+    bundler = Bundler(cwd=tmp_path)
 
     with bundler() as build:
-        output = build({"format": "esm"})
+        output = build("./index.ts", {"format": "esm"})
 
     assert isinstance(output, BundlerOutput)
     assert len(output.chunks) == 1
@@ -135,10 +133,10 @@ console.log(value);
         + "\n",
     )
 
-    bundler = Bundler(input="./index.ts", cwd=tmp_path)
+    bundler = Bundler(cwd=tmp_path)
 
-    async with AsyncBundlerContext(bundler) as build:
-        output = await build({"format": "esm"}, write=False)
+    async with AsyncBundlerContext(bundler, write=False) as build:
+        output = await build("./index.ts", {"format": "esm"})
 
     assert isinstance(output, BundlerOutput)
     assert len(output.chunks) == 1
@@ -169,7 +167,6 @@ console.log(VERSION, MESSAGE);
     )
 
     bundler = Bundler(
-        input="./index.ts",
         cwd=tmp_path,
         resolve={
             "alias": [
@@ -180,8 +177,8 @@ console.log(VERSION, MESSAGE);
         output={"format": "esm"},
     )
 
-    with bundler() as build:
-        output = build(write=False)
+    with bundler(write=False) as build:
+        output = build("./index.ts")
 
     assert isinstance(output, BundlerOutput)
     assert output.warnings == []
@@ -214,14 +211,13 @@ def test_bundler_load_plugin_virtual_module(tmp_path: Path) -> None:
             return None
 
     bundler = Bundler(
-        input="./entry.js",
         cwd=tmp_path,
         plugins=[VirtualLoadPlugin(virtual_id)],
         output={"format": "esm"},
     )
 
-    with bundler() as build:
-        output = build(write=False)
+    with bundler(write=False) as build:
+        output = build("./entry.js")
 
     assert isinstance(output, BundlerOutput)
     assert any("99" in chunk.code for chunk in output.chunks)
@@ -244,14 +240,13 @@ def test_bundler_transform_plugin(tmp_path: Path) -> None:
             return None
 
     bundler = Bundler(
-        input="./entry.js",
         cwd=tmp_path,
         plugins=[RewritePlugin()],
         output={"format": "esm"},
     )
 
-    with bundler() as build:
-        output = build(write=False)
+    with bundler(write=False) as build:
+        output = build("./entry.js")
 
     assert isinstance(output, BundlerOutput)
     assert any("replaced" in chunk.code for chunk in output.chunks)

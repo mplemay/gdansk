@@ -124,7 +124,7 @@ fn parse_sourcemap_setting(
 }
 
 pub(crate) fn parse_input(value: &Bound<'_, PyAny>) -> PyResult<Vec<InputItem>> {
-    let message = "Bundler.input must be a path, a sequence of paths, or a mapping of entry names to paths (str or os.PathLike)";
+    let message = "build() input must be a path, a sequence of paths, or a mapping of entry names to paths (str or os.PathLike)";
 
     if value.is_instance_of::<PyString>() {
         let input = extract_path_as_string(value, message)?;
@@ -137,7 +137,7 @@ pub(crate) fn parse_input(value: &Bound<'_, PyAny>) -> PyResult<Vec<InputItem>> 
             .map(|item| extract_path_as_string(&item, message).map(InputItem::from))
             .collect::<PyResult<Vec<_>>>()?;
         if input.is_empty() {
-            return Err(PyValueError::new_err("Bundler.input must not be empty"));
+            return Err(PyValueError::new_err("build() input must not be empty"));
         }
         return Ok(input);
     }
@@ -148,7 +148,7 @@ pub(crate) fn parse_input(value: &Bound<'_, PyAny>) -> PyResult<Vec<InputItem>> 
             .map(|item| extract_path_as_string(&item, message).map(InputItem::from))
             .collect::<PyResult<Vec<_>>>()?;
         if input.is_empty() {
-            return Err(PyValueError::new_err("Bundler.input must not be empty"));
+            return Err(PyValueError::new_err("build() input must not be empty"));
         }
         return Ok(input);
     }
@@ -157,7 +157,7 @@ pub(crate) fn parse_input(value: &Bound<'_, PyAny>) -> PyResult<Vec<InputItem>> 
         let input = mapping
             .iter()
             .map(|(key, item)| {
-                let key = extract_string(&key, "Bundler.input mapping keys must be strings")?;
+                let key = extract_string(&key, "build() input mapping keys must be strings")?;
                 let import = extract_path_as_string(&item, message)?;
                 Ok(InputItem {
                     name: Some(key),
@@ -166,7 +166,7 @@ pub(crate) fn parse_input(value: &Bound<'_, PyAny>) -> PyResult<Vec<InputItem>> 
             })
             .collect::<PyResult<Vec<_>>>()?;
         if input.is_empty() {
-            return Err(PyValueError::new_err("Bundler.input must not be empty"));
+            return Err(PyValueError::new_err("build() input must not be empty"));
         }
         return Ok(input);
     }

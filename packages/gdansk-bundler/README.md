@@ -9,36 +9,43 @@
 from gdansk_bundler import Bundler
 
 bundler = Bundler(
-    input={"entry": "./index.ts"},
     cwd=".",
     resolve={"condition_names": ["import"]},
     output={"dir": "dist", "format": "esm"},
 )
 
 with bundler() as build:
-    output = build()
+    output = build({"entry": "./index.ts"})
 
 print(output.chunks[0].file_name)
 ```
 
-For async code, construct `AsyncBundlerContext` explicitly:
+Session-scoped options such as `write` and `watch` are passed to `bundler(...)` when opening a context:
+
+```python
+with bundler(write=False) as build:
+    output = build("./index.ts")
+```
+
+For async code, construct `AsyncBundlerContext` explicitly (optional `write` / `watch` match `bundler(...)`):
 
 ```python
 from gdansk_bundler import AsyncBundlerContext, Bundler
 
-bundler = Bundler(input="./index.ts", cwd=".")
+bundler = Bundler(cwd=".")
 
-async with AsyncBundlerContext(bundler) as build:
-    output = await build({"format": "esm"}, write=False)
+async with AsyncBundlerContext(bundler, write=False) as build:
+    output = await build("./index.ts", {"format": "esm"})
 ```
 
-`input`, `cwd`, and path-like fields under `output` accept `str` or `os.PathLike` (including `pathlib.Path`). Relative
-`cwd` values are resolved against the process current working directory.
+Entry `input` passed to `build(...)` (first argument), `cwd`, and path-like fields under `output` accept `str` or
+`os.PathLike` (including `pathlib.Path`). Relative `cwd` values are resolved against the process current working
+directory.
 
 ## Supported First-Milestone Options
 
-- `input`
-- `cwd`
+- `build()` first argument: entry `input` (path, sequence of paths, or mapping of names to paths)
+- `cwd` (on `Bundler`)
 - `resolve.condition_names`
 - `devtools`
 - `output.dir`
@@ -50,8 +57,8 @@ async with AsyncBundlerContext(bundler) as build:
 - `output.sourcemap`
 - `output.name`
 
-If a default `output` config is present, `build()` writes to disk by default. Pass `write=False` to generate output in
-memory instead.
+If a default `output` config is present, `build()` writes to disk by default. Pass `write=False` to `bundler(...)` or to
+an individual `build(...)` call to generate output in memory instead.
 
 ## Plugins
 
@@ -96,12 +103,14 @@ class VirtualDemoPlugin(Plugin):
         return None
 
 
-Bundler(
-    input="./entry.js",
+bundler = Bundler(
     cwd=".",
     plugins=[VirtualDemoPlugin()],
     output={"format": "esm"},
 )
+
+with bundler(write=False) as build:
+    build("./entry.js")
 ```
 
 ## Current Limits

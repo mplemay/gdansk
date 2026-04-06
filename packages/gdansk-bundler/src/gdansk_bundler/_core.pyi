@@ -12,13 +12,11 @@ class Bundler:
     def __new__(
         cls,
         *,
-        input: object,  # noqa: A002
         cwd: object | None = None,
         resolve: object | None = None,
         devtools: object | None = None,
         output: object | None = None,
         plugins: Sequence[Plugin] | None = None,
-        watch: object | None = None,
         platform: object | None = None,
         context: object | None = None,
         tsconfig: object | None = None,
@@ -32,7 +30,7 @@ class Bundler:
         treeshake: object | None = None,
         manual_code_splitting: object | None = None,
     ) -> Self: ...
-    def __call__(self) -> BundlerContext: ...
+    def __call__(self, *, write: bool | None = None, watch: object | None = None) -> BundlerContext: ...
 
 class BundlerContext:
     def __new__(cls, bundler: Bundler, /) -> Self: ...
@@ -42,6 +40,7 @@ class BundlerContext:
     def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None: ...
     def __call__(
         self,
+        input: object,  # noqa: A002
         output: object | None = None,
         /,
         *,
@@ -49,12 +48,27 @@ class BundlerContext:
     ) -> BundlerOutput: ...
 
 class AsyncBundlerContext:
-    def __new__(cls, bundler: Bundler, /) -> Self: ...
-    def __init__(self, bundler: Bundler, /) -> None: ...
+    def __new__(
+        cls,
+        bundler: Bundler,
+        /,
+        *,
+        write: bool | None = None,
+        watch: object | None = None,
+    ) -> Self: ...
+    def __init__(
+        self,
+        bundler: Bundler,
+        /,
+        *,
+        write: bool | None = None,
+        watch: object | None = None,
+    ) -> None: ...
     async def __aenter__(self) -> Self: ...
     async def __aexit__(self, exc_type: object, exc_value: object, traceback: object) -> None: ...
     async def __call__(
         self,
+        input: object,  # noqa: A002
         output: object | None = None,
         /,
         *,
