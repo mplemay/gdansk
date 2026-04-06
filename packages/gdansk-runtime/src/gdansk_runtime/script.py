@@ -1,5 +1,3 @@
-# ruff: noqa: D100, D101, D102, D107, ARG002, ARG004
-
 from __future__ import annotations
 
 from os import PathLike, fspath
@@ -20,7 +18,7 @@ class Script[I, O](ScriptImpl):
     @overload
     def __new__(cls, contents: str, inputs: object, outputs: object) -> Self: ...
 
-    def __new__(cls, contents: str, inputs: object, outputs: object) -> Self:
+    def __new__(cls, contents: str, inputs: object, outputs: object) -> Self:  # noqa: ARG004
         if not contents.strip():
             msg = "Script.contents must not be empty"
             raise ValueError(msg)
@@ -33,7 +31,7 @@ class Script[I, O](ScriptImpl):
     @overload
     def __init__(self, contents: str, inputs: object, outputs: object) -> None: ...
 
-    def __init__(self, contents: str, inputs: object, outputs: object) -> None:
+    def __init__(self, contents: str, inputs: object, outputs: object) -> None:  # noqa: ARG002
         self._inputs: TypeAdapter[I] = TypeAdapter[I](inputs)
         self._outputs: TypeAdapter[O] = TypeAdapter[O](outputs)
         self._source_path: str | None = None
@@ -85,15 +83,19 @@ class Script[I, O](ScriptImpl):
     ) -> Self:
         source_path = cls._normalize_source_path(path)
         script = cls(cls._read_contents_from_path(source_path), inputs, outputs)
-        script._source_path = source_path
+        object.__setattr__(script, "_source_path", source_path)
         return script
 
-    def _serialize_input(self, value: I, /) -> object:
+    def serialize_input(self, value: I, /) -> object:
         validated = self._inputs.validate_python(value)
         return self._inputs.dump_python(validated, mode="json")
 
-    def _deserialize_output(self, value: object, /) -> O:
+    def deserialize_output(self, value: object, /) -> O:
         return self._outputs.validate_python(value)
+
+    @property
+    def source_path(self) -> str | None:
+        return self._source_path
 
     @property
     def inputs(self) -> TypeAdapter[I]:

@@ -1,5 +1,3 @@
-# ruff: noqa: D100, D101, D102, D105, D107, SLF001
-
 from __future__ import annotations
 
 from os import PathLike, fspath
@@ -80,8 +78,8 @@ class Runtime(RuntimeBase):
         self._package_json_path = Path(normalized_path) if normalized_path is not None else None
 
     def _execution_paths[I, O](self, script: Script[I, O], /) -> tuple[str, str]:
-        if script._source_path is not None:
-            entry_path = Path(script._source_path)
+        if script.source_path is not None:
+            entry_path = Path(script.source_path)
             root_path = self._package_json_path.parent if self._package_json_path is not None else entry_path.parent
             return str(entry_path), str(root_path)
 
@@ -102,7 +100,7 @@ class RuntimeContext[I, O](RuntimeContextBase):
         entry_path: str | None = None,
         root_path: str | None = None,
     ) -> Self:
-        resolved_entry_path = entry_path or script._source_path or str(Path.cwd() / "__gdansk_runtime_inline__.js")
+        resolved_entry_path = entry_path or script.source_path or str(Path.cwd() / "__gdansk_runtime_inline__.js")
         resolved_root_path = root_path or str(Path(resolved_entry_path).parent)
         return super().__new__(cls, script.contents, resolved_entry_path, resolved_root_path)
 
@@ -116,7 +114,7 @@ class RuntimeContext[I, O](RuntimeContextBase):
     ) -> None:
         self._script: Script[I, O] = script
         self._async_context: AsyncRuntimeContext[I, O] | None = None
-        self._entry_path = entry_path or script._source_path or str(Path.cwd() / "__gdansk_runtime_inline__.js")
+        self._entry_path = entry_path or script.source_path or str(Path.cwd() / "__gdansk_runtime_inline__.js")
         self._root_path = root_path or str(Path(self._entry_path).parent)
 
     def __enter__(self) -> Self:
@@ -153,8 +151,8 @@ class RuntimeContext[I, O](RuntimeContextBase):
         await async_context.__aexit__(exc_type, exc_value, traceback)
 
     def __call__(self, value: I, /) -> O:
-        result = _call_runtime_context_impl(self, self._script._serialize_input(value))
-        return self._script._deserialize_output(result)
+        result = _call_runtime_context_impl(self, self._script.serialize_input(value))
+        return self._script.deserialize_output(result)
 
 
 class AsyncRuntimeContext[I, O](AsyncRuntimeContextBase):
@@ -166,7 +164,7 @@ class AsyncRuntimeContext[I, O](AsyncRuntimeContextBase):
         entry_path: str | None = None,
         root_path: str | None = None,
     ) -> Self:
-        resolved_entry_path = entry_path or script._source_path or str(Path.cwd() / "__gdansk_runtime_inline__.js")
+        resolved_entry_path = entry_path or script.source_path or str(Path.cwd() / "__gdansk_runtime_inline__.js")
         resolved_root_path = root_path or str(Path(resolved_entry_path).parent)
         return super().__new__(cls, script.contents, resolved_entry_path, resolved_root_path)
 
@@ -179,9 +177,9 @@ class AsyncRuntimeContext[I, O](AsyncRuntimeContextBase):
         root_path: str | None = None,
     ) -> None:
         self._script: Script[I, O] = script
-        self._entry_path = entry_path or script._source_path or str(Path.cwd() / "__gdansk_runtime_inline__.js")
+        self._entry_path = entry_path or script.source_path or str(Path.cwd() / "__gdansk_runtime_inline__.js")
         self._root_path = root_path or str(Path(self._entry_path).parent)
 
     async def __call__(self, value: I, /) -> O:
-        result = await _call_async_runtime_context_impl(self, self._script._serialize_input(value))
-        return self._script._deserialize_output(result)
+        result = await _call_async_runtime_context_impl(self, self._script.serialize_input(value))
+        return self._script.deserialize_output(result)
