@@ -1,0 +1,36 @@
+[project]
+name = "gdansk-tailwindcss"
+version = "0.1.0"
+description = "Tailwind CSS transform plugin for gdansk-bundler"
+readme = "README.md"
+authors = [
+    { name = "Matt LeMay", email = "mplemay@users.noreply.github.com" }
+]
+requires-python = ">=3.12,<3.15"
+dependencies = [
+    "gdansk-bundler",
+    "gdansk-runtime",
+]
+
+[tool.maturin]
+module-name = "gdansk_tailwindcss._core"
+python-packages = ["gdansk_tailwindcss"]
+python-source = "src"
+
+[tool.uv]
+cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.py" }, { file = "src/**/*.mjs" }, { file = "src/**/*.rs" }, { file = "Cargo.toml" }, { file = "Cargo.lock" }]
+
+[tool.uv.sources]
+gdansk-bundler = { workspace = true }
+gdansk-runtime = { workspace = true }
+
+[tool.ruff]
+extend = "../../pyproject.toml"
+target-version = "py312"
+
+[tool.ruff.lint]
+ignore = ["D"]
+
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"

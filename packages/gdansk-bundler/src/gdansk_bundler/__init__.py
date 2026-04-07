@@ -7,6 +7,7 @@ from gdansk_bundler._core import (
     BundlerOutput,
     OutputAsset,
     OutputChunk,
+    Plugin,
 )
 from gdansk_bundler.types import (
     CommentsOptions,
@@ -37,6 +38,7 @@ __all__ = [
     "OutputChunk",
     "OutputFile",
     "OutputOptions",
+    "Plugin",
     "ResolveAliasItem",
     "ResolveExtensionAliasItem",
     "ResolveOptions",

@@ -24,7 +24,6 @@ const FIRST_MILESTONE_MESSAGE: &str =
 
 #[derive(Clone, Debug)]
 pub(crate) struct BundlerConfigState {
-    input: Vec<InputItem>,
     cwd: Option<PathBuf>,
     resolve: Option<ResolveOptions>,
     devtools_enabled: bool,
@@ -109,12 +108,14 @@ struct Bundler {
 #[pyclass(module = "gdansk_bundler._core", unsendable, skip_from_py_object)]
 struct BundlerContext {
     config: Arc<BundlerConfigState>,
+    session_write: Option<bool>,
     active: bool,
 }
 
 #[pyclass(module = "gdansk_bundler._core", skip_from_py_object)]
 struct AsyncBundlerContext {
     config: Arc<BundlerConfigState>,
+    session_write: Option<bool>,
     active: bool,
 }
 
@@ -157,19 +158,18 @@ pub(crate) fn unsupported_feature_error(path: &str) -> PyErr {
     PyNotImplementedError::new_err(format!("{path} {FIRST_MILESTONE_MESSAGE}"))
 }
 
+mod plugin;
 mod boundary;
 
 impl BundlerConfigState {
     #[allow(clippy::too_many_arguments)]
     fn from_python(
         py: Python<'_>,
-        input: &Bound<'_, PyAny>,
         cwd: Option<&Bound<'_, PyAny>>,
         resolve: Option<&Bound<'_, PyAny>>,
         devtools: Option<&Bound<'_, PyAny>>,
         output: Option<&Bound<'_, PyAny>>,
         plugins: Option<&Bound<'_, PyAny>>,
-        watch: Option<&Bound<'_, PyAny>>,
         platform: Option<&Bound<'_, PyAny>>,
         context: Option<&Bound<'_, PyAny>>,
         tsconfig: Option<&Bound<'_, PyAny>>,
@@ -185,13 +185,11 @@ impl BundlerConfigState {
     ) -> PyResult<Self> {
         boundary::bundler_config_from_python(
             py,
-            input,
             cwd,
             resolve,
             devtools,
             output,
             plugins,
-            watch,
             platform,
             context,
             tsconfig,
@@ -467,6 +465,7 @@ impl BundlerOutput {
 
 fn create_bundler_options(
     config: &BundlerConfigState,
+    input: Vec<InputItem>,
     output_override: Option<OutputConfig>,
     write: Option<bool>,
 ) -> PyResult<(BundlerOptions, bool)> {
@@ -477,7 +476,7 @@ fn create_bundler_options(
     };
 
     let mut options = BundlerOptions {
-        input: Some(config.input.clone()),
+        input: Some(input),
         cwd: Some(cwd.clone()),
         ..Default::default()
     };
@@ -539,10 +538,11 @@ fn create_bundler_options(
 
 async fn build_once(
     config: Arc<BundlerConfigState>,
+    input: Vec<InputItem>,
     output_override: Option<OutputConfig>,
     write: Option<bool>,
 ) -> PyResult<BundlerOutput> {
-    let (options, should_write) = create_bundler_options(config.as_ref(), output_override, write)?;
+    let (options, should_write) = create_bundler_options(config.as_ref(), input, output_override, write)?;
     let mut bundler = RolldownBundler::with_plugins(options, config.plugins.clone()).map_err(|errs| {
         PyRuntimeError::new_err(format!(
             "failed to initialize Bundler: {}",
@@ -584,6 +584,7 @@ async fn build_once(
 fn build_once_blocking(
     py: Python<'_>,
     config: Arc<BundlerConfigState>,
+    input: Vec<InputItem>,
     output_override: Option<OutputConfig>,
     write: Option<bool>,
 ) -> PyResult<BundlerOutput> {
@@ -594,7 +595,7 @@ fn build_once_blocking(
 
     // Plugin hooks call into Python from `tokio::task::spawn_blocking`. The GIL must not be held
     // while `block_on` waits, or the blocking thread deadlocks waiting for `Python::attach`.
-    py.detach(|| runtime.block_on(build_once(config, output_override, write)))
+    py.detach(|| runtime.block_on(build_once(config, input, output_override, write)))
 }
 
 impl BundlerContext {
@@ -650,13 +651,11 @@ impl Bundler {
     #[new]
     #[pyo3(signature = (
         *,
-        input,
         cwd = None,
         resolve = None,
         devtools = None,
         output = None,
         plugins = None,
-        watch = None,
         platform = None,
         context = None,
         tsconfig = None,
@@ -673,13 +672,11 @@ impl Bundler {
     #[allow(clippy::too_many_arguments)]
     fn new(
         py: Python<'_>,
-        input: &Bound<'_, PyAny>,
         cwd: Option<Py<PyAny>>,
         resolve: Option<Py<PyAny>>,
         devtools: Option<Py<PyAny>>,
         output: Option<Py<PyAny>>,
         plugins: Option<Py<PyAny>>,
-        watch: Option<Py<PyAny>>,
         platform: Option<Py<PyAny>>,
         context: Option<Py<PyAny>>,
         tsconfig: Option<Py<PyAny>>,
@@ -695,13 +692,11 @@ impl Bundler {
     ) -> PyResult<Self> {
         let config = BundlerConfigState::from_python(
             py,
-            input,
             cwd.as_ref().map(|value| value.bind(py)),
             resolve.as_ref().map(|value| value.bind(py)),
             devtools.as_ref().map(|value| value.bind(py)),
             output.as_ref().map(|value| value.bind(py)),
             plugins.as_ref().map(|value| value.bind(py)),
-            watch.as_ref().map(|value| value.bind(py)),
             platform.as_ref().map(|value| value.bind(py)),
             context.as_ref().map(|value| value.bind(py)),
             tsconfig.as_ref().map(|value| value.bind(py)),
@@ -721,11 +716,23 @@ impl Bundler {
         })
     }
 
-    fn __call__(slf: PyRef<'_, Self>, py: Python<'_>) -> PyResult<Py<BundlerContext>> {
+    #[pyo3(signature = (*, write = None, watch = None))]
+    fn __call__(
+        slf: PyRef<'_, Self>,
+        py: Python<'_>,
+        write: Option<bool>,
+        watch: Option<Py<PyAny>>,
+    ) -> PyResult<Py<BundlerContext>> {
+        if let Some(watch) = watch.as_ref() {
+            boundary::validate_watch(Some(&watch.bind(py)))?;
+        } else {
+            boundary::validate_watch(None)?;
+        }
         Py::new(
             py,
             BundlerContext {
                 config: Arc::clone(&slf.config),
+                session_write: write,
                 active: false,
             },
         )
@@ -738,6 +745,7 @@ impl BundlerContext {
     fn new(bundler: PyRef<'_, Bundler>) -> Self {
         Self {
             config: Arc::clone(&bundler.config),
+            session_write: None,
             active: false,
         }
     }
@@ -760,20 +768,29 @@ impl BundlerContext {
         self.active = false;
     }
 
-    #[pyo3(signature = (output = None, *, write = None))]
+    #[pyo3(signature = (input, output = None, *, write = None))]
     fn __call__<'py>(
         &self,
         py: Python<'py>,
+        input: &Bound<'py, PyAny>,
         output: Option<Py<PyAny>>,
         write: Option<bool>,
     ) -> PyResult<Bound<'py, PyAny>> {
         self.ensure_active()?;
+        let input_items = boundary::parse_input(input)?;
         let output_override = output
             .as_ref()
             .map(|value| boundary::parse_output_config(Some(value.bind(py)), "BundlerContext.output"))
             .transpose()?
             .flatten();
-        let output = build_once_blocking(py, Arc::clone(&self.config), output_override, write)?;
+        let effective_write = write.or(self.session_write);
+        let output = build_once_blocking(
+            py,
+            Arc::clone(&self.config),
+            input_items,
+            output_override,
+            effective_write,
+        )?;
         Ok(Py::new(py, output)?.into_bound(py).into_any())
     }
 }
@@ -781,11 +798,23 @@ impl BundlerContext {
 #[pymethods]
 impl AsyncBundlerContext {
     #[new]
-    fn new(bundler: PyRef<'_, Bundler>) -> Self {
-        Self {
-            config: Arc::clone(&bundler.config),
-            active: false,
+    #[pyo3(signature = (bundler, *, write = None, watch = None))]
+    fn new(
+        py: Python<'_>,
+        bundler: PyRef<'_, Bundler>,
+        write: Option<bool>,
+        watch: Option<Py<PyAny>>,
+    ) -> PyResult<Self> {
+        if let Some(watch) = watch.as_ref() {
+            boundary::validate_watch(Some(&watch.bind(py)))?;
+        } else {
+            boundary::validate_watch(None)?;
         }
+        Ok(Self {
+            config: Arc::clone(&bundler.config),
+            session_write: write,
+            active: false,
+        })
     }
 
     fn __aenter__<'py>(slf: Py<Self>, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
@@ -806,23 +835,26 @@ impl AsyncBundlerContext {
         })
     }
 
-    #[pyo3(signature = (output = None, *, write = None))]
+    #[pyo3(signature = (input, output = None, *, write = None))]
     fn __call__<'py>(
         &self,
         py: Python<'py>,
+        input: &Bound<'py, PyAny>,
         output: Option<Py<PyAny>>,
         write: Option<bool>,
     ) -> PyResult<Bound<'py, PyAny>> {
         self.ensure_active()?;
+        let input_items = boundary::parse_input(input)?;
         let output_override = output
             .as_ref()
             .map(|value| boundary::parse_output_config(Some(value.bind(py)), "BundlerContext.output"))
             .transpose()?
             .flatten();
+        let effective_write = write.or(self.session_write);
         let config = Arc::clone(&self.config);
 
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let output = build_once(config, output_override, write).await?;
+            let output = build_once(config, input_items, output_override, effective_write).await?;
             Python::attach(|py| Ok(Py::new(py, output)?.into_bound(py).into_any().unbind()))
         })
     }
@@ -972,6 +1004,7 @@ impl BundlerOutput {
 mod _core {
     #[pymodule_export]
     use super::{
-        AsyncBundlerContext, Bundler, BundlerContext, BundlerOutput, OutputAsset, OutputChunk,
+        plugin::Plugin, AsyncBundlerContext, Bundler, BundlerContext, BundlerOutput, OutputAsset,
+        OutputChunk,
     };
 }

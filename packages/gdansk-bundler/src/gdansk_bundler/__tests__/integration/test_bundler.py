@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from gdansk_bundler import AsyncBundlerContext, Bundler, BundlerOutput
+from gdansk_bundler import AsyncBundlerContext, Bundler, BundlerOutput, Plugin
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -28,20 +28,24 @@ def test_bundler_resolve_id_plugin(tmp_path: Path) -> None:
 
     real_js = (tmp_path / "real.js").resolve()
 
-    def resolve_id(spec: str, _importer: str | None) -> str | None:
-        if spec == "virtual:x":
-            return str(real_js)
-        return None
+    class VirtualResolver(Plugin):
+        def __init__(self, target: Path) -> None:
+            super().__init__(name="virtual-resolver")
+            self._target = target
+
+        def resolve_id(self, spec: str, _importer: str | None) -> str | None:
+            if spec == "virtual:x":
+                return str(self._target)
+            return None
 
     bundler = Bundler(
-        input="./index.js",
         cwd=tmp_path,
-        plugins=[{"name": "virtual-resolver", "resolve_id": resolve_id}],
+        plugins=[VirtualResolver(real_js)],
         output={"format": "esm"},
     )
 
-    with bundler() as build:
-        output = build(write=False)
+    with bundler(write=False) as build:
+        output = build("./index.js")
 
     assert isinstance(output, BundlerOutput)
     assert any("42" in chunk.code for chunk in output.chunks)
@@ -80,14 +84,13 @@ console.log(message);
     )
 
     bundler = Bundler(
-        input={"entry": "./index.ts"},
         cwd=tmp_path,
         resolve={"condition_names": ["python"]},
         output={"dir": "dist", "format": "esm"},
     )
 
     with bundler() as build:
-        output = build()
+        output = build({"entry": "./index.ts"})
 
     assert isinstance(output, BundlerOutput)
     assert output.warnings == []
@@ -107,10 +110,10 @@ console.log(value);
         + "\n",
     )
 
-    bundler = Bundler(input="./index.ts", cwd=tmp_path)
+    bundler = Bundler(cwd=tmp_path)
 
     with bundler() as build:
-        output = build({"format": "esm"})
+        output = build("./index.ts", {"format": "esm"})
 
     assert isinstance(output, BundlerOutput)
     assert len(output.chunks) == 1
@@ -130,10 +133,10 @@ console.log(value);
         + "\n",
     )
 
-    bundler = Bundler(input="./index.ts", cwd=tmp_path)
+    bundler = Bundler(cwd=tmp_path)
 
-    async with AsyncBundlerContext(bundler) as build:
-        output = await build({"format": "esm"}, write=False)
+    async with AsyncBundlerContext(bundler, write=False) as build:
+        output = await build("./index.ts", {"format": "esm"})
 
     assert isinstance(output, BundlerOutput)
     assert len(output.chunks) == 1
@@ -164,7 +167,6 @@ console.log(VERSION, MESSAGE);
     )
 
     bundler = Bundler(
-        input="./index.ts",
         cwd=tmp_path,
         resolve={
             "alias": [
@@ -175,11 +177,77 @@ console.log(VERSION, MESSAGE);
         output={"format": "esm"},
     )
 
-    with bundler() as build:
-        output = build(write=False)
+    with bundler(write=False) as build:
+        output = build("./index.ts")
 
     assert isinstance(output, BundlerOutput)
     assert output.warnings == []
     assert len(output.chunks) == 1
     assert "v1" in output.chunks[0].code
     assert "aliased and defined" in output.chunks[0].code
+
+
+def test_bundler_load_plugin_virtual_module(tmp_path: Path) -> None:
+    virtual_id = "\x00virtual:demo"
+    write_fixture_file(
+        tmp_path,
+        "entry.js",
+        'import { answer } from "virtual:demo";\nconsole.log(answer);\n',
+    )
+
+    class VirtualLoadPlugin(Plugin):
+        def __init__(self, vid: str) -> None:
+            super().__init__(name="virtual-load")
+            self._vid = vid
+
+        def resolve_id(self, spec: str, _importer: str | None) -> str | None:
+            if spec == "virtual:demo":
+                return self._vid
+            return None
+
+        def load(self, mid: str) -> dict | None:
+            if mid == self._vid:
+                return {"code": "export const answer = 99;\n"}
+            return None
+
+    bundler = Bundler(
+        cwd=tmp_path,
+        plugins=[VirtualLoadPlugin(virtual_id)],
+        output={"format": "esm"},
+    )
+
+    with bundler(write=False) as build:
+        output = build("./entry.js")
+
+    assert isinstance(output, BundlerOutput)
+    assert any("99" in chunk.code for chunk in output.chunks)
+
+
+def test_bundler_transform_plugin(tmp_path: Path) -> None:
+    write_fixture_file(
+        tmp_path,
+        "entry.js",
+        'export const msg = "__MARKER__";\nconsole.log(msg);\n',
+    )
+
+    class RewritePlugin(Plugin):
+        def __init__(self) -> None:
+            super().__init__(name="rewrite")
+
+        def transform(self, code: str, _id: str, _module_type: str) -> dict | None:
+            if "__MARKER__" in code:
+                return {"code": code.replace("__MARKER__", "replaced")}
+            return None
+
+    bundler = Bundler(
+        cwd=tmp_path,
+        plugins=[RewritePlugin()],
+        output={"format": "esm"},
+    )
+
+    with bundler(write=False) as build:
+        output = build("./entry.js")
+
+    assert isinstance(output, BundlerOutput)
+    assert any("replaced" in chunk.code for chunk in output.chunks)
+    assert not any("__MARKER__" in chunk.code for chunk in output.chunks)

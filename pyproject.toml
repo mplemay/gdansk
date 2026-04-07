@@ -24,11 +24,15 @@ cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.rs" }, { file = "C
 
 [tool.uv.sources]
 mcp = { git = "https://github.com/modelcontextprotocol/python-sdk.git", rev = "main" }
+gdansk-lightningcss = { workspace = true }
+gdansk-tailwindcss = { workspace = true }
 
 [tool.uv.workspace]
 members = [
     "packages/gdansk-runtime",
     "packages/gdansk-bundler",
+    "packages/gdansk-lightningcss",
+    "packages/gdansk-tailwindcss",
 ]
 
 [build-system]
@@ -38,6 +42,8 @@ build-backend = "maturin"
 [dependency-groups]
 dev = [
     "anyio>=4",
+    "gdansk-lightningcss",
+    "gdansk-tailwindcss",
     "prek>=0.3.6",
     "pytest>=9.0.2",
     "ruff>=0.15.1",
@@ -98,8 +104,11 @@ filterwarnings = [
     "error",
 ]
 
-[tool.rumdl.MD013]
+
+[tool.rumdl]
 line_length = 120
+
+[tool.rumdl.MD013]
 reflow = true
 code_blocks = false
 tables = false
