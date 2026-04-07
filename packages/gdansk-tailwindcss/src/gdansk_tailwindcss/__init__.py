@@ -7,12 +7,17 @@ from gdansk_bundler import Plugin
 from gdansk_runtime import Runtime
 from gdansk_runtime.script import Script
 
+from gdansk_tailwindcss._candidates import collect_candidates
+from gdansk_tailwindcss._css_expand import expand_css_imports, importer_dir_for_module
+from gdansk_tailwindcss._npm_package import resolve_tailwind_module_file
+
 
 class _ShimInput(TypedDict):
     css: str
     moduleId: str
     rootDir: str
-    options: dict[str, object]
+    candidates: list[str]
+    tailwindModuleUrl: str
 
 
 class _ShimOutput(TypedDict, total=False):
@@ -28,18 +33,22 @@ class TailwindCssPlugin(Plugin):
     def __init__(self, *, package_json: str | Path) -> None:
         super().__init__(name="tailwindcss")
         self._package_json = Path(package_json).resolve()
-        self._root_dir = str(self._package_json.parent)
+        self._root = self._package_json.parent.resolve()
         self._script = Script.from_file(str(_shim_path()), _ShimInput, _ShimOutput)
         self._runtime = Runtime(package_json=str(self._package_json))
 
     def transform(self, code: str, module_id: str, module_type: str) -> dict[str, str] | None:
         if module_type != "css":
             return None
+        importer_dir = importer_dir_for_module(module_id, self._root)
+        expanded = expand_css_imports(code, importer_dir, self._root)
+        tailwind_path = resolve_tailwind_module_file(self._root)
         payload: _ShimInput = {
-            "css": code,
+            "css": expanded,
             "moduleId": module_id,
-            "rootDir": self._root_dir,
-            "options": {},
+            "rootDir": str(self._root),
+            "candidates": collect_candidates(self._root),
+            "tailwindModuleUrl": tailwind_path.as_uri(),
         }
         with self._runtime(self._script) as ctx:
             out = ctx(payload)

@@ -29,10 +29,8 @@ use tokio::sync::oneshot;
 use url::Url;
 
 mod runtime_npm;
-mod runtime_project_fs;
 
 use runtime_npm::{RuntimeNpm, RuntimeNpmError};
-use runtime_project_fs::{ScriptProjectFsShared, gdansk_runtime_project_fs_ext};
 
 const RUNTIME_CONTEXT_ALREADY_ACTIVE: &str = "RuntimeContext is already active";
 const RUNTIME_CONTEXT_NOT_ACTIVE: &str = "RuntimeContext is not active";
@@ -532,7 +530,6 @@ impl JsContext {
             module_root_dir,
             root_path.to_path_buf(),
         ));
-        let project_fs_shared = Arc::new(ScriptProjectFsShared::new(root_path.to_path_buf()));
         let mut js_runtime = JsRuntime::new(RuntimeOptions {
             module_loader: Some(module_loader),
             extensions: vec![
@@ -542,7 +539,6 @@ impl JsContext {
                     None,
                     deno_web::InMemoryBroadcastChannel::default(),
                 ),
-                gdansk_runtime_project_fs_ext::init(project_fs_shared),
                 gdansk_runtime_web_ext::init(),
             ],
             ..Default::default()

@@ -4,6 +4,7 @@ import textwrap
 from typing import TYPE_CHECKING
 
 from gdansk_tailwindcss import TailwindCssPlugin
+from gdansk_tailwindcss._css_expand import expand_css_imports
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -41,6 +42,16 @@ def _write_stub_tailwind(views: Path) -> None:
         + "\n",
         encoding="utf-8",
     )
+
+
+def test_expand_css_imports_inlines_relative_file(tmp_path: Path) -> None:
+    styles = tmp_path / "styles"
+    styles.mkdir(parents=True)
+    (styles / "other.css").write_text("/*included*/\n", encoding="utf-8")
+    css = '@import "./other.css";\n'
+    out = expand_css_imports(css, styles, tmp_path)
+    assert "/*included*/" in out
+    assert "@import" not in out
 
 
 def test_tailwind_plugin_appends_stub_marker(tmp_path: Path) -> None:
