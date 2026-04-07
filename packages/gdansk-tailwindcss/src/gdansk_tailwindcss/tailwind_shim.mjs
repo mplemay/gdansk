@@ -17,7 +17,7 @@ function ensureProcess(rootDir) {
 
 async function loadStylesheet() {
   throw new Error(
-    "loadStylesheet invoked after Python @import expansion; extend gdansk_tailwindcss._css_expand if a specifier was missed",
+    "loadStylesheet invoked after Rust @import expansion; extend gdansk_tailwindcss._core if a specifier was missed",
   );
 }
 
