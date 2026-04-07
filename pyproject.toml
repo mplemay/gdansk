@@ -104,8 +104,11 @@ filterwarnings = [
     "error",
 ]
 
-[tool.rumdl.MD013]
+
+[tool.rumdl]
 line_length = 120
+
+[tool.rumdl.MD013]
 reflow = true
 code_blocks = false
 tables = false
