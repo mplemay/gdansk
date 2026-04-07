@@ -21,6 +21,7 @@ deno_package_json = { version = "=0.46.0", features = ["sync"] }
 deno_resolver = { version = "=0.75.0", features = ["graph", "sync"] }
 deno_task_shell = "=0.29.0"
 deno_web = "=0.275.0"
+dunce = "1"
 deno_webidl = "=0.244.0"
 http = "1"
 node_resolver = { version = "=0.82.0", features = ["sync"] }
@@ -28,6 +29,7 @@ oxc_resolver = "11.18"
 pyo3 = { version = "0.28.2", features = ["extension-module", "abi3-py312"] }
 pyo3-async-runtimes = { version = "0.28", features = ["attributes", "tokio-runtime"] }
 reqwest = { version = "=0.12.5", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "json", "http2"] }
+serde = { version = "1", features = ["derive"] }
 sys_traits = { version = "=0.1.27", features = ["real"] }
 tokio = "1.40"
 url = "2.5"
