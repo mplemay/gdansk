@@ -80,8 +80,8 @@ impl ScriptModuleLoader {
 
     fn resolve_input_path(&self, input: &str) -> Result<PathBuf, JsErrorBox> {
         if input.starts_with("file://") {
-            let specifier =
-                ModuleSpecifier::parse(input).map_err(|err| JsErrorBox::generic(err.to_string()))?;
+            let specifier = ModuleSpecifier::parse(input)
+                .map_err(|err| JsErrorBox::generic(err.to_string()))?;
             return specifier
                 .to_file_path()
                 .map_err(|_| JsErrorBox::generic(format!("unsupported file URL: {input}")));
@@ -145,7 +145,9 @@ impl ScriptModuleLoader {
                 .map(|value| self.resolve_referrer_base_dir(value))
                 .transpose()?
                 .unwrap_or_else(|| self.module_root_dir.clone());
-            return path_to_module_specifier(&canonicalize_existing_file(&base_dir.join(specifier))?);
+            return path_to_module_specifier(&canonicalize_existing_file(
+                &base_dir.join(specifier),
+            )?);
         }
 
         let base_dir = self.resolve_bare_specifier_base_dir(referrer)?;
@@ -189,7 +191,8 @@ impl ModuleLoader for ScriptModuleLoader {
             let path = module_specifier.to_file_path().map_err(|_| {
                 JsErrorBox::generic(format!("unsupported module specifier: {module_specifier}"))
             })?;
-            let code = fs::read_to_string(&path).map_err(|err| JsErrorBox::generic(err.to_string()))?;
+            let code =
+                fs::read_to_string(&path).map_err(|err| JsErrorBox::generic(err.to_string()))?;
             let module_type = if path.extension() == Some(OsStr::new("json")) {
                 ModuleType::Json
             } else {
@@ -251,7 +254,12 @@ struct Runtime {
     package_json: Option<PathBuf>,
 }
 
-#[pyclass(module = "gdansk_runtime._core", unsendable, subclass, skip_from_py_object)]
+#[pyclass(
+    module = "gdansk_runtime._core",
+    unsendable,
+    subclass,
+    skip_from_py_object
+)]
 struct RuntimeContext {
     contents: String,
     entry_path: PathBuf,
@@ -522,10 +530,7 @@ impl JsContext {
             .enable_all()
             .build()
             .map_err(execution_error)?;
-        let module_root_dir = entry_path
-            .parent()
-            .unwrap_or(root_path)
-            .to_path_buf();
+        let module_root_dir = entry_path.parent().unwrap_or(root_path).to_path_buf();
         let module_loader = Rc::new(ScriptModuleLoader::new(
             module_root_dir,
             root_path.to_path_buf(),
@@ -543,11 +548,8 @@ impl JsContext {
             ],
             ..Default::default()
         });
-        let default_function = tokio_runtime.block_on(load_default_function(
-            &mut js_runtime,
-            code,
-            entry_path,
-        ))?;
+        let default_function =
+            tokio_runtime.block_on(load_default_function(&mut js_runtime, code, entry_path))?;
         Ok(Self {
             default_function,
             js_runtime,
@@ -568,7 +570,9 @@ impl JsContext {
         let output = self
             .tokio_runtime
             .block_on(async {
-                let future = self.js_runtime.call_with_args(&default_function, &arguments);
+                let future = self
+                    .js_runtime
+                    .call_with_args(&default_function, &arguments);
                 self.js_runtime
                     .with_event_loop_promise(future, PollEventLoopOptions::default())
                     .await
@@ -834,7 +838,11 @@ impl Runtime {
 impl RuntimeContext {
     #[new]
     fn new(contents: String, entry_path: String, root_path: String) -> Self {
-        Self::from_contents(contents, PathBuf::from(entry_path), PathBuf::from(root_path))
+        Self::from_contents(
+            contents,
+            PathBuf::from(entry_path),
+            PathBuf::from(root_path),
+        )
     }
 
     fn _ensure_inactive(&self) -> PyResult<()> {
@@ -876,7 +884,11 @@ impl RuntimeContext {
 impl AsyncRuntimeContext {
     #[new]
     fn new(contents: String, entry_path: String, root_path: String) -> Self {
-        Self::from_contents(contents, PathBuf::from(entry_path), PathBuf::from(root_path))
+        Self::from_contents(
+            contents,
+            PathBuf::from(entry_path),
+            PathBuf::from(root_path),
+        )
     }
 
     fn __aenter__<'py>(slf: Py<Self>, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {

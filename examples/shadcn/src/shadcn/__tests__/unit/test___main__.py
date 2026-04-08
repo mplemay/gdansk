@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -15,11 +16,11 @@ def reset_todos():
     todo_main.TODOS.clear()
 
 
-def _structured_from_call_result(result: object) -> dict[str, object]:
+def _structured_from_call_result(result: object) -> dict[str, Any]:
     assert isinstance(result, tuple)
     assert len(result) == 2
     assert isinstance(result[1], dict)
-    return result[1]
+    return cast("dict[str, Any]", result[1])
 
 
 def test_list_todos_returns_empty_list_initially():

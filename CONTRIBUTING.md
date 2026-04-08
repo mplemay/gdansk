@@ -71,14 +71,15 @@ uv run prek run --all-files
 ```text
 gdansk/
 ├── src/
-│   ├── lib.rs              # Rust bundler implementation
 │   └── gdansk/
 │       ├── __init__.py     # Package exports
 │       ├── core.py         # Python Amber class
-│       ├── _core.pyi       # Type stubs for Rust extension
+│       ├── _core.py        # Internal build/runtime helpers
+│       ├── _core.pyi       # Type stubs for internal helpers
 │       └── __tests__/      # Test files
+├── packages/               # Helper workspace packages
 ├── examples/               # Example MCP servers
-├── Cargo.toml             # Rust dependencies
+├── Cargo.toml              # Cargo workspace for helper packages
 └── pyproject.toml         # Python project config
 ```
 

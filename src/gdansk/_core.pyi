@@ -1,6 +1,7 @@
 from collections.abc import Sequence
-from os import PathLike
 from pathlib import Path
+
+from gdansk_bundler import Plugin
 
 class Page:
     def __init__(self, *, path: Path, is_widget: bool = False, ssr: bool = False) -> None: ...
@@ -11,14 +12,8 @@ class Page:
     server: Path | None
     css: Path
 
-class LightningCSS:
+class LightningCSS(Plugin):
     def __init__(self) -> None: ...
-    id: str
-
-class VitePlugin:
-    def __init__(self, *, specifier: str | PathLike[str], options: object = ...) -> None: ...
-    specifier: str
-    options: object
 
 async def bundle(
     pages: Sequence[Page],
@@ -26,6 +21,7 @@ async def bundle(
     minify: bool = True,
     output: Path = ...,
     cwd: Path = ...,
-    plugins: Sequence[LightningCSS | VitePlugin] | None = None,
+    plugins: Sequence[Plugin] | None = None,
+    _ready: object | None = None,
 ) -> None: ...
 async def run(code: str, /) -> object: ...

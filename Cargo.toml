@@ -1,33 +1,9 @@
-[package]
-name = "gdansk"
-version = "0.1.0"
-edition = "2024"
-build = "build.rs"
-
-[lib]
-name = "_core"
-# "cdylib" is necessary to produce a shared library for Python to import from.
-crate-type = ["cdylib"]
-
-[dependencies]
-tokio = "1.40"
-dunce = "1.0"
-serde = { version = "1", features = ["derive"] }
-
-# python
-pyo3 = { version = "0.28", features = ["extension-module", "abi3-py312"] }
-pyo3-async-runtimes = { version = "0.28", features = ["tokio-runtime"] }
-
-# javascript
-deno_core = "0.396"
-deno_error = "0.7"
-rolldown = { git = "https://github.com/rolldown/rolldown.git", tag="v1.0.0-rc.12", features = ["experimental"] }
-rolldown_dev = { git = "https://github.com/rolldown/rolldown.git", tag="v1.0.0-rc.12" }
-rolldown_plugin = { git = "https://github.com/rolldown/rolldown.git", tag="v1.0.0-rc.12" }
-rolldown_common = { git = "https://github.com/rolldown/rolldown.git", tag="v1.0.0-rc.12" }
-lightningcss = "1.0.0-alpha.70"
-oxc_resolver = "11.18"
-url = "2.5"
-
-[build-dependencies]
-deno_core = "0.396"
+[workspace]
+members = [
+    "packages/gdansk-runtime",
+    "packages/gdansk-bundler",
+    "packages/gdansk-lightningcss",
+    "packages/gdansk-tailwindcss",
+    "packages/gdansk-vite",
+]
+resolver = "2"

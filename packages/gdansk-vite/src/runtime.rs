@@ -21,8 +21,6 @@ use oxc_resolver::{ResolveOptions, Resolver};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use super::vite::VitePluginSpec;
-
 const BOOTSTRAP_SPECIFIER: &str = "gdansk:vite-runtime-bootstrap";
 const NODE_FS_SPECIFIER: &str = "node:fs";
 const NODE_FS_PROMISES_SPECIFIER: &str = "node:fs/promises";
@@ -76,24 +74,31 @@ fn builtin_module_source(specifier: &str) -> Option<&'static str> {
     }
 }
 
-#[derive(Debug, Clone)]
-pub(super) struct PluginAssetInput {
-    pub(super) filename: String,
-    pub(super) path: String,
-    pub(super) code: String,
-}
-
 #[derive(Debug, Clone, Deserialize)]
-pub(super) struct PluginAssetOutput {
-    pub(super) filename: String,
-    pub(super) code: String,
+pub(crate) struct PluginAssetInput {
+    pub(crate) filename: String,
+    pub(crate) path: String,
+    pub(crate) code: String,
 }
 
-#[derive(Debug, Deserialize)]
-pub(super) struct PluginRunResult {
-    pub(super) assets: Vec<PluginAssetOutput>,
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub(crate) struct PluginAssetOutput {
+    pub(crate) filename: String,
+    pub(crate) code: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct PluginRunResult {
+    pub(crate) assets: Vec<PluginAssetOutput>,
     #[serde(rename = "watchFiles", default)]
-    pub(super) watch_files: Vec<String>,
+    pub(crate) watch_files: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub(crate) struct VitePluginSpec {
+    pub(crate) specifier: String,
+    #[serde(default)]
+    pub(crate) options: Value,
 }
 
 #[derive(Debug, Serialize)]
@@ -550,7 +555,7 @@ deno_core::extension!(
     ],
     esm_entry_point = BOOTSTRAP_SPECIFIER,
     esm = [
-        dir "src/plugins",
+        dir "src",
         "gdansk:vite-runtime-bootstrap" = "vite_runtime.js",
     ],
     options = {
@@ -635,7 +640,7 @@ impl EmbeddedViteRuntime {
     }
 }
 
-pub(super) fn run_embedded_vite_plugins(
+pub(crate) fn run_embedded_vite_plugins(
     specs: &[VitePluginSpec],
     pages: &Path,
     assets: Vec<PluginAssetInput>,

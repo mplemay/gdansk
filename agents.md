@@ -102,7 +102,7 @@ For multistep tasks, state a brief plan:
     - When you want automatic `__eq__`, `__repr__`, `__hash__` implementations
 - Prefer importing using `from x import y` instead of `import x`
 - Import local modules using the full path (ex: `from my_project.my_module import MyClass`)
-- Rust extension (`gdansk._core`) imports:
+- Internal compatibility module (`gdansk._core`) imports:
   - Prefer direct `from gdansk._core import ...` when there is no name clash in that file.
   - When a symbol from `_core` would clash with a Python-defined name in the same module, import with a `*Impl` /
     `*_impl` alias, then assign or wrap as needed:

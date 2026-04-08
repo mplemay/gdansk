@@ -21,6 +21,11 @@ def test_bundler_context_returns_itself_from_enter() -> None:
         assert type(run) is BundlerContext
 
 
+async def test_bundler_context_supports_async_with() -> None:
+    async with Bundler()() as run:
+        assert type(run) is AsyncBundlerContext
+
+
 async def test_async_bundler_context_from_bundler() -> None:
     bundler = Bundler()
 
@@ -44,13 +49,20 @@ def test_bundler_accepts_plugins_as_tuple() -> None:
 
 def test_bundler_rejects_dict_plugin() -> None:
     with pytest.raises(TypeError, match="Plugin"):
-        Bundler(plugins=[{"name": "legacy"}])
+        Bundler(plugins=[{"name": "legacy"}])  # ty: ignore[invalid-argument-type]
 
 
-def test_bundler_rejects_watch_in_first_milestone() -> None:
+def test_bundler_rejects_non_boolean_watch() -> None:
     bundler = Bundler()
-    with pytest.raises(NotImplementedError, match=r"Bundler\.watch"):
+    with pytest.raises(TypeError, match=r"Bundler\.watch must be a boolean"):
         bundler(watch={})
+
+
+def test_sync_bundler_context_rejects_watch_mode() -> None:
+    context = Bundler()(watch=True)
+
+    with pytest.raises(RuntimeError, match="watch=True is only supported in async bundler contexts"), context:
+        pass
 
 
 def test_bundler_rejects_unknown_resolve_key() -> None:

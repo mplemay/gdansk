@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -15,17 +16,29 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 
 
 @contextmanager
-def _lifespan(app):
+def _lifespan(app, *, background: bool = False):
     loop = asyncio.new_event_loop()
     context = app.router.lifespan_context(app)
     entered = False
+    loop_thread: threading.Thread | None = None
     try:
-        loop.run_until_complete(context.__aenter__())
+        if background:
+            loop_thread = threading.Thread(target=loop.run_forever, daemon=True)
+            loop_thread.start()
+            asyncio.run_coroutine_threadsafe(context.__aenter__(), loop).result()
+        else:
+            loop.run_until_complete(context.__aenter__())
         entered = True
         yield
     finally:
         if entered:
-            loop.run_until_complete(context.__aexit__(None, None, None))
+            if background:
+                asyncio.run_coroutine_threadsafe(context.__aexit__(None, None, None), loop).result()
+            else:
+                loop.run_until_complete(context.__aexit__(None, None, None))
+        if loop_thread is not None:
+            loop.call_soon_threadsafe(loop.stop)
+            loop_thread.join(timeout=5)
         loop.close()
 
 
@@ -143,7 +156,7 @@ def test_js_plugin_watch_runs_in_dev(mock_mcp, pages_dir, tmp_path, monkeypatch)
         return "result"
 
     app = amber(dev=True)
-    with _lifespan(app):
+    with _lifespan(app, background=True):
         css_output = output / "with_css/client.css"
         _wait_for_css_contains(css_output, "dev-js")
 
@@ -226,7 +239,7 @@ export default function (options) {
     def my_tool():
         return "result"
 
-    with _lifespan(amber(dev=True)):
+    with _lifespan(amber(dev=True), background=True):
         css_output = output / "with_css/client.css"
         _wait_for_css_contains(css_output, "initial")
         watched_file.write_text("updated", encoding="utf-8")
@@ -320,7 +333,7 @@ async def test_js_plugin_smoke_uses_repo_shadcn_tailwind_package(tmp_path, monke
     output = tmp_path / "shadcn-out"
 
     await bundle(
-        pages=[Page(path=Path("widgets/todo/widget.tsx"), is_widget=True, ssr=False)],
+        pages=[Page(path=Path("widgets/tailwind_smoke/widget.tsx"), is_widget=True, ssr=False)],
         dev=False,
         minify=False,
         output=output,
@@ -328,5 +341,5 @@ async def test_js_plugin_smoke_uses_repo_shadcn_tailwind_package(tmp_path, monke
         plugins=[VitePlugin(specifier="@tailwindcss/vite")],
     )
 
-    css = await AnyPath(output / "todo" / "client.css").read_text(encoding="utf-8")
+    css = await AnyPath(output / "tailwind_smoke" / "client.css").read_text(encoding="utf-8")
     assert ".mx-auto" in css

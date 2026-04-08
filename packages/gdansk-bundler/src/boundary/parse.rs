@@ -6,11 +6,11 @@ use pyo3::{
     types::{PyBool, PyDict, PyList, PyString, PyTuple},
 };
 use rolldown::{
-    CommentsOptions, EsModuleFlag, GeneratedCodeOptions, HashCharacters, InjectImport, InputItem,
-    InnerOptions, IsExternal, LegalComments, ManualCodeSplittingOptions, MatchGroup, MatchGroupName,
-    MatchGroupTest, ModuleSideEffects, OutputExports, OutputFormat, Platform, PropertyReadSideEffects,
-    PropertyWriteSideEffects, RawMinifyOptions, ResolveOptions, SanitizeFilename, SourceMapType,
-    StrictMode, TreeshakeOptions, TsConfig,
+    CommentsOptions, EsModuleFlag, GeneratedCodeOptions, HashCharacters, InjectImport,
+    InnerOptions, InputItem, IsExternal, LegalComments, ManualCodeSplittingOptions, MatchGroup,
+    MatchGroupName, MatchGroupTest, ModuleSideEffects, OutputExports, OutputFormat, Platform,
+    PropertyReadSideEffects, PropertyWriteSideEffects, RawMinifyOptions, ResolveOptions,
+    SanitizeFilename, SourceMapType, StrictMode, TreeshakeOptions, TsConfig,
 };
 use rolldown_utils::{indexmap::FxIndexMap, pattern_filter::StringOrRegex};
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -32,6 +32,12 @@ fn extract_path_as_string(value: &Bound<'_, PyAny>, message: &str) -> PyResult<S
     Ok(path.to_string_lossy().into_owned())
 }
 
+fn extract_path(value: &Bound<'_, PyAny>, message: &str) -> PyResult<PathBuf> {
+    value
+        .extract()
+        .map_err(|_| PyTypeError::new_err(message.to_owned()))
+}
+
 pub(crate) fn parse_optional_cwd(value: Option<&Bound<'_, PyAny>>) -> PyResult<Option<PathBuf>> {
     let Some(value) = value else {
         return Ok(None);
@@ -48,13 +54,22 @@ pub(crate) fn parse_optional_cwd(value: Option<&Bound<'_, PyAny>>) -> PyResult<O
     Ok(Some(base.join(path)))
 }
 
-pub(crate) fn extract_string_sequence(value: &Bound<'_, PyAny>, message: &str) -> PyResult<Vec<String>> {
+pub(crate) fn extract_string_sequence(
+    value: &Bound<'_, PyAny>,
+    message: &str,
+) -> PyResult<Vec<String>> {
     if let Ok(list) = value.cast::<PyList>() {
-        return list.iter().map(|item| extract_string(&item, message)).collect();
+        return list
+            .iter()
+            .map(|item| extract_string(&item, message))
+            .collect();
     }
 
     if let Ok(tuple) = value.cast::<PyTuple>() {
-        return tuple.iter().map(|item| extract_string(&item, message)).collect();
+        return tuple
+            .iter()
+            .map(|item| extract_string(&item, message))
+            .collect();
     }
 
     Err(PyTypeError::new_err(message.to_owned()))
@@ -102,10 +117,7 @@ fn parse_output_format(value: &Bound<'_, PyAny>, message: &str) -> PyResult<Outp
     }
 }
 
-fn parse_sourcemap_setting(
-    value: &Bound<'_, PyAny>,
-    message: &str,
-) -> PyResult<SourcemapSetting> {
+fn parse_sourcemap_setting(value: &Bound<'_, PyAny>, message: &str) -> PyResult<SourcemapSetting> {
     if value.is_instance_of::<PyBool>() {
         return Ok(if value.cast::<PyBool>()?.extract::<bool>()? {
             SourcemapSetting::Enabled(SourceMapType::File)
@@ -175,6 +187,36 @@ pub(crate) fn parse_input(value: &Bound<'_, PyAny>) -> PyResult<Vec<InputItem>> 
     Ok(vec![InputItem::from(input)])
 }
 
+pub(crate) fn parse_path_sequence(
+    value: Option<&Bound<'_, PyAny>>,
+    label: &str,
+) -> PyResult<Vec<PathBuf>> {
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+    let message = format!("{label} must be a path, or a sequence of paths (str or os.PathLike)");
+
+    if value.is_instance_of::<PyString>() {
+        return Ok(vec![extract_path(value, &message)?]);
+    }
+
+    if let Ok(list) = value.cast::<PyList>() {
+        return list
+            .iter()
+            .map(|item| extract_path(&item, &message))
+            .collect();
+    }
+
+    if let Ok(tuple) = value.cast::<PyTuple>() {
+        return tuple
+            .iter()
+            .map(|item| extract_path(&item, &message))
+            .collect();
+    }
+
+    Ok(vec![extract_path(value, &message)?])
+}
+
 fn parse_nested_string_matrix(
     value: &Bound<'_, PyAny>,
     message: &str,
@@ -182,8 +224,7 @@ fn parse_nested_string_matrix(
     let list = value
         .cast::<PyList>()
         .map_err(|_| PyTypeError::new_err(message.to_owned()))?;
-    list
-        .iter()
+    list.iter()
         .map(|row| extract_string_sequence(&row, message))
         .collect()
 }
@@ -212,9 +253,7 @@ fn parse_resolve_alias_item(
         .ok_or_else(|| PyValueError::new_err(format!("{container}.replacements is required")))?;
     let repl_list = replacements
         .cast::<PyList>()
-        .map_err(|_| {
-            PyTypeError::new_err(format!("{container}.replacements must be a list"))
-        })?;
+        .map_err(|_| PyTypeError::new_err(format!("{container}.replacements must be a list")))?;
     let mut out = Vec::new();
     for entry in repl_list.iter() {
         if entry.is_none() {
@@ -249,7 +288,9 @@ fn parse_extension_alias_item(
     Ok((target, seq))
 }
 
-pub(crate) fn parse_resolve_options(resolve: Option<&Bound<'_, PyAny>>) -> PyResult<Option<ResolveOptions>> {
+pub(crate) fn parse_resolve_options(
+    resolve: Option<&Bound<'_, PyAny>>,
+) -> PyResult<Option<ResolveOptions>> {
     let Some(resolve) = resolve else {
         return Ok(None);
     };
@@ -286,8 +327,7 @@ pub(crate) fn parse_resolve_options(resolve: Option<&Bound<'_, PyAny>>) -> PyRes
             let list = value.cast::<PyList>().map_err(|_| {
                 PyTypeError::new_err("Bundler.resolve.alias must be a list of alias items")
             })?;
-            list
-                .iter()
+            list.iter()
                 .map(|item| parse_resolve_alias_item(&item, "Bundler.resolve.alias[]"))
                 .collect::<PyResult<Vec<_>>>()
         })
@@ -300,11 +340,8 @@ pub(crate) fn parse_resolve_options(resolve: Option<&Bound<'_, PyAny>>) -> PyRes
                     "Bundler.resolve.extension_alias must be a list of extension alias items",
                 )
             })?;
-            list
-                .iter()
-                .map(|item| {
-                    parse_extension_alias_item(&item, "Bundler.resolve.extension_alias[]")
-                })
+            list.iter()
+                .map(|item| parse_extension_alias_item(&item, "Bundler.resolve.extension_alias[]"))
                 .collect::<PyResult<Vec<_>>>()
         })
         .transpose()?;
@@ -442,9 +479,9 @@ fn parse_external_pattern_item(
     let re_mod = py.import("re").map_err(|_| {
         PyRuntimeError::new_err("failed to import Python re module for external patterns")
     })?;
-    let pattern_cls = re_mod.getattr("Pattern").map_err(|_| {
-        PyRuntimeError::new_err("failed to load re.Pattern for external patterns")
-    })?;
+    let pattern_cls = re_mod
+        .getattr("Pattern")
+        .map_err(|_| PyRuntimeError::new_err("failed to load re.Pattern for external patterns"))?;
     if value.is_instance(&pattern_cls)? {
         let pat: String = value.getattr("pattern")?.extract()?;
         let flags: i32 = value.getattr("flags")?.extract().unwrap_or(0);
@@ -471,7 +508,10 @@ fn parse_external_pattern_item(
     Err(PyTypeError::new_err(message.to_owned()))
 }
 
-pub(crate) fn parse_external(py: Python<'_>, value: Option<&Bound<'_, PyAny>>) -> PyResult<Option<IsExternal>> {
+pub(crate) fn parse_external(
+    py: Python<'_>,
+    value: Option<&Bound<'_, PyAny>>,
+) -> PyResult<Option<IsExternal>> {
     let Some(value) = value else {
         return Ok(None);
     };
@@ -491,7 +531,9 @@ pub(crate) fn parse_external(py: Python<'_>, value: Option<&Bound<'_, PyAny>>) -
     Ok(Some(IsExternal::StringOrRegex(patterns)))
 }
 
-pub(crate) fn parse_define(value: Option<&Bound<'_, PyAny>>) -> PyResult<Option<FxIndexMap<String, String>>> {
+pub(crate) fn parse_define(
+    value: Option<&Bound<'_, PyAny>>,
+) -> PyResult<Option<FxIndexMap<String, String>>> {
     let Some(value) = value else {
         return Ok(None);
     };
@@ -517,20 +559,28 @@ pub(crate) fn parse_define(value: Option<&Bound<'_, PyAny>>) -> PyResult<Option<
                 "Bundler.define list entries must be (key, value) tuples",
             ));
         }
-        let key = extract_string(&pair.get_item(0)?, "Bundler.define pair keys must be strings")?;
-        let val = extract_string(&pair.get_item(1)?, "Bundler.define pair values must be strings")?;
+        let key = extract_string(
+            &pair.get_item(0)?,
+            "Bundler.define pair keys must be strings",
+        )?;
+        let val = extract_string(
+            &pair.get_item(1)?,
+            "Bundler.define pair values must be strings",
+        )?;
         map.insert(key, val);
     }
     Ok(Some(map))
 }
 
-pub(crate) fn parse_inject(value: Option<&Bound<'_, PyAny>>) -> PyResult<Option<Vec<InjectImport>>> {
+pub(crate) fn parse_inject(
+    value: Option<&Bound<'_, PyAny>>,
+) -> PyResult<Option<Vec<InjectImport>>> {
     let Some(value) = value else {
         return Ok(None);
     };
-    let list = value
-        .cast::<PyList>()
-        .map_err(|_| PyTypeError::new_err("Bundler.inject must be a list of inject import mappings"))?;
+    let list = value.cast::<PyList>().map_err(|_| {
+        PyTypeError::new_err("Bundler.inject must be a list of inject import mappings")
+    })?;
     let mut out = Vec::with_capacity(list.len());
     for item in list.iter() {
         let mapping = item
@@ -546,12 +596,15 @@ pub(crate) fn parse_inject(value: Option<&Bound<'_, PyAny>>) -> PyResult<Option<
             .ok_or_else(|| PyValueError::new_err("Bundler.inject[].from is required"))?;
         let from = extract_string(&from, "Bundler.inject[].from must be a string")?;
         if let Some(imported) = imported {
-            let imported =
-                extract_string(&imported, "Bundler.inject[].imported must be a string")?;
+            let imported = extract_string(&imported, "Bundler.inject[].imported must be a string")?;
             let alias = get_mapping_item(mapping, &["alias"])?
                 .map(|a| extract_string(&a, "Bundler.inject[].alias must be a string"))
                 .transpose()?;
-            out.push(InjectImport::Named { imported, alias, from });
+            out.push(InjectImport::Named {
+                imported,
+                alias,
+                from,
+            });
         } else {
             let alias = get_mapping_item(mapping, &["alias"])?
                 .ok_or_else(|| PyValueError::new_err("namespace inject requires alias and from"))?;
@@ -595,10 +648,7 @@ fn parse_property_read_side_effects(
     value: &Bound<'_, PyAny>,
     label: &str,
 ) -> PyResult<PropertyReadSideEffects> {
-    let s = extract_string(
-        value,
-        &format!("{label} must be 'always' or 'false'"),
-    )?;
+    let s = extract_string(value, &format!("{label} must be 'always' or 'false'"))?;
     match s.as_str() {
         "always" => Ok(PropertyReadSideEffects::Always),
         "false" => Ok(PropertyReadSideEffects::False),
@@ -612,10 +662,7 @@ fn parse_property_write_side_effects(
     value: &Bound<'_, PyAny>,
     label: &str,
 ) -> PyResult<PropertyWriteSideEffects> {
-    let s = extract_string(
-        value,
-        &format!("{label} must be 'always' or 'false'"),
-    )?;
+    let s = extract_string(value, &format!("{label} must be 'always' or 'false'"))?;
     match s.as_str() {
         "always" => Ok(PropertyWriteSideEffects::Always),
         "false" => Ok(PropertyWriteSideEffects::False),
@@ -625,7 +672,9 @@ fn parse_property_write_side_effects(
     }
 }
 
-pub(crate) fn parse_treeshake(value: Option<&Bound<'_, PyAny>>) -> PyResult<Option<TreeshakeOptions>> {
+pub(crate) fn parse_treeshake(
+    value: Option<&Bound<'_, PyAny>>,
+) -> PyResult<Option<TreeshakeOptions>> {
     let Some(value) = value else {
         return Ok(None);
     };
@@ -658,69 +707,74 @@ pub(crate) fn parse_treeshake(value: Option<&Bound<'_, PyAny>>) -> PyResult<Opti
         ],
     )?;
 
-    let module_side_effects = get_mapping_item(mapping, &["moduleSideEffects", "module_side_effects"])?
-        .map(|v| {
-            if v.is_instance_of::<PyBool>() {
-                Ok(if v.cast::<PyBool>()?.extract::<bool>()? {
-                    ModuleSideEffects::Boolean(true)
+    let module_side_effects =
+        get_mapping_item(mapping, &["moduleSideEffects", "module_side_effects"])?
+            .map(|v| {
+                if v.is_instance_of::<PyBool>() {
+                    Ok(if v.cast::<PyBool>()?.extract::<bool>()? {
+                        ModuleSideEffects::Boolean(true)
+                    } else {
+                        ModuleSideEffects::Boolean(false)
+                    })
                 } else {
-                    ModuleSideEffects::Boolean(false)
-                })
-            } else {
-                Err(PyTypeError::new_err(
-                    "Bundler.treeshake.module_side_effects must be a boolean",
-                ))
-            }
-        })
-        .transpose()?
-        .unwrap_or(ModuleSideEffects::Boolean(true));
+                    Err(PyTypeError::new_err(
+                        "Bundler.treeshake.module_side_effects must be a boolean",
+                    ))
+                }
+            })
+            .transpose()?
+            .unwrap_or(ModuleSideEffects::Boolean(true));
 
     let annotations = get_mapping_item(mapping, &["annotations"])?
         .map(|v| {
             v.cast::<PyBool>()
-                .map_err(|_| PyTypeError::new_err("Bundler.treeshake.annotations must be a boolean"))?
+                .map_err(|_| {
+                    PyTypeError::new_err("Bundler.treeshake.annotations must be a boolean")
+                })?
                 .extract()
         })
         .transpose()?;
 
-    let manual_pure_functions = get_mapping_item(
+    let manual_pure_functions =
+        get_mapping_item(mapping, &["manualPureFunctions", "manual_pure_functions"])?
+            .map(|v| {
+                let strings = extract_string_sequence(
+                    &v,
+                    "Bundler.treeshake.manual_pure_functions must be a sequence of strings",
+                )?;
+                Ok::<_, PyErr>(strings.into_iter().collect::<FxHashSet<_>>())
+            })
+            .transpose()?;
+
+    let unknown_global_side_effects = get_mapping_item(
         mapping,
-        &["manualPureFunctions", "manual_pure_functions"],
+        &["unknownGlobalSideEffects", "unknown_global_side_effects"],
     )?
     .map(|v| {
-        let strings = extract_string_sequence(
-            &v,
-            "Bundler.treeshake.manual_pure_functions must be a sequence of strings",
-        )?;
-        Ok::<_, PyErr>(strings.into_iter().collect::<FxHashSet<_>>())
+        v.cast::<PyBool>()
+            .map_err(|_| {
+                PyTypeError::new_err(
+                    "Bundler.treeshake.unknown_global_side_effects must be a boolean",
+                )
+            })?
+            .extract()
     })
     .transpose()?;
 
-    let unknown_global_side_effects =
-        get_mapping_item(mapping, &["unknownGlobalSideEffects", "unknown_global_side_effects"])?
-            .map(|v| {
-                v.cast::<PyBool>()
-                    .map_err(|_| {
-                        PyTypeError::new_err(
-                            "Bundler.treeshake.unknown_global_side_effects must be a boolean",
-                        )
-                    })?
-                    .extract()
-            })
-            .transpose()?;
-
-    let invalid_import_side_effects =
-        get_mapping_item(mapping, &["invalidImportSideEffects", "invalid_import_side_effects"])?
-            .map(|v| {
-                v.cast::<PyBool>()
-                    .map_err(|_| {
-                        PyTypeError::new_err(
-                            "Bundler.treeshake.invalid_import_side_effects must be a boolean",
-                        )
-                    })?
-                    .extract()
-            })
-            .transpose()?;
+    let invalid_import_side_effects = get_mapping_item(
+        mapping,
+        &["invalidImportSideEffects", "invalid_import_side_effects"],
+    )?
+    .map(|v| {
+        v.cast::<PyBool>()
+            .map_err(|_| {
+                PyTypeError::new_err(
+                    "Bundler.treeshake.invalid_import_side_effects must be a boolean",
+                )
+            })?
+            .extract()
+    })
+    .transpose()?;
 
     let commonjs = get_mapping_item(mapping, &["commonjs"])?
         .map(|v| {
@@ -836,13 +890,18 @@ fn parse_match_group(item: &Bound<'_, PyAny>, label: &str) -> PyResult<MatchGrou
     let entries_aware = get_mapping_item(mapping, &["entriesAware", "entries_aware"])?
         .map(|v| {
             v.cast::<PyBool>()
-                .map_err(|_| PyTypeError::new_err(format!("{label}.entries_aware must be a boolean")))?
+                .map_err(|_| {
+                    PyTypeError::new_err(format!("{label}.entries_aware must be a boolean"))
+                })?
                 .extract()
         })
         .transpose()?;
     let entries_aware_merge_threshold = get_mapping_item(
         mapping,
-        &["entriesAwareMergeThreshold", "entries_aware_merge_threshold"],
+        &[
+            "entriesAwareMergeThreshold",
+            "entries_aware_merge_threshold",
+        ],
     )?
     .map(|v| {
         v.extract::<f64>().map_err(|_| {
@@ -905,27 +964,33 @@ pub(crate) fn parse_manual_code_splitting(
         .transpose()?;
     let min_size = get_mapping_item(mapping, &["minSize", "min_size"])?
         .map(|v| {
-            v.extract::<f64>()
-                .map_err(|_| PyTypeError::new_err("Bundler.manual_code_splitting.min_size must be a float"))
+            v.extract::<f64>().map_err(|_| {
+                PyTypeError::new_err("Bundler.manual_code_splitting.min_size must be a float")
+            })
         })
         .transpose()?;
     let max_size = get_mapping_item(mapping, &["maxSize", "max_size"])?
         .map(|v| {
-            v.extract::<f64>()
-                .map_err(|_| PyTypeError::new_err("Bundler.manual_code_splitting.max_size must be a float"))
+            v.extract::<f64>().map_err(|_| {
+                PyTypeError::new_err("Bundler.manual_code_splitting.max_size must be a float")
+            })
         })
         .transpose()?;
     let min_module_size = get_mapping_item(mapping, &["minModuleSize", "min_module_size"])?
         .map(|v| {
             v.extract::<f64>().map_err(|_| {
-                PyTypeError::new_err("Bundler.manual_code_splitting.min_module_size must be a float")
+                PyTypeError::new_err(
+                    "Bundler.manual_code_splitting.min_module_size must be a float",
+                )
             })
         })
         .transpose()?;
     let max_module_size = get_mapping_item(mapping, &["maxModuleSize", "max_module_size"])?
         .map(|v| {
             v.extract::<f64>().map_err(|_| {
-                PyTypeError::new_err("Bundler.manual_code_splitting.max_module_size must be a float")
+                PyTypeError::new_err(
+                    "Bundler.manual_code_splitting.max_module_size must be a float",
+                )
             })
         })
         .transpose()?;
@@ -949,8 +1014,7 @@ pub(crate) fn parse_manual_code_splitting(
             let list = v.cast::<PyList>().map_err(|_| {
                 PyTypeError::new_err("Bundler.manual_code_splitting.groups must be a list")
             })?;
-            list
-                .iter()
+            list.iter()
                 .map(|item| parse_match_group(&item, "Bundler.manual_code_splitting.groups[]"))
                 .collect::<PyResult<Vec<_>>>()
         })
@@ -967,7 +1031,9 @@ pub(crate) fn parse_manual_code_splitting(
     }))
 }
 
-pub(crate) fn parse_devtools(devtools: Option<&Bound<'_, PyAny>>) -> PyResult<(bool, Option<String>)> {
+pub(crate) fn parse_devtools(
+    devtools: Option<&Bound<'_, PyAny>>,
+) -> PyResult<(bool, Option<String>)> {
     let Some(devtools) = devtools else {
         return Ok((false, None));
     };
@@ -980,19 +1046,10 @@ pub(crate) fn parse_devtools(devtools: Option<&Bound<'_, PyAny>>) -> PyResult<(b
     let mapping = devtools
         .cast::<PyDict>()
         .map_err(|_| PyTypeError::new_err("Bundler.devtools must be a mapping or a boolean"))?;
-    ensure_supported_mapping_fields(
-        mapping,
-        "Bundler.devtools",
-        &["sessionId", "session_id"],
-    )?;
+    ensure_supported_mapping_fields(mapping, "Bundler.devtools", &["sessionId", "session_id"])?;
 
     let session_id = get_mapping_item(mapping, &["sessionId", "session_id"])?
-        .map(|value| {
-            extract_string(
-                &value,
-                "Bundler.devtools.session_id must be a string",
-            )
-        })
+        .map(|value| extract_string(&value, "Bundler.devtools.session_id must be a string"))
         .transpose()?;
     Ok((true, session_id))
 }
@@ -1005,7 +1062,10 @@ fn parse_string_fx_hash_map(
     let mut out = FxHashMap::default();
     for (k, v) in mapping.iter() {
         let k = extract_string(&k, &format!("{container}.{key_label} keys must be strings"))?;
-        let v = extract_string(&v, &format!("{container}.{key_label} values must be strings"))?;
+        let v = extract_string(
+            &v,
+            &format!("{container}.{key_label} values must be strings"),
+        )?;
         out.insert(k, v);
     }
     Ok(out)
@@ -1029,7 +1089,9 @@ fn parse_output_exports(value: &Bound<'_, PyAny>, label: &str) -> PyResult<Outpu
 
 fn parse_es_module_flag(value: &Bound<'_, PyAny>, label: &str) -> PyResult<EsModuleFlag> {
     if value.is_instance_of::<PyBool>() {
-        return Ok(EsModuleFlag::from(value.cast::<PyBool>()?.extract::<bool>()?));
+        return Ok(EsModuleFlag::from(
+            value.cast::<PyBool>()?.extract::<bool>()?,
+        ));
     }
     let s = extract_string(
         value,
@@ -1097,7 +1159,9 @@ fn parse_generated_code_mapping(
     let symbols = get_mapping_item(mapping, &["symbols"])?
         .map(|v| {
             v.cast::<PyBool>()
-                .map_err(|_| PyTypeError::new_err(format!("{container}.symbols must be a boolean")))?
+                .map_err(|_| {
+                    PyTypeError::new_err(format!("{container}.symbols must be a boolean"))
+                })?
                 .extract()
         })
         .transpose()?
@@ -1105,13 +1169,14 @@ fn parse_generated_code_mapping(
     Ok(GeneratedCodeOptions { symbols })
 }
 
-fn parse_comments_for_output(
-    value: &Bound<'_, PyAny>,
-    label: &str,
-) -> PyResult<CommentsOptions> {
+fn parse_comments_for_output(value: &Bound<'_, PyAny>, label: &str) -> PyResult<CommentsOptions> {
     if value.is_instance_of::<PyBool>() {
         let b = value.cast::<PyBool>()?.extract::<bool>()?;
-        return Ok(CommentsOptions { legal: b, annotation: b, jsdoc: b });
+        return Ok(CommentsOptions {
+            legal: b,
+            annotation: b,
+            jsdoc: b,
+        });
     }
     let mapping = value
         .cast::<PyDict>()
@@ -1278,9 +1343,7 @@ pub(crate) fn parse_output_config(
         .map(|value| {
             extract_path_as_string(
                 &value,
-                &format!(
-                    "{container}.entry_file_names must be a string or os.PathLike path",
-                ),
+                &format!("{container}.entry_file_names must be a string or os.PathLike path",),
             )
         })
         .transpose()?;
@@ -1288,9 +1351,7 @@ pub(crate) fn parse_output_config(
         .map(|value| {
             extract_path_as_string(
                 &value,
-                &format!(
-                    "{container}.chunk_file_names must be a string or os.PathLike path",
-                ),
+                &format!("{container}.chunk_file_names must be a string or os.PathLike path",),
             )
         })
         .transpose()?;
@@ -1298,9 +1359,7 @@ pub(crate) fn parse_output_config(
         .map(|value| {
             extract_path_as_string(
                 &value,
-                &format!(
-                    "{container}.asset_file_names must be a string or os.PathLike path",
-                ),
+                &format!("{container}.asset_file_names must be a string or os.PathLike path",),
             )
         })
         .transpose()?;
@@ -1340,7 +1399,9 @@ pub(crate) fn parse_output_config(
     let globals = get_mapping_item(mapping, &["globals"])?
         .map(|v| {
             let m = v.cast::<PyDict>().map_err(|_| {
-                PyTypeError::new_err(format!("{container}.globals must be a string-keyed mapping"))
+                PyTypeError::new_err(format!(
+                    "{container}.globals must be a string-keyed mapping"
+                ))
             })?;
             parse_string_fx_hash_map(m, container, "globals")
         })
@@ -1425,20 +1486,26 @@ pub(crate) fn parse_output_config(
 
     let sourcemap_base_url =
         get_mapping_item(mapping, &["sourcemapBaseUrl", "sourcemap_base_url"])?
-            .map(|v| extract_string(&v, &format!("{container}.sourcemap_base_url must be a string")))
+            .map(|v| {
+                extract_string(
+                    &v,
+                    &format!("{container}.sourcemap_base_url must be a string"),
+                )
+            })
             .transpose()?;
 
-    let sourcemap_debug_ids = get_mapping_item(mapping, &["sourcemapDebugIds", "sourcemap_debug_ids"])?
-        .map(|v| {
-            v.cast::<PyBool>()
-                .map_err(|_| {
-                    PyTypeError::new_err(format!(
-                        "{container}.sourcemap_debug_ids must be a boolean"
-                    ))
-                })?
-                .extract()
-        })
-        .transpose()?;
+    let sourcemap_debug_ids =
+        get_mapping_item(mapping, &["sourcemapDebugIds", "sourcemap_debug_ids"])?
+            .map(|v| {
+                v.cast::<PyBool>()
+                    .map_err(|_| {
+                        PyTypeError::new_err(format!(
+                            "{container}.sourcemap_debug_ids must be a boolean"
+                        ))
+                    })?
+                    .extract()
+            })
+            .transpose()?;
 
     let sourcemap_exclude_sources = get_mapping_item(
         mapping,
@@ -1494,7 +1561,10 @@ pub(crate) fn parse_output_config(
     let preserve_modules_root =
         get_mapping_item(mapping, &["preserveModulesRoot", "preserve_modules_root"])?
             .map(|v| {
-                extract_string(&v, &format!("{container}.preserve_modules_root must be a string"))
+                extract_string(
+                    &v,
+                    &format!("{container}.preserve_modules_root must be a string"),
+                )
             })
             .transpose()?;
 
@@ -1526,41 +1596,44 @@ pub(crate) fn parse_output_config(
     let clean_dir = get_mapping_item(mapping, &["cleanDir", "clean_dir"])?
         .map(|v| {
             v.cast::<PyBool>()
-                .map_err(|_| PyTypeError::new_err(format!("{container}.clean_dir must be a boolean")))?
+                .map_err(|_| {
+                    PyTypeError::new_err(format!("{container}.clean_dir must be a boolean"))
+                })?
                 .extract()
         })
         .transpose()?;
 
-    let strict_execution_order = get_mapping_item(
-        mapping,
-        &["strictExecutionOrder", "strict_execution_order"],
-    )?
-    .map(|v| {
-        v.cast::<PyBool>()
-            .map_err(|_| {
-                PyTypeError::new_err(format!(
-                    "{container}.strict_execution_order must be a boolean"
-                ))
-            })?
-            .extract()
-    })
-    .transpose()?;
+    let strict_execution_order =
+        get_mapping_item(mapping, &["strictExecutionOrder", "strict_execution_order"])?
+            .map(|v| {
+                v.cast::<PyBool>()
+                    .map_err(|_| {
+                        PyTypeError::new_err(format!(
+                            "{container}.strict_execution_order must be a boolean"
+                        ))
+                    })?
+                    .extract()
+            })
+            .transpose()?;
 
     let minify = get_mapping_item(mapping, &["minify"])?
         .map(|v| parse_minify_for_output(&v, &format!("{container}.minify")))
         .transpose()?;
 
-    let sanitize_file_name = get_mapping_item(mapping, &["sanitizeFileName", "sanitize_file_name"])?
-        .map(|v| {
-            if v.is_instance_of::<PyBool>() {
-                Ok(SanitizeFilename::from(v.cast::<PyBool>()?.extract::<bool>()?))
-            } else {
-                Err(PyTypeError::new_err(format!(
-                    "{container}.sanitize_file_name must be a boolean"
-                )))
-            }
-        })
-        .transpose()?;
+    let sanitize_file_name =
+        get_mapping_item(mapping, &["sanitizeFileName", "sanitize_file_name"])?
+            .map(|v| {
+                if v.is_instance_of::<PyBool>() {
+                    Ok(SanitizeFilename::from(
+                        v.cast::<PyBool>()?.extract::<bool>()?,
+                    ))
+                } else {
+                    Err(PyTypeError::new_err(format!(
+                        "{container}.sanitize_file_name must be a boolean"
+                    )))
+                }
+            })
+            .transpose()?;
 
     Ok(Some(OutputConfig {
         dir,

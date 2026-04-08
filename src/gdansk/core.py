@@ -12,8 +12,9 @@ from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from anyio import Path as APath
+from gdansk_bundler import Plugin
 
-from gdansk._core import LightningCSS, Page, VitePlugin, bundle, run
+from gdansk._core import Page, bundle, run
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import ENV
 
@@ -24,7 +25,7 @@ if TYPE_CHECKING:
     from mcp.types import Icon, ToolAnnotations
     from starlette.applications import Starlette
 
-    from gdansk.protocol import PathType, Plugin
+    from gdansk.protocol import PathType
 
 logger = logging.getLogger(__name__)
 
@@ -34,10 +35,10 @@ def _validate_plugins(plugins: Sequence[Plugin] | None) -> None:
         return
 
     for plugin in plugins:
-        if isinstance(plugin, (LightningCSS, VitePlugin)):
+        if isinstance(plugin, Plugin):
             continue
 
-        msg = "Amber plugins must be LightningCSS or VitePlugin instances"
+        msg = "Amber plugins must be gdansk_bundler.Plugin instances"
         raise TypeError(msg)
 
 
@@ -80,7 +81,7 @@ class Amber:
             raise TypeError(msg)
         return self.views
 
-    async def _run_build_pipeline(self, *, dev: bool) -> None:
+    async def _run_build_pipeline(self, *, dev: bool, ready_event: asyncio.Event | None = None) -> None:
         views_root = self._views_path()
         pages = sorted(self._widgets, key=lambda page: page.path.as_posix())
         await bundle(
@@ -90,6 +91,7 @@ class Amber:
             output=self.output,
             cwd=views_root,
             plugins=self.plugins,
+            _ready=ready_event,
         )
 
     @staticmethod
@@ -181,8 +183,23 @@ class Amber:
         async def _lifespan(starlette_app: Starlette) -> AsyncIterator[None]:
             if dev:
                 nonlocal bundle_task
-                bundle_task = asyncio.create_task(self._run_build_pipeline(dev=True))
+                ready_event = asyncio.Event()
+                bundle_task = asyncio.create_task(
+                    self._run_build_pipeline(dev=True, ready_event=ready_event),
+                )
                 bundle_task.add_done_callback(self._log_background_task_error)
+                ready_task = asyncio.get_running_loop().create_task(ready_event.wait())
+                done, pending = await asyncio.wait(
+                    {bundle_task, ready_task},
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                if ready_task in pending:
+                    ready_task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await ready_task
+                if bundle_task in done:
+                    with suppress(Exception):
+                        bundle_task.result()
             else:
                 await self._run_build_pipeline(dev=False)
 
