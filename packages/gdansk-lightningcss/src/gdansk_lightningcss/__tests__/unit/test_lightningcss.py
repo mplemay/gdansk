@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import importlib
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from gdansk_bundler import Bundler
 
@@ -43,13 +43,16 @@ def test_lightning_css_plugin_transforms_css() -> None:
     assert "green" in got["code"]
 
 
-def test_synthetic_import_specifier_uses_absolute_path_when_relpath_crosses_drives(tmp_path) -> None:
-    source_path = tmp_path / "styles.css"
-    module_dir = tmp_path / "synthetic"
+def test_synthetic_import_specifier_uses_absolute_path_when_relpath_crosses_drives() -> None:
+    source_path = Mock()
+    resolved_source_path = Mock()
+    source_path.resolve.return_value = resolved_source_path
+    resolved_source_path.relative_to.side_effect = ValueError("not relative")
+    resolved_source_path.as_posix.return_value = "D:/repo/styles.css"
+
+    module_dir = Mock()
+    module_dir.resolve.return_value = Mock()
     msg = "path is on mount 'D:', start on mount 'C:'"
 
     with patch("gdansk_lightningcss.bundle.os.path.relpath", side_effect=ValueError(msg)):
-        assert (
-            bundle_impl._synthetic_import_specifier(source_path, module_dir=module_dir)
-            == source_path.resolve().as_posix()
-        )
+        assert bundle_impl._synthetic_import_specifier(source_path, module_dir=module_dir) == "D:/repo/styles.css"

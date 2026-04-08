@@ -4,7 +4,7 @@ import json
 import os
 import re
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import cast
 
 from gdansk_lightningcss._core import transform_css
@@ -173,9 +173,9 @@ def _synthetic_import_specifier(path: Path, *, module_dir: Path) -> str:
             value = Path(os.path.relpath(resolved_path, resolved_module_dir)).as_posix()
         except ValueError:
             value = resolved_path.as_posix()
-    if not value.startswith((".", "/")):
-        return f"./{value}"
-    return value
+    if value.startswith((".", "/")) or PureWindowsPath(value).is_absolute():
+        return value
+    return f"./{value}"
 
 
 def bundle_css_paths(
