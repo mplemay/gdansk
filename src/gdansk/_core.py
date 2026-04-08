@@ -9,7 +9,10 @@ import shutil
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 from gdansk_bundler import Bundler, Plugin
 from gdansk_lightningcss import bundle_css_paths, resolve_css_import_path, transform_css
@@ -568,7 +571,7 @@ def _build_once(
     minify: bool,
     output: Path | None,
     cwd: Path | None,
-    plugins: list[Plugin] | None,
+    plugins: Sequence[Plugin] | None,
 ) -> set[Path]:
     del dev
     actual_cwd = cwd.resolve() if cwd is not None else Path.cwd().resolve()
@@ -632,7 +635,7 @@ def _prepare_dev_bundle_state(
     *,
     output: Path | None,
     cwd: Path | None,
-    plugins: list[Plugin] | None,
+    plugins: Sequence[Plugin] | None,
 ) -> tuple[
     Path,
     Path,
@@ -685,7 +688,7 @@ async def bundle(
     minify: bool = True,
     output: Path | None = None,
     cwd: Path | None = None,
-    plugins: list[Plugin] | None = None,
+    plugins: Sequence[Plugin] | None = None,
     _ready: _ReadySignal | None = None,
 ) -> None:
     if not dev:

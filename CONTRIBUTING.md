@@ -75,7 +75,6 @@ gdansk/
 │       ├── __init__.py     # Package exports
 │       ├── core.py         # Python Amber class
 │       ├── _core.py        # Internal build/runtime helpers
-│       ├── _core.pyi       # Type stubs for internal helpers
 │       └── __tests__/      # Test files
 ├── packages/               # Helper workspace packages
 ├── examples/               # Example MCP servers
