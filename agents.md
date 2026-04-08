@@ -135,5 +135,6 @@ For multistep tasks, state a brief plan:
 
 ## Final Workflow
 
-Run `cargo test`, `uv run pytest`, and `uv run prek run --all-files` with elevated permissions when needed.
-If you fix anything, rerun those same commands until they pass, then `git commit` and `git push`.
+Run `cargo test`, `uv run pytest`, and `uv run prek run --all-files` with elevated permissions when needed. If you fix
+anything, rerun those same commands until they pass, then `git commit` (with an all lowercase single-line conventional
+commit message) and `git push`.
