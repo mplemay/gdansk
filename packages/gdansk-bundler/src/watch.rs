@@ -129,6 +129,7 @@ async fn run_watch_task(
     initial_tx: oneshot::Sender<Result<BundlerOutput, String>>,
 ) {
     const FAILED_REBUILD_RETRY_DELAY: Duration = Duration::from_millis(100);
+    const REBUILD_SETTLE_DELAY: Duration = Duration::from_millis(25);
 
     let mut bundler = match RolldownBundler::with_plugins(options, plugins) {
         Ok(bundler) => bundler,
@@ -227,11 +228,12 @@ async fn run_watch_task(
                 if !has_rebuild_trigger(event) {
                     continue;
                 }
-                while let Ok(next_event) = fs_event_rx.try_recv() {
-                    let _ = has_rebuild_trigger(next_event);
-                }
-                handle_rebuild_result(
-                    run_full_build(
+                loop {
+                    // Native file watchers can emit multiple events for a single save. Wait for
+                    // a short quiet period so we return the settled rebuild output instead of an
+                    // intermediate result from the first metadata event.
+                    wait_for_fs_events_to_settle(&mut fs_event_rx, REBUILD_SETTLE_DELAY).await;
+                    let result = run_full_build(
                         &mut bundler,
                         &mut watcher,
                         &mut current_watch_files,
@@ -239,12 +241,19 @@ async fn run_watch_task(
                         should_write,
                         &mut is_initial_build,
                     )
-                    .await,
-                    &rebuild_tx,
-                    &mut retry_due_at,
-                    &mut last_reported_error,
-                    FAILED_REBUILD_RETRY_DELAY,
-                );
+                    .await;
+                    if drain_rebuild_triggers(&mut fs_event_rx) {
+                        continue;
+                    }
+                    handle_rebuild_result(
+                        result,
+                        &rebuild_tx,
+                        &mut retry_due_at,
+                        &mut last_reported_error,
+                        FAILED_REBUILD_RETRY_DELAY,
+                    );
+                    break;
+                }
             }
         }
     }
@@ -373,6 +382,28 @@ fn has_rebuild_trigger(event: FsEventResult) -> bool {
         Err(errs) => {
             eprintln!("gdansk_bundler watch error: {errs:?}");
             false
+        }
+    }
+}
+
+fn drain_rebuild_triggers(fs_event_rx: &mut mpsc::UnboundedReceiver<FsEventResult>) -> bool {
+    let mut saw_rebuild_trigger = false;
+
+    while let Ok(event) = fs_event_rx.try_recv() {
+        saw_rebuild_trigger |= has_rebuild_trigger(event);
+    }
+
+    saw_rebuild_trigger
+}
+
+async fn wait_for_fs_events_to_settle(
+    fs_event_rx: &mut mpsc::UnboundedReceiver<FsEventResult>,
+    delay: Duration,
+) {
+    loop {
+        tokio::time::sleep(delay).await;
+        if !drain_rebuild_triggers(fs_event_rx) {
+            return;
         }
     }
 }
