@@ -472,6 +472,7 @@ async def test_bundle_app_ssr_view_writes_executable_server_output(tmp_path, mon
     output_js = tmp_path / ".gdansk" / "simple" / "server.js"
     assert client_output_js.exists()
     assert output_js.exists()
+    assert not (tmp_path / ".gdansk" / "__gdansk_entries").exists()
     assert result is None
 
     html = await run(output_js.read_text(encoding="utf-8"))

@@ -1,11 +1,8 @@
 from __future__ import annotations
 
 import base64
-import json
 import logging
-import os
 import re
-import shutil
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -25,12 +22,21 @@ _JS_IMPORT_PATTERN = re.compile(
     r"""(?m)(?:import|export)\s+(?:type\s+)?(?:[^'"]*?\s+from\s+)?["']([^"']+)["']""",
 )
 _CSS_STUB_PREFIX = "\0gdansk:css-stub:"
+_WIDGET_ENTRY_SPECIFIER_PREFIX = "gdansk:widget-entry:"
+_WIDGET_ENTRY_LOAD_PREFIX = "\0gdansk:widget-entry:"
+_WIDGET_SOURCE_SPECIFIER_PREFIX = "gdansk:widget-source:"
 _OUTPUT_DIRNAME = ".gdansk"
-_ENTRY_DIRNAME = "__gdansk_entries"
 _CSS_ENTRY_DIRNAME = "__gdansk_css_entries"
-_RUNTIME_ENTRY_PATH = Path("__gdansk_runtime_eval__.js")
 _RUNNER = JsRuntime()
 _MODULE_SYNTAX_PATTERN = re.compile(r"(?m)(?:^|[;}])\s*(?:import|export)\b")
+_WIDGET_IMPORT_PLACEHOLDER = "__GDANSK_WIDGET_IMPORT__"
+_PACKAGE_DIR = Path(__file__).parent
+_SHIP_CLIENT_WRAPPER_PATH = _PACKAGE_DIR / "ship_client_wrapper.js"
+_SHIP_SERVER_WRAPPER_PATH = _PACKAGE_DIR / "ship_server_wrapper.js"
+_RUNTIME_INLINE_WRAPPER_PATH = _PACKAGE_DIR / "runtime_inline_wrapper.js"
+_RUNTIME_MODULE_WRAPPER_PATH = _PACKAGE_DIR / "runtime_module_wrapper.js"
+_SHIP_CLIENT_WRAPPER = _SHIP_CLIENT_WRAPPER_PATH.read_text(encoding="utf-8")
+_SHIP_SERVER_WRAPPER = _SHIP_SERVER_WRAPPER_PATH.read_text(encoding="utf-8")
 logger = logging.getLogger(__name__)
 
 
@@ -122,19 +128,35 @@ class _CssStubPlugin(Plugin):
         return {"code": "const gdanskCssStub = {};\nexport default gdanskCssStub;\n"}
 
 
+class _WidgetEntryPlugin(Plugin):
+    def __init__(self) -> None:
+        super().__init__(id="gdansk-widget-entry")
+
+    def resolve_id(self, specifier: str, _importer: str | None) -> str | None:
+        if specifier.startswith(_WIDGET_ENTRY_SPECIFIER_PREFIX):
+            return f"{_WIDGET_ENTRY_LOAD_PREFIX}{specifier.removeprefix(_WIDGET_ENTRY_SPECIFIER_PREFIX)}"
+        if specifier.startswith(_WIDGET_SOURCE_SPECIFIER_PREFIX):
+            return str(_decode_virtual_path(specifier.removeprefix(_WIDGET_SOURCE_SPECIFIER_PREFIX)))
+        return None
+
+    def load(self, module_id: str) -> dict[str, str] | None:
+        if not module_id.startswith(_WIDGET_ENTRY_LOAD_PREFIX):
+            return None
+
+        kind, source_path = _decode_widget_entry_payload(module_id)
+        if kind == "client":
+            wrapper = _SHIP_CLIENT_WRAPPER
+        elif kind == "server":
+            wrapper = _SHIP_SERVER_WRAPPER
+        else:
+            msg = f"unknown gdansk widget entry kind: {kind}"
+            raise ValueError(msg)
+        source_specifier = _encode_widget_source_specifier(source_path)
+        return {"code": wrapper.replace(_WIDGET_IMPORT_PLACEHOLDER, source_specifier)}
+
+
 def _is_relative_specifier(specifier: str) -> bool:
     return specifier.startswith(("./", "../"))
-
-
-def _relative_import(target: Path, *, from_file: Path) -> str:
-    try:
-        value = Path(os.path.relpath(target, from_file.parent)).as_posix()
-    except ValueError:
-        # Windows: target and wrapper dir on different drives (e.g. repo on D:, temp on C:)
-        return target.resolve().as_uri()
-    if not value.startswith((".", "/")):
-        return f"./{value}"
-    return value
 
 
 def _path_to_posix(path: Path) -> str:
@@ -144,6 +166,28 @@ def _path_to_posix(path: Path) -> str:
 def _encode_css_stub_id(path: Path) -> str:
     encoded = base64.urlsafe_b64encode(path.as_posix().encode("utf-8")).decode("ascii")
     return f"{_CSS_STUB_PREFIX}{encoded}"
+
+
+def _encode_virtual_path(path: Path) -> str:
+    return base64.urlsafe_b64encode(str(path.resolve()).encode("utf-8")).decode("ascii")
+
+
+def _decode_virtual_path(payload: str) -> Path:
+    return Path(base64.urlsafe_b64decode(payload.encode("ascii")).decode("utf-8"))
+
+
+def _encode_widget_entry_specifier(*, kind: str, source_path: Path) -> str:
+    return f"{_WIDGET_ENTRY_SPECIFIER_PREFIX}{kind}:{_encode_virtual_path(source_path)}"
+
+
+def _encode_widget_source_specifier(source_path: Path) -> str:
+    return f"{_WIDGET_SOURCE_SPECIFIER_PREFIX}{_encode_virtual_path(source_path)}"
+
+
+def _decode_widget_entry_payload(module_id: str) -> tuple[str, Path]:
+    payload = module_id.removeprefix(_WIDGET_ENTRY_LOAD_PREFIX)
+    kind, encoded_path = payload.split(":", maxsplit=1)
+    return kind, _decode_virtual_path(encoded_path)
 
 
 def _resolve_output_dir(*, output: Path | None, cwd: Path) -> Path:
@@ -310,62 +354,24 @@ def _collect_page_assets(page: _NormalizedPage, *, root: Path) -> _PageAssets:
     )
 
 
-def _write_client_entry(wrapper_path: Path, *, source_path: Path) -> None:
-    import_path = _relative_import(source_path, from_file=wrapper_path)
-    wrapper_path.parent.mkdir(parents=True, exist_ok=True)
-    wrapper_path.write_text(
-        f"""import {{ StrictMode, createElement }} from "react";
-import {{ createRoot, hydrateRoot }} from "react-dom/client";
-import App from "{import_path}";
-
-const root = document.getElementById("root");
-if (!root) throw new Error("Expected #root element");
-const element = createElement(StrictMode, null, createElement(App));
-root.hasChildNodes()?hydrateRoot(root, element):createRoot(root).render(element);
-""",
-        encoding="utf-8",
-    )
-
-
-def _write_server_entry(wrapper_path: Path, *, source_path: Path) -> None:
-    import_path = _relative_import(source_path, from_file=wrapper_path)
-    wrapper_path.parent.mkdir(parents=True, exist_ok=True)
-    wrapper_path.write_text(
-        f"""import {{ createElement }} from "react";
-import {{ renderToString }} from "react-dom/server";
-import App from "{import_path}";
-
-export default function render() {{
-  return renderToString(createElement(App));
-}}
-""",
-        encoding="utf-8",
-    )
-
-
-def _prepare_entry_files(
-    pages: list[_NormalizedPage],
-    *,
-    output_dir: Path,
-) -> tuple[dict[str, str], dict[str, str]]:
-    entry_root = output_dir / _ENTRY_DIRNAME
-    if entry_root.exists():
-        shutil.rmtree(entry_root)
+def _build_entry_inputs(pages: list[_NormalizedPage]) -> tuple[dict[str, str], dict[str, str]]:
     client_inputs: dict[str, str] = {}
     server_inputs: dict[str, str] = {}
 
     for page in pages:
         if page.page.is_widget:
-            client_entry = entry_root / "client" / page.page.client
-            _write_client_entry(client_entry, source_path=page.absolute_path)
-            client_inputs[page.client_name] = str(client_entry)
+            client_inputs[page.client_name] = _encode_widget_entry_specifier(
+                kind="client",
+                source_path=page.absolute_path,
+            )
         else:
             client_inputs[page.client_name] = str(page.absolute_path)
 
         if page.page.server is not None and page.server_name is not None:
-            server_entry = entry_root / "server" / page.page.server
-            _write_server_entry(server_entry, source_path=page.absolute_path)
-            server_inputs[page.server_name] = str(server_entry)
+            server_inputs[page.server_name] = _encode_widget_entry_specifier(
+                kind="server",
+                source_path=page.absolute_path,
+            )
 
     return client_inputs, server_inputs
 
@@ -462,6 +468,28 @@ def _build_css_outputs(
     return watch_files
 
 
+def _split_plugins(plugins: Sequence[Plugin] | None) -> tuple[list[Plugin], list[Plugin], list[VitePlugin]]:
+    bundler_plugins: list[Plugin] = []
+    css_plugins: list[Plugin] = []
+    vite_plugins: list[VitePlugin] = []
+
+    for plugin in plugins or []:
+        if isinstance(plugin, VitePlugin):
+            vite_plugins.append(plugin)
+            continue
+        if not isinstance(plugin, Plugin):
+            msg = "Ship plugins must be gdansk_bundler.Plugin instances"
+            raise TypeError(msg)
+        bundler_plugins.append(plugin)
+        css_plugins.append(plugin)
+
+    return bundler_plugins, css_plugins, vite_plugins
+
+
+def _javascript_plugins(user_plugins: list[Plugin], *, root: Path) -> list[Plugin]:
+    return [*user_plugins, _WidgetEntryPlugin(), _CssStubPlugin(root=root)]
+
+
 def _build_javascript(
     inputs: dict[str, str],
     *,
@@ -521,7 +549,7 @@ async def _run_dev_watch_loop(
         cwd=cwd,
         output_dir=output_dir,
         minify=minify,
-        plugins=[*bundler_plugins, _CssStubPlugin(root=cwd)],
+        plugins=_javascript_plugins(bundler_plugins, root=cwd),
     )
 
     async with bundler(watch=True) as build:
@@ -580,23 +608,12 @@ def _build_once(
         output_dir=output_dir,
     )
 
-    bundler_plugins: list[Plugin] = []
-    css_plugins: list[Plugin] = []
-    vite_plugins: list[VitePlugin] = []
-    for plugin in plugins or []:
-        if isinstance(plugin, VitePlugin):
-            vite_plugins.append(plugin)
-            continue
-        if not isinstance(plugin, Plugin):
-            msg = "Ship plugins must be gdansk_bundler.Plugin instances"
-            raise TypeError(msg)
-        bundler_plugins.append(plugin)
-        css_plugins.append(plugin)
+    bundler_plugins, css_plugins, vite_plugins = _split_plugins(plugins)
 
     page_assets = {page.absolute_path: _collect_page_assets(page, root=actual_cwd) for page in normalized_pages}
-    client_inputs, server_inputs = _prepare_entry_files(normalized_pages, output_dir=output_dir)
+    client_inputs, server_inputs = _build_entry_inputs(normalized_pages)
 
-    js_plugins = [*bundler_plugins, _CssStubPlugin(root=actual_cwd)]
+    js_plugins = _javascript_plugins(bundler_plugins, root=actual_cwd)
     _build_javascript(
         client_inputs,
         cwd=actual_cwd,
@@ -652,21 +669,10 @@ def _prepare_dev_bundle_state(
         output_dir=output_dir,
     )
 
-    bundler_plugins: list[Plugin] = []
-    css_plugins: list[Plugin] = []
-    vite_plugins: list[VitePlugin] = []
-    for plugin in plugins or []:
-        if isinstance(plugin, VitePlugin):
-            vite_plugins.append(plugin)
-            continue
-        if not isinstance(plugin, Plugin):
-            msg = "Ship plugins must be gdansk_bundler.Plugin instances"
-            raise TypeError(msg)
-        bundler_plugins.append(plugin)
-        css_plugins.append(plugin)
+    bundler_plugins, css_plugins, vite_plugins = _split_plugins(plugins)
 
     page_assets = {page.absolute_path: _collect_page_assets(page, root=actual_cwd) for page in normalized_pages}
-    client_inputs, server_inputs = _prepare_entry_files(normalized_pages, output_dir=output_dir)
+    client_inputs, server_inputs = _build_entry_inputs(normalized_pages)
     return (
         actual_cwd,
         output_dir,
@@ -738,53 +744,16 @@ async def run(code: str) -> object:
 
 
 async def _run_inline(code: str) -> object:
-    script = Script(
-        f"""export default function() {{
-  let gdanskHtml = null;
-  globalThis.Deno ??= {{}};
-  Deno.core ??= {{}};
-  Deno.core.ops ??= {{}};
-  Deno.core.ops.op_gdansk_set_html = (html) => {{
-    gdanskHtml = html;
-  }};
-  const result = (0, eval)({json.dumps(code)});
-  if (gdanskHtml !== null) {{
-    return gdanskHtml;
-  }}
-  if (result && typeof result.then === "function") {{
-    return Symbol.for("gdansk.unsupported_promise");
-  }}
-  return gdanskHtml ?? result;
-}}""",
-        type(None),
-        object,
-    )
+    script = Script.from_file(_RUNTIME_INLINE_WRAPPER_PATH, dict[str, str], object)
     async with _RUNNER(script) as ctx:
-        return await ctx(None)
+        return await ctx({"code": code})
 
 
 async def _run_module(code: str) -> object:
     with tempfile.TemporaryDirectory(prefix="gdansk-runtime-") as tmpdir:
         root = Path(tmpdir)
         source_path = root / "source.js"
-        wrapper_path = root / _RUNTIME_ENTRY_PATH
         source_path.write_text(code, encoding="utf-8")
-        wrapper_path.write_text(
-            """export default async function() {
-  let gdanskHtml = null;
-  globalThis.Deno ??= {};
-  Deno.core ??= {};
-  Deno.core.ops ??= {};
-  Deno.core.ops.op_gdansk_set_html = (html) => {
-    gdanskHtml = html;
-  };
-  const mod = await import("./source.js");
-  const result = await mod.default();
-  return gdanskHtml ?? result;
-}
-""",
-            encoding="utf-8",
-        )
-        script = Script.from_file(wrapper_path, type(None), object)
+        script = Script.from_file(_RUNTIME_MODULE_WRAPPER_PATH, dict[str, str], object)
         async with _RUNNER(script) as ctx:
-            return await ctx(None)
+            return await ctx({"sourcePath": source_path.resolve().as_uri()})

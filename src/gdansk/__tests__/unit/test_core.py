@@ -186,7 +186,7 @@ def test_no_plugins_called_when_no_paths_registered(mock_mcp, pages_dir):
 
 @pytest.mark.usefixtures("pages_dir")
 def test_dev_false_blocks_until_bundle_done(ship):
-    ship._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
+    ship._register_page(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
     called = False
 
     async def _fake_bundle(**_kwargs: object):
@@ -207,7 +207,7 @@ def test_vite_plugins_are_forwarded_without_serialization_in_prod(mock_mcp, page
         views=pages_dir,
         plugins=plugins,
     )
-    ship._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
+    ship._register_page(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
@@ -224,7 +224,7 @@ def test_vite_plugins_are_forwarded_without_serialization_in_prod(mock_mcp, page
 
 @pytest.mark.usefixtures("pages_dir")
 def test_dev_true_starts_background_task(ship):
-    ship._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
+    ship._register_page(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
     started = threading.Event()
     created_tasks: list[asyncio.Task[None]] = []
     original_create_task = asyncio.create_task
@@ -254,7 +254,7 @@ def test_dev_true_starts_background_task(ship):
 
 @pytest.mark.usefixtures("pages_dir")
 def test_passes_dev_flag_and_derived_minify(ship):
-    ship._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
+    ship._register_page(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
@@ -274,7 +274,7 @@ def test_passes_dev_flag_and_derived_minify(ship):
 
 def test_default_bundler_plugins_use_public_bundle(mock_mcp, pages_dir):
     ship = Ship(mcp=mock_mcp, views=pages_dir)
-    ship._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
+    ship._register_page(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
@@ -290,7 +290,7 @@ def test_default_bundler_plugins_use_public_bundle(mock_mcp, pages_dir):
 def test_explicit_lightningcss_plugin_is_forwarded_to_bundle_payload(mock_mcp, pages_dir):
     plugins = [LightningCSS()]
     ship = Ship(mcp=mock_mcp, views=pages_dir, plugins=plugins)
-    ship._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
+    ship._register_page(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
@@ -305,7 +305,7 @@ def test_explicit_lightningcss_plugin_is_forwarded_to_bundle_payload(mock_mcp, p
 def test_empty_bundler_plugin_list_is_forwarded(mock_mcp, pages_dir):
     plugins: list[LightningCSS] = []
     ship = Ship(mcp=mock_mcp, views=pages_dir, plugins=plugins)
-    ship._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
+    ship._register_page(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
@@ -324,7 +324,7 @@ def test_vite_only_plugins_are_forwarded_without_serialization(mock_mcp, pages_d
         views=pages_dir,
         plugins=plugins,
     )
-    ship._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
+    ship._register_page(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
@@ -343,7 +343,7 @@ def test_mixed_plugins_are_forwarded_without_serialization(mock_mcp, pages_dir):
         views=pages_dir,
         plugins=plugins,
     )
-    ship._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
+    ship._register_page(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
@@ -362,7 +362,7 @@ def test_plugin_errors_propagate_in_prod(mock_mcp, pages_dir):
         views=pages_dir,
         plugins=[_vite_plugin(pages_dir)],
     )
-    ship._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
+    ship._register_page(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
 
     async def _failing_bundle(**_kwargs: object):
         msg = "plugin boom"
@@ -380,7 +380,7 @@ def test_plugin_errors_propagate_in_prod(mock_mcp, pages_dir):
 
 def test_passes_views_dot_gdansk_as_output(mock_mcp, pages_dir):
     ship = Ship(mcp=mock_mcp, views=pages_dir)
-    ship._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
+    ship._register_page(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
@@ -393,7 +393,7 @@ def test_passes_views_dot_gdansk_as_output(mock_mcp, pages_dir):
 
 
 def test_passes_views_as_cwd(ship, pages_dir):
-    ship._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
+    ship._register_page(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
@@ -407,7 +407,7 @@ def test_passes_views_as_cwd(ship, pages_dir):
 
 @pytest.mark.usefixtures("pages_dir")
 def test_passes_view_specs_for_ship_ui_entries(ship):
-    ship._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
+    ship._register_page(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
@@ -421,8 +421,8 @@ def test_passes_view_specs_for_ship_ui_entries(ship):
 
 @pytest.mark.usefixtures("pages_dir")
 def test_passes_registered_paths(ship):
-    ship._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
-    ship._widgets.add(Page(path=Path("widgets/nested/page/widget.tsx"), is_widget=True, ssr=False))
+    ship._register_page(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
+    ship._register_page(Page(path=Path("widgets/nested/page/widget.tsx"), is_widget=True, ssr=False))
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
@@ -473,7 +473,7 @@ def test_dev_vite_bundle_task_cancelled_on_shutdown(mock_mcp, pages_dir):
         views=pages_dir,
         plugins=[_vite_plugin(pages_dir)],
     )
-    ship._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
+    ship._register_page(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
 
     async def _slow_bundle(**_kwargs: object):
         ready = _kwargs.get("_ready")
@@ -504,7 +504,7 @@ def test_dev_vite_bundle_error_is_logged(mock_mcp, pages_dir):
         views=pages_dir,
         plugins=[_vite_plugin(pages_dir)],
     )
-    ship._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
+    ship._register_page(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
 
     async def _failing_bundle(**_kwargs: object):
         msg = "watch failed"
@@ -524,7 +524,7 @@ def test_dev_vite_bundle_error_is_logged(mock_mcp, pages_dir):
 
 @pytest.mark.usefixtures("pages_dir")
 def test_repeated_startup_shutdown_is_idempotent(ship):
-    ship._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
+    ship._register_page(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
 
     async def _fake_bundle(**_kwargs: object):
         await asyncio.sleep(0)

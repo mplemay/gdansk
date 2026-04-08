@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
-import sys
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
@@ -29,6 +27,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+type _BundleFingerprint = tuple[tuple[str, bool, int | None, int | None], ...]
+
 
 def _validate_plugins(plugins: Sequence[Plugin] | None) -> None:
     if plugins is None:
@@ -42,11 +42,118 @@ def _validate_plugins(plugins: Sequence[Plugin] | None) -> None:
         raise TypeError(msg)
 
 
+@dataclass(slots=True)
+class _WidgetResource:
+    ship: Ship
+    widget: Path
+    page: Page
+    metadata: Metadata | None
+    ssr: bool
+    _cached_fingerprint: _BundleFingerprint | None = None
+    _cached_html: str | None = None
+    _cache_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+
+    def _client_path(self) -> APath:
+        return APath(self.ship.output / self.page.client)
+
+    def _server_path(self) -> APath | None:
+        if self.page.server is None:
+            return None
+        return APath(self.ship.output / self.page.server)
+
+    def _css_path(self) -> APath:
+        return APath(self.ship.output / self.page.css)
+
+    async def _compute_fingerprint(self) -> _BundleFingerprint:
+        client_path = self._client_path()
+        client_exists = await client_path.exists()
+        if not client_exists:
+            msg = f"Client bundled output for {self.widget} not found. Has the bundler been run?"
+            raise FileNotFoundError(msg)
+        client_stat = await client_path.stat()
+
+        server_path = self._server_path()
+        if server_path is None:
+            if self.ssr:
+                msg = f"SSR bundled output for {self.widget} not found. Has the bundler been run?"
+                raise FileNotFoundError(msg)
+            server_fingerprint = ("server", False, None, None)
+        else:
+            server_exists = await server_path.exists()
+            if not server_exists:
+                if self.ssr:
+                    msg = f"SSR bundled output for {self.widget} not found. Has the bundler been run?"
+                    raise FileNotFoundError(msg)
+                server_fingerprint = ("server", False, None, None)
+            else:
+                server_stat = await server_path.stat()
+                server_fingerprint = ("server", True, server_stat.st_mtime_ns, server_stat.st_size)
+
+        css_path = self._css_path()
+        if await css_path.exists():
+            css_stat = await css_path.stat()
+            css_fingerprint = ("css", True, css_stat.st_mtime_ns, css_stat.st_size)
+        else:
+            css_fingerprint = ("css", False, None, None)
+
+        return (
+            ("client", True, client_stat.st_mtime_ns, client_stat.st_size),
+            server_fingerprint,
+            css_fingerprint,
+        )
+
+    async def _render_html(self) -> str:
+        client_path = self._client_path()
+        client = None if not await client_path.exists() else await client_path.read_text(encoding="utf-8")
+        if not client:
+            msg = f"Client bundled output for {self.widget} not found. Has the bundler been run?"
+            raise FileNotFoundError(msg)
+
+        server_path = self._server_path()
+        server = (
+            None
+            if server_path is None or not await server_path.exists()
+            else await server_path.read_text(encoding="utf-8")
+        )
+        html = await run(server) if server else None
+        if (not html) and self.ssr:
+            msg = f"SSR bundled output for {self.widget} not found. Has the bundler been run?"
+            raise FileNotFoundError(msg)
+
+        css_path = self._css_path()
+        css = None if not await css_path.exists() else await css_path.read_text(encoding="utf-8")
+
+        return ENV.render_template(
+            "template.html",
+            js=client,
+            css=css,
+            html=html,
+            metadata=merge_metadata(self.ship.metadata, self.metadata),
+        )
+
+    async def __call__(self) -> str:
+        fingerprint = await self._compute_fingerprint()
+        if not self.ship.cache_html:
+            return await self._render_html()
+
+        if self._cached_fingerprint == fingerprint and self._cached_html is not None:
+            return self._cached_html
+
+        async with self._cache_lock:
+            fingerprint = await self._compute_fingerprint()
+            if self._cached_fingerprint == fingerprint and self._cached_html is not None:
+                return self._cached_html
+
+            rendered_html = await self._render_html()
+            self._cached_fingerprint = fingerprint
+            self._cached_html = rendered_html
+            return rendered_html
+
+
 @dataclass(frozen=True, slots=True)
 class Ship:
-    """Registers widget-backed MCP tools and serves their bundled assets."""
+    """Register widget-backed MCP tools and serve their bundled assets."""
 
-    _widgets: set[Page] = field(default_factory=set, init=False)
     _template: ClassVar[str] = "template.html"
     _page_min_parts: ClassVar[int] = 2
 
@@ -57,16 +164,11 @@ class Ship:
     cache_html: bool = field(default=True, kw_only=True)
     metadata: Metadata | None = field(default=None, kw_only=True)
     plugins: Sequence[Plugin] | None = field(default=None, kw_only=True)
+    _pages: dict[Path, Page] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self) -> None:
-        """Validate required paths and initialize derived output paths."""
-        # Python 3.11 + Windows: Path(PurePosixPath("C:/...")) is built from POSIX parts and
-        # mangles drive letters; 3.12+ pathlib handles cross-flavour paths. Remove this branch
-        # when the minimum supported version is 3.12 (then use Path(self.views) only).
-        if sys.version_info[:2] == (3, 11):
-            views_path = Path(os.fspath(self.views))
-        else:
-            views_path = Path(self.views)
+        """Normalize required paths and validate plugin inputs."""
+        views_path = Path(self.views)
         object.__setattr__(self, "views", views_path)
         if not views_path.is_dir():
             msg = f"The views directory {views_path} does not exist"
@@ -75,21 +177,29 @@ class Ship:
         _validate_plugins(self.plugins)
         object.__setattr__(self, "output", views_path / ".gdansk")
 
+    @property
+    def _widgets(self) -> set[Page]:
+        return set(self._pages.values())
+
     def _views_path(self) -> Path:
         if not isinstance(self.views, Path):
             msg = "internal error: Ship.views was not normalized to pathlib.Path"
             raise TypeError(msg)
         return self.views
 
+    def _registered_pages(self) -> list[Page]:
+        return sorted(self._pages.values(), key=lambda page: page.path.as_posix())
+
+    def _register_page(self, page: Page) -> None:
+        self._pages[page.path] = page
+
     async def _run_build_pipeline(self, *, dev: bool, ready_event: asyncio.Event | None = None) -> None:
-        views_root = self._views_path()
-        pages = sorted(self._widgets, key=lambda page: page.path.as_posix())
         await bundle(
-            pages=pages,
+            pages=self._registered_pages(),
             dev=dev,
             minify=not dev,
             output=self.output,
-            cwd=views_root,
+            cwd=self._views_path(),
             plugins=self.plugins,
             _ready=ready_event,
         )
@@ -104,10 +214,7 @@ class Ship:
         logger.exception("Ship background task failed", exc_info=exc)
 
     @staticmethod
-    async def _shutdown_dev_tasks(
-        *,
-        bundle_task: asyncio.Task[None] | None,
-    ) -> None:
+    async def _shutdown_dev_tasks(*, bundle_task: asyncio.Task[None] | None) -> None:
         tasks = [candidate for candidate in [bundle_task] if candidate is not None]
         for task in tasks:
             if not task.done():
@@ -151,9 +258,8 @@ class Ship:
         return (widget / "widget.tsx", widget / "widget.jsx")
 
     @staticmethod
-    def _normalize_widget_path_and_uri(widget: Path) -> tuple[Path, Path, str]:
+    def _bundle_page_and_uri(widget: Path) -> tuple[Path, str]:
         widget_posix = PurePosixPath(widget.as_posix())
-
         if (
             len(widget_posix.parts) < Ship._page_min_parts
             or widget_posix.parts[0] == "widgets"
@@ -165,15 +271,41 @@ class Ship:
             )
             raise ValueError(msg)
 
-        normalized_widget = Path(*widget_posix.parts)
         bundle_page = Path("widgets", *widget_posix.parts)
         uri = f"ui://{PurePosixPath(*widget_posix.parts[:-1])}"
-        return normalized_widget, bundle_page, uri
+        return bundle_page, uri
+
+    def _resolve_widget(self, widget: PathType, *, ssr: bool | None) -> tuple[Path, str, Page, bool]:
+        widget_path = self._normalize_widget_input(widget)
+        widget_candidates = self._resolve_widget_path_candidates(widget_path)
+
+        bundle_page: Path | None = None
+        uri: str | None = None
+        views_root = self._views_path()
+        for widget_candidate in widget_candidates:
+            candidate_bundle_page, candidate_uri = self._bundle_page_and_uri(widget_candidate)
+            if (views_root / candidate_bundle_page).is_file():
+                bundle_page = candidate_bundle_page
+                uri = candidate_uri
+                break
+
+        if bundle_page is None or uri is None:
+            if len(widget_candidates) == 1:
+                msg = f"The widget path (i.e. {widget_path}) was not found"
+            else:
+                msg = (
+                    f"The widget path (i.e. {widget_path}) was not found. "
+                    f"Expected one of: {widget_candidates[0]}, {widget_candidates[1]}"
+                )
+            raise FileNotFoundError(msg)
+
+        effective_ssr = self.ssr if ssr is None else ssr
+        return widget_path, uri, Page(path=bundle_page, is_widget=True, ssr=effective_ssr), effective_ssr
 
     def __call__(self, *, dev: bool = False) -> Starlette:
         """Build and return the Starlette app that serves registered resources."""
         app = self.mcp.streamable_http_app()
-        if not self._widgets:
+        if not self._pages:
             return app
 
         bundle_task: asyncio.Task[None] | None = None
@@ -213,7 +345,7 @@ class Ship:
         app.router.lifespan_context = _lifespan
         return app
 
-    def tool(  # noqa: C901, PLR0913, PLR0915
+    def tool(  # noqa: PLR0913
         self,
         widget: PathType,
         name: str | None = None,
@@ -228,106 +360,17 @@ class Ship:
         structured_output: bool | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         """Register a tool and bind its widget resource into the MCP server."""
-        views_root = self._views_path()
-        widget_path = self._normalize_widget_input(widget)
-        widget_candidates = self._resolve_widget_path_candidates(widget_path)
+        widget_path, uri, page, effective_ssr = self._resolve_widget(widget, ssr=ssr)
+        self._register_page(page)
 
-        bundle_page: Path | None = None
-        uri: str | None = None
-
-        for widget_candidate in widget_candidates:
-            _, candidate_bundle_page, candidate_uri = self._normalize_widget_path_and_uri(widget_candidate)
-            if (views_root / candidate_bundle_page).is_file():
-                bundle_page = candidate_bundle_page
-                uri = candidate_uri
-                break
-
-        if bundle_page is None or uri is None:
-            if len(widget_candidates) == 1:
-                msg = f"The widget path (i.e. {widget_path}) was not found"
-            else:
-                msg = (
-                    f"The widget path (i.e. {widget_path}) was not found. "
-                    f"Expected one of: {widget_candidates[0]}, {widget_candidates[1]}"
-                )
-            raise FileNotFoundError(msg)
-
-        ssr = self.ssr if ssr is None else ssr
-        page_spec = Page(path=bundle_page, is_widget=True, ssr=ssr)
-        stale_pages = {registered for registered in self._widgets if registered.path == page_spec.path}
-        self._widgets.difference_update(stale_pages)
-        self._widgets.add(page_spec)
-
-        # Preserve protocol metadata key/scheme for MCP compatibility.
-        meta = meta or {}
-        meta["ui"] = {"resourceUri": uri}
-        cached_fingerprint: tuple[tuple[str, bool, int | None, int | None], ...] | None = None
-        cached_html: str | None = None
-        cache_lock = asyncio.Lock()
-        client_path = APath(self.output / page_spec.client)
-        server_path = APath(self.output / page_spec.server) if page_spec.server else None
-        css_path = APath(self.output / page_spec.css)
-
-        async def _compute_fingerprint() -> tuple[tuple[str, bool, int | None, int | None], ...]:
-            client_exists = await client_path.exists()
-            if not client_exists:
-                msg = f"Client bundled output for {widget} not found. Has the bundler been run?"
-                raise FileNotFoundError(msg)
-            client_stat = await client_path.stat()
-
-            if server_path is None:
-                if ssr:
-                    msg = f"SSR bundled output for {widget} not found. Has the bundler been run?"
-                    raise FileNotFoundError(msg)
-                server_fingerprint = ("server", False, None, None)
-            else:
-                server_exists = await server_path.exists()
-                if not server_exists:
-                    if ssr:
-                        msg = f"SSR bundled output for {widget} not found. Has the bundler been run?"
-                        raise FileNotFoundError(msg)
-                    server_fingerprint = ("server", False, None, None)
-                else:
-                    server_stat = await server_path.stat()
-                    server_fingerprint = ("server", True, server_stat.st_mtime_ns, server_stat.st_size)
-
-            if await css_path.exists():
-                css_stat = await css_path.stat()
-                css_fingerprint = ("css", True, css_stat.st_mtime_ns, css_stat.st_size)
-            else:
-                css_fingerprint = ("css", False, None, None)
-
-            return (
-                ("client", True, client_stat.st_mtime_ns, client_stat.st_size),
-                server_fingerprint,
-                css_fingerprint,
-            )
-
-        async def _render_resource_html() -> str:
-            client = None if not await client_path.exists() else await client_path.read_text(encoding="utf-8")
-
-            if not client:
-                msg = f"Client bundled output for {widget} not found. Has the bundler been run?"
-                raise FileNotFoundError(msg)
-
-            server = None
-            if server_path and await server_path.exists():
-                server = await server_path.read_text(encoding="utf-8")
-            html = await run(server) if server else None
-
-            if (not html) and ssr:
-                msg = f"SSR bundled output for {widget} not found. Has the bundler been run?"
-                raise FileNotFoundError(msg)
-
-            css = None if not await css_path.exists() else await css_path.read_text(encoding="utf-8")
-
-            return ENV.render_template(
-                "template.html",
-                js=client,
-                css=css,
-                html=html,
-                metadata=merge_metadata(self.metadata, metadata),
-            )
+        tool_meta = {**(meta or {}), "ui": {"resourceUri": uri}}
+        resource = _WidgetResource(
+            ship=self,
+            widget=widget_path,
+            page=page,
+            metadata=metadata,
+            ssr=effective_ssr,
+        )
 
         def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
             self.mcp.tool(
@@ -336,7 +379,7 @@ class Ship:
                 description=description,
                 annotations=annotations,
                 icons=icons,
-                meta=meta,
+                meta=tool_meta,
                 structured_output=structured_output,
             )(fn)
 
@@ -348,25 +391,7 @@ class Ship:
                 mime_type="text/html;profile=mcp-app",
             )
             async def _() -> str:
-                nonlocal cached_fingerprint
-                nonlocal cached_html
-
-                fingerprint = await _compute_fingerprint()
-                if self.cache_html and cached_fingerprint == fingerprint and cached_html is not None:
-                    return cached_html
-
-                if not self.cache_html:
-                    return await _render_resource_html()
-
-                async with cache_lock:
-                    fingerprint = await _compute_fingerprint()
-                    if cached_fingerprint == fingerprint and cached_html is not None:
-                        return cached_html
-
-                    rendered_html = await _render_resource_html()
-                    cached_fingerprint = fingerprint
-                    cached_html = rendered_html
-                    return rendered_html
+                return await resource()
 
             return fn
 
