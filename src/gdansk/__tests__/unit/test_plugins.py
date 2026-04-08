@@ -4,8 +4,12 @@ import importlib
 
 import pytest
 
-from gdansk import LightningCSS, VitePlugin
-from gdansk.plugins import LightningCSS as PackageLightningCSS, VitePlugin as PackageVitePlugin
+from gdansk import LightningCSS, VitePlugin, ViteScript
+from gdansk.plugins import (
+    LightningCSS as PackageLightningCSS,
+    VitePlugin as PackageVitePlugin,
+    ViteScript as PackageViteScript,
+)
 
 
 def test_lightningcss_exposes_expected_id():
@@ -17,11 +21,23 @@ def test_plugins_package_re_exports_lightningcss_only():
 
 
 def test_public_package_exports_vite_plugin():
-    assert VitePlugin(specifier="@tailwindcss/vite").specifier == "@tailwindcss/vite"
+    plugin = VitePlugin(script=ViteScript(contents="export default { name: 'tailwind-wrapper' };"))
+    assert plugin.script.contents == "export default { name: 'tailwind-wrapper' };"
 
 
 def test_plugins_package_re_exports_vite_plugin():
-    assert PackageVitePlugin(specifier="@tailwindcss/vite").specifier == "@tailwindcss/vite"
+    plugin = PackageVitePlugin(script=PackageViteScript(contents="export default { name: 'tailwind-wrapper' };"))
+    assert plugin.script.contents == "export default { name: 'tailwind-wrapper' };"
+
+
+def test_public_package_exports_vite_script():
+    script = ViteScript(contents="export default { name: 'tailwind-wrapper' };")
+    assert script.contents == "export default { name: 'tailwind-wrapper' };"
+
+
+def test_plugins_package_re_exports_vite_script():
+    script = PackageViteScript(contents="export default { name: 'tailwind-wrapper' };")
+    assert script.contents == "export default { name: 'tailwind-wrapper' };"
 
 
 def test_public_package_no_longer_exports_postcss():

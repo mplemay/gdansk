@@ -7,7 +7,7 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-04-01T17:13:06.923919Z"
+exclude-newer = "2026-04-01T19:42:58.575732Z"
 exclude-newer-span = "P7D"
 
 [[package]]
@@ -189,7 +189,6 @@ dependencies = [
     { name = "gdansk-bundler" },
     { name = "gdansk-lightningcss" },
     { name = "gdansk-runtime" },
-    { name = "gdansk-tailwindcss" },
     { name = "gdansk-vite" },
     { name = "mcp" },
     { name = "minijinja" },
@@ -200,7 +199,6 @@ requires-dist = [
     { name = "gdansk-bundler", editable = "../../packages/gdansk-bundler" },
     { name = "gdansk-lightningcss", editable = "../../packages/gdansk-lightningcss" },
     { name = "gdansk-runtime", editable = "../../packages/gdansk-runtime" },
-    { name = "gdansk-tailwindcss", editable = "../../packages/gdansk-tailwindcss" },
     { name = "gdansk-vite", editable = "../../packages/gdansk-vite" },
     { name = "mcp", git = "https://github.com/modelcontextprotocol/python-sdk.git?rev=main" },
     { name = "minijinja", specifier = ">=2,<3" },
@@ -212,7 +210,6 @@ dev = [
     { name = "gdansk-bundler", editable = "../../packages/gdansk-bundler" },
     { name = "gdansk-lightningcss", editable = "../../packages/gdansk-lightningcss" },
     { name = "gdansk-runtime", editable = "../../packages/gdansk-runtime" },
-    { name = "gdansk-tailwindcss", editable = "../../packages/gdansk-tailwindcss" },
     { name = "gdansk-vite", editable = "../../packages/gdansk-vite" },
     { name = "prek", specifier = ">=0.3.6" },
     { name = "pytest", specifier = ">=9.0.2" },
@@ -249,9 +246,9 @@ dependencies = [
 requires-dist = [{ name = "pydantic", specifier = ">=2,<3" }]
 
 [[package]]
-name = "gdansk-tailwindcss"
+name = "gdansk-vite"
 version = "0.1.0"
-source = { editable = "../../packages/gdansk-tailwindcss" }
+source = { editable = "../../packages/gdansk-vite" }
 dependencies = [
     { name = "gdansk-bundler" },
     { name = "gdansk-runtime" },
@@ -262,17 +259,6 @@ requires-dist = [
     { name = "gdansk-bundler", editable = "../../packages/gdansk-bundler" },
     { name = "gdansk-runtime", editable = "../../packages/gdansk-runtime" },
 ]
-
-[[package]]
-name = "gdansk-vite"
-version = "0.1.0"
-source = { editable = "../../packages/gdansk-vite" }
-dependencies = [
-    { name = "gdansk-bundler" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "gdansk-bundler", editable = "../../packages/gdansk-bundler" }]
 
 [[package]]
 name = "h11"

@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from gdansk_bundler import Plugin
 
-from gdansk import LightningCSS, VitePlugin
+from gdansk import LightningCSS, VitePlugin, ViteScript
 from gdansk.core import Page, Ship
 from gdansk.render import ENV
 
@@ -163,6 +163,10 @@ def _lifespan(app, *, background: bool = False):
         loop.close()
 
 
+def _vite_plugin(pages_dir: Path, path: str = "plugins/append-comment.mjs") -> VitePlugin:
+    return VitePlugin(script=ViteScript.from_file(pages_dir / path))
+
+
 def test_noop_when_no_paths_registered(ship):
     app = ship()
     assert app is ship.mcp.streamable_http_app.return_value
@@ -173,7 +177,7 @@ def test_no_plugins_called_when_no_paths_registered(mock_mcp, pages_dir):
     ship = Ship(
         mcp=mock_mcp,
         views=pages_dir,
-        plugins=[VitePlugin(specifier="plugins/append-comment.mjs")],
+        plugins=[_vite_plugin(pages_dir)],
     )
     with patch("gdansk.core.bundle") as mock_bundle:
         ship(dev=True)
@@ -197,7 +201,7 @@ def test_dev_false_blocks_until_bundle_done(ship):
 
 @pytest.mark.usefixtures("pages_dir")
 def test_vite_plugins_are_forwarded_without_serialization_in_prod(mock_mcp, pages_dir):
-    plugins = [VitePlugin(specifier="plugins/append-comment.mjs", options={"comment": "prod"})]
+    plugins = [_vite_plugin(pages_dir)]
     ship = Ship(
         mcp=mock_mcp,
         views=pages_dir,
@@ -314,7 +318,7 @@ def test_empty_bundler_plugin_list_is_forwarded(mock_mcp, pages_dir):
 
 
 def test_vite_only_plugins_are_forwarded_without_serialization(mock_mcp, pages_dir):
-    plugins = [VitePlugin(specifier="plugins/append-comment.mjs")]
+    plugins = [_vite_plugin(pages_dir)]
     ship = Ship(
         mcp=mock_mcp,
         views=pages_dir,
@@ -333,7 +337,7 @@ def test_vite_only_plugins_are_forwarded_without_serialization(mock_mcp, pages_d
 
 
 def test_mixed_plugins_are_forwarded_without_serialization(mock_mcp, pages_dir):
-    plugins = [LightningCSS(), VitePlugin(specifier="plugins/append-comment.mjs")]
+    plugins = [LightningCSS(), _vite_plugin(pages_dir)]
     ship = Ship(
         mcp=mock_mcp,
         views=pages_dir,
@@ -356,7 +360,7 @@ def test_plugin_errors_propagate_in_prod(mock_mcp, pages_dir):
     ship = Ship(
         mcp=mock_mcp,
         views=pages_dir,
-        plugins=[VitePlugin(specifier="plugins/append-comment.mjs")],
+        plugins=[_vite_plugin(pages_dir)],
     )
     ship._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
 
@@ -467,7 +471,7 @@ def test_dev_vite_bundle_task_cancelled_on_shutdown(mock_mcp, pages_dir):
     ship = Ship(
         mcp=mock_mcp,
         views=pages_dir,
-        plugins=[VitePlugin(specifier="plugins/append-comment.mjs")],
+        plugins=[_vite_plugin(pages_dir)],
     )
     ship._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
 
@@ -498,7 +502,7 @@ def test_dev_vite_bundle_error_is_logged(mock_mcp, pages_dir):
     ship = Ship(
         mcp=mock_mcp,
         views=pages_dir,
-        plugins=[VitePlugin(specifier="plugins/append-comment.mjs")],
+        plugins=[_vite_plugin(pages_dir)],
     )
     ship._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
 

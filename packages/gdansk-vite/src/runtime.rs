@@ -1,7 +1,7 @@
 #![cfg_attr(test, allow(dead_code))]
 
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     ffi::OsStr,
     fs,
     path::{Component, Path, PathBuf},
@@ -96,9 +96,15 @@ pub(crate) struct PluginRunResult {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub(crate) struct VitePluginSpec {
-    pub(crate) specifier: String,
-    #[serde(default)]
-    pub(crate) options: Value,
+    pub(crate) code: String,
+    #[serde(rename = "sourcePath", default)]
+    pub(crate) source_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ResolvedVitePluginSpec {
+    #[serde(rename = "moduleSpecifier")]
+    module_specifier: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -122,16 +128,18 @@ struct ViteRuntimeState {
 struct ViteRuntimeShared {
     pages: PathBuf,
     js_resolver: Resolver,
+    virtual_modules: BTreeMap<String, String>,
 }
 
 impl ViteRuntimeShared {
-    fn new(pages: &Path) -> Self {
+    fn new(pages: &Path, virtual_modules: BTreeMap<String, String>) -> Self {
         let js_resolver = Resolver::new(
             ResolveOptions::default().with_condition_names(&["node", "import", "default"]),
         );
         Self {
             pages: pages.to_path_buf(),
             js_resolver,
+            virtual_modules,
         }
     }
 
@@ -314,6 +322,15 @@ impl ModuleLoader for ViteModuleLoader {
                 return Ok(ModuleSource::new(
                     ModuleType::JavaScript,
                     ModuleSourceCode::String(code.to_owned().into()),
+                    module_specifier,
+                    None,
+                ));
+            }
+
+            if let Some(code) = self.shared.virtual_modules.get(module_specifier.as_str()) {
+                return Ok(ModuleSource::new(
+                    ModuleType::JavaScript,
+                    ModuleSourceCode::String(code.clone().into()),
                     module_specifier,
                     None,
                 ));
@@ -568,13 +585,55 @@ deno_core::extension!(
     }
 );
 
+fn inline_plugin_module_path(pages: &Path, index: usize) -> PathBuf {
+    pages
+        .join(".gdansk_vite_plugins")
+        .join(format!("plugin-{index}.mjs"))
+}
+
+fn script_module_specifier(
+    spec: &VitePluginSpec,
+    pages: &Path,
+    index: usize,
+) -> Result<String, JsErrorBox> {
+    let module_path = match spec.source_path.as_deref() {
+        Some(source_path) => absolute_lexical_path(Path::new(source_path))?,
+        None => inline_plugin_module_path(pages, index),
+    };
+
+    Url::from_file_path(&module_path)
+        .map_err(|_| {
+            JsErrorBox::generic(format!(
+                "failed to resolve plugin module path {}",
+                module_path.display()
+            ))
+        })
+        .map(|url| url.to_string())
+}
+
+fn resolve_plugin_specs(
+    specs: &[VitePluginSpec],
+    pages: &Path,
+) -> Result<(BTreeMap<String, String>, Vec<ResolvedVitePluginSpec>), JsErrorBox> {
+    let mut virtual_modules = BTreeMap::new();
+    let mut resolved_specs = Vec::with_capacity(specs.len());
+
+    for (index, spec) in specs.iter().enumerate() {
+        let module_specifier = script_module_specifier(spec, pages, index)?;
+        virtual_modules.insert(module_specifier.clone(), spec.code.clone());
+        resolved_specs.push(ResolvedVitePluginSpec { module_specifier });
+    }
+
+    Ok((virtual_modules, resolved_specs))
+}
+
 struct EmbeddedViteRuntime {
     runtime: JsRuntime,
 }
 
 impl EmbeddedViteRuntime {
-    fn new(pages: &Path) -> Self {
-        let shared = Arc::new(ViteRuntimeShared::new(pages));
+    fn new(pages: &Path, virtual_modules: BTreeMap<String, String>) -> Self {
+        let shared = Arc::new(ViteRuntimeShared::new(pages, virtual_modules));
         let module_loader = Rc::new(ViteModuleLoader {
             shared: shared.clone(),
         });
@@ -589,7 +648,7 @@ impl EmbeddedViteRuntime {
 
     async fn load_plugins(
         &mut self,
-        specs: &[VitePluginSpec],
+        specs: &[ResolvedVitePluginSpec],
         pages: &Path,
     ) -> Result<usize, std::io::Error> {
         let specs_json = serde_json::to_string(specs).map_err(std::io::Error::other)?;
@@ -654,8 +713,10 @@ pub(crate) fn run_embedded_vite_plugins(
         .build()
         .map_err(execution_error)?;
     runtime.block_on(async move {
-        let mut embedded = EmbeddedViteRuntime::new(pages);
-        let plugin_count = embedded.load_plugins(specs, pages).await?;
+        let (virtual_modules, resolved_specs) =
+            resolve_plugin_specs(specs, pages).map_err(execution_error)?;
+        let mut embedded = EmbeddedViteRuntime::new(pages, virtual_modules);
+        let plugin_count = embedded.load_plugins(&resolved_specs, pages).await?;
         if plugin_count == 0 || assets.is_empty() {
             return Ok(PluginRunResult {
                 assets: Vec::new(),
@@ -1153,7 +1214,7 @@ mod tests {
         fs::write(package_dir.join("index.js"), "export default {};\n")
             .expect("index should be written");
 
-        let shared = ViteRuntimeShared::new(&pages);
+        let shared = ViteRuntimeShared::new(&pages, BTreeMap::new());
         let resolved = shared
             .resolve_js_module_specifier("sample-plugin", Some(BOOTSTRAP_SPECIFIER), true)
             .expect("specifier should resolve");
@@ -1203,7 +1264,7 @@ mod tests {
         let temp_dir = TestDir::new();
         let pages = temp_dir.path().join("views");
         fs::create_dir_all(&pages).expect("pages dir should exist");
-        let shared = ViteRuntimeShared::new(&pages);
+        let shared = ViteRuntimeShared::new(&pages, BTreeMap::new());
 
         let err = shared
             .resolve_js_module_specifier("node:os", Some(BOOTSTRAP_SPECIFIER), true)
@@ -1226,40 +1287,36 @@ mod tests {
             r#"
 import fs from "fs/promises";
 
-export default function (options) {
-  return {
-    name: "read-comment",
-    transform: {
-      filter: {
-        id: {
-          include: [/\.css$/],
-        },
-      },
-      async handler(source, id) {
-        if (!id.endsWith(".css")) {
-          return source;
-        }
-        const stat = await fs.stat(options.watchFile);
-        if (!stat.isFile()) {
-          throw new Error("expected file");
-        }
-        const comment = (await fs.readFile(options.watchFile, "utf8")).trim();
-        return `${source}\n/* ${comment} */\n`;
+export default {
+  name: "read-comment",
+  transform: {
+    filter: {
+      id: {
+        include: [/\.css$/],
       },
     },
-  };
-}
+    async handler(source, id) {
+      if (!id.endsWith(".css")) {
+        return source;
+      }
+      const stat = await fs.stat("comment.txt");
+      if (!stat.isFile()) {
+        throw new Error("expected file");
+      }
+      const comment = (await fs.readFile("comment.txt", "utf8")).trim();
+      return `${source}\n/* ${comment} */\n`;
+    },
+  },
+};
 "#,
         )
         .expect("plugin should be written");
 
-        let plugin_path = Url::from_file_path(plugin_dir.join("read-comment.mjs"))
-            .expect("plugin path should convert to url")
-            .to_string();
+        let plugin_path = plugin_dir.join("read-comment.mjs");
         let result = run_embedded_vite_plugins(
             &[VitePluginSpec {
-                specifier: plugin_path,
-                options: serde_json::json!({ "watchFile": "comment.txt" }),
+                code: fs::read_to_string(&plugin_path).expect("plugin should be readable"),
+                source_path: Some(plugin_path.to_string_lossy().into_owned()),
             }],
             &pages,
             vec![PluginAssetInput {
@@ -1302,13 +1359,11 @@ export default {
         )
         .expect("plugin should be written");
 
-        let plugin_path = Url::from_file_path(plugin_dir.join("use-node-path.mjs"))
-            .expect("plugin path should convert to url")
-            .to_string();
+        let plugin_path = plugin_dir.join("use-node-path.mjs");
         let result = run_embedded_vite_plugins(
             &[VitePluginSpec {
-                specifier: plugin_path,
-                options: serde_json::json!({}),
+                code: fs::read_to_string(&plugin_path).expect("plugin should be readable"),
+                source_path: Some(plugin_path.to_string_lossy().into_owned()),
             }],
             &pages,
             vec![PluginAssetInput {
@@ -1351,13 +1406,11 @@ export default {
         )
         .expect("plugin should be written");
 
-        let plugin_path = Url::from_file_path(plugin_dir.join("use-bare-path.mjs"))
-            .expect("plugin path should convert to url")
-            .to_string();
+        let plugin_path = plugin_dir.join("use-bare-path.mjs");
         let result = run_embedded_vite_plugins(
             &[VitePluginSpec {
-                specifier: plugin_path,
-                options: serde_json::json!({}),
+                code: fs::read_to_string(&plugin_path).expect("plugin should be readable"),
+                source_path: Some(plugin_path.to_string_lossy().into_owned()),
             }],
             &pages,
             vec![PluginAssetInput {

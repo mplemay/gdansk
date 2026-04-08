@@ -73,6 +73,7 @@ Choose the smallest integration needed:
   - Use `streamable_http_path="/"` in `FastMCP` when mounted.
 - Vite CSS plugins:
   - Add them through `plugins=[VitePlugin(...)]`.
+  - Back them with a user-owned `ViteScript`, typically `ViteScript.from_file(views / "plugins" / "...mjs")`.
   - Install plugin dependencies in the `views` package, such as `@tailwindcss/vite` and `tailwindcss`.
 
 Use [integration-options.md](references/integration-options.md) for exact implementation shapes.
