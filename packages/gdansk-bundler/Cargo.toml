@@ -10,12 +10,12 @@ crate-type = ["cdylib"]
 [dependencies]
 pyo3 = { version = "0.28.2", features = ["extension-module", "abi3-py312"] }
 pyo3-async-runtimes = { version = "0.28", features = ["attributes", "tokio-runtime"] }
-rolldown = { git = "https://github.com/rolldown/rolldown.git", tag = "v1.0.0-rc.12", features = ["experimental"] }
-rolldown_common = { git = "https://github.com/rolldown/rolldown.git", tag = "v1.0.0-rc.12" }
-rolldown_error = { git = "https://github.com/rolldown/rolldown.git", tag = "v1.0.0-rc.12" }
-rolldown_fs_watcher = { git = "https://github.com/rolldown/rolldown.git", tag = "v1.0.0-rc.12" }
-rolldown_plugin = { git = "https://github.com/rolldown/rolldown.git", tag = "v1.0.0-rc.12" }
-rolldown_utils = { git = "https://github.com/rolldown/rolldown.git", tag = "v1.0.0-rc.12" }
+rolldown = { git = "https://github.com/rolldown/rolldown.git", tag = "v1.0.0-rc.14", features = ["experimental"] }
+rolldown_common = { git = "https://github.com/rolldown/rolldown.git", tag = "v1.0.0-rc.14" }
+rolldown_error = { git = "https://github.com/rolldown/rolldown.git", tag = "v1.0.0-rc.14" }
+rolldown_fs_watcher = { git = "https://github.com/rolldown/rolldown.git", tag = "v1.0.0-rc.14" }
+rolldown_plugin = { git = "https://github.com/rolldown/rolldown.git", tag = "v1.0.0-rc.14" }
+rolldown_utils = { git = "https://github.com/rolldown/rolldown.git", tag = "v1.0.0-rc.14" }
 anyhow = "1"
 arcstr = "1"
 notify = { package = "rolldown-notify", version = "10.2.0" }
