@@ -41,6 +41,9 @@ if __name__ == "__main__":
     uvicorn.run(app, port=3001)
 ```
 
+`ship(dev=False)` blocks until assets are built. `ship(dev=True)` returns immediately and runs the dev bundler in the
+background.
+
 ## Minimal React widget
 
 `views/widgets/hello/widget.tsx`
@@ -148,6 +151,8 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(lifespan=lifespan)
 app.mount(path="/mcp", app=mcp_app)
 ```
+
+The FastAPI lifespan wrapper is for the mounted MCP app. Ship build startup is handled by `ship(dev=...)`.
 
 Run:
 

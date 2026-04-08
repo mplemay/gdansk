@@ -226,45 +226,40 @@ def test_vite_plugins_are_forwarded_without_serialization_in_prod(mock_mcp, page
 def test_dev_true_starts_background_task(ship):
     ship._register_page(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
     started = threading.Event()
-    created_tasks: list[asyncio.Task[None]] = []
-    original_create_task = asyncio.create_task
+    release = threading.Event()
 
-    async def _slow_bundle(**_kwargs: object):
+    def _fake_run_build_sync(_state: object) -> None:
         started.set()
-        ready = _kwargs.get("_ready")
-        if isinstance(ready, asyncio.Event):
-            ready.set()
-        await asyncio.sleep(999)
+        release.wait(timeout=5)
 
-    def _capture_create_task(coro):
-        task = original_create_task(coro)
-        created_tasks.append(task)
-        return task
-
-    with (
-        patch("gdansk.core.bundle", _slow_bundle),
-        patch("gdansk.core.asyncio.create_task", side_effect=_capture_create_task),
-    ):
+    with patch("gdansk.core._run_build_sync", side_effect=_fake_run_build_sync):
         app = ship(dev=True)
-        with _lifespan(app, background=True):
-            assert started.wait(timeout=5)
-            assert len(created_tasks) == 1
-            assert created_tasks[0].done() is False
+        assert app is ship.mcp.streamable_http_app.return_value
+        assert started.wait(timeout=5)
+        assert ship._runtime.dev_thread is not None
+        assert ship._runtime.dev_thread.is_alive() is True
+
+    release.set()
 
 
 @pytest.mark.usefixtures("pages_dir")
-def test_passes_dev_flag_and_derived_minify(ship):
-    ship._register_page(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
+def test_passes_dev_flag_and_derived_minify(mock_mcp, pages_dir):
     captured: list[dict] = []
 
     async def _fake_bundle(**kwargs: object):
         captured.append(kwargs)
 
     with patch("gdansk.core.bundle", _fake_bundle):
-        with _lifespan(ship(dev=True), background=True):
-            pass
-        with _lifespan(ship(dev=False)):
-            pass
+        dev_ship = Ship(mcp=mock_mcp, views=pages_dir)
+        dev_ship._register_page(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
+        dev_ship(dev=True)
+        deadline = time.monotonic() + 5
+        while len(captured) < 1 and time.monotonic() < deadline:
+            time.sleep(0.01)
+
+        prod_ship = Ship(mcp=mock_mcp, views=pages_dir)
+        prod_ship._register_page(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
+        prod_ship(dev=False)
 
     assert captured[0]["dev"] is True
     assert captured[0]["minify"] is False
@@ -368,14 +363,8 @@ def test_plugin_errors_propagate_in_prod(mock_mcp, pages_dir):
         msg = "plugin boom"
         raise RuntimeError(msg)
 
-    with (
-        patch("gdansk.core.bundle", _failing_bundle),
-        pytest.raises(RuntimeError, match="plugin boom"),
-        _lifespan(
-            ship(dev=False),
-        ),
-    ):
-        pass
+    with patch("gdansk.core.bundle", _failing_bundle), pytest.raises(RuntimeError, match="plugin boom"):
+        ship(dev=False)
 
 
 def test_passes_views_dot_gdansk_as_output(mock_mcp, pages_dir):
@@ -466,8 +455,9 @@ def test_run_build_pipeline_invokes_server_bundle_only_for_ssr_paths(mock_mcp, p
 
 
 @pytest.mark.usefixtures("pages_dir")
-def test_dev_vite_bundle_task_cancelled_on_shutdown(mock_mcp, pages_dir):
-    bundle_cancelled = threading.Event()
+def test_dev_true_reuses_background_thread(mock_mcp, pages_dir):
+    started = threading.Event()
+    release = threading.Event()
     ship = Ship(
         mcp=mock_mcp,
         views=pages_dir,
@@ -475,26 +465,21 @@ def test_dev_vite_bundle_task_cancelled_on_shutdown(mock_mcp, pages_dir):
     )
     ship._register_page(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
 
-    async def _slow_bundle(**_kwargs: object):
-        ready = _kwargs.get("_ready")
-        if isinstance(ready, asyncio.Event):
-            ready.set()
-        try:
-            await asyncio.sleep(999)
-        except asyncio.CancelledError:
-            bundle_cancelled.set()
-            raise
+    def _fake_run_build_sync(_state: object) -> None:
+        started.set()
+        release.wait(timeout=5)
 
-    with (
-        patch("gdansk.core.bundle", _slow_bundle),
-        _lifespan(
-            ship(dev=True),
-            background=True,
-        ),
-    ):
-        time.sleep(0.1)
+    with patch("gdansk.core._run_build_sync", side_effect=_fake_run_build_sync) as mock_build:
+        first_app = ship(dev=True)
+        assert started.wait(timeout=5)
+        first_thread = ship._runtime.dev_thread
+        second_app = ship(dev=True)
 
-    assert bundle_cancelled.wait(timeout=5)
+    release.set()
+
+    assert first_app is second_app
+    assert first_thread is ship._runtime.dev_thread
+    assert mock_build.call_count == 1
 
 
 @pytest.mark.usefixtures("pages_dir")
@@ -523,18 +508,16 @@ def test_dev_vite_bundle_error_is_logged(mock_mcp, pages_dir):
 
 
 @pytest.mark.usefixtures("pages_dir")
-def test_repeated_startup_shutdown_is_idempotent(ship):
+def test_ship_preserves_original_lifespan_context(ship):
     ship._register_page(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
 
-    async def _fake_bundle(**_kwargs: object):
-        await asyncio.sleep(0)
+    app = ship.mcp.streamable_http_app.return_value
+    original_lifespan = app.router.lifespan_context
 
-    with patch("gdansk.core.bundle", _fake_bundle):
-        app = ship(dev=True)
-        with _lifespan(app, background=True):
-            pass
-        with _lifespan(app, background=True):
-            pass
+    with patch("gdansk.core._run_build_sync"):
+        ship(dev=True)
+
+    assert app.router.lifespan_context is original_lifespan
 
 
 def test_with_ship_context_manager_raises_type_error(ship):
@@ -932,7 +915,7 @@ async def test_resource_does_not_cache_when_disabled(mock_mcp, pages_dir, tmp_pa
     assert mock_run.await_count == 2
 
 
-async def test_resource_invalidates_cache_when_client_bundle_changes(ship, mock_mcp, tmp_path):
+async def test_resource_keeps_cached_html_when_client_bundle_changes(ship, mock_mcp, tmp_path):
     ship_output = tmp_path / "output"
     object.__setattr__(ship, "output", ship_output)
 
@@ -950,10 +933,10 @@ async def test_resource_invalidates_cache_when_client_bundle_changes(ship, mock_
     second_html = await handler()
 
     assert "console.log('one');" in first_html
-    assert "console.log('two two');" in second_html
+    assert second_html == first_html
 
 
-async def test_resource_invalidates_cache_when_css_presence_changes(ship, mock_mcp, tmp_path):
+async def test_resource_keeps_cached_html_when_css_presence_changes(ship, mock_mcp, tmp_path):
     ship_output = tmp_path / "output"
     object.__setattr__(ship, "output", ship_output)
 
@@ -971,8 +954,31 @@ async def test_resource_invalidates_cache_when_css_presence_changes(ship, mock_m
     second_html = await handler()
 
     assert "<style>" not in first_html
-    assert "<style>" in second_html
-    assert "body { color: blue; }" in second_html
+    assert second_html == first_html
+
+
+async def test_resource_rereads_client_bundle_when_dev_mode(ship, mock_mcp, tmp_path):
+    ship_output = tmp_path / "output"
+    object.__setattr__(ship, "output", ship_output)
+
+    @ship.tool(Path("simple/widget.tsx"))
+    def my_tool():
+        pass
+
+    js_path = ship_output / "simple/client.js"
+    js_path.parent.mkdir(parents=True, exist_ok=True)
+    js_path.write_text("console.log('one');", encoding="utf-8")
+
+    with patch("gdansk.core._run_build_sync"):
+        ship(dev=True)
+
+    handler = mock_mcp._resource_calls[-1]["handler"]
+    first_html = await handler()
+    js_path.write_text("console.log('two two');", encoding="utf-8")
+    second_html = await handler()
+
+    assert "console.log('one');" in first_html
+    assert "console.log('two two');" in second_html
 
 
 async def test_resource_skips_runtime_and_html_when_effective_ssr_false(ship, mock_mcp, tmp_path):

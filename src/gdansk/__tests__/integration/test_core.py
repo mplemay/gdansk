@@ -243,9 +243,8 @@ def test_prod_fails_when_ui_has_no_default_export(mock_mcp, pages_dir, tmp_path,
     def my_tool():
         return "result"
 
-    app = ship(dev=False)
-    with pytest.raises(RuntimeError, match="default"), _lifespan(app):
-        pass
+    with pytest.raises(RuntimeError, match="default"):
+        ship(dev=False)
 
 
 @pytest.mark.integration

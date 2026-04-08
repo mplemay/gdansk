@@ -63,13 +63,15 @@ Choose the smallest integration needed:
   - Global default: `Ship(..., ssr=True)`.
   - Per-tool override: `@ship.tool(..., ssr=True|False)`.
 - HTML cache:
-  - Default cached by fingerprint.
+  - Default cached in prod mode.
+  - Dev mode rereads bundle outputs on each resource request.
   - Disable via `Ship(..., cache_html=False)` when SSR output must be uncached per request.
 - Metadata:
   - Set global metadata on `Ship`.
   - Override per tool with shallow top-level merge semantics.
 - FastAPI:
   - Mount `mcp_app` and run its lifespan.
+  - Ship build startup is not tied to the app lifespan.
   - Use `streamable_http_path="/"` in `FastMCP` when mounted.
 - Vite CSS plugins:
   - Add them through `plugins=[VitePlugin(...)]`.

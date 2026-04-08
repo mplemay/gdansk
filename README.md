@@ -74,7 +74,7 @@ def greet(name: str) -> list[TextContent]:
     return [TextContent(type="text", text=f"Hello, {name}!")]
 
 if __name__ == "__main__":
-    app = ship(dev=True)  # Enable hot-reload for development
+    app = ship(dev=True)  # Returns immediately and builds in the background
     uvicorn.run(app, port=3000)
 ```
 
@@ -127,8 +127,11 @@ Gdansk mounts your default export into `#root` automatically and wraps it with `
 Run the server with `python server.py`, configure it in your MCP client (like Claude Desktop), and you'll have an
 interactive greeting tool ready to use.
 
-HTML resources are cached in memory by default. Use `Ship(..., cache_html=False)` if you need uncached reads (for
-example, intentionally dynamic SSR output).
+`ship(dev=False)` blocks until assets are built before returning the Starlette app. `ship(dev=True)` returns the app
+immediately and runs the dev bundler in a background thread.
+
+HTML resources are cached in memory by default in prod mode. Use `Ship(..., cache_html=False)` if you need uncached
+reads (for example, intentionally dynamic SSR output). Dev mode always rereads the current bundle outputs.
 
 ## Why Use Gdansk?
 

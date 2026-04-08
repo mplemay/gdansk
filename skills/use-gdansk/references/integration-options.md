@@ -40,11 +40,12 @@ Default:
 ship = Ship(mcp=mcp, views=views_path, cache_html=True)
 ```
 
-With caching enabled, rendered HTML is reused until the bundle fingerprint changes:
+In prod mode, rendered HTML is reused for the life of the process:
 
-- client JS mtime/size
-- server JS mtime/size (if present)
-- CSS mtime/size (or presence change)
+- `ship(dev=False)` builds before returning the app
+- cached HTML is reused until process restart
+
+In dev mode, resource reads are uncached and always reread the current bundle outputs.
 
 Disable caching when HTML must be freshly rendered each request:
 
@@ -86,7 +87,7 @@ Merge semantics are shallow top-level merge:
 
 ## FastAPI mounting pattern
 
-When embedding MCP app in FastAPI, use `streamable_http_path="/"` and wire lifespan:
+When embedding MCP app in FastAPI, use `streamable_http_path="/"` and wire lifespan for the MCP app itself:
 
 ```python
 from collections.abc import AsyncIterator

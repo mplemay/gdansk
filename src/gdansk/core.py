@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from contextlib import asynccontextmanager, suppress
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from anyio import Path as APath
+from asyncer import runnify
 from gdansk_bundler import Plugin
 
 from gdansk._core import Page, bundle, run
@@ -17,7 +18,7 @@ from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import ENV
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable, Sequence
+    from collections.abc import Callable, Sequence
 
     from mcp.server import MCPServer as FastMCP
     from mcp.types import Icon, ToolAnnotations
@@ -26,8 +27,6 @@ if TYPE_CHECKING:
     from gdansk.protocol import PathType
 
 logger = logging.getLogger(__name__)
-
-type _BundleFingerprint = tuple[tuple[str, bool, int | None, int | None], ...]
 
 
 def _validate_plugins(plugins: Sequence[Plugin] | None) -> None:
@@ -42,6 +41,44 @@ def _validate_plugins(plugins: Sequence[Plugin] | None) -> None:
         raise TypeError(msg)
 
 
+@dataclass(frozen=True, slots=True)
+class _ShipBuildState:
+    pages: tuple[Page, ...]
+    views: Path
+    output: Path
+    plugins: Sequence[Plugin] | None
+    dev: bool
+    minify: bool
+
+
+@dataclass(slots=True)
+class _ShipRuntime:
+    dev: bool | None = None
+    dev_thread: threading.Thread | None = None
+    lock: threading.Lock = field(default_factory=threading.Lock)
+
+
+async def _build_ship(state: _ShipBuildState) -> None:
+    await bundle(
+        pages=list(state.pages),
+        dev=state.dev,
+        minify=state.minify,
+        output=state.output,
+        cwd=state.views,
+        plugins=state.plugins,
+    )
+
+
+_run_build_sync = runnify(_build_ship)
+
+
+def _run_build_in_background(state: _ShipBuildState) -> None:
+    try:
+        _run_build_sync(state)
+    except Exception:
+        logger.exception("Ship background build failed")
+
+
 @dataclass(slots=True)
 class _WidgetResource:
     ship: Ship
@@ -49,7 +86,6 @@ class _WidgetResource:
     page: Page
     metadata: Metadata | None
     ssr: bool
-    _cached_fingerprint: _BundleFingerprint | None = None
     _cached_html: str | None = None
     _cache_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
@@ -64,43 +100,8 @@ class _WidgetResource:
     def _css_path(self) -> APath:
         return APath(self.ship.output / self.page.css)
 
-    async def _compute_fingerprint(self) -> _BundleFingerprint:
-        client_path = self._client_path()
-        client_exists = await client_path.exists()
-        if not client_exists:
-            msg = f"Client bundled output for {self.widget} not found. Has the bundler been run?"
-            raise FileNotFoundError(msg)
-        client_stat = await client_path.stat()
-
-        server_path = self._server_path()
-        if server_path is None:
-            if self.ssr:
-                msg = f"SSR bundled output for {self.widget} not found. Has the bundler been run?"
-                raise FileNotFoundError(msg)
-            server_fingerprint = ("server", False, None, None)
-        else:
-            server_exists = await server_path.exists()
-            if not server_exists:
-                if self.ssr:
-                    msg = f"SSR bundled output for {self.widget} not found. Has the bundler been run?"
-                    raise FileNotFoundError(msg)
-                server_fingerprint = ("server", False, None, None)
-            else:
-                server_stat = await server_path.stat()
-                server_fingerprint = ("server", True, server_stat.st_mtime_ns, server_stat.st_size)
-
-        css_path = self._css_path()
-        if await css_path.exists():
-            css_stat = await css_path.stat()
-            css_fingerprint = ("css", True, css_stat.st_mtime_ns, css_stat.st_size)
-        else:
-            css_fingerprint = ("css", False, None, None)
-
-        return (
-            ("client", True, client_stat.st_mtime_ns, client_stat.st_size),
-            server_fingerprint,
-            css_fingerprint,
-        )
+    def _should_cache_html(self) -> bool:
+        return self.ship.cache_html and self.ship._runtime.dev is not True  # noqa: SLF001
 
     async def _render_html(self) -> str:
         client_path = self._client_path()
@@ -132,20 +133,17 @@ class _WidgetResource:
         )
 
     async def __call__(self) -> str:
-        fingerprint = await self._compute_fingerprint()
-        if not self.ship.cache_html:
+        if not self._should_cache_html():
             return await self._render_html()
 
-        if self._cached_fingerprint == fingerprint and self._cached_html is not None:
+        if self._cached_html is not None:
             return self._cached_html
 
         async with self._cache_lock:
-            fingerprint = await self._compute_fingerprint()
-            if self._cached_fingerprint == fingerprint and self._cached_html is not None:
+            if self._cached_html is not None:
                 return self._cached_html
 
             rendered_html = await self._render_html()
-            self._cached_fingerprint = fingerprint
             self._cached_html = rendered_html
             return rendered_html
 
@@ -165,6 +163,7 @@ class Ship:
     metadata: Metadata | None = field(default=None, kw_only=True)
     plugins: Sequence[Plugin] | None = field(default=None, kw_only=True)
     _pages: dict[Path, Page] = field(default_factory=dict, init=False, repr=False)
+    _runtime: _ShipRuntime = field(default_factory=_ShipRuntime, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         """Normalize required paths and validate plugin inputs."""
@@ -192,36 +191,6 @@ class Ship:
 
     def _register_page(self, page: Page) -> None:
         self._pages[page.path] = page
-
-    async def _run_build_pipeline(self, *, dev: bool, ready_event: asyncio.Event | None = None) -> None:
-        await bundle(
-            pages=self._registered_pages(),
-            dev=dev,
-            minify=not dev,
-            output=self.output,
-            cwd=self._views_path(),
-            plugins=self.plugins,
-            _ready=ready_event,
-        )
-
-    @staticmethod
-    def _log_background_task_error(task: asyncio.Task[None]) -> None:
-        if task.cancelled():
-            return
-        exc = task.exception()
-        if exc is None:
-            return
-        logger.exception("Ship background task failed", exc_info=exc)
-
-    @staticmethod
-    async def _shutdown_dev_tasks(*, bundle_task: asyncio.Task[None] | None) -> None:
-        tasks = [candidate for candidate in [bundle_task] if candidate is not None]
-        for task in tasks:
-            if not task.done():
-                task.cancel()
-        if tasks:
-            with suppress(asyncio.CancelledError):
-                await asyncio.gather(*tasks, return_exceptions=True)
 
     @staticmethod
     def _normalize_widget_input(widget: PathType) -> Path:
@@ -308,41 +277,37 @@ class Ship:
         if not self._pages:
             return app
 
-        bundle_task: asyncio.Task[None] | None = None
-        original_lifespan = app.router.lifespan_context
+        build_state = _ShipBuildState(
+            pages=tuple(self._registered_pages()),
+            views=self._views_path(),
+            output=self.output,
+            plugins=self.plugins,
+            dev=dev,
+            minify=not dev,
+        )
 
-        @asynccontextmanager
-        async def _lifespan(starlette_app: Starlette) -> AsyncIterator[None]:
+        with self._runtime.lock:
+            active_dev = self._runtime.dev
+            if active_dev is not None and active_dev != dev:
+                msg = "Ship instances cannot switch between dev and prod modes once started"
+                raise RuntimeError(msg)
+
             if dev:
-                nonlocal bundle_task
-                ready_event = asyncio.Event()
-                bundle_task = asyncio.create_task(
-                    self._run_build_pipeline(dev=True, ready_event=ready_event),
-                )
-                bundle_task.add_done_callback(self._log_background_task_error)
-                ready_task = asyncio.get_running_loop().create_task(ready_event.wait())
-                done, pending = await asyncio.wait(
-                    {bundle_task, ready_task},
-                    return_when=asyncio.FIRST_COMPLETED,
-                )
-                if ready_task in pending:
-                    ready_task.cancel()
-                    with suppress(asyncio.CancelledError):
-                        await ready_task
-                if bundle_task in done:
-                    with suppress(Exception):
-                        bundle_task.result()
-            else:
-                await self._run_build_pipeline(dev=False)
+                self._runtime.dev = True
+                dev_thread = self._runtime.dev_thread
+                if dev_thread is None or not dev_thread.is_alive():
+                    dev_thread = threading.Thread(
+                        target=_run_build_in_background,
+                        args=(build_state,),
+                        name=f"gdansk-ship-{self._views_path().name}",
+                        daemon=True,
+                    )
+                    self._runtime.dev_thread = dev_thread
+                    dev_thread.start()
+                return app
 
-            async with original_lifespan(starlette_app):
-                try:
-                    yield
-                finally:
-                    if dev:
-                        await Ship._shutdown_dev_tasks(bundle_task=bundle_task)
-
-        app.router.lifespan_context = _lifespan
+            _run_build_sync(build_state)
+            self._runtime.dev = False
         return app
 
     def tool(  # noqa: PLR0913
