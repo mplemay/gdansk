@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import FrozenInstanceError
 from os import PathLike, fspath
 from typing import Any, Self
 
@@ -40,18 +40,19 @@ class ViteScript(Script[None, object]):
         return "ViteScript(contents='<inline>')"
 
 
-@dataclass(frozen=True, slots=True, kw_only=True)
 class VitePlugin(Plugin):
-    script: ScriptImpl = field(compare=False, hash=False, repr=False)
-    _script_contents: str = field(init=False, repr=False)
-    _script_source_path: str | None = field(init=False, repr=False)
+    __slots__ = ("_script_contents", "_script_source_path", "script")
 
-    def __post_init__(self) -> None:
-        if not isinstance(self.script, ScriptImpl):
+    script: ViteScript
+    _script_contents: str
+    _script_source_path: str | None
+
+    def __init__(self, *, script: ScriptImpl) -> None:
+        if not isinstance(script, ScriptImpl):
             msg = "VitePlugin.script must be a gdansk_runtime.Script or gdansk_vite.ViteScript"
             raise TypeError(msg)
 
-        vite_script = self.script if isinstance(self.script, ViteScript) else ViteScript.from_script(self.script)
+        vite_script = script if isinstance(script, ViteScript) else ViteScript.from_script(script)
         Plugin.__init__(self, id="vite")
         object.__setattr__(self, "script", vite_script)
         object.__setattr__(self, "_script_contents", vite_script.contents)
@@ -59,6 +60,22 @@ class VitePlugin(Plugin):
 
     def __repr__(self) -> str:
         return f"VitePlugin(script={self.script!r})"
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, VitePlugin):
+            return NotImplemented
+        return self._script_contents == other._script_contents and self._script_source_path == other._script_source_path
+
+    def __hash__(self) -> int:
+        return hash((self._script_contents, self._script_source_path))
+
+    def __setattr__(self, name: str, value: object) -> None:
+        msg = f"cannot assign to field {name!r}"
+        raise FrozenInstanceError(msg)
+
+    def __delattr__(self, name: str) -> None:
+        msg = f"cannot delete field {name!r}"
+        raise FrozenInstanceError(msg)
 
 
 def transform_css_assets(
