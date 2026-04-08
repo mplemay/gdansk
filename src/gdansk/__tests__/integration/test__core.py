@@ -111,6 +111,31 @@ async def _wait_for_file_or_task_failure(
     pytest.fail(message)
 
 
+async def _wait_for_file_content_or_task_failure(
+    task: asyncio.Task[object],
+    output_path: Path,
+    text: str,
+    *,
+    timeout_seconds: float = 20.0,
+) -> str:
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout_seconds
+    path = APath(output_path)
+    while loop.time() < deadline:
+        if await path.exists():
+            content = await path.read_text(encoding="utf-8")
+            if text in content:
+                return content
+        if task.done():
+            exc = task.exception()
+            message = f"bundle task ended before emitting {output_path}: {exc!r}"
+            pytest.fail(message)
+        await asyncio.sleep(0.05)
+
+    message = f"timed out waiting for bundle output containing {text!r}: {output_path}"
+    pytest.fail(message)
+
+
 def test_view_requires_keyword_only_arguments():
     with pytest.raises(TypeError, match="positional"):
         Page(Path("main.tsx"))  # ty: ignore[missing-argument,too-many-positional-arguments]
@@ -220,6 +245,36 @@ async def test_bundle_dev_mode_can_run_in_background_and_cancel(tmp_path, monkey
 
 
 @pytest.mark.integration
+async def test_bundle_dev_mode_recovers_after_failed_rebuild(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "page.css").write_text(".before { color: red; }\n", encoding="utf-8")
+    page_path = tmp_path / "page.tsx"
+    page_path.write_text(
+        'import "./page.css";\nexport const page = 1;\n',
+        encoding="utf-8",
+    )
+
+    output_path = tmp_path / ".gdansk" / "page.css"
+    task = asyncio.ensure_future(bundle([Page(path=Path("page.tsx"))], dev=True))
+    await _wait_for_file_content_or_task_failure(task, output_path, ".before")
+
+    page_path.write_text(
+        'import "./missing.css";\nexport const page = 1;\n',
+        encoding="utf-8",
+    )
+    await asyncio.sleep(0.5)
+    (tmp_path / "missing.css").write_text(".after { color: blue; }\n", encoding="utf-8")
+
+    css = await _wait_for_file_content_or_task_failure(task, output_path, ".after")
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert ".before" not in css
+
+
+@pytest.mark.integration
 async def test_bundle_outputs_css_file(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "page.css").write_text("body { color: red; }\n", encoding="utf-8")
@@ -270,6 +325,26 @@ async def test_bundle_resolves_css_package_style_exports(tmp_path, monkeypatch):
     css_output = tmp_path / ".gdansk" / "page.css"
     assert css_output.exists()
     assert "green" in css_output.read_text(encoding="utf-8")
+
+
+@pytest.mark.integration
+async def test_bundle_resolves_direct_package_css_imports(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    package_dir = tmp_path / "node_modules" / "pkg"
+    package_dir.mkdir(parents=True, exist_ok=True)
+    (package_dir / "package.json").write_text('{"name":"pkg"}\n', encoding="utf-8")
+    (package_dir / "theme.css").write_text(".pkg-theme { color: blue; }\n", encoding="utf-8")
+    (tmp_path / "page.tsx").write_text(
+        'import "pkg/theme.css";\nexport const page = 1;\n',
+        encoding="utf-8",
+    )
+
+    await bundle([Page(path=Path("page.tsx"))])
+
+    css_output = tmp_path / ".gdansk" / "page.css"
+    assert css_output.exists()
+    assert ".pkg-theme" in css_output.read_text(encoding="utf-8")
 
 
 @pytest.mark.integration
@@ -352,6 +427,30 @@ async def test_bundle_accepts_minify_false(tmp_path, monkeypatch):
     await bundle([Page(path=Path("main.tsx"))], minify=False)
 
     assert (tmp_path / ".gdansk" / "main.js").exists()
+
+
+@pytest.mark.integration
+async def test_bundle_minifies_javascript_output_by_default(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "main.tsx").write_text(
+        """
+export default function App() {
+  const message = "hello world";
+  return <div className="greeting">{message}</div>;
+}
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    await bundle([Page(path=Path("main.tsx"))], output=Path("minified"))
+    await bundle([Page(path=Path("main.tsx"))], minify=False, output=Path("readable"))
+
+    minified = (tmp_path / "minified" / "main.js").read_text(encoding="utf-8")
+    readable = (tmp_path / "readable" / "main.js").read_text(encoding="utf-8")
+
+    assert len(minified) < len(readable)
+    assert minified.count("\n") < readable.count("\n")
 
 
 @pytest.mark.integration

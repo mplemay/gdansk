@@ -3,16 +3,18 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import logging
 import os
 import re
 import shutil
 import tempfile
 import threading
+import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from gdansk_bundler import Bundler, Plugin as BundlerPlugin
-from gdansk_lightningcss import bundle_css_paths, transform_css
+from gdansk_lightningcss import bundle_css_paths, resolve_css_import_path, transform_css
 from gdansk_runtime import Runtime as JsRuntime, Script
 from gdansk_vite import VitePlugin, transform_css_assets
 
@@ -27,7 +29,8 @@ _ENTRY_DIRNAME = "__gdansk_entries"
 _CSS_ENTRY_DIRNAME = "__gdansk_css_entries"
 _RUNTIME_ENTRY_PATH = Path("__gdansk_runtime_eval__.js")
 _RUNNER = JsRuntime()
-_MODULE_SYNTAX_PATTERN = re.compile(r"(?m)^\s*(?:import|export)\b")
+_MODULE_SYNTAX_PATTERN = re.compile(r"(?m)(?:^|[;}])\s*(?:import|export)\b")
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -96,7 +99,7 @@ class _CssStubPlugin(BundlerPlugin):
         importer_path = Path(importer)
         importer_dir = importer_path.parent if importer_path.suffix else importer_path
         try:
-            resolved = _resolve_local_css_import(specifier, importer_dir=importer_dir, root=self._root)
+            resolved = resolve_css_import_path(specifier, importer_dir=importer_dir, root=self._root)
         except ValueError:
             return None
         return _encode_css_stub_id(resolved)
@@ -236,19 +239,6 @@ def _resolve_local_module(specifier: str, *, importer_dir: Path) -> Path | None:
     return None
 
 
-def _resolve_local_css_import(specifier: str, *, importer_dir: Path, root: Path) -> Path:
-    candidate = _resolve_local_module(specifier, importer_dir=importer_dir)
-    if candidate is None or candidate.suffix != ".css":
-        msg = f'failed to resolve css import "{specifier}"'
-        raise ValueError(msg)
-    try:
-        candidate.relative_to(root)
-    except ValueError as err:
-        msg = f'failed to resolve css import "{specifier}"'
-        raise ValueError(msg) from err
-    return candidate
-
-
 def _scan_js_module_graph(
     entry_path: Path,
     *,
@@ -268,7 +258,7 @@ def _scan_js_module_graph(
         if specifier.endswith(".css"):
             try:
                 css_paths.append(
-                    _resolve_local_css_import(specifier, importer_dir=entry_path.parent, root=root),
+                    resolve_css_import_path(specifier, importer_dir=entry_path.parent, root=root),
                 )
             except ValueError:
                 continue
@@ -471,6 +461,7 @@ def _build_javascript(
     *,
     cwd: Path,
     output_dir: Path,
+    minify: bool,
     plugins: list[BundlerPlugin],
 ) -> None:
     if not inputs:
@@ -482,10 +473,14 @@ def _build_javascript(
             "dir": str(output_dir),
             "format": "esm",
             "entry_file_names": "[name].js",
+            "minify": minify,
         },
     )
     with bundler() as build:
-        build(inputs)
+        try:
+            build(inputs)
+        except RuntimeError as err:
+            raise RuntimeError(str(err)) from None
 
 
 def _build_once(
@@ -524,8 +519,20 @@ def _build_once(
     client_inputs, server_inputs = _prepare_entry_files(normalized_pages, output_dir=output_dir)
 
     js_plugins = [*bundler_plugins, _CssStubPlugin(root=actual_cwd)]
-    _build_javascript(client_inputs, cwd=actual_cwd, output_dir=output_dir, plugins=js_plugins)
-    _build_javascript(server_inputs, cwd=actual_cwd, output_dir=output_dir, plugins=js_plugins)
+    _build_javascript(
+        client_inputs,
+        cwd=actual_cwd,
+        output_dir=output_dir,
+        minify=minify,
+        plugins=js_plugins,
+    )
+    _build_javascript(
+        server_inputs,
+        cwd=actual_cwd,
+        output_dir=output_dir,
+        minify=minify,
+        plugins=js_plugins,
+    )
 
     watch_files = {path.resolve() for assets in page_assets.values() for path in assets.watch_paths}
     watch_files.update(
@@ -560,30 +567,37 @@ def _watch_loop(
     output: Path | None,
     cwd: Path | None,
     plugins: list[BundlerPlugin | VitePlugin] | None,
+    watched_files: set[Path],
     stop_event: threading.Event,
 ) -> None:
-    watched_files = _build_once(
-        pages,
-        dev=True,
-        minify=minify,
-        output=output,
-        cwd=cwd,
-        plugins=plugins,
-    )
     snapshot = _watch_state(watched_files)
+    failed_state: dict[Path, tuple[int, int] | None] | None = None
+    failed_signature: tuple[type[Exception], tuple[object, ...]] | None = None
     while not stop_event.wait(0.1):
         current = _watch_state(watched_files)
         if current == snapshot:
             continue
-        watched_files = _build_once(
-            pages,
-            dev=True,
-            minify=minify,
-            output=output,
-            cwd=cwd,
-            plugins=plugins,
-        )
+        try:
+            watched_files = _build_once(
+                pages,
+                dev=True,
+                minify=minify,
+                output=output,
+                cwd=cwd,
+                plugins=plugins,
+            )
+        except (RuntimeError, ValueError, TypeError) as err:
+            signature = (type(err), err.args)
+            if err.__traceback__ is not None:
+                traceback.clear_frames(err.__traceback__)
+            if failed_state != current or failed_signature != signature:
+                logger.exception("gdansk dev rebuild failed")
+                failed_state = current
+                failed_signature = signature
+            continue
         snapshot = _watch_state(watched_files)
+        failed_state = None
+        failed_signature = None
 
 
 async def bundle(
@@ -605,7 +619,7 @@ async def bundle(
         )
         return
 
-    _build_once(
+    watched_files = _build_once(
         pages,
         dev=True,
         minify=minify,
@@ -622,6 +636,7 @@ async def bundle(
             "output": output,
             "cwd": cwd,
             "plugins": plugins,
+            "watched_files": watched_files,
             "stop_event": stop_event,
         },
         daemon=True,
@@ -669,7 +684,7 @@ async def _run_inline(code: str) -> object:
 
 
 async def _run_module(code: str) -> object:
-    with tempfile.TemporaryDirectory(prefix="gdansk-runtime-", dir=Path.cwd()) as tmpdir:
+    with tempfile.TemporaryDirectory(prefix="gdansk-runtime-") as tmpdir:
         root = Path(tmpdir)
         source_path = root / "source.js"
         wrapper_path = root / _RUNTIME_ENTRY_PATH
