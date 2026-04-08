@@ -1,6 +1,6 @@
 use pyo3::{prelude::*, types::PyBool};
 
-use crate::{BundlerConfigState, unsupported_feature_error};
+use crate::BundlerConfigState;
 
 use super::parse::{
     extract_string, extract_string_sequence, parse_define, parse_devtools, parse_external,
@@ -9,15 +9,15 @@ use super::parse::{
 };
 use super::plugins::parse_plugins;
 
-pub(crate) fn validate_watch(watch: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
-    if let Some(watch) = watch {
-        let watch_is_disabled =
-            watch.is_instance_of::<PyBool>() && !watch.cast::<PyBool>()?.extract::<bool>()?;
-        if !watch_is_disabled {
-            return Err(unsupported_feature_error("Bundler.watch"));
-        }
-    }
-    Ok(())
+pub(crate) fn validate_watch(watch: Option<&Bound<'_, PyAny>>) -> PyResult<bool> {
+    let Some(watch) = watch else {
+        return Ok(false);
+    };
+
+    watch
+        .cast::<PyBool>()
+        .map_err(|_| pyo3::exceptions::PyTypeError::new_err("Bundler.watch must be a boolean"))?
+        .extract()
 }
 
 #[allow(clippy::too_many_arguments)]

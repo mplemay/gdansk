@@ -32,6 +32,12 @@ fn extract_path_as_string(value: &Bound<'_, PyAny>, message: &str) -> PyResult<S
     Ok(path.to_string_lossy().into_owned())
 }
 
+fn extract_path(value: &Bound<'_, PyAny>, message: &str) -> PyResult<PathBuf> {
+    value
+        .extract()
+        .map_err(|_| PyTypeError::new_err(message.to_owned()))
+}
+
 pub(crate) fn parse_optional_cwd(value: Option<&Bound<'_, PyAny>>) -> PyResult<Option<PathBuf>> {
     let Some(value) = value else {
         return Ok(None);
@@ -179,6 +185,36 @@ pub(crate) fn parse_input(value: &Bound<'_, PyAny>) -> PyResult<Vec<InputItem>> 
 
     let input = extract_path_as_string(value, message)?;
     Ok(vec![InputItem::from(input)])
+}
+
+pub(crate) fn parse_path_sequence(
+    value: Option<&Bound<'_, PyAny>>,
+    label: &str,
+) -> PyResult<Vec<PathBuf>> {
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+    let message = format!("{label} must be a path, or a sequence of paths (str or os.PathLike)");
+
+    if value.is_instance_of::<PyString>() {
+        return Ok(vec![extract_path(value, &message)?]);
+    }
+
+    if let Ok(list) = value.cast::<PyList>() {
+        return list
+            .iter()
+            .map(|item| extract_path(&item, &message))
+            .collect();
+    }
+
+    if let Ok(tuple) = value.cast::<PyTuple>() {
+        return tuple
+            .iter()
+            .map(|item| extract_path(&item, &message))
+            .collect();
+    }
+
+    Ok(vec![extract_path(value, &message)?])
 }
 
 fn parse_nested_string_matrix(

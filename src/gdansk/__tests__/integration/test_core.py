@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -11,17 +12,29 @@ from gdansk.core import Amber
 
 
 @contextmanager
-def _lifespan(app):
+def _lifespan(app, *, background: bool = False):
     loop = asyncio.new_event_loop()
     context = app.router.lifespan_context(app)
     entered = False
+    loop_thread: threading.Thread | None = None
     try:
-        loop.run_until_complete(context.__aenter__())
+        if background:
+            loop_thread = threading.Thread(target=loop.run_forever, daemon=True)
+            loop_thread.start()
+            asyncio.run_coroutine_threadsafe(context.__aenter__(), loop).result()
+        else:
+            loop.run_until_complete(context.__aenter__())
         entered = True
         yield
     finally:
         if entered:
-            loop.run_until_complete(context.__aexit__(None, None, None))
+            if background:
+                asyncio.run_coroutine_threadsafe(context.__aexit__(None, None, None), loop).result()
+            else:
+                loop.run_until_complete(context.__aexit__(None, None, None))
+        if loop_thread is not None:
+            loop.call_soon_threadsafe(loop.stop)
+            loop_thread.join(timeout=5)
         loop.close()
 
 
@@ -160,7 +173,7 @@ def test_dev_bundles_in_background(mock_mcp, pages_dir, tmp_path, monkeypatch):
         return "result"
 
     app = amber(dev=True)
-    with _lifespan(app):
+    with _lifespan(app, background=True):
         # Wait for the background bundler to produce output
         deadline = time.monotonic() + 20
         while not (output / "simple/client.js").exists():

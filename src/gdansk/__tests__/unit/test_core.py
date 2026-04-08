@@ -137,17 +137,29 @@ def test_frozen_dataclass(amber):
 
 
 @contextmanager
-def _lifespan(app):
+def _lifespan(app, *, background: bool = False):
     loop = asyncio.new_event_loop()
     context = app.router.lifespan_context(app)
     entered = False
+    loop_thread: threading.Thread | None = None
     try:
-        loop.run_until_complete(context.__aenter__())
+        if background:
+            loop_thread = threading.Thread(target=loop.run_forever, daemon=True)
+            loop_thread.start()
+            asyncio.run_coroutine_threadsafe(context.__aenter__(), loop).result()
+        else:
+            loop.run_until_complete(context.__aenter__())
         entered = True
         yield
     finally:
         if entered:
-            loop.run_until_complete(context.__aexit__(None, None, None))
+            if background:
+                asyncio.run_coroutine_threadsafe(context.__aexit__(None, None, None), loop).result()
+            else:
+                loop.run_until_complete(context.__aexit__(None, None, None))
+        if loop_thread is not None:
+            loop.call_soon_threadsafe(loop.stop)
+            loop_thread.join(timeout=5)
         loop.close()
 
 
@@ -215,6 +227,9 @@ def test_dev_true_starts_background_task(amber):
 
     async def _slow_bundle(**_kwargs: object):
         started.set()
+        ready = _kwargs.get("_ready")
+        if isinstance(ready, asyncio.Event):
+            ready.set()
         await asyncio.sleep(999)
 
     def _capture_create_task(coro):
@@ -227,7 +242,7 @@ def test_dev_true_starts_background_task(amber):
         patch("gdansk.core.asyncio.create_task", side_effect=_capture_create_task),
     ):
         app = amber(dev=True)
-        with _lifespan(app):
+        with _lifespan(app, background=True):
             assert started.wait(timeout=5)
             assert len(created_tasks) == 1
             assert created_tasks[0].done() is False
@@ -242,7 +257,7 @@ def test_passes_dev_flag_and_derived_minify(amber):
         captured.append(kwargs)
 
     with patch("gdansk.core.bundle", _fake_bundle):
-        with _lifespan(amber(dev=True)):
+        with _lifespan(amber(dev=True), background=True):
             pass
         with _lifespan(amber(dev=False)):
             pass
@@ -457,6 +472,9 @@ def test_dev_vite_bundle_task_cancelled_on_shutdown(mock_mcp, pages_dir):
     amber._widgets.add(Page(path=Path("widgets/simple/widget.tsx"), is_widget=True, ssr=False))
 
     async def _slow_bundle(**_kwargs: object):
+        ready = _kwargs.get("_ready")
+        if isinstance(ready, asyncio.Event):
+            ready.set()
         try:
             await asyncio.sleep(999)
         except asyncio.CancelledError:
@@ -467,6 +485,7 @@ def test_dev_vite_bundle_task_cancelled_on_shutdown(mock_mcp, pages_dir):
         patch("gdansk.core.bundle", _slow_bundle),
         _lifespan(
             amber(dev=True),
+            background=True,
         ),
     ):
         time.sleep(0.1)
@@ -490,7 +509,7 @@ def test_dev_vite_bundle_error_is_logged(mock_mcp, pages_dir):
     with (
         patch("gdansk.core.bundle", _failing_bundle),
         patch("gdansk.core.logger.exception") as mock_log,
-        _lifespan(amber(dev=True)),
+        _lifespan(amber(dev=True), background=True),
     ):
         deadline = time.monotonic() + 5
         while mock_log.call_count == 0 and time.monotonic() < deadline:
@@ -508,9 +527,9 @@ def test_repeated_startup_shutdown_is_idempotent(amber):
 
     with patch("gdansk.core.bundle", _fake_bundle):
         app = amber(dev=True)
-        with _lifespan(app):
+        with _lifespan(app, background=True):
             pass
-        with _lifespan(app):
+        with _lifespan(app, background=True):
             pass
 
 

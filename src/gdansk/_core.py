@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import base64
 import json
 import logging
@@ -8,10 +7,9 @@ import os
 import re
 import shutil
 import tempfile
-import threading
-import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Protocol
 
 from gdansk_bundler import Bundler, Plugin
 from gdansk_lightningcss import bundle_css_paths, resolve_css_import_path, transform_css
@@ -86,6 +84,10 @@ class _PageAssets:
     css_paths: tuple[Path, ...]
     js_paths: tuple[Path, ...]
     watch_paths: tuple[Path, ...]
+
+
+class _ReadySignal(Protocol):
+    def set(self) -> None: ...
 
 
 class _CssStubPlugin(Plugin):
@@ -466,7 +468,27 @@ def _build_javascript(
 ) -> None:
     if not inputs:
         return
-    bundler = Bundler(
+    bundler = _create_javascript_bundler(
+        cwd=cwd,
+        output_dir=output_dir,
+        minify=minify,
+        plugins=plugins,
+    )
+    with bundler() as build:
+        try:
+            build(inputs)
+        except RuntimeError as err:
+            raise RuntimeError(str(err)) from None
+
+
+def _create_javascript_bundler(
+    *,
+    cwd: Path,
+    output_dir: Path,
+    minify: bool,
+    plugins: list[Plugin],
+) -> Bundler:
+    return Bundler(
         cwd=cwd,
         plugins=plugins,
         output={
@@ -476,11 +498,63 @@ def _build_javascript(
             "minify": minify,
         },
     )
-    with bundler() as build:
+
+
+async def _run_dev_watch_loop(
+    pages: list[_NormalizedPage],
+    *,
+    page_assets: dict[Path, _PageAssets],
+    all_inputs: dict[str, str],
+    cwd: Path,
+    output_dir: Path,
+    minify: bool,
+    bundler_plugins: list[Plugin],
+    css_plugins: list[Plugin],
+    vite_plugins: list[VitePlugin],
+    ready: _ReadySignal | None = None,
+) -> None:
+    bundler = _create_javascript_bundler(
+        cwd=cwd,
+        output_dir=output_dir,
+        minify=minify,
+        plugins=[*bundler_plugins, _CssStubPlugin(root=cwd)],
+    )
+
+    async with bundler(watch=True) as build:
         try:
-            build(inputs)
+            await build(all_inputs)
         except RuntimeError as err:
             raise RuntimeError(str(err)) from None
+
+        watch_files = _build_css_outputs(
+            pages,
+            page_assets,
+            cwd=cwd,
+            output_dir=output_dir,
+            minify=minify,
+            css_plugins=css_plugins,
+            vite_plugins=vite_plugins,
+        )
+        await build.set_watch_files(tuple(sorted(watch_files)))
+        if ready is not None:
+            ready.set()
+
+        while True:
+            try:
+                await build.wait_for_rebuild()
+                page_assets = {page.absolute_path: _collect_page_assets(page, root=cwd) for page in pages}
+                watch_files = _build_css_outputs(
+                    pages,
+                    page_assets,
+                    cwd=cwd,
+                    output_dir=output_dir,
+                    minify=minify,
+                    css_plugins=css_plugins,
+                    vite_plugins=vite_plugins,
+                )
+                await build.set_watch_files(tuple(sorted(watch_files)))
+            except (RuntimeError, ValueError, TypeError):
+                logger.exception("gdansk dev rebuild failed")
 
 
 def _build_once(
@@ -549,55 +623,56 @@ def _build_once(
     return watch_files
 
 
-def _watch_state(paths: set[Path]) -> dict[Path, tuple[int, int] | None]:
-    state: dict[Path, tuple[int, int] | None] = {}
-    for path in paths:
-        if not path.exists():
-            state[path] = None
-            continue
-        stat = path.stat()
-        state[path] = (stat.st_mtime_ns, stat.st_size)
-    return state
-
-
-def _watch_loop(
-    *,
+def _prepare_dev_bundle_state(
     pages: list[Page],
-    minify: bool,
+    *,
     output: Path | None,
     cwd: Path | None,
     plugins: list[Plugin] | None,
-    watched_files: set[Path],
-    stop_event: threading.Event,
-) -> None:
-    snapshot = _watch_state(watched_files)
-    failed_state: dict[Path, tuple[int, int] | None] | None = None
-    failed_signature: tuple[type[Exception], tuple[object, ...]] | None = None
-    while not stop_event.wait(0.1):
-        current = _watch_state(watched_files)
-        if current == snapshot:
+) -> tuple[
+    Path,
+    Path,
+    list[_NormalizedPage],
+    list[Plugin],
+    list[Plugin],
+    list[VitePlugin],
+    dict[Path, _PageAssets],
+    dict[str, str],
+]:
+    actual_cwd = cwd.resolve() if cwd is not None else Path.cwd().resolve()
+    output_dir = _resolve_output_dir(output=output, cwd=actual_cwd)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    normalized_pages = _normalize_pages(
+        pages,
+        cwd=actual_cwd,
+        output_dir=output_dir,
+    )
+
+    bundler_plugins: list[Plugin] = []
+    css_plugins: list[Plugin] = []
+    vite_plugins: list[VitePlugin] = []
+    for plugin in plugins or []:
+        if isinstance(plugin, VitePlugin):
+            vite_plugins.append(plugin)
             continue
-        try:
-            watched_files = _build_once(
-                pages,
-                dev=True,
-                minify=minify,
-                output=output,
-                cwd=cwd,
-                plugins=plugins,
-            )
-        except (RuntimeError, ValueError, TypeError) as err:
-            signature = (type(err), err.args)
-            if err.__traceback__ is not None:
-                traceback.clear_frames(err.__traceback__)
-            if failed_state != current or failed_signature != signature:
-                logger.exception("gdansk dev rebuild failed")
-                failed_state = current
-                failed_signature = signature
-            continue
-        snapshot = _watch_state(watched_files)
-        failed_state = None
-        failed_signature = None
+        if not isinstance(plugin, Plugin):
+            msg = "Amber plugins must be gdansk_bundler.Plugin instances"
+            raise TypeError(msg)
+        bundler_plugins.append(plugin)
+        css_plugins.append(plugin)
+
+    page_assets = {page.absolute_path: _collect_page_assets(page, root=actual_cwd) for page in normalized_pages}
+    client_inputs, server_inputs = _prepare_entry_files(normalized_pages, output_dir=output_dir)
+    return (
+        actual_cwd,
+        output_dir,
+        normalized_pages,
+        bundler_plugins,
+        css_plugins,
+        vite_plugins,
+        page_assets,
+        {**client_inputs, **server_inputs},
+    )
 
 
 async def bundle(
@@ -607,6 +682,7 @@ async def bundle(
     output: Path | None = None,
     cwd: Path | None = None,
     plugins: list[Plugin] | None = None,
+    _ready: _ReadySignal | None = None,
 ) -> None:
     if not dev:
         _build_once(
@@ -617,38 +693,38 @@ async def bundle(
             cwd=cwd,
             plugins=plugins,
         )
+        if _ready is not None:
+            _ready.set()
         return
 
-    watched_files = _build_once(
+    (
+        actual_cwd,
+        output_dir,
+        normalized_pages,
+        bundler_plugins,
+        css_plugins,
+        vite_plugins,
+        page_assets,
+        all_inputs,
+    ) = _prepare_dev_bundle_state(
         pages,
-        dev=True,
-        minify=minify,
         output=output,
         cwd=cwd,
         plugins=plugins,
     )
-    stop_event = threading.Event()
-    watch_thread = threading.Thread(
-        target=_watch_loop,
-        kwargs={
-            "pages": pages,
-            "minify": minify,
-            "output": output,
-            "cwd": cwd,
-            "plugins": plugins,
-            "watched_files": watched_files,
-            "stop_event": stop_event,
-        },
-        daemon=True,
+
+    await _run_dev_watch_loop(
+        normalized_pages,
+        page_assets=page_assets,
+        all_inputs=all_inputs,
+        cwd=actual_cwd,
+        output_dir=output_dir,
+        minify=minify,
+        bundler_plugins=bundler_plugins,
+        css_plugins=css_plugins,
+        vite_plugins=vite_plugins,
+        ready=_ready,
     )
-    watch_thread.start()
-    while True:
-        try:
-            await asyncio.sleep(3600)
-        except asyncio.CancelledError:
-            stop_event.set()
-            watch_thread.join(timeout=5)
-            raise
 
 
 async def run(code: str) -> object:

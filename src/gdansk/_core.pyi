@@ -22,5 +22,6 @@ async def bundle(
     output: Path = ...,
     cwd: Path = ...,
     plugins: Sequence[Plugin] | None = None,
+    _ready: object | None = None,
 ) -> None: ...
 async def run(code: str, /) -> object: ...

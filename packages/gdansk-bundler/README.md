@@ -27,7 +27,37 @@ with bundler(write=False) as build:
     output = build("./index.ts")
 ```
 
-For async code, construct `AsyncBundlerContext` explicitly (optional `write` / `watch` match `bundler(...)`):
+For async code, `async with bundler(...)` yields an `AsyncBundlerContext`:
+
+```python
+bundler = Bundler(cwd=".")
+
+async with bundler(write=False) as build:
+    output = await build("./index.ts", {"format": "esm"})
+```
+
+Watch mode is async-only. You can enable it either when opening the context:
+
+```python
+bundler = Bundler(cwd=".")
+
+async with bundler(watch=True) as build:
+    output = await build("./index.ts", {"format": "esm"})
+    next_output = await build.wait_for_rebuild()
+```
+
+Or per build call:
+
+```python
+bundler = Bundler(cwd=".")
+
+async with bundler() as build:
+    output = await build("./index.ts", {"format": "esm"}, watch=True)
+    await build.set_watch_files(["./extra.css"])
+    next_output = await build.wait_for_rebuild()
+```
+
+Constructing `AsyncBundlerContext` explicitly still works (optional `write` / `watch` match `bundler(...)`):
 
 ```python
 from gdansk_bundler import AsyncBundlerContext, Bundler
@@ -119,5 +149,3 @@ with bundler(write=False) as build:
   (`True` / `False` / `"absolute"` / `"relative"`) for other cases, consistent with Rolldown’s hook output shape.
 - Plugin hooks do not yet receive Rolldown plugin contexts (`cwd`, `add_watch_file`, `resolve`, etc.); only the
   arguments above are passed.
-- Watch mode is not supported yet.
-- This package currently targets the one-shot `rolldown()` lifecycle rather than Rolldown's watcher or dev-mode APIs.

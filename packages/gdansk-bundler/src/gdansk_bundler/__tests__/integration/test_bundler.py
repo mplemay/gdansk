@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import anyio
+
 from gdansk_bundler import AsyncBundlerContext, Bundler, BundlerOutput, Plugin
 
 if TYPE_CHECKING:
@@ -144,6 +146,113 @@ console.log(value);
     assert "console.log(" in output.chunks[0].code
     assert output.chunks[0].file_name == "index.js"
     assert not (tmp_path / "dist").exists()
+
+
+async def test_bundler_watch_context_rebuilds_on_source_change(tmp_path: Path) -> None:
+    write_fixture_file(
+        tmp_path,
+        "index.ts",
+        """
+export const value = 1;
+console.log(value);
+""".strip()
+        + "\n",
+    )
+
+    bundler = Bundler(cwd=tmp_path)
+
+    async with bundler(watch=True) as build:
+        initial = await build("./index.ts", {"format": "esm"})
+
+        assert isinstance(initial, BundlerOutput)
+        assert any("1" in chunk.code for chunk in initial.chunks)
+
+        write_fixture_file(
+            tmp_path,
+            "index.ts",
+            """
+export const value = 2;
+console.log(value);
+""".strip()
+            + "\n",
+        )
+
+        with anyio.fail_after(10):
+            rebuilt = await build.wait_for_rebuild()
+
+    assert isinstance(rebuilt, BundlerOutput)
+    assert any("2" in chunk.code for chunk in rebuilt.chunks)
+
+
+async def test_bundler_watch_can_start_from_build_call(tmp_path: Path) -> None:
+    write_fixture_file(
+        tmp_path,
+        "index.ts",
+        """
+export const value = 10;
+console.log(value);
+""".strip()
+        + "\n",
+    )
+
+    bundler = Bundler(cwd=tmp_path)
+
+    async with bundler() as build:
+        initial = await build("./index.ts", {"format": "esm"}, watch=True)
+
+        assert isinstance(initial, BundlerOutput)
+        assert any("10" in chunk.code for chunk in initial.chunks)
+
+        write_fixture_file(
+            tmp_path,
+            "index.ts",
+            """
+export const value = 11;
+console.log(value);
+""".strip()
+            + "\n",
+        )
+
+        with anyio.fail_after(10):
+            rebuilt = await build.wait_for_rebuild()
+
+    assert isinstance(rebuilt, BundlerOutput)
+    assert any("11" in chunk.code for chunk in rebuilt.chunks)
+
+
+async def test_bundler_watch_files_can_be_replaced(tmp_path: Path) -> None:
+    write_fixture_file(
+        tmp_path,
+        "index.ts",
+        """
+export const value = 1;
+console.log(value);
+""".strip()
+        + "\n",
+    )
+    write_fixture_file(tmp_path, "watched-a.txt", "a\n")
+    write_fixture_file(tmp_path, "watched-b.txt", "b\n")
+
+    bundler = Bundler(cwd=tmp_path)
+
+    async with bundler() as build:
+        initial = await build(
+            "./index.ts",
+            {"format": "esm"},
+            watch=True,
+            watch_files=["./watched-a.txt"],
+        )
+
+        assert isinstance(initial, BundlerOutput)
+
+        await build.set_watch_files([tmp_path / "watched-b.txt"])
+        write_fixture_file(tmp_path, "watched-b.txt", "b2\n")
+
+        with anyio.fail_after(10):
+            rebuilt = await build.wait_for_rebuild()
+
+    assert isinstance(rebuilt, BundlerOutput)
+    assert any("value" in chunk.code for chunk in rebuilt.chunks)
 
 
 def test_bundler_resolve_alias_and_define(tmp_path: Path) -> None:

@@ -8,11 +8,12 @@ use pyo3::{
 use rolldown::{
     AddonOutputOption, AssetFilenamesOutputOption, BundleOutput, Bundler as RolldownBundler,
     BundlerOptions, ChunkFilenamesOutputOption, CodeSplittingMode, CommentsOptions,
-    DevtoolsOptions, EsModuleFlag, GeneratedCodeOptions, GlobalsOutputOption, HashCharacters,
-    InjectImport, InputItem, IsExternal, LegalComments, ManualCodeSplittingOptions, OutputExports,
-    OutputFormat, PathsOutputOption, Platform, RawMinifyOptions, ResolveOptions, SanitizeFilename,
-    SourceMapType, StrictMode, TreeshakeOptions, TsConfig,
+    DevtoolsOptions, EsModuleFlag, ExperimentalOptions, GeneratedCodeOptions, GlobalsOutputOption,
+    HashCharacters, InjectImport, InputItem, IsExternal, LegalComments, ManualCodeSplittingOptions,
+    OutputExports, OutputFormat, PathsOutputOption, Platform, RawMinifyOptions, ResolveOptions,
+    SanitizeFilename, SourceMapType, StrictMode, TreeshakeOptions, TsConfig,
 };
+use rolldown_error::BatchedBuildDiagnostic;
 use rolldown_plugin::__inner::SharedPluginable;
 use rolldown_utils::indexmap::FxIndexMap;
 use rustc_hash::FxHashMap;
@@ -40,7 +41,7 @@ pub(crate) struct BundlerConfigState {
     external: Option<IsExternal>,
     treeshake: Option<TreeshakeOptions>,
     manual_code_splitting: Option<ManualCodeSplittingOptions>,
-    plugins: Vec<SharedPluginable>,
+    pub(crate) plugins: Vec<SharedPluginable>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -108,14 +109,18 @@ struct Bundler {
 struct BundlerContext {
     config: Arc<BundlerConfigState>,
     session_write: Option<bool>,
+    session_watch: bool,
     active: bool,
+    async_delegate: Option<Py<AsyncBundlerContext>>,
 }
 
 #[pyclass(module = "gdansk_bundler._core", skip_from_py_object)]
 struct AsyncBundlerContext {
     config: Arc<BundlerConfigState>,
     session_write: Option<bool>,
+    session_watch: bool,
     active: bool,
+    watch_session: Option<watch::WatchSession>,
 }
 
 #[pyclass(module = "gdansk_bundler._core", frozen, skip_from_py_object)]
@@ -159,6 +164,7 @@ pub(crate) fn unsupported_feature_error(path: &str) -> PyErr {
 
 mod boundary;
 mod plugin;
+mod watch;
 
 impl BundlerConfigState {
     #[allow(clippy::too_many_arguments)]
@@ -435,7 +441,7 @@ impl OutputAsset {
 }
 
 impl BundlerOutput {
-    fn from_bundle_output(output: BundleOutput) -> Self {
+    pub(crate) fn from_bundle_output(output: BundleOutput) -> Self {
         let mut chunks = Vec::new();
         let mut assets = Vec::new();
         for item in output.assets {
@@ -463,11 +469,22 @@ impl BundlerOutput {
     }
 }
 
-fn create_bundler_options(
+pub(crate) fn format_diagnostics(prefix: &str, errs: &BatchedBuildDiagnostic) -> String {
+    format!(
+        "{prefix}: {}",
+        errs.iter()
+            .map(|diagnostic| diagnostic.to_diagnostic().to_string())
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )
+}
+
+pub(crate) fn create_bundler_options(
     config: &BundlerConfigState,
     input: Vec<InputItem>,
     output_override: Option<OutputConfig>,
     write: Option<bool>,
+    watch_mode: bool,
 ) -> PyResult<(BundlerOptions, bool)> {
     let cwd = match &config.cwd {
         Some(cwd) => cwd.clone(),
@@ -529,6 +546,13 @@ fn create_bundler_options(
         });
     }
 
+    if watch_mode {
+        options.experimental = Some(ExperimentalOptions {
+            incremental_build: Some(true),
+            ..Default::default()
+        });
+    }
+
     let effective_output = OutputConfig::merge(config.default_output.as_ref(), output_override);
     if let Some(output) = &effective_output {
         output.apply_to_bundler_options(&mut options);
@@ -544,16 +568,10 @@ async fn build_once(
     write: Option<bool>,
 ) -> PyResult<BundlerOutput> {
     let (options, should_write) =
-        create_bundler_options(config.as_ref(), input, output_override, write)?;
+        create_bundler_options(config.as_ref(), input, output_override, write, false)?;
     let mut bundler =
         RolldownBundler::with_plugins(options, config.plugins.clone()).map_err(|errs| {
-            PyRuntimeError::new_err(format!(
-                "failed to initialize Bundler: {}",
-                errs.iter()
-                    .map(|diagnostic| diagnostic.to_diagnostic().to_string())
-                    .collect::<Vec<_>>()
-                    .join("\n"),
-            ))
+            PyRuntimeError::new_err(format_diagnostics("failed to initialize Bundler", &errs))
         })?;
 
     let bundle_output = if should_write {
@@ -561,24 +579,10 @@ async fn build_once(
     } else {
         bundler.generate().await
     }
-    .map_err(|errs| {
-        PyRuntimeError::new_err(format!(
-            "bundling failed: {}",
-            errs.iter()
-                .map(|diagnostic| diagnostic.to_diagnostic().to_string())
-                .collect::<Vec<_>>()
-                .join("\n"),
-        ))
-    })?;
+    .map_err(|errs| PyRuntimeError::new_err(format_diagnostics("bundling failed", &errs)))?;
 
     bundler.close().await.map_err(|errs| {
-        PyRuntimeError::new_err(format!(
-            "failed to close Bundler: {}",
-            errs.iter()
-                .map(|diagnostic| diagnostic.to_diagnostic().to_string())
-                .collect::<Vec<_>>()
-                .join("\n"),
-        ))
+        PyRuntimeError::new_err(format_diagnostics("failed to close Bundler", &errs))
     })?;
 
     Ok(BundlerOutput::from_bundle_output(bundle_output))
@@ -601,6 +605,29 @@ fn build_once_blocking(
     py.detach(|| runtime.block_on(build_once(config, input, output_override, write)))
 }
 
+fn normalize_watch_paths(
+    config: &BundlerConfigState,
+    paths: Vec<PathBuf>,
+) -> PyResult<Vec<PathBuf>> {
+    let cwd = match &config.cwd {
+        Some(cwd) => cwd.clone(),
+        None => std::env::current_dir().map_err(|err| {
+            PyRuntimeError::new_err(format!("failed to read current working directory: {err}"))
+        })?,
+    };
+
+    Ok(paths
+        .into_iter()
+        .map(|path| {
+            if path.is_absolute() {
+                path
+            } else {
+                cwd.join(path)
+            }
+        })
+        .collect())
+}
+
 impl BundlerContext {
     fn ensure_inactive(&self) -> PyResult<()> {
         if self.active {
@@ -621,6 +648,15 @@ impl BundlerContext {
     fn enter(&mut self) -> PyResult<()> {
         self.ensure_inactive()?;
         self.active = true;
+        Ok(())
+    }
+
+    fn ensure_sync_watch_disabled(&self) -> PyResult<()> {
+        if self.session_watch {
+            return Err(PyRuntimeError::new_err(
+                "watch=True is only supported in async bundler contexts",
+            ));
+        }
         Ok(())
     }
 }
@@ -646,6 +682,10 @@ impl AsyncBundlerContext {
         self.ensure_inactive()?;
         self.active = true;
         Ok(())
+    }
+
+    fn effective_watch(&self, watch: Option<bool>) -> bool {
+        watch.unwrap_or(self.session_watch)
     }
 }
 
@@ -726,17 +766,15 @@ impl Bundler {
         write: Option<bool>,
         watch: Option<Py<PyAny>>,
     ) -> PyResult<Py<BundlerContext>> {
-        if let Some(watch) = watch.as_ref() {
-            boundary::validate_watch(Some(watch.bind(py)))?;
-        } else {
-            boundary::validate_watch(None)?;
-        }
+        let session_watch = boundary::validate_watch(watch.as_ref().map(|value| value.bind(py)))?;
         Py::new(
             py,
             BundlerContext {
                 config: Arc::clone(&slf.config),
                 session_write: write,
+                session_watch,
                 active: false,
+                async_delegate: None,
             },
         )
     }
@@ -749,7 +787,9 @@ impl BundlerContext {
         Self {
             config: Arc::clone(&bundler.config),
             session_write: None,
+            session_watch: false,
             active: false,
+            async_delegate: None,
         }
     }
 
@@ -758,7 +798,11 @@ impl BundlerContext {
     }
 
     fn __enter__(slf: Py<Self>, py: Python<'_>) -> PyResult<Py<Self>> {
-        slf.borrow_mut(py).enter()?;
+        {
+            let mut context = slf.borrow_mut(py);
+            context.ensure_sync_watch_disabled()?;
+            context.enter()?;
+        }
         Ok(slf)
     }
 
@@ -769,6 +813,64 @@ impl BundlerContext {
         _traceback: &Bound<'_, PyAny>,
     ) {
         self.active = false;
+        self.async_delegate = None;
+    }
+
+    fn __aenter__<'py>(slf: Py<Self>, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        {
+            let mut context = slf.borrow_mut(py);
+            context.enter()?;
+        }
+
+        let async_context = {
+            let context = slf.borrow(py);
+            Py::new(
+                py,
+                AsyncBundlerContext {
+                    config: Arc::clone(&context.config),
+                    session_write: context.session_write,
+                    session_watch: context.session_watch,
+                    active: true,
+                    watch_session: None,
+                },
+            )?
+        };
+
+        slf.borrow_mut(py).async_delegate = Some(async_context.clone_ref(py));
+
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            Python::attach(|py| Ok(async_context.into_bound(py).into_any().unbind()))
+        })
+    }
+
+    fn __aexit__<'py>(
+        &mut self,
+        py: Python<'py>,
+        _exc_type: &Bound<'_, PyAny>,
+        _exc_value: &Bound<'_, PyAny>,
+        _traceback: &Bound<'_, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        self.active = false;
+        let delegate = self.async_delegate.take();
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let watch_session = Python::attach(|py| -> PyResult<Option<watch::WatchSession>> {
+                let Some(delegate) = delegate else {
+                    return Ok(None);
+                };
+                let mut delegate = delegate.borrow_mut(py);
+                delegate.active = false;
+                Ok(delegate.watch_session.take())
+            })?;
+
+            if let Some(watch_session) = watch_session {
+                watch_session
+                    .close()
+                    .await
+                    .map_err(PyRuntimeError::new_err)?;
+            }
+
+            Python::attach(|py| Ok(py.None()))
+        })
     }
 
     #[pyo3(signature = (input, output = None, *, write = None))]
@@ -780,6 +882,7 @@ impl BundlerContext {
         write: Option<bool>,
     ) -> PyResult<Bound<'py, PyAny>> {
         self.ensure_active()?;
+        self.ensure_sync_watch_disabled()?;
         let input_items = boundary::parse_input(input)?;
         let output_override = output
             .as_ref()
@@ -810,15 +913,13 @@ impl AsyncBundlerContext {
         write: Option<bool>,
         watch: Option<Py<PyAny>>,
     ) -> PyResult<Self> {
-        if let Some(watch) = watch.as_ref() {
-            boundary::validate_watch(Some(watch.bind(py)))?;
-        } else {
-            boundary::validate_watch(None)?;
-        }
+        let session_watch = boundary::validate_watch(watch.as_ref().map(|value| value.bind(py)))?;
         Ok(Self {
             config: Arc::clone(&bundler.config),
             session_write: write,
+            session_watch,
             active: false,
+            watch_session: None,
         })
     }
 
@@ -835,21 +936,34 @@ impl AsyncBundlerContext {
         _traceback: &Bound<'_, PyAny>,
     ) -> PyResult<Bound<'py, PyAny>> {
         self.active = false;
-        pyo3_async_runtimes::tokio::future_into_py(
-            py,
-            async move { Python::attach(|py| Ok(py.None())) },
-        )
+        let watch_session = self.watch_session.take();
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            if let Some(watch_session) = watch_session {
+                watch_session
+                    .close()
+                    .await
+                    .map_err(PyRuntimeError::new_err)?;
+            }
+            Python::attach(|py| Ok(py.None()))
+        })
     }
 
-    #[pyo3(signature = (input, output = None, *, write = None))]
+    #[pyo3(signature = (input, output = None, *, write = None, watch = None, watch_files = None))]
     fn __call__<'py>(
-        &self,
+        slf: Py<Self>,
         py: Python<'py>,
         input: &Bound<'py, PyAny>,
         output: Option<Py<PyAny>>,
         write: Option<bool>,
+        watch: Option<Py<PyAny>>,
+        watch_files: Option<Py<PyAny>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        self.ensure_active()?;
+        let context = slf.borrow(py);
+        context.ensure_active()?;
+        let watch = watch
+            .as_ref()
+            .map(|value| boundary::validate_watch(Some(value.bind(py))))
+            .transpose()?;
         let input_items = boundary::parse_input(input)?;
         let output_override = output
             .as_ref()
@@ -858,12 +972,103 @@ impl AsyncBundlerContext {
             })
             .transpose()?
             .flatten();
-        let effective_write = write.or(self.session_write);
-        let config = Arc::clone(&self.config);
+        let effective_write = write.or(context.session_write);
+        let watch_paths = boundary::parse_path_sequence(
+            watch_files.as_ref().map(|value| value.bind(py)),
+            "BundlerContext.watch_files",
+        )?;
+        let normalized_watch_paths = normalize_watch_paths(context.config.as_ref(), watch_paths)?;
+        let effective_watch = context.effective_watch(watch);
+
+        if context.watch_session.is_some() {
+            return Err(PyRuntimeError::new_err(
+                "watch mode is already active for this async bundler context; use wait_for_rebuild()",
+            ));
+        }
+
+        if !effective_watch && !normalized_watch_paths.is_empty() {
+            return Err(PyRuntimeError::new_err(
+                "watch_files can only be provided when watch mode is enabled",
+            ));
+        }
+
+        let config = Arc::clone(&context.config);
+        drop(context);
 
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let output = build_once(config, input_items, output_override, effective_write).await?;
+            let output = if effective_watch {
+                let (watch_session, output) = watch::WatchSession::start(
+                    config,
+                    input_items,
+                    output_override,
+                    effective_write,
+                    normalized_watch_paths,
+                )
+                .await
+                .map_err(PyRuntimeError::new_err)?;
+                Python::attach(|py| -> PyResult<BundlerOutput> {
+                    slf.borrow_mut(py).watch_session = Some(watch_session);
+                    Ok(output)
+                })?
+            } else {
+                build_once(config, input_items, output_override, effective_write).await?
+            };
             Python::attach(|py| Ok(Py::new(py, output)?.into_bound(py).into_any().unbind()))
+        })
+    }
+
+    fn wait_for_rebuild<'py>(slf: Py<Self>, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        {
+            let context = slf.borrow(py);
+            context.ensure_active()?;
+            if context.watch_session.is_none() {
+                return Err(PyRuntimeError::new_err("watch mode is not active"));
+            }
+        }
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let watch_session = Python::attach(|py| {
+                let context = slf.borrow(py);
+                let Some(watch_session) = context.watch_session.as_ref() else {
+                    return Err(PyRuntimeError::new_err("watch mode is not active"));
+                };
+                Ok(watch_session.clone())
+            })?;
+            let output = watch_session
+                .wait_for_rebuild()
+                .await
+                .map_err(PyRuntimeError::new_err)?;
+            Python::attach(|py| Ok(Py::new(py, output)?.into_bound(py).into_any().unbind()))
+        })
+    }
+
+    fn set_watch_files<'py>(
+        slf: Py<Self>,
+        py: Python<'py>,
+        watch_files: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let watch_paths =
+            boundary::parse_path_sequence(Some(watch_files), "BundlerContext.watch_files")?;
+        let normalized_watch_paths = {
+            let context = slf.borrow(py);
+            context.ensure_active()?;
+            if context.watch_session.is_none() {
+                return Err(PyRuntimeError::new_err("watch mode is not active"));
+            }
+            normalize_watch_paths(context.config.as_ref(), watch_paths)?
+        };
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let watch_session = Python::attach(|py| {
+                let context = slf.borrow(py);
+                let Some(watch_session) = context.watch_session.as_ref() else {
+                    return Err(PyRuntimeError::new_err("watch mode is not active"));
+                };
+                Ok(watch_session.clone())
+            })?;
+            watch_session
+                .set_watch_files(normalized_watch_paths)
+                .await
+                .map_err(PyRuntimeError::new_err)?;
+            Python::attach(|py| Ok(py.None()))
         })
     }
 }
