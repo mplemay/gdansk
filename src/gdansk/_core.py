@@ -34,6 +34,13 @@ _MODULE_SYNTAX_PATTERN = re.compile(r"(?m)(?:^|[;}])\s*(?:import|export)\b")
 logger = logging.getLogger(__name__)
 
 
+def _resolve_vite_watch_file(path: str, *, root: Path) -> Path:
+    candidate = Path(path)
+    if not candidate.is_absolute():
+        candidate = root / candidate
+    return candidate.resolve()
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class Page:
     path: Path
@@ -454,7 +461,7 @@ def _build_css_outputs(
                     },
                 ],
             )
-            watch_files.update(Path(path).resolve() for path in vite_watch_files)
+            watch_files.update(_resolve_vite_watch_file(path, root=cwd) for path in vite_watch_files)
             if transformed_assets:
                 code = transformed_assets[0]["code"]
 
