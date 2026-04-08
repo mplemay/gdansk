@@ -143,6 +143,11 @@ async fn run_watch_task(
 ) {
     const FAILED_REBUILD_RETRY_DELAY: Duration = Duration::from_millis(100);
     const REBUILD_SETTLE_DELAY: Duration = Duration::from_millis(25);
+    /// Upper bound on coalesced `run_full_build` loops per FS notification. Without this, a stream
+    /// of spurious post-build events (e.g. writes under watched paths) can keep
+    /// `drain_rebuild_triggers` true forever so `handle_rebuild_result` never runs and consumers
+    /// like `wait_for_rebuild()` stall.
+    const MAX_FS_COALESCE_BUILDS: usize = 16;
 
     let mut bundler = match RolldownBundler::with_plugins(options, plugins) {
         Ok(bundler) => bundler,
@@ -241,6 +246,7 @@ async fn run_watch_task(
                 if !has_rebuild_trigger(event) {
                     continue;
                 }
+                let mut coalesce_builds: usize = 0;
                 loop {
                     // Native file watchers can emit multiple events for a single save. Wait for
                     // a short quiet period so we return the settled rebuild output instead of an
@@ -255,7 +261,9 @@ async fn run_watch_task(
                         &mut is_initial_build,
                     )
                     .await;
-                    if drain_rebuild_triggers(&mut fs_event_rx) {
+                    coalesce_builds += 1;
+                    let saw_more_triggers = drain_rebuild_triggers(&mut fs_event_rx);
+                    if saw_more_triggers && coalesce_builds < MAX_FS_COALESCE_BUILDS {
                         continue;
                     }
                     handle_rebuild_result(
