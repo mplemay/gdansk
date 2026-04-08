@@ -1,8 +1,7 @@
 from collections.abc import Sequence
 from pathlib import Path
 
-from gdansk_bundler import Plugin as BundlerPlugin
-from gdansk_vite import VitePlugin
+from gdansk_bundler import Plugin
 
 class Page:
     def __init__(self, *, path: Path, is_widget: bool = False, ssr: bool = False) -> None: ...
@@ -13,7 +12,7 @@ class Page:
     server: Path | None
     css: Path
 
-class LightningCSS(BundlerPlugin):
+class LightningCSS(Plugin):
     def __init__(self) -> None: ...
 
 async def bundle(
@@ -22,6 +21,6 @@ async def bundle(
     minify: bool = True,
     output: Path = ...,
     cwd: Path = ...,
-    plugins: Sequence[BundlerPlugin | VitePlugin] | None = None,
+    plugins: Sequence[Plugin] | None = None,
 ) -> None: ...
 async def run(code: str, /) -> object: ...

@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path, PureWindowsPath
 
 import pytest
+from gdansk_bundler import Plugin
 from gdansk_vite import VitePlugin
 
 
@@ -25,6 +26,8 @@ def test_vite_plugin_accepts_bare_package_specifier():
 
     assert spec.specifier == "@tailwindcss/vite"
     assert spec.options == {}
+    assert isinstance(spec, Plugin)
+    assert spec.id == "vite"
     assert repr(spec) == "VitePlugin(specifier='@tailwindcss/vite', options={})"
 
 

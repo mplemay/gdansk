@@ -13,7 +13,7 @@ import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from gdansk_bundler import Bundler, Plugin as BundlerPlugin
+from gdansk_bundler import Bundler, Plugin
 from gdansk_lightningcss import bundle_css_paths, resolve_css_import_path, transform_css
 from gdansk_runtime import Runtime as JsRuntime, Script
 from gdansk_vite import VitePlugin, transform_css_assets
@@ -64,7 +64,7 @@ class Page:
         )
 
 
-class LightningCSS(BundlerPlugin):
+class LightningCSS(Plugin):
     def __init__(self) -> None:
         super().__init__(id="lightningcss")
 
@@ -88,7 +88,7 @@ class _PageAssets:
     watch_paths: tuple[Path, ...]
 
 
-class _CssStubPlugin(BundlerPlugin):
+class _CssStubPlugin(Plugin):
     def __init__(self, *, root: Path) -> None:
         super().__init__(id="gdansk-css-stub")
         self._root = root.resolve()
@@ -356,7 +356,7 @@ def _prepare_entry_files(
 
 def _should_preserve_tailwind(
     *,
-    css_plugins: list[BundlerPlugin],
+    css_plugins: list[Plugin],
     vite_plugins: list[VitePlugin],
 ) -> bool:
     if any(plugin.specifier == "@tailwindcss/vite" for plugin in vite_plugins):
@@ -372,7 +372,7 @@ def _apply_css_plugin_transforms(
     code: str,
     *,
     module_id: Path,
-    css_plugins: list[BundlerPlugin],
+    css_plugins: list[Plugin],
 ) -> str:
     current = code
     for plugin in css_plugins:
@@ -398,7 +398,7 @@ def _build_css_outputs(
     cwd: Path,
     output_dir: Path,
     minify: bool,
-    css_plugins: list[BundlerPlugin],
+    css_plugins: list[Plugin],
     vite_plugins: list[VitePlugin],
 ) -> set[Path]:
     watch_files: set[Path] = set()
@@ -462,7 +462,7 @@ def _build_javascript(
     cwd: Path,
     output_dir: Path,
     minify: bool,
-    plugins: list[BundlerPlugin],
+    plugins: list[Plugin],
 ) -> None:
     if not inputs:
         return
@@ -490,7 +490,7 @@ def _build_once(
     minify: bool,
     output: Path | None,
     cwd: Path | None,
-    plugins: list[BundlerPlugin | VitePlugin] | None,
+    plugins: list[Plugin] | None,
 ) -> set[Path]:
     del dev
     actual_cwd = cwd.resolve() if cwd is not None else Path.cwd().resolve()
@@ -502,15 +502,15 @@ def _build_once(
         output_dir=output_dir,
     )
 
-    bundler_plugins: list[BundlerPlugin] = []
-    css_plugins: list[BundlerPlugin] = []
+    bundler_plugins: list[Plugin] = []
+    css_plugins: list[Plugin] = []
     vite_plugins: list[VitePlugin] = []
     for plugin in plugins or []:
         if isinstance(plugin, VitePlugin):
             vite_plugins.append(plugin)
             continue
-        if not isinstance(plugin, BundlerPlugin):
-            msg = "Amber plugins must be gdansk_bundler.Plugin or VitePlugin instances"
+        if not isinstance(plugin, Plugin):
+            msg = "Amber plugins must be gdansk_bundler.Plugin instances"
             raise TypeError(msg)
         bundler_plugins.append(plugin)
         css_plugins.append(plugin)
@@ -566,7 +566,7 @@ def _watch_loop(
     minify: bool,
     output: Path | None,
     cwd: Path | None,
-    plugins: list[BundlerPlugin | VitePlugin] | None,
+    plugins: list[Plugin] | None,
     watched_files: set[Path],
     stop_event: threading.Event,
 ) -> None:
@@ -606,7 +606,7 @@ async def bundle(
     minify: bool = True,
     output: Path | None = None,
     cwd: Path | None = None,
-    plugins: list[BundlerPlugin | VitePlugin] | None = None,
+    plugins: list[Plugin] | None = None,
 ) -> None:
     if not dev:
         _build_once(

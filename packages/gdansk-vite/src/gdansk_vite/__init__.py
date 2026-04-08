@@ -6,6 +6,8 @@ from os import PathLike, fspath
 from pathlib import Path
 from typing import Any
 
+from gdansk_bundler import Plugin
+
 from gdansk_vite._core import transform_assets_json
 
 __all__ = ["VitePlugin", "transform_css_assets"]
@@ -24,7 +26,7 @@ def _normalize_runtime_specifier(specifier: str | PathLike[str], *, root: Path) 
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class VitePlugin:
+class VitePlugin(Plugin):
     specifier: str | PathLike[str]
     options: object = field(default_factory=dict)
 
@@ -39,6 +41,7 @@ class VitePlugin:
         except TypeError as err:
             msg = "VitePlugin.options must be JSON serializable"
             raise TypeError(msg) from err
+        Plugin.__init__(self, id="vite")
         object.__setattr__(self, "specifier", normalized)
 
 

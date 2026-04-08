@@ -12,8 +12,7 @@ from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from anyio import Path as APath
-from gdansk_bundler import Plugin as BundlerPlugin
-from gdansk_vite import VitePlugin
+from gdansk_bundler import Plugin
 
 from gdansk._core import Page, bundle, run
 from gdansk.metadata import Metadata, merge_metadata
@@ -31,15 +30,15 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _validate_plugins(plugins: Sequence[BundlerPlugin | VitePlugin] | None) -> None:
+def _validate_plugins(plugins: Sequence[Plugin] | None) -> None:
     if plugins is None:
         return
 
     for plugin in plugins:
-        if isinstance(plugin, (BundlerPlugin, VitePlugin)):
+        if isinstance(plugin, Plugin):
             continue
 
-        msg = "Amber plugins must be gdansk_bundler.Plugin or VitePlugin instances"
+        msg = "Amber plugins must be gdansk_bundler.Plugin instances"
         raise TypeError(msg)
 
 
@@ -57,7 +56,7 @@ class Amber:
     ssr: bool = field(default=False, kw_only=True)
     cache_html: bool = field(default=True, kw_only=True)
     metadata: Metadata | None = field(default=None, kw_only=True)
-    plugins: Sequence[BundlerPlugin | VitePlugin] | None = field(default=None, kw_only=True)
+    plugins: Sequence[Plugin] | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
         """Validate required paths and initialize derived output paths."""
