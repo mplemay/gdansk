@@ -18,6 +18,7 @@ python-source = "src"
 
 [tool.uv]
 cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.rs" }, { file = "Cargo.toml" }, { file = "Cargo.lock" }]
+exclude-newer = "7 days"
 
 [tool.ruff]
 extend = "../../pyproject.toml"

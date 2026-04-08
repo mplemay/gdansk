@@ -18,5 +18,8 @@ main = "shadcn.__main__:main"
 requires = ["uv_build>=0.10.2,<0.11.0"]
 build-backend = "uv_build"
 
+[tool.uv]
+exclude-newer = "7 days"
+
 [tool.uv.sources]
 gdansk = { path = "../../", editable = true }

@@ -7,6 +7,10 @@ resolution-markers = [
     "python_full_version < '3.13'",
 ]
 
+[options]
+exclude-newer = "2026-04-01T17:13:04.805165Z"
+exclude-newer-span = "P7D"
+
 [[package]]
 name = "annotated-doc"
 version = "0.0.4"
@@ -211,7 +215,7 @@ wheels = [
 
 [[package]]
 name = "fastapi"
-version = "0.135.2"
+version = "0.135.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "annotated-doc" },
@@ -220,9 +224,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "typing-inspection" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c4/73/5903c4b13beae98618d64eb9870c3fac4f605523dd0312ca5c80dadbd5b9/fastapi-0.135.2.tar.gz", hash = "sha256:88a832095359755527b7f63bb4c6bc9edb8329a026189eed83d6c1afcf419d56", size = 395833, upload-time = "2026-03-23T14:12:41.697Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f7/e6/7adb4c5fa231e82c35b8f5741a9f2d055f520c29af5546fd70d3e8e1cd2e/fastapi-0.135.3.tar.gz", hash = "sha256:bd6d7caf1a2bdd8d676843cdcd2287729572a1ef524fc4d65c17ae002a1be654", size = 396524, upload-time = "2026-04-01T16:23:58.188Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8f/ea/18f6d0457f9efb2fc6fa594857f92810cadb03024975726db6546b3d6fcf/fastapi-0.135.2-py3-none-any.whl", hash = "sha256:0af0447d541867e8db2a6a25c23a8c4bd80e2394ac5529bd87501bbb9e240ca5", size = 117407, upload-time = "2026-03-23T14:12:43.284Z" },
+    { url = "https://files.pythonhosted.org/packages/84/a4/5caa2de7f917a04ada20018eccf60d6cc6145b0199d55ca3711b0fc08312/fastapi-0.135.3-py3-none-any.whl", hash = "sha256:9b0f590c813acd13d0ab43dd8494138eb58e484bfac405db1f3187cfc5810d98", size = 117734, upload-time = "2026-04-01T16:23:59.328Z" },
 ]
 
 [package.optional-dependencies]
@@ -353,12 +357,22 @@ name = "gdansk"
 version = "0.1.0"
 source = { editable = "../../" }
 dependencies = [
+    { name = "gdansk-bundler" },
+    { name = "gdansk-lightningcss" },
+    { name = "gdansk-runtime" },
+    { name = "gdansk-tailwindcss" },
+    { name = "gdansk-vite" },
     { name = "mcp" },
     { name = "minijinja" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "gdansk-bundler", editable = "../../packages/gdansk-bundler" },
+    { name = "gdansk-lightningcss", editable = "../../packages/gdansk-lightningcss" },
+    { name = "gdansk-runtime", editable = "../../packages/gdansk-runtime" },
+    { name = "gdansk-tailwindcss", editable = "../../packages/gdansk-tailwindcss" },
+    { name = "gdansk-vite", editable = "../../packages/gdansk-vite" },
     { name = "mcp", git = "https://github.com/modelcontextprotocol/python-sdk.git?rev=main" },
     { name = "minijinja", specifier = ">=2,<3" },
 ]
@@ -366,12 +380,70 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "anyio", specifier = ">=4" },
+    { name = "gdansk-bundler", editable = "../../packages/gdansk-bundler" },
+    { name = "gdansk-lightningcss", editable = "../../packages/gdansk-lightningcss" },
+    { name = "gdansk-runtime", editable = "../../packages/gdansk-runtime" },
+    { name = "gdansk-tailwindcss", editable = "../../packages/gdansk-tailwindcss" },
+    { name = "gdansk-vite", editable = "../../packages/gdansk-vite" },
     { name = "prek", specifier = ">=0.3.6" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "ruff", specifier = ">=0.15.1" },
     { name = "rumdl", specifier = ">=0.1.21" },
     { name = "ty", specifier = ">=0.0.17" },
 ]
+
+[[package]]
+name = "gdansk-bundler"
+version = "0.1.0"
+source = { editable = "../../packages/gdansk-bundler" }
+
+[[package]]
+name = "gdansk-lightningcss"
+version = "0.1.0"
+source = { editable = "../../packages/gdansk-lightningcss" }
+dependencies = [
+    { name = "gdansk-bundler" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "gdansk-bundler", editable = "../../packages/gdansk-bundler" }]
+
+[[package]]
+name = "gdansk-runtime"
+version = "0.1.0"
+source = { editable = "../../packages/gdansk-runtime" }
+dependencies = [
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pydantic", specifier = ">=2,<3" }]
+
+[[package]]
+name = "gdansk-tailwindcss"
+version = "0.1.0"
+source = { editable = "../../packages/gdansk-tailwindcss" }
+dependencies = [
+    { name = "gdansk-bundler" },
+    { name = "gdansk-runtime" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "gdansk-bundler", editable = "../../packages/gdansk-bundler" },
+    { name = "gdansk-runtime", editable = "../../packages/gdansk-runtime" },
+]
+
+[[package]]
+name = "gdansk-vite"
+version = "0.1.0"
+source = { editable = "../../packages/gdansk-vite" }
+dependencies = [
+    { name = "gdansk-bundler" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "gdansk-bundler", editable = "../../packages/gdansk-bundler" }]
 
 [[package]]
 name = "h11"
@@ -455,6 +527,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/6f/6d/0703ccc57f3a7233505399edb88de3cbd678da106337b9fcde432b65ed60/idna-3.11.tar.gz", hash = "sha256:795dafcc9c04ed0c1fb032c2aa73654d8e8c5023a7df64a53f39190ada629902", size = 194582, upload-time = "2025-10-12T14:55:20.501Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0e/61/66938bbb5fc52dbdf84594873d5b51fb1f7c7794e9c0f5bd885f30bc507b/idna-3.11-py3-none-any.whl", hash = "sha256:771a87f49d9defaf64091e6e6fe9c18d4833f140bd19464795bc32d966ca37ea", size = 71008, upload-time = "2025-10-12T14:55:18.883Z" },
+]
+
+[[package]]
+name = "importlib-metadata"
+version = "8.7.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "zipp" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f3/49/3b30cad09e7771a4982d9975a8cbf64f00d4a1ececb53297f1d9a7be1b10/importlib_metadata-8.7.1.tar.gz", hash = "sha256:49fef1ae6440c182052f407c8d34a68f72efc36db9ca90dc0113398f2fdde8bb", size = 57107, upload-time = "2025-12-21T10:00:19.278Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fa/5e/f8e9a1d23b9c20a551a8a02ea3637b4642e22c2626e3a13a9a29cdea99eb/importlib_metadata-8.7.1-py3-none-any.whl", hash = "sha256:5a1f80bf1daa489495071efbb095d75a634cf28a8bc299581244063b53176151", size = 27865, upload-time = "2025-12-21T10:00:18.329Z" },
 ]
 
 [[package]]
@@ -573,13 +657,14 @@ wheels = [
 
 [[package]]
 name = "mcp"
-version = "1.25.1.dev143+fb2276b"
-source = { git = "https://github.com/modelcontextprotocol/python-sdk.git?rev=main#fb2276b95fb5ac6631f9c160c9b1bd7a6d7312a9" }
+version = "1.25.1.dev148+cf4e435"
+source = { git = "https://github.com/modelcontextprotocol/python-sdk.git?rev=main#cf4e435db015c9fe2d6534ad1acb30b9bb94ca7d" }
 dependencies = [
     { name = "anyio" },
     { name = "httpx" },
     { name = "httpx-sse" },
     { name = "jsonschema" },
+    { name = "opentelemetry-api" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "pyjwt", extra = ["crypto"] },
@@ -635,6 +720,19 @@ requires-dist = [
     { name = "fastapi", extras = ["standard"] },
     { name = "gdansk", editable = "../../" },
     { name = "pydantic-settings" },
+]
+
+[[package]]
+name = "opentelemetry-api"
+version = "1.40.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "importlib-metadata" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/2c/1d/4049a9e8698361cc1a1aa03a6c59e4fa4c71e0c0f94a30f988a6876a2ae6/opentelemetry_api-1.40.0.tar.gz", hash = "sha256:159be641c0b04d11e9ecd576906462773eb97ae1b657730f0ecf64d32071569f", size = 70851, upload-time = "2026-03-04T14:17:21.555Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5f/bf/93795954016c522008da367da292adceed71cca6ee1717e1d64c83089099/opentelemetry_api-1.40.0-py3-none-any.whl", hash = "sha256:82dd69331ae74b06f6a874704be0cfaa49a1650e1537d4a813b86ecef7d0ecf9", size = 68676, upload-time = "2026-03-04T14:17:01.24Z" },
 ]
 
 [[package]]
@@ -1319,4 +1417,13 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/c2/b6/b9afed2afadddaf5ebb2afa801abf4b0868f42f8539bfe4b071b5266c9fe/websockets-16.0-cp314-cp314t-win32.whl", hash = "sha256:5a4b4cc550cb665dd8a47f868c8d04c8230f857363ad3c9caf7a0c3bf8c61ca6", size = 178085, upload-time = "2026-01-10T09:23:33.816Z" },
     { url = "https://files.pythonhosted.org/packages/9f/3e/28135a24e384493fa804216b79a6a6759a38cc4ff59118787b9fb693df93/websockets-16.0-cp314-cp314t-win_amd64.whl", hash = "sha256:b14dc141ed6d2dde437cddb216004bcac6a1df0935d79656387bd41632ba0bbd", size = 178531, upload-time = "2026-01-10T09:23:35.016Z" },
     { url = "https://files.pythonhosted.org/packages/6f/28/258ebab549c2bf3e64d2b0217b973467394a9cea8c42f70418ca2c5d0d2e/websockets-16.0-py3-none-any.whl", hash = "sha256:1637db62fad1dc833276dded54215f2c7fa46912301a24bd94d45d46a011ceec", size = 171598, upload-time = "2026-01-10T09:23:45.395Z" },
+]
+
+[[package]]
+name = "zipp"
+version = "3.23.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e3/02/0f2892c661036d50ede074e376733dca2ae7c6eb617489437771209d4180/zipp-3.23.0.tar.gz", hash = "sha256:a07157588a12518c9d4034df3fbbee09c814741a33ff63c05fa29d26a2404166", size = 25547, upload-time = "2025-06-08T17:06:39.4Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2e/54/647ade08bf0db230bfea292f893923872fd20be6ac6f53b2b936ba839d75/zipp-3.23.0-py3-none-any.whl", hash = "sha256:071652d6115ed432f5ce1d34c336c0adfd6a884660d1e9712a256d3d3bd4b14e", size = 10276, upload-time = "2025-06-08T17:06:38.034Z" },
 ]

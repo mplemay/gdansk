@@ -1,9 +1,9 @@
 [workspace]
 members = [
-    "packages/gdansk-runtime",
     "packages/gdansk-bundler",
     "packages/gdansk-lightningcss",
+    "packages/gdansk-runtime",
     "packages/gdansk-tailwindcss",
     "packages/gdansk-vite",
 ]
-resolver = "2"
+resolver = "3"

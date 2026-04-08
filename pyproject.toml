@@ -18,13 +18,27 @@ dependencies = [
     "minijinja>=2,<3",
 ]
 
-[tool.uv]
-cache-keys = [
-    { file = "pyproject.toml" },
-    { file = "src/**/*.py" },
-    { file = "src/**/*.pyi" },
-    { file = "src/**/*.j2" },
+[dependency-groups]
+dev = [
+    "anyio>=4",
+    "gdansk-bundler",
+    "gdansk-lightningcss",
+    "gdansk-runtime",
+    "gdansk-tailwindcss",
+    "gdansk-vite",
+    "prek>=0.3.6",
+    "pytest>=9.0.2",
+    "ruff>=0.15.1",
+    "rumdl>=0.1.21",
+    "ty>=0.0.17",
 ]
+
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"
+
+[tool.uv]
+exclude-newer = "7 days"
 
 [tool.uv.sources]
 mcp = { git = "https://github.com/modelcontextprotocol/python-sdk.git", rev = "main" }
@@ -41,25 +55,6 @@ members = [
     "packages/gdansk-lightningcss",
     "packages/gdansk-tailwindcss",
     "packages/gdansk-vite",
-]
-
-[build-system]
-requires = ["uv_build>=0.11.4,<0.12"]
-build-backend = "uv_build"
-
-[dependency-groups]
-dev = [
-    "anyio>=4",
-    "gdansk-bundler",
-    "gdansk-lightningcss",
-    "gdansk-runtime",
-    "gdansk-tailwindcss",
-    "gdansk-vite",
-    "prek>=0.3.6",
-    "pytest>=9.0.2",
-    "ruff>=0.15.1",
-    "rumdl>=0.1.21",
-    "ty>=0.0.17",
 ]
 
 [tool.ruff]

@@ -77,13 +77,15 @@ impl TailwindCssError {
     }
 }
 
-#[cfg_attr(not(test), pyclass(module = "gdansk_tailwindcss._core", frozen))]
+#[cfg(not(test))]
+#[pyclass(module = "gdansk_tailwindcss._core", frozen)]
 struct PreparedTransform {
     candidates: Vec<String>,
     css: String,
     tailwind_module_url: String,
 }
 
+#[cfg(not(test))]
 impl From<PreparedTransformData> for PreparedTransform {
     fn from(value: PreparedTransformData) -> Self {
         Self {

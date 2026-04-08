@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import NotRequired, TypedDict, cast
 from urllib.parse import urljoin, urlparse, urlunparse
 
-Primitive = str | int | float | bool
+type Primitive = str | int | float | bool
 
 
 class TitleTemplate(TypedDict, total=False):
