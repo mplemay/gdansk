@@ -3,9 +3,9 @@ use pyo3::{prelude::*, types::PyBool};
 use crate::{BundlerConfigState, unsupported_feature_error};
 
 use super::parse::{
-    extract_string, extract_string_sequence, parse_define, parse_devtools, parse_external, parse_inject,
-    parse_manual_code_splitting, parse_optional_cwd, parse_output_config, parse_platform, parse_resolve_options,
-    parse_tsconfig, parse_treeshake,
+    extract_string, extract_string_sequence, parse_define, parse_devtools, parse_external,
+    parse_inject, parse_manual_code_splitting, parse_optional_cwd, parse_output_config,
+    parse_platform, parse_resolve_options, parse_treeshake, parse_tsconfig,
 };
 use super::plugins::parse_plugins;
 
@@ -65,7 +65,9 @@ pub(crate) fn bundler_config_from_python(
     let keep_names = keep_names
         .map(|v| {
             v.cast::<PyBool>()
-                .map_err(|_| pyo3::exceptions::PyTypeError::new_err("Bundler.keep_names must be a boolean"))?
+                .map_err(|_| {
+                    pyo3::exceptions::PyTypeError::new_err("Bundler.keep_names must be a boolean")
+                })?
                 .extract()
         })
         .transpose()?;
@@ -73,7 +75,9 @@ pub(crate) fn bundler_config_from_python(
         .map(|v| {
             v.cast::<PyBool>()
                 .map_err(|_| {
-                    pyo3::exceptions::PyTypeError::new_err("Bundler.profiler_names must be a boolean")
+                    pyo3::exceptions::PyTypeError::new_err(
+                        "Bundler.profiler_names must be a boolean",
+                    )
                 })?
                 .extract()
         })

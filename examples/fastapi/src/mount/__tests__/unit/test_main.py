@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from starlette.testclient import TestClient
@@ -11,11 +12,11 @@ pytest.importorskip("fastapi")
 import main as fastapi_main
 
 
-def _structured_from_call_result(result: object) -> dict[str, object]:
+def _structured_from_call_result(result: object) -> dict[str, Any]:
     assert isinstance(result, tuple)
     assert len(result) == 2
     assert isinstance(result[1], dict)
-    return result[1]
+    return cast("dict[str, Any]", result[1])
 
 
 def test_hello_returns_default_text():

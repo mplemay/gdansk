@@ -1,12 +1,12 @@
-use lightningcss::stylesheet::{
-    MinifyOptions, ParserOptions, PrinterOptions, StyleSheet,
-};
+use lightningcss::stylesheet::{MinifyOptions, ParserOptions, PrinterOptions, StyleSheet};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 fn transform_css_impl(code: &str, filename: &str, minify: bool) -> PyResult<String> {
-    let mut parser_options = ParserOptions::default();
-    parser_options.filename = filename.to_string();
+    let parser_options = ParserOptions {
+        filename: filename.to_string(),
+        ..ParserOptions::default()
+    };
     let mut stylesheet = StyleSheet::parse(code, parser_options)
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     if minify {

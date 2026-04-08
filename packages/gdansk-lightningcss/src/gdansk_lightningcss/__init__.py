@@ -3,6 +3,7 @@ from __future__ import annotations
 from gdansk_bundler import Plugin
 
 from gdansk_lightningcss._core import LightningCssTransformer, transform_css
+from gdansk_lightningcss.bundle import CssBundleResult, bundle_css_paths, expand_css_imports, resolve_css_import_path
 
 
 class LightningCssPlugin(Plugin):
@@ -18,7 +19,11 @@ class LightningCssPlugin(Plugin):
 
 
 __all__ = [
+    "CssBundleResult",
     "LightningCssPlugin",
     "LightningCssTransformer",
+    "bundle_css_paths",
+    "expand_css_imports",
+    "resolve_css_import_path",
     "transform_css",
 ]

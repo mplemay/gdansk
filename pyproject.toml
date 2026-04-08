@@ -9,23 +9,25 @@ authors = [
 ]
 requires-python = ">=3.12,<3.15"
 dependencies = [
+    "gdansk-bundler",
+    "gdansk-lightningcss",
+    "gdansk-runtime",
+    "gdansk-tailwindcss",
+    "gdansk-vite",
     "mcp>=1.25.1.dev114,<1.26",
     "minijinja>=2,<3",
 ]
 
-[tool.maturin]
-module-name = "gdansk._core"
-python-packages = ["gdansk"]
-python-source = "src"
-exclude = ["**/__tests__/**"]
-
 [tool.uv]
-cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.rs" }, { file = "Cargo.toml" }, { file = "Cargo.lock" }]
+cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.py" }, { file = "Cargo.toml" }, { file = "Cargo.lock" }]
 
 [tool.uv.sources]
 mcp = { git = "https://github.com/modelcontextprotocol/python-sdk.git", rev = "main" }
+gdansk-bundler = { workspace = true }
 gdansk-lightningcss = { workspace = true }
+gdansk-runtime = { workspace = true }
 gdansk-tailwindcss = { workspace = true }
+gdansk-vite = { workspace = true }
 
 [tool.uv.workspace]
 members = [
@@ -33,17 +35,21 @@ members = [
     "packages/gdansk-bundler",
     "packages/gdansk-lightningcss",
     "packages/gdansk-tailwindcss",
+    "packages/gdansk-vite",
 ]
 
 [build-system]
-requires = ["maturin>=1.0,<2.0"]
-build-backend = "maturin"
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
 
 [dependency-groups]
 dev = [
     "anyio>=4",
+    "gdansk-bundler",
     "gdansk-lightningcss",
+    "gdansk-runtime",
     "gdansk-tailwindcss",
+    "gdansk-vite",
     "prek>=0.3.6",
     "pytest>=9.0.2",
     "ruff>=0.15.1",
@@ -61,7 +67,24 @@ select = ["ALL"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = [
+    "D104", # __init__ modules intentionally omit module docstrings
     "F401", # imported but unused (common in __init__.py to re-export symbols)
+]
+"src/gdansk/_core.py" = [
+    "D100", # internal compatibility module intentionally omits a module docstring
+    "C901", # internal orchestration functions are intentionally consolidated
+    "FBT001", # compatibility API keeps bool positional parameters
+    "FBT002", # compatibility API keeps bool positional parameters
+    "PLR0912", # internal page normalization branches on user-facing path shapes
+    "PLR0913", # orchestration helpers accept explicit build inputs
+    "PLR0915", # internal page normalization performs one-pass validation
+    "PLR2004", # internal path validation uses small fixed segment counts
+]
+"src/gdansk/protocol.py" = [
+    "D100", # protocol module intentionally omits a module docstring
+]
+"packages/gdansk-lightningcss/src/gdansk_lightningcss/bundle.py" = [
+    "PLR0913", # bundling helper takes explicit inputs instead of config objects
 ]
 "examples/fastapi/main.py" = [
     "INP001", # example entrypoint is intentionally not part of a package
@@ -112,3 +135,13 @@ line_length = 120
 reflow = true
 code_blocks = false
 tables = false
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+exclude = ["gdansk.__tests__*"]
+
+[tool.setuptools.package-data]
+gdansk = ["_core.pyi", "*.j2"]

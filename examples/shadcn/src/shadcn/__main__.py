@@ -1,18 +1,19 @@
 """Shadcn todo example server."""
 
+import importlib
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
 import uvicorn
-
-try:
-    from mcp.server.fastmcp import FastMCP
-except ImportError:
-    from mcp.server import MCPServer as FastMCP
 from starlette.middleware.cors import CORSMiddleware
 
 from gdansk import Amber, VitePlugin
+
+try:
+    FastMCP = importlib.import_module("mcp.server.fastmcp").FastMCP
+except ImportError:
+    FastMCP = importlib.import_module("mcp.server").MCPServer
 
 mcp = FastMCP("Todo Server")
 amber = Amber(

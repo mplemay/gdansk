@@ -1,7 +1,11 @@
 use std::{borrow::Cow, sync::Arc};
 
 use arcstr::ArcStr;
-use pyo3::{exceptions::PyTypeError, prelude::*, types::{PyDict, PyString}};
+use pyo3::{
+    exceptions::PyTypeError,
+    prelude::*,
+    types::{PyDict, PyString},
+};
 use rolldown_common::{ModuleType, ResolvedExternal};
 use rolldown_plugin::{
     HookLoadArgs, HookLoadOutput, HookLoadReturn, HookResolveIdArgs, HookResolveIdOutput,
@@ -132,9 +136,7 @@ async fn load_python(inner: &PyPluginInner, id: String) -> HookLoadReturn {
     tokio::task::spawn_blocking(move || {
         Python::attach(|py| {
             let bound = cb.bind(py);
-            let out = bound
-                .call1((id,))
-                .map_err(|e| anyhow::anyhow!("{}", e))?;
+            let out = bound.call1((id,)).map_err(|e| anyhow::anyhow!("{}", e))?;
             parse_load_bound(&out)
         })
     })
@@ -190,27 +192,31 @@ fn parse_resolve_bound(out: &Bound<'_, PyAny>) -> HookResolveIdReturn {
     let dict = out
         .cast::<PyDict>()
         .map_err(|_| anyhow::anyhow!("resolve_id must return None, str, or dict with 'id'"))?;
-    let id_item = get_mapping_item(dict, &["id"]).map_err(|e| anyhow::anyhow!("{}", e))?
+    let id_item = get_mapping_item(dict, &["id"])
+        .map_err(|e| anyhow::anyhow!("{}", e))?
         .ok_or_else(|| anyhow::anyhow!("resolve_id dict result must contain 'id'"))?;
     let id = extract_string(&id_item, "resolve_id id must be a string")
         .map_err(|e| anyhow::anyhow!("{}", e))?;
     let mut resolved = HookResolveIdOutput::from_id(id);
-    if let Some(ext) = get_mapping_item(dict, &["external"]).map_err(|e| anyhow::anyhow!("{}", e))? {
+    if let Some(ext) =
+        get_mapping_item(dict, &["external"]).map_err(|e| anyhow::anyhow!("{}", e))?
+    {
         resolved.external = Some(parse_resolved_external(&ext)?);
     }
-    if let Some(v) = get_mapping_item(dict, &["normalize_external_id"])
-        .map_err(|e| anyhow::anyhow!("{}", e))?
+    if let Some(v) =
+        get_mapping_item(dict, &["normalize_external_id"]).map_err(|e| anyhow::anyhow!("{}", e))?
     {
         resolved.normalize_external_id = Some(
             v.extract::<bool>()
                 .map_err(|_| anyhow::anyhow!("normalize_external_id must be a boolean"))?,
         );
     }
-    if let Some(v) = get_mapping_item(dict, &["package_json_path"])
-        .map_err(|e| anyhow::anyhow!("{}", e))?
+    if let Some(v) =
+        get_mapping_item(dict, &["package_json_path"]).map_err(|e| anyhow::anyhow!("{}", e))?
     {
         resolved.package_json_path = Some(
-            extract_string(&v, "package_json_path must be a string").map_err(|e| anyhow::anyhow!("{}", e))?,
+            extract_string(&v, "package_json_path must be a string")
+                .map_err(|e| anyhow::anyhow!("{}", e))?,
         );
     }
     Ok(Some(resolved))
@@ -227,7 +233,8 @@ fn parse_load_bound(out: &Bound<'_, PyAny>) -> HookLoadReturn {
     let dict = out
         .cast::<PyDict>()
         .map_err(|_| anyhow::anyhow!("load must return None or a dict with 'code'"))?;
-    let code_item = get_mapping_item(dict, &["code"]).map_err(|e| anyhow::anyhow!("{}", e))?
+    let code_item = get_mapping_item(dict, &["code"])
+        .map_err(|e| anyhow::anyhow!("{}", e))?
         .ok_or_else(|| anyhow::anyhow!("load dict result must contain 'code'"))?;
     let code = extract_string(&code_item, "load code must be a string")
         .map_err(|e| anyhow::anyhow!("{}", e))?;

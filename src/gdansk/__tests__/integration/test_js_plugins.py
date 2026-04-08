@@ -320,7 +320,7 @@ async def test_js_plugin_smoke_uses_repo_shadcn_tailwind_package(tmp_path, monke
     output = tmp_path / "shadcn-out"
 
     await bundle(
-        pages=[Page(path=Path("widgets/todo/widget.tsx"), is_widget=True, ssr=False)],
+        pages=[Page(path=Path("widgets/tailwind_smoke/widget.tsx"), is_widget=True, ssr=False)],
         dev=False,
         minify=False,
         output=output,
@@ -328,5 +328,5 @@ async def test_js_plugin_smoke_uses_repo_shadcn_tailwind_package(tmp_path, monke
         plugins=[VitePlugin(specifier="@tailwindcss/vite")],
     )
 
-    css = await AnyPath(output / "todo" / "client.css").read_text(encoding="utf-8")
+    css = await AnyPath(output / "tailwind_smoke" / "client.css").read_text(encoding="utf-8")
     assert ".mx-auto" in css

@@ -1,19 +1,21 @@
 """FastAPI integration example for Gdansk."""
 
+import importlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
-
-try:
-    from mcp.server.fastmcp import FastMCP
-except ImportError:
-    from mcp.server import MCPServer as FastMCP
 from mcp.types import TextContent
 from pydantic_settings import BaseSettings
 
 from gdansk import Amber
+
+FastAPI = importlib.import_module("fastapi").FastAPI
+
+try:
+    FastMCP = importlib.import_module("mcp.server.fastmcp").FastMCP
+except ImportError:
+    FastMCP = importlib.import_module("mcp.server").MCPServer
 
 
 class Settings(BaseSettings):
@@ -38,7 +40,7 @@ mcp_app = amber(dev=not SETTINGS.production)
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+async def lifespan(_: object) -> AsyncIterator[None]:
     """Run the MCP app lifespan with the FastAPI app."""
     async with mcp_app.router.lifespan_context(mcp_app):
         yield

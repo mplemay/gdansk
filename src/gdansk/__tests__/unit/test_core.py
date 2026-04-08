@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from gdansk_bundler import Plugin as BundlerPlugin
 
 from gdansk import LightningCSS, VitePlugin
 from gdansk.core import Amber, Page
@@ -84,12 +85,28 @@ def test_rejects_unknown_plugin_objects(mock_mcp, pages_dir):
     class _IdOnlyPlugin:
         id = "not-allowed"
 
-    with pytest.raises(TypeError, match="LightningCSS or VitePlugin"):
+    with pytest.raises(TypeError, match="gdansk_bundler\\.Plugin or VitePlugin"):
         Amber(
             mcp=mock_mcp,
             views=pages_dir,
-            plugins=[_IdOnlyPlugin()],  # ty: ignore[invalid-argument-type] runtime validation test
+            plugins=[_IdOnlyPlugin()],  # ty: ignore[invalid-argument-type]
         )
+
+
+def test_accepts_generic_bundler_plugins(mock_mcp, pages_dir):
+    class _CustomPlugin(BundlerPlugin):
+        def __init__(self) -> None:
+            super().__init__(id="custom")
+
+    amber = Amber(
+        mcp=mock_mcp,
+        views=pages_dir,
+        plugins=[_CustomPlugin()],
+    )
+
+    assert amber.plugins is not None
+    assert isinstance(amber.plugins[0], BundlerPlugin)
+    assert amber.plugins[0].id == "custom"
 
 
 def test_default_output(mock_mcp, pages_dir):

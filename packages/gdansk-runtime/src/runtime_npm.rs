@@ -7,12 +7,12 @@ use std::{
     time::Duration,
 };
 
+use deno_config::deno_json::NodeModulesDirMode;
 use deno_core::{
     anyhow::{Context, anyhow},
     error::AnyError,
     serde_json::Value,
 };
-use deno_config::deno_json::NodeModulesDirMode;
 use deno_error::JsErrorBox;
 use deno_npm_cache::{
     DownloadError, NpmCacheHttpClient, NpmCacheHttpClientBytesResponse, NpmCacheHttpClientResponse,
@@ -20,8 +20,7 @@ use deno_npm_cache::{
 };
 use deno_npm_installer::{
     LifecycleScriptsConfig, LogReporter, NpmInstallerFactory, NpmInstallerFactoryOptions,
-    PackagesAllowedScripts,
-    PackageCaching,
+    PackageCaching, PackagesAllowedScripts,
     graph::NpmCachingStrategy,
     lifecycle_scripts::{
         LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR, LifecycleScriptsExecutor,
@@ -135,8 +134,7 @@ impl RuntimeNpm {
                     .cache_packages(PackageCaching::All)
                     .await
                     .map_err(|err| RuntimeNpmError::new(err.to_string()))?;
-                self.run_linked_lifecycle_scripts(&package_json_dir)
-                    .await?;
+                self.run_linked_lifecycle_scripts(&package_json_dir).await?;
             }
         }
 
@@ -170,7 +168,7 @@ impl RuntimeNpm {
         package_json_dir: &Path,
         clean_on_install: bool,
     ) -> Result<RuntimeNpmInstallerFactory, RuntimeNpmError> {
-        let sys = RealSys::default();
+        let sys = RealSys;
         let workspace_factory = Arc::new(WorkspaceFactory::new(
             sys,
             package_json_dir.to_path_buf(),
@@ -287,7 +285,9 @@ impl RuntimeNpm {
 #[async_trait::async_trait(?Send)]
 impl LifecycleScriptsExecutor for RuntimeLifecycleScriptsExecutor {
     async fn execute(&self, options: LifecycleScriptsExecutorOptions<'_>) -> Result<(), AnyError> {
-        for layer in compute_lifecycle_script_layers(options.packages_with_scripts, options.snapshot) {
+        for layer in
+            compute_lifecycle_script_layers(options.packages_with_scripts, options.snapshot)
+        {
             for package in layer {
                 self.run_package_scripts(package, &options).await?;
                 (options.on_ran_pkg_scripts)(package.package)?;
@@ -314,7 +314,13 @@ impl RuntimeLifecycleScriptsExecutor {
             env_vars.insert("npm_lifecycle_event".into(), script_name.into());
             env_vars.insert("npm_lifecycle_script".into(), script.into());
 
-            let result = run_shell_task(script_name, script, package.package_folder.clone(), env_vars).await?;
+            let result = run_shell_task(
+                script_name,
+                script,
+                package.package_folder.clone(),
+                env_vars,
+            )
+            .await?;
             if result.exit_code != 0 {
                 return Err(anyhow!(
                     "lifecycle script '{}' failed for '{}' with exit code {}{}{}",
@@ -480,7 +486,10 @@ fn download_error(status_code: Option<u16>, message: impl Into<String>) -> Downl
     }
 }
 
-fn lifecycle_script_path_entries(package_folder: &Path, root_node_modules_dir_path: &Path) -> Vec<PathBuf> {
+fn lifecycle_script_path_entries(
+    package_folder: &Path,
+    root_node_modules_dir_path: &Path,
+) -> Vec<PathBuf> {
     let mut paths = vec![package_folder.join("node_modules").join(".bin")];
 
     for ancestor in package_folder.ancestors() {
@@ -565,7 +574,9 @@ fn linked_lifecycle_packages(
             if let Some(package) = package
                 && !packages
                     .iter()
-                    .any(|candidate: &RuntimeLinkedLifecyclePackage| candidate.package_folder == package.package_folder)
+                    .any(|candidate: &RuntimeLinkedLifecyclePackage| {
+                        candidate.package_folder == package.package_folder
+                    })
             {
                 packages.push(package);
             }
@@ -589,9 +600,7 @@ fn linked_lifecycle_package(
     let scripts = scripts
         .iter()
         .filter_map(|(name, value)| match value.as_str() {
-            Some(value)
-                if matches!(name.as_str(), "preinstall" | "install" | "postinstall") =>
-            {
+            Some(value) if matches!(name.as_str(), "preinstall" | "install" | "postinstall") => {
                 Some((name.clone(), value.to_owned()))
             }
             _ => None,

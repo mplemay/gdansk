@@ -3,8 +3,7 @@ from __future__ import annotations
 from pathlib import Path, PureWindowsPath
 
 import pytest
-
-from gdansk._core import VitePlugin
+from gdansk_vite import VitePlugin
 
 
 def test_vite_plugin_accepts_path_like_specifier():

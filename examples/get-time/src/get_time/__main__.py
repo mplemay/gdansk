@@ -1,18 +1,19 @@
 """Get Time MCP Server — returns the current time."""
 
+import importlib
 from datetime import UTC, datetime
 from pathlib import Path
 
 import uvicorn
-
-try:
-    from mcp.server.fastmcp import FastMCP
-except ImportError:
-    from mcp.server import MCPServer as FastMCP
 from mcp.types import TextContent
 from starlette.middleware.cors import CORSMiddleware
 
 from gdansk import Amber
+
+try:
+    FastMCP = importlib.import_module("mcp.server.fastmcp").FastMCP
+except ImportError:
+    FastMCP = importlib.import_module("mcp.server").MCPServer
 
 mcp = FastMCP("Get Time Server")
 amber = Amber(mcp=mcp, views=Path(__file__).parent / "views")

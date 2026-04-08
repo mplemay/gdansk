@@ -705,7 +705,7 @@ export default async function() {
     with Runtime()(script) as run:
         result = run(0)
 
-    ticks = result["ticks"]
+    ticks = cast("list[int]", result["ticks"])
     assert len(ticks) == 3
     assert ticks[0] >= 15
     assert ticks[1] >= ticks[0] + 15

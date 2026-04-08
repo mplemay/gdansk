@@ -13,6 +13,7 @@ members = [
     "gdansk-lightningcss",
     "gdansk-runtime",
     "gdansk-tailwindcss",
+    "gdansk-vite",
 ]
 
 [[package]]
@@ -191,6 +192,11 @@ name = "gdansk"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "gdansk-bundler" },
+    { name = "gdansk-lightningcss" },
+    { name = "gdansk-runtime" },
+    { name = "gdansk-tailwindcss" },
+    { name = "gdansk-vite" },
     { name = "mcp" },
     { name = "minijinja" },
 ]
@@ -198,8 +204,11 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "anyio" },
+    { name = "gdansk-bundler" },
     { name = "gdansk-lightningcss" },
+    { name = "gdansk-runtime" },
     { name = "gdansk-tailwindcss" },
+    { name = "gdansk-vite" },
     { name = "prek" },
     { name = "pytest" },
     { name = "ruff" },
@@ -209,6 +218,11 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "gdansk-bundler", editable = "packages/gdansk-bundler" },
+    { name = "gdansk-lightningcss", editable = "packages/gdansk-lightningcss" },
+    { name = "gdansk-runtime", editable = "packages/gdansk-runtime" },
+    { name = "gdansk-tailwindcss", editable = "packages/gdansk-tailwindcss" },
+    { name = "gdansk-vite", editable = "packages/gdansk-vite" },
     { name = "mcp", git = "https://github.com/modelcontextprotocol/python-sdk.git?rev=main" },
     { name = "minijinja", specifier = ">=2,<3" },
 ]
@@ -216,8 +230,11 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "anyio", specifier = ">=4" },
+    { name = "gdansk-bundler", editable = "packages/gdansk-bundler" },
     { name = "gdansk-lightningcss", editable = "packages/gdansk-lightningcss" },
+    { name = "gdansk-runtime", editable = "packages/gdansk-runtime" },
     { name = "gdansk-tailwindcss", editable = "packages/gdansk-tailwindcss" },
+    { name = "gdansk-vite", editable = "packages/gdansk-vite" },
     { name = "prek", specifier = ">=0.3.6" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "ruff", specifier = ">=0.15.1" },
@@ -266,6 +283,11 @@ requires-dist = [
     { name = "gdansk-bundler", editable = "packages/gdansk-bundler" },
     { name = "gdansk-runtime", editable = "packages/gdansk-runtime" },
 ]
+
+[[package]]
+name = "gdansk-vite"
+version = "0.1.0"
+source = { editable = "packages/gdansk-vite" }
 
 [[package]]
 name = "h11"

@@ -12,8 +12,10 @@ from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from anyio import Path as APath
+from gdansk_bundler import Plugin as BundlerPlugin
+from gdansk_vite import VitePlugin
 
-from gdansk._core import LightningCSS, Page, VitePlugin, bundle, run
+from gdansk._core import Page, bundle, run
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import ENV
 
@@ -24,20 +26,20 @@ if TYPE_CHECKING:
     from mcp.types import Icon, ToolAnnotations
     from starlette.applications import Starlette
 
-    from gdansk.protocol import PathType, Plugin
+    from gdansk.protocol import PathType
 
 logger = logging.getLogger(__name__)
 
 
-def _validate_plugins(plugins: Sequence[Plugin] | None) -> None:
+def _validate_plugins(plugins: Sequence[BundlerPlugin | VitePlugin] | None) -> None:
     if plugins is None:
         return
 
     for plugin in plugins:
-        if isinstance(plugin, (LightningCSS, VitePlugin)):
+        if isinstance(plugin, (BundlerPlugin, VitePlugin)):
             continue
 
-        msg = "Amber plugins must be LightningCSS or VitePlugin instances"
+        msg = "Amber plugins must be gdansk_bundler.Plugin or VitePlugin instances"
         raise TypeError(msg)
 
 
@@ -55,7 +57,7 @@ class Amber:
     ssr: bool = field(default=False, kw_only=True)
     cache_html: bool = field(default=True, kw_only=True)
     metadata: Metadata | None = field(default=None, kw_only=True)
-    plugins: Sequence[Plugin] | None = field(default=None, kw_only=True)
+    plugins: Sequence[BundlerPlugin | VitePlugin] | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
         """Validate required paths and initialize derived output paths."""

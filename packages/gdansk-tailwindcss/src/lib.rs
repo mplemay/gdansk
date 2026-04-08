@@ -284,7 +284,10 @@ fn scan_candidates(snapshot: &[CandidateFileStamp]) -> Vec<String> {
             continue;
         };
 
-        for token in CANDIDATE_PATTERN.find_iter(&source).map(|capture| capture.as_str()) {
+        for token in CANDIDATE_PATTERN
+            .find_iter(&source)
+            .map(|capture| capture.as_str())
+        {
             if is_likely_candidate(token) {
                 candidates.insert(token.to_owned());
             }
@@ -312,7 +315,11 @@ fn is_likely_candidate(token: &str) -> bool {
         return false;
     }
 
-    token.chars().any(|char| matches!(char, '-' | ':' | '[' | ']' | '/')) || token == "flex" || token == "grid"
+    token
+        .chars()
+        .any(|char| matches!(char, '-' | ':' | '[' | ']' | '/'))
+        || token == "flex"
+        || token == "grid"
 }
 
 fn expand_css_imports(
@@ -356,7 +363,10 @@ fn expand_css_imports_inner(
         })?;
 
         if stack.contains(&resolved) {
-            output.push_str(&format!("/* circular @import skipped: {} */", resolved.display()));
+            output.push_str(&format!(
+                "/* circular @import skipped: {} */",
+                resolved.display()
+            ));
             position = matched.end();
             continue;
         }
@@ -365,7 +375,12 @@ fn expand_css_imports_inner(
         let inner = fs::read_to_string(&resolved).map_err(|err| {
             TailwindCssError::Runtime(format!("failed to resolve @import \"{specifier}\": {err}"))
         })?;
-        let expanded = expand_css_imports_inner(&inner, resolved.parent().unwrap_or(importer_dir), root, stack)?;
+        let expanded = expand_css_imports_inner(
+            &inner,
+            resolved.parent().unwrap_or(importer_dir),
+            root,
+            stack,
+        )?;
         stack.pop();
         output.push_str(&expanded);
         position = matched.end();
@@ -384,13 +399,19 @@ fn resolve_css_import_path(
         let path = importer_dir.join(specifier);
         return resolve_existing_file(
             path,
-            format!("CSS import not found: {specifier} (from {})", importer_dir.display()),
+            format!(
+                "CSS import not found: {specifier} (from {})",
+                importer_dir.display()
+            ),
         );
     }
 
     let absolute = PathBuf::from(specifier);
     if absolute.is_absolute() {
-        return resolve_existing_file(absolute.clone(), format!("CSS import not found: {}", absolute.display()));
+        return resolve_existing_file(
+            absolute.clone(),
+            format!("CSS import not found: {}", absolute.display()),
+        );
     }
 
     let Some((package_name, subpath)) = split_package_specifier(specifier) else {
@@ -440,7 +461,11 @@ fn split_package_specifier(specifier: &str) -> Option<(String, Option<String>)> 
     }
 }
 
-fn find_node_modules_package_dir(package_name: &str, importer_dir: &Path, root: &Path) -> Option<PathBuf> {
+fn find_node_modules_package_dir(
+    package_name: &str,
+    importer_dir: &Path,
+    root: &Path,
+) -> Option<PathBuf> {
     let mut current = canonicalize_if_exists(importer_dir.to_path_buf());
     let root = canonicalize_if_exists(root.to_path_buf());
 
@@ -516,7 +541,10 @@ fn resolve_package_style_export(
     };
 
     let path = package_dir.join(style_path);
-    resolve_existing_file(path.clone(), format!("resolved style file missing: {}", path.display()))
+    resolve_existing_file(
+        path.clone(),
+        format!("resolved style file missing: {}", path.display()),
+    )
 }
 
 fn resolve_tailwind_module_url(root: &Path) -> Result<String, TailwindCssError> {
@@ -530,7 +558,12 @@ fn resolve_tailwind_module_url(root: &Path) -> Result<String, TailwindCssError> 
 
     Url::from_file_path(&path)
         .map(|url| url.to_string())
-        .map_err(|_| TailwindCssError::Runtime(format!("failed to convert path to file URL: {}", path.display())))
+        .map_err(|_| {
+            TailwindCssError::Runtime(format!(
+                "failed to convert path to file URL: {}",
+                path.display()
+            ))
+        })
 }
 
 fn resolve_package_entry(root: &Path, package_name: &str) -> Result<PathBuf, TailwindCssError> {
@@ -562,13 +595,18 @@ fn resolve_package_entry(root: &Path, package_name: &str) -> Result<PathBuf, Tai
 
 fn read_package_json(package_dir: &Path) -> Result<Value, TailwindCssError> {
     let path = package_dir.join("package.json");
-    let contents = fs::read_to_string(&path)
-        .map_err(|err| TailwindCssError::Runtime(format!("failed to read {}: {err}", path.display())))?;
-    serde_json::from_str(&contents)
-        .map_err(|err| TailwindCssError::Runtime(format!("failed to parse {}: {err}", path.display())))
+    let contents = fs::read_to_string(&path).map_err(|err| {
+        TailwindCssError::Runtime(format!("failed to read {}: {err}", path.display()))
+    })?;
+    serde_json::from_str(&contents).map_err(|err| {
+        TailwindCssError::Runtime(format!("failed to parse {}: {err}", path.display()))
+    })
 }
 
-fn package_main_file(package_dir: &Path, package_json: &Value) -> Result<PathBuf, TailwindCssError> {
+fn package_main_file(
+    package_dir: &Path,
+    package_json: &Value,
+) -> Result<PathBuf, TailwindCssError> {
     let exported = package_json.get("exports").and_then(|value| value.get("."));
     if let Some(value) = exported.and_then(Value::as_str) {
         return resolve_existing_file(package_dir.join(value), String::new());
@@ -636,7 +674,10 @@ mod tests {
             &root.join("node_modules/tailwindcss/index.mjs"),
             "export async function compile(source) { return { build() { return source; } }; }\n",
         );
-        write(&root.join("node_modules/tailwindcss/theme.css"), "@layer theme, base, components, utilities;\n");
+        write(
+            &root.join("node_modules/tailwindcss/theme.css"),
+            "@layer theme, base, components, utilities;\n",
+        );
     }
 
     #[test]
@@ -658,7 +699,12 @@ mod tests {
             .expect("prepare should succeed");
 
         assert!(prepared.css.contains(".nested"));
-        assert!(prepared.candidates.iter().any(|candidate| candidate == "mx-auto"));
+        assert!(
+            prepared
+                .candidates
+                .iter()
+                .any(|candidate| candidate == "mx-auto")
+        );
         assert!(prepared.tailwind_module_url.starts_with("file://"));
     }
 
@@ -679,7 +725,12 @@ mod tests {
         let first = transformer
             .prepare_transform("@import \"tailwindcss\";\n", "styles/app.css")
             .expect("first prepare should succeed");
-        assert!(first.candidates.iter().any(|candidate| candidate == "mx-auto"));
+        assert!(
+            first
+                .candidates
+                .iter()
+                .any(|candidate| candidate == "mx-auto")
+        );
 
         thread::sleep(Duration::from_millis(20));
         write(
@@ -690,7 +741,17 @@ mod tests {
         let second = transformer
             .prepare_transform("@import \"tailwindcss\";\n", "styles/app.css")
             .expect("second prepare should succeed");
-        assert!(second.candidates.iter().any(|candidate| candidate == "grid"));
-        assert!(!second.candidates.iter().any(|candidate| candidate == "mx-auto"));
+        assert!(
+            second
+                .candidates
+                .iter()
+                .any(|candidate| candidate == "grid")
+        );
+        assert!(
+            !second
+                .candidates
+                .iter()
+                .any(|candidate| candidate == "mx-auto")
+        );
     }
 }

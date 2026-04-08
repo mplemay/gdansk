@@ -7,11 +7,11 @@ use pyo3::{
 };
 use rolldown::{
     AddonOutputOption, AssetFilenamesOutputOption, BundleOutput, Bundler as RolldownBundler,
-    BundlerOptions, ChunkFilenamesOutputOption, CodeSplittingMode, CommentsOptions, DevtoolsOptions,
-    EsModuleFlag, GeneratedCodeOptions, GlobalsOutputOption, HashCharacters, InjectImport, InputItem,
-    IsExternal, LegalComments, ManualCodeSplittingOptions, OutputExports, OutputFormat,
-    PathsOutputOption, Platform, RawMinifyOptions, ResolveOptions, SanitizeFilename, SourceMapType,
-    StrictMode, TreeshakeOptions, TsConfig,
+    BundlerOptions, ChunkFilenamesOutputOption, CodeSplittingMode, CommentsOptions,
+    DevtoolsOptions, EsModuleFlag, GeneratedCodeOptions, GlobalsOutputOption, HashCharacters,
+    InjectImport, InputItem, IsExternal, LegalComments, ManualCodeSplittingOptions, OutputExports,
+    OutputFormat, PathsOutputOption, Platform, RawMinifyOptions, ResolveOptions, SanitizeFilename,
+    SourceMapType, StrictMode, TreeshakeOptions, TsConfig,
 };
 use rolldown_plugin::__inner::SharedPluginable;
 use rolldown_utils::indexmap::FxIndexMap;
@@ -19,8 +19,7 @@ use rustc_hash::FxHashMap;
 
 const BUNDLER_CONTEXT_ALREADY_ACTIVE: &str = "BundlerContext is already active";
 const BUNDLER_CONTEXT_NOT_ACTIVE: &str = "BundlerContext is not active";
-const FIRST_MILESTONE_MESSAGE: &str =
-    "is not supported in the first gdansk-bundler milestone";
+const FIRST_MILESTONE_MESSAGE: &str = "is not supported in the first gdansk-bundler milestone";
 
 #[derive(Clone, Debug)]
 pub(crate) struct BundlerConfigState {
@@ -158,8 +157,8 @@ pub(crate) fn unsupported_feature_error(path: &str) -> PyErr {
     PyNotImplementedError::new_err(format!("{path} {FIRST_MILESTONE_MESSAGE}"))
 }
 
-mod plugin;
 mod boundary;
+mod plugin;
 
 impl BundlerConfigState {
     #[allow(clippy::too_many_arguments)]
@@ -276,19 +275,16 @@ impl OutputConfig {
             options.format = Some(format);
         }
         if let Some(entry_file_names) = &self.entry_file_names {
-            options.entry_filenames = Some(ChunkFilenamesOutputOption::from(
-                entry_file_names.clone(),
-            ));
+            options.entry_filenames =
+                Some(ChunkFilenamesOutputOption::from(entry_file_names.clone()));
         }
         if let Some(chunk_file_names) = &self.chunk_file_names {
-            options.chunk_filenames = Some(ChunkFilenamesOutputOption::from(
-                chunk_file_names.clone(),
-            ));
+            options.chunk_filenames =
+                Some(ChunkFilenamesOutputOption::from(chunk_file_names.clone()));
         }
         if let Some(asset_file_names) = &self.asset_file_names {
-            options.asset_filenames = Some(AssetFilenamesOutputOption::from(
-                asset_file_names.clone(),
-            ));
+            options.asset_filenames =
+                Some(AssetFilenamesOutputOption::from(asset_file_names.clone()));
         }
         if let Some(sourcemap) = &self.sourcemap {
             options.sourcemap = match sourcemap {
@@ -410,7 +406,11 @@ impl OutputChunk {
             module_ids: chunk.module_ids.iter().map(ToString::to_string).collect(),
             exports: chunk.exports.iter().map(ToString::to_string).collect(),
             imports: chunk.imports.iter().map(ToString::to_string).collect(),
-            dynamic_imports: chunk.dynamic_imports.iter().map(ToString::to_string).collect(),
+            dynamic_imports: chunk
+                .dynamic_imports
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
             sourcemap: chunk.map.as_ref().map(|map| map.to_json_string()),
             sourcemap_file_name: chunk.sourcemap_filename.clone(),
             preliminary_file_name: chunk.preliminary_filename.clone(),
@@ -471,8 +471,9 @@ fn create_bundler_options(
 ) -> PyResult<(BundlerOptions, bool)> {
     let cwd = match &config.cwd {
         Some(cwd) => cwd.clone(),
-        None => std::env::current_dir()
-            .map_err(|err| PyRuntimeError::new_err(format!("failed to read current working directory: {err}")))?,
+        None => std::env::current_dir().map_err(|err| {
+            PyRuntimeError::new_err(format!("failed to read current working directory: {err}"))
+        })?,
     };
 
     let mut options = BundlerOptions {
@@ -542,16 +543,18 @@ async fn build_once(
     output_override: Option<OutputConfig>,
     write: Option<bool>,
 ) -> PyResult<BundlerOutput> {
-    let (options, should_write) = create_bundler_options(config.as_ref(), input, output_override, write)?;
-    let mut bundler = RolldownBundler::with_plugins(options, config.plugins.clone()).map_err(|errs| {
-        PyRuntimeError::new_err(format!(
-            "failed to initialize Bundler: {}",
-            errs.iter()
-                .map(|diagnostic| diagnostic.to_diagnostic().to_string())
-                .collect::<Vec<_>>()
-                .join("\n"),
-        ))
-    })?;
+    let (options, should_write) =
+        create_bundler_options(config.as_ref(), input, output_override, write)?;
+    let mut bundler =
+        RolldownBundler::with_plugins(options, config.plugins.clone()).map_err(|errs| {
+            PyRuntimeError::new_err(format!(
+                "failed to initialize Bundler: {}",
+                errs.iter()
+                    .map(|diagnostic| diagnostic.to_diagnostic().to_string())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            ))
+        })?;
 
     let bundle_output = if should_write {
         bundler.write().await
@@ -724,7 +727,7 @@ impl Bundler {
         watch: Option<Py<PyAny>>,
     ) -> PyResult<Py<BundlerContext>> {
         if let Some(watch) = watch.as_ref() {
-            boundary::validate_watch(Some(&watch.bind(py)))?;
+            boundary::validate_watch(Some(watch.bind(py)))?;
         } else {
             boundary::validate_watch(None)?;
         }
@@ -780,7 +783,9 @@ impl BundlerContext {
         let input_items = boundary::parse_input(input)?;
         let output_override = output
             .as_ref()
-            .map(|value| boundary::parse_output_config(Some(value.bind(py)), "BundlerContext.output"))
+            .map(|value| {
+                boundary::parse_output_config(Some(value.bind(py)), "BundlerContext.output")
+            })
             .transpose()?
             .flatten();
         let effective_write = write.or(self.session_write);
@@ -806,7 +811,7 @@ impl AsyncBundlerContext {
         watch: Option<Py<PyAny>>,
     ) -> PyResult<Self> {
         if let Some(watch) = watch.as_ref() {
-            boundary::validate_watch(Some(&watch.bind(py)))?;
+            boundary::validate_watch(Some(watch.bind(py)))?;
         } else {
             boundary::validate_watch(None)?;
         }
@@ -830,9 +835,10 @@ impl AsyncBundlerContext {
         _traceback: &Bound<'_, PyAny>,
     ) -> PyResult<Bound<'py, PyAny>> {
         self.active = false;
-        pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            Python::attach(|py| Ok(py.None()))
-        })
+        pyo3_async_runtimes::tokio::future_into_py(
+            py,
+            async move { Python::attach(|py| Ok(py.None())) },
+        )
     }
 
     #[pyo3(signature = (input, output = None, *, write = None))]
@@ -847,7 +853,9 @@ impl AsyncBundlerContext {
         let input_items = boundary::parse_input(input)?;
         let output_override = output
             .as_ref()
-            .map(|value| boundary::parse_output_config(Some(value.bind(py)), "BundlerContext.output"))
+            .map(|value| {
+                boundary::parse_output_config(Some(value.bind(py)), "BundlerContext.output")
+            })
             .transpose()?
             .flatten();
         let effective_write = write.or(self.session_write);
@@ -955,7 +963,9 @@ impl OutputAsset {
     #[getter]
     fn source(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         match &self.source {
-            OutputAssetSource::String(text) => Ok(text.clone().into_pyobject(py)?.into_any().unbind()),
+            OutputAssetSource::String(text) => {
+                Ok(text.clone().into_pyobject(py)?.into_any().unbind())
+            }
             OutputAssetSource::Bytes(bytes) => Ok(PyBytes::new(py, bytes).into_any().unbind()),
         }
     }
@@ -1004,7 +1014,7 @@ impl BundlerOutput {
 mod _core {
     #[pymodule_export]
     use super::{
-        plugin::Plugin, AsyncBundlerContext, Bundler, BundlerContext, BundlerOutput, OutputAsset,
-        OutputChunk,
+        AsyncBundlerContext, Bundler, BundlerContext, BundlerOutput, OutputAsset, OutputChunk,
+        plugin::Plugin,
     };
 }

@@ -76,7 +76,8 @@ def test_prod_ssr_bundles_and_serves_html(mock_mcp, pages_dir, tmp_path, monkeyp
         loop.close()
 
     assert '<div id="root"><div data-ssr="1"></div></div>' in html
-    assert "hasChildNodes()?" in html
+    assert "hasChildNodes()" in html
+    assert "hydrateRoot(root, element)" in html
 
 
 @pytest.mark.integration

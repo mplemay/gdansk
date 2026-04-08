@@ -44,7 +44,7 @@ def test_bundler_accepts_plugins_as_tuple() -> None:
 
 def test_bundler_rejects_dict_plugin() -> None:
     with pytest.raises(TypeError, match="Plugin"):
-        Bundler(plugins=[{"name": "legacy"}])
+        Bundler(plugins=[{"name": "legacy"}])  # ty: ignore[invalid-argument-type]
 
 
 def test_bundler_rejects_watch_in_first_milestone() -> None:
