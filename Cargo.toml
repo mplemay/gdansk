@@ -3,7 +3,6 @@ members = [
     "packages/gdansk-bundler",
     "packages/gdansk-lightningcss",
     "packages/gdansk-runtime",
-    "packages/gdansk-tailwindcss",
     "packages/gdansk-vite",
 ]
 resolver = "3"

@@ -116,12 +116,12 @@ app.mount(path="/mcp", app=mcp_app)
 Attach a Vite plugin through `plugins`:
 
 ```python
-from gdansk import Ship, VitePlugin
+from gdansk import Ship, VitePlugin, ViteScript
 
 ship = Ship(
     mcp=mcp,
     views=views_path,
-    plugins=[VitePlugin(specifier="@tailwindcss/vite")],
+    plugins=[VitePlugin(script=ViteScript.from_file(views_path / "plugins" / "tailwind-wrapper.mjs"))],
 )
 ```
 
@@ -131,6 +131,7 @@ Requirements in `views/`:
 
 - install the adapter package dependencies, such as `@tailwindcss/vite` and `tailwindcss`
 - the `views` package must already have its regular bundling dependencies installed
+- the script should configure the Vite plugin itself, for example `export default tailwindcss()`
 
 Behavior summary:
 
@@ -148,4 +149,4 @@ Behavior summary:
 | Shared head metadata across tools | constructor `metadata=` |
 | Per-tool title or OG override | `@ship.tool(..., metadata=...)` |
 | Running inside existing FastAPI service | mount `mcp_app` + lifespan wrapper |
-| Tailwind CSS transform on generated CSS | add `plugins=[VitePlugin(specifier="@tailwindcss/vite")]` |
+| Tailwind CSS transform on generated CSS | add `plugins=[VitePlugin(script=ViteScript.from_file(...))]` |

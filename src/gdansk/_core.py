@@ -370,18 +370,8 @@ def _prepare_entry_files(
     return client_inputs, server_inputs
 
 
-def _should_preserve_tailwind(
-    *,
-    css_plugins: list[Plugin],
-    vite_plugins: list[VitePlugin],
-) -> bool:
-    if any(plugin.specifier == "@tailwindcss/vite" for plugin in vite_plugins):
-        return True
-    return any(
-        plugin.__class__.__name__ == "TailwindCssPlugin"
-        and plugin.__class__.__module__.startswith("gdansk_tailwindcss")
-        for plugin in css_plugins
-    )
+def _should_preserve_tailwind(*, vite_plugins: list[VitePlugin]) -> bool:
+    return bool(vite_plugins)
 
 
 def _apply_css_plugin_transforms(
@@ -418,7 +408,7 @@ def _build_css_outputs(
     vite_plugins: list[VitePlugin],
 ) -> set[Path]:
     watch_files: set[Path] = set()
-    preserve_tailwind = _should_preserve_tailwind(css_plugins=css_plugins, vite_plugins=vite_plugins)
+    preserve_tailwind = _should_preserve_tailwind(vite_plugins=vite_plugins)
     preserve_specifiers = frozenset({"tailwindcss"}) if preserve_tailwind else frozenset()
 
     for page in pages:

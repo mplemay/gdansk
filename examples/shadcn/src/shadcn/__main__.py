@@ -8,7 +8,7 @@ from uuid import uuid4
 import uvicorn
 from starlette.middleware.cors import CORSMiddleware
 
-from gdansk import Ship, VitePlugin
+from gdansk import Ship, VitePlugin, ViteScript
 
 try:
     FastMCP = importlib.import_module("mcp.server.fastmcp").FastMCP
@@ -16,10 +16,11 @@ except ImportError:
     FastMCP = importlib.import_module("mcp.server").MCPServer
 
 mcp = FastMCP("Todo Server")
+views_path = Path(__file__).parent / "views"
 ship = Ship(
     mcp=mcp,
-    views=Path(__file__).parent / "views",
-    plugins=[VitePlugin(specifier="@tailwindcss/vite")],
+    views=views_path,
+    plugins=[VitePlugin(script=ViteScript.from_file(views_path / "plugins" / "tailwind-wrapper.mjs"))],
 )
 
 

@@ -15,8 +15,8 @@ Use exact error text to choose the fastest fix.
 | `SSR bundled output for ... not found. Has the bundler been run?` | Effective SSR true but server bundle missing | Ensure SSR is enabled intentionally and bundle succeeded | Check `views/.gdansk/**/server.js` existence |
 | `Execution error: ...` during SSR | Server JS threw at runtime (SSR render or dependency issue) | Fix SSR widget default export and runtime-safe imports; retry | Open `server.js` bundle and run minimal SSR widget to isolate |
 | Build fails with message containing `default` for widget | Widget component missing default export | Export default React component from `widget.tsx`/`widget.jsx` | `rg -n "export default" views/widgets/**/widget.tsx views/widgets/**/widget.jsx` |
-| `Cannot find package '@tailwindcss/vite'` | `VitePlugin` references Tailwind but it is not installed in `views/node_modules` | Install `@tailwindcss/vite` and `tailwindcss` in the `views` package | `node --input-type=module -e \"import('@tailwindcss/vite').then(() => console.log('ok'))\"` |
-| Tailwind transform not applied | Vite plugin not attached or no generated CSS to process | Add `plugins=[VitePlugin(specifier=\"@tailwindcss/vite\")]` and ensure `.gdansk/**/client.css` exists after bundle | Confirm `.gdansk/**/client.css` contains generated utilities such as `.mx-auto` |
+| `Cannot find package '@tailwindcss/vite'` | The script used by `VitePlugin` imports Tailwind but it is not installed in `views/node_modules` | Install `@tailwindcss/vite` and `tailwindcss` in the `views` package | `node --input-type=module -e \"import('@tailwindcss/vite').then(() => console.log('ok'))\"` |
+| Tailwind transform not applied | Vite plugin script not attached or no generated CSS to process | Add `plugins=[VitePlugin(script=ViteScript.from_file(...))]` and ensure `.gdansk/**/client.css` exists after bundle | Confirm `.gdansk/**/client.css` contains generated utilities such as `.mx-auto` |
 
 ## Structured diagnosis flow
 

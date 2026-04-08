@@ -12,7 +12,6 @@ dependencies = [
     "gdansk-bundler",
     "gdansk-lightningcss",
     "gdansk-runtime",
-    "gdansk-tailwindcss",
     "gdansk-vite",
     "mcp>=1.25.1.dev114,<1.26",
     "minijinja>=2,<3",
@@ -24,7 +23,6 @@ dev = [
     "gdansk-bundler",
     "gdansk-lightningcss",
     "gdansk-runtime",
-    "gdansk-tailwindcss",
     "gdansk-vite",
     "prek>=0.3.6",
     "pytest>=9.0.2",
@@ -45,7 +43,6 @@ mcp = { git = "https://github.com/modelcontextprotocol/python-sdk.git", rev = "m
 gdansk-bundler = { workspace = true }
 gdansk-lightningcss = { workspace = true }
 gdansk-runtime = { workspace = true }
-gdansk-tailwindcss = { workspace = true }
 gdansk-vite = { workspace = true }
 
 [tool.uv.workspace]
@@ -53,7 +50,6 @@ members = [
     "packages/gdansk-runtime",
     "packages/gdansk-bundler",
     "packages/gdansk-lightningcss",
-    "packages/gdansk-tailwindcss",
     "packages/gdansk-vite",
 ]
 

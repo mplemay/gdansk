@@ -58,15 +58,15 @@ function matchesFilter(filter, id) {
   return true;
 }
 
-async function normalizePluginExport(exported, options) {
+async function normalizePluginExport(exported) {
   if (typeof exported === "function") {
-    return normalizePluginExport(await exported(options), options);
+    return normalizePluginExport(await exported());
   }
 
   if (Array.isArray(exported)) {
     const normalized = [];
     for (const value of exported) {
-      normalized.push(...(await normalizePluginExport(value, options)));
+      normalized.push(...(await normalizePluginExport(value)));
     }
     return normalized;
   }
@@ -181,11 +181,11 @@ globalThis.__gdansk_vite_runtime = {
     const config = createViteConfig(context.pages);
 
     for (const spec of specs) {
-      const mod = await import(spec.specifier);
-      const exported = await normalizePluginExport(mod.default ?? mod, spec.options);
+      const mod = await import(spec.moduleSpecifier);
+      const exported = await normalizePluginExport(mod.default ?? mod);
 
       for (const plugin of exported) {
-        const name = getPluginName(plugin, spec.specifier);
+        const name = getPluginName(plugin, spec.moduleSpecifier);
         if (!shouldApply(plugin, config)) {
           continue;
         }
