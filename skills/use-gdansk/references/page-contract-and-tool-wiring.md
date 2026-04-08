@@ -1,6 +1,6 @@
 # Widget path contract and tool wiring
 
-This file defines the strict `widget` contract for `@amber.tool(...)`.
+This file defines the strict `widget` contract for `@ship.tool(...)`.
 
 ## Core rules
 
@@ -33,7 +33,7 @@ Minimal pattern:
 from pathlib import Path
 from mcp.types import TextContent
 
-@amber.tool(name="hello", widget=Path("hello"))
+@ship.tool(name="hello", widget=Path("hello"))
 def hello(name: str = "world") -> list[TextContent]:
     return [TextContent(type="text", text=f"Hello, {name}!")]
 ```

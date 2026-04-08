@@ -8,7 +8,7 @@ from pathlib import Path
 from mcp.types import TextContent
 from pydantic_settings import BaseSettings
 
-from gdansk import Amber
+from gdansk import Ship
 
 FastAPI = importlib.import_module("fastapi").FastAPI
 
@@ -27,16 +27,16 @@ class Settings(BaseSettings):
 SETTINGS = Settings()
 
 mcp = FastMCP("FastAPI Example Server", streamable_http_path="/")
-amber = Amber(mcp=mcp, views=Path(__file__).parent / "src/mount/views")
+ship = Ship(mcp=mcp, views=Path(__file__).parent / "src/mount/views")
 
 
-@amber.tool(name="hello", widget=Path("hello"))
+@ship.tool(name="hello", widget=Path("hello"))
 def hello(name: str = "world") -> list[TextContent]:
     """Return a greeting message."""
     return [TextContent(type="text", text=f"Hello, {name}!")]
 
 
-mcp_app = amber(dev=not SETTINGS.production)
+mcp_app = ship(dev=not SETTINGS.production)
 
 
 @asynccontextmanager

@@ -14,7 +14,7 @@ my-server/
             └── widget.tsx
 ```
 
-The `views` directory name is arbitrary: `Amber(..., views=...)` accepts any path to the npm package root.
+The `views` directory name is arbitrary: `Ship(..., views=...)` accepts any path to the npm package root.
 
 ## Minimal Python server
 
@@ -25,19 +25,19 @@ import uvicorn
 from mcp.server.fastmcp import FastMCP
 from mcp.types import TextContent
 
-from gdansk import Amber
+from gdansk import Ship
 
 mcp = FastMCP("Hello Server")
-amber = Amber(mcp=mcp, views=Path(__file__).parent / "views")
+ship = Ship(mcp=mcp, views=Path(__file__).parent / "views")
 
 
-@amber.tool(name="hello", widget=Path("hello"))
+@ship.tool(name="hello", widget=Path("hello"))
 def hello(name: str = "world") -> list[TextContent]:
     return [TextContent(type="text", text=f"Hello, {name}!")]
 
 
 if __name__ == "__main__":
-    app = amber(dev=True)
+    app = ship(dev=True)
     uvicorn.run(app, port=3001)
 ```
 
@@ -108,7 +108,7 @@ uv run python server.py
 SSR variant:
 
 ```python
-amber = Amber(mcp=mcp, views=Path(__file__).parent / "views", ssr=True)
+ship = Ship(mcp=mcp, views=Path(__file__).parent / "views", ssr=True)
 ```
 
 Run:
@@ -129,16 +129,16 @@ from fastapi import FastAPI
 from mcp.server.fastmcp import FastMCP
 from mcp.types import TextContent
 
-from gdansk import Amber
+from gdansk import Ship
 
 mcp = FastMCP("FastAPI Example Server", streamable_http_path="/")
-amber = Amber(mcp=mcp, views=Path(__file__).parent / "views")
+ship = Ship(mcp=mcp, views=Path(__file__).parent / "views")
 
-@amber.tool(name="hello", widget=Path("hello"))
+@ship.tool(name="hello", widget=Path("hello"))
 def hello(name: str = "world") -> list[TextContent]:
     return [TextContent(type="text", text=f"Hello, {name}!")]
 
-mcp_app = amber(dev=True)
+mcp_app = ship(dev=True)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:

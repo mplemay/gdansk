@@ -73,7 +73,7 @@ gdansk/
 ├── src/
 │   └── gdansk/
 │       ├── __init__.py     # Package exports
-│       ├── core.py         # Python Amber class
+│       ├── core.py         # Python Ship class
 │       ├── _core.py        # Internal build/runtime helpers
 │       └── __tests__/      # Test files
 ├── packages/               # Helper workspace packages

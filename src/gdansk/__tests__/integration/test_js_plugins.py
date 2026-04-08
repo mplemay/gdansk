@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from anyio import Path as AnyPath
 
-from gdansk import Amber, VitePlugin
+from gdansk import Ship, VitePlugin
 from gdansk._core import Page, bundle
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -99,17 +99,17 @@ export default function tailwindVite() {
 def test_js_plugin_transforms_bundled_css(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     output = pages_dir / ".gdansk"
-    amber = Amber(
+    ship = Ship(
         mcp=mock_mcp,
         views=pages_dir,
         plugins=[VitePlugin(specifier=Path("plugins/append-comment.mjs"), options={"comment": "from-js"})],
     )
 
-    @amber.tool(Path("with_css/widget.tsx"))
+    @ship.tool(Path("with_css/widget.tsx"))
     def my_tool():
         return "result"
 
-    with _lifespan(amber(dev=False)):
+    with _lifespan(ship(dev=False)):
         css_output = output / "with_css/client.css"
         assert css_output.exists()
         assert "from-js" in css_output.read_text(encoding="utf-8")
@@ -125,17 +125,17 @@ def test_js_plugin_transforms_bundled_css_without_node_in_path(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("PATH", "")
     output = pages_dir / ".gdansk"
-    amber = Amber(
+    ship = Ship(
         mcp=mock_mcp,
         views=pages_dir,
         plugins=[VitePlugin(specifier=Path("plugins/append-comment.mjs"), options={"comment": "no-node"})],
     )
 
-    @amber.tool(Path("with_css/widget.tsx"))
+    @ship.tool(Path("with_css/widget.tsx"))
     def my_tool():
         return "result"
 
-    with _lifespan(amber(dev=False)):
+    with _lifespan(ship(dev=False)):
         css_output = output / "with_css/client.css"
         assert css_output.exists()
         assert "no-node" in css_output.read_text(encoding="utf-8")
@@ -145,17 +145,17 @@ def test_js_plugin_transforms_bundled_css_without_node_in_path(
 def test_js_plugin_watch_runs_in_dev(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     output = pages_dir / ".gdansk"
-    amber = Amber(
+    ship = Ship(
         mcp=mock_mcp,
         views=pages_dir,
         plugins=[VitePlugin(specifier=Path("plugins/append-comment.mjs"), options={"comment": "dev-js"})],
     )
 
-    @amber.tool(Path("with_css/widget.tsx"))
+    @ship.tool(Path("with_css/widget.tsx"))
     def my_tool():
         return "result"
 
-    app = amber(dev=True)
+    app = ship(dev=True)
     with _lifespan(app, background=True):
         css_output = output / "with_css/client.css"
         _wait_for_css_contains(css_output, "dev-js")
@@ -165,7 +165,7 @@ def test_js_plugin_watch_runs_in_dev(mock_mcp, pages_dir, tmp_path, monkeypatch)
 def test_js_plugins_apply_in_declared_order(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     output = pages_dir / ".gdansk"
-    amber = Amber(
+    ship = Ship(
         mcp=mock_mcp,
         views=pages_dir,
         plugins=[
@@ -174,11 +174,11 @@ def test_js_plugins_apply_in_declared_order(mock_mcp, pages_dir, tmp_path, monke
         ],
     )
 
-    @amber.tool(Path("with_css/widget.tsx"))
+    @ship.tool(Path("with_css/widget.tsx"))
     def my_tool():
         return "result"
 
-    with _lifespan(amber(dev=False)):
+    with _lifespan(ship(dev=False)):
         css_output = output / "with_css/client.css"
         css = css_output.read_text(encoding="utf-8")
 
@@ -224,7 +224,7 @@ export default function (options) {
     )
 
     output = pages_dir / ".gdansk"
-    amber = Amber(
+    ship = Ship(
         mcp=mock_mcp,
         views=pages_dir,
         plugins=[
@@ -235,11 +235,11 @@ export default function (options) {
         ],
     )
 
-    @amber.tool(Path("with_css/widget.tsx"))
+    @ship.tool(Path("with_css/widget.tsx"))
     def my_tool():
         return "result"
 
-    with _lifespan(amber(dev=True), background=True):
+    with _lifespan(ship(dev=True), background=True):
         css_output = output / "with_css/client.css"
         _wait_for_css_contains(css_output, "initial")
         watched_file.write_text("updated", encoding="utf-8")
@@ -269,13 +269,13 @@ export default {
         encoding="utf-8",
     )
 
-    amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=[VitePlugin(specifier=Path("plugins/boom.mjs"))])
+    ship = Ship(mcp=mock_mcp, views=pages_dir, plugins=[VitePlugin(specifier=Path("plugins/boom.mjs"))])
 
-    @amber.tool(Path("with_css/widget.tsx"))
+    @ship.tool(Path("with_css/widget.tsx"))
     def my_tool():
         return "result"
 
-    with pytest.raises(RuntimeError, match="boom"), _lifespan(amber(dev=False)):
+    with pytest.raises(RuntimeError, match="boom"), _lifespan(ship(dev=False)):
         pass
 
 
@@ -306,17 +306,17 @@ body {
     )
     _write_tailwind_vite_package(pages_dir)
     output = pages_dir / ".gdansk"
-    amber = Amber(
+    ship = Ship(
         mcp=mock_mcp,
         views=pages_dir,
         plugins=[VitePlugin(specifier="@tailwindcss/vite")],
     )
 
-    @amber.tool(Path("todo/widget.tsx"))
+    @ship.tool(Path("todo/widget.tsx"))
     def my_tool():
         return "result"
 
-    with _lifespan(amber(dev=False)):
+    with _lifespan(ship(dev=False)):
         css_output = output / "todo/client.css"
         js_output = output / "todo/client.js"
         assert js_output.exists()

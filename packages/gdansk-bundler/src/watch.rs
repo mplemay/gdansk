@@ -16,6 +16,19 @@ use crate::{
     BundlerConfigState, BundlerOutput, OutputConfig, create_bundler_options, format_diagnostics,
 };
 
+fn normalize_watch_string(raw: &str) -> String {
+    let path = Path::new(raw);
+    let Ok(exists) = path.try_exists() else {
+        return raw.to_owned();
+    };
+    if !exists {
+        return raw.to_owned();
+    }
+    dunce::canonicalize(path)
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| raw.to_owned())
+}
+
 enum WatchCommand {
     SetWatchFiles {
         paths: Vec<PathBuf>,
@@ -324,12 +337,12 @@ fn collect_watch_files(
     let mut watch_files = bundler
         .watch_files()
         .iter()
-        .map(|path| path.to_string())
+        .map(|path| normalize_watch_string(&path.to_string()))
         .collect::<BTreeSet<_>>();
     watch_files.extend(
         extra_watch_files
             .iter()
-            .map(|path| path.to_string_lossy().into_owned()),
+            .map(|path| normalize_watch_string(path.to_string_lossy().as_ref())),
     );
     watch_files
 }
@@ -351,15 +364,22 @@ fn sync_watch_files(
     let mut paths_mut = watcher.paths_mut();
 
     for stale_watch_file in stale_watch_files {
-        let _ = paths_mut.remove(Path::new(&stale_watch_file));
+        let path = Path::new(&stale_watch_file);
+        let remove_target = if path.try_exists().unwrap_or(false) {
+            dunce::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+        } else {
+            path.to_path_buf()
+        };
+        let _ = paths_mut.remove(remove_target.as_path());
     }
 
     for new_watch_file in new_watch_files {
         let path = Path::new(&new_watch_file);
-        if !path.exists() {
+        if !path.try_exists().unwrap_or(false) {
             continue;
         }
-        let _ = paths_mut.add(path, RecursiveMode::NonRecursive);
+        let resolved = dunce::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        let _ = paths_mut.add(resolved.as_path(), RecursiveMode::NonRecursive);
     }
 
     paths_mut

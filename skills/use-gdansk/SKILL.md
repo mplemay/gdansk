@@ -1,6 +1,6 @@
 ---
 name: use-gdansk
-description: Comprehensive gdansk implementation and debugging guide for MCP app UIs. Use when adding or fixing Amber and FastMCP tool UIs, wiring `@amber.tool(..., widget=...)` to React `views/widgets/**/widget.tsx` or `widget.jsx` entries, enabling SSR, configuring metadata or `cache_html`, adding a JS plugin adapter such as Tailwind CSS, mounting under FastAPI, or diagnosing gdansk bundling and runtime errors.
+description: Comprehensive gdansk implementation and debugging guide for MCP app UIs. Use when adding or fixing Ship and FastMCP tool UIs, wiring `@ship.tool(..., widget=...)` to React `views/widgets/**/widget.tsx` or `widget.jsx` entries, enabling SSR, configuring metadata or `cache_html`, adding a JS plugin adapter such as Tailwind CSS, mounting under FastAPI, or diagnosing gdansk bundling and runtime errors.
 ---
 
 # Use Gdansk
@@ -14,7 +14,7 @@ Map the request to one primary workflow before coding:
 
 1. Add a new tool UI:
    - Register or update a Python tool.
-   - Map it to a React widget with `@amber.tool(..., widget=...)`.
+   - Map it to a React widget with `@ship.tool(..., widget=...)`.
 2. Fix a broken gdansk UI:
    - Resolve widget path validation errors.
    - Resolve missing bundle output or SSR runtime errors.
@@ -43,7 +43,7 @@ Use [quickstart.md](references/quickstart.md) for the canonical baseline layout 
 ## 3) Implement tool and widget wiring with strict path rules
 
 Always treat `widget=` as a logical path under `views/widgets/`, never an absolute filesystem path. The directory
-passed to `Amber(..., views=...)` can be named anything; `views` in docs is a conventional label for the npm package
+passed to `Ship(..., views=...)` can be named anything; `views` in docs is a conventional label for the npm package
 root.
 
 - Prefer directory shorthand (`widget=Path("hello")`) when the widget entry file is conventional.
@@ -60,13 +60,13 @@ Use [page-contract-and-tool-wiring.md](references/page-contract-and-tool-wiring.
 Choose the smallest integration needed:
 
 - SSR:
-  - Global default: `Amber(..., ssr=True)`.
-  - Per-tool override: `@amber.tool(..., ssr=True|False)`.
+  - Global default: `Ship(..., ssr=True)`.
+  - Per-tool override: `@ship.tool(..., ssr=True|False)`.
 - HTML cache:
   - Default cached by fingerprint.
-  - Disable via `Amber(..., cache_html=False)` when SSR output must be uncached per request.
+  - Disable via `Ship(..., cache_html=False)` when SSR output must be uncached per request.
 - Metadata:
-  - Set global metadata on `Amber`.
+  - Set global metadata on `Ship`.
   - Override per tool with shallow top-level merge semantics.
 - FastAPI:
   - Mount `mcp_app` and run its lifespan.
@@ -91,7 +91,7 @@ If anything fails, match the exact error string and follow [troubleshooting.md](
 ## Guardrails
 
 - Do not invent alternative widget conventions (for example `app.tsx`); gdansk expects `widget.tsx` or `widget.jsx`.
-- Do not pass filesystem-absolute paths to `@amber.tool(widget=...)`.
+- Do not pass filesystem-absolute paths to `@ship.tool(widget=...)`.
 - Do not use `widgets/...` as the decorator input prefix.
 - Do not enable SSR without checking that the widget has a default export and that dependencies are SSR-compatible.
 - Do not add a JS plugin adapter without installing its npm dependencies in the views package.

@@ -34,7 +34,7 @@ npx skills add mplemay/gdansk
 
 - **[FastAPI](examples/fastapi):** FastAPI-based MCP server integration with mounted app routes.
 - **[get-time](examples/get-time):** Feature-rich MCP app covering tool calls, messaging, logging, and links.
-- **[ssr](examples/ssr):** Minimal SSR example using `Amber(ssr=True)` with a single tool UI.
+- **[ssr](examples/ssr):** Minimal SSR example using `Ship(ssr=True)` with a single tool UI.
 - **[shadcn](examples/shadcn):** Todo app example using `shadcn/ui` components with Gdansk.
 
 ## Quick Start
@@ -53,7 +53,7 @@ my-mcp-server/
             └── widget.tsx
 ```
 
-The `views` folder name is only an example: pass any directory to `Amber(..., views=...)` (for example
+The `views` folder name is only an example: pass any directory to `Ship(..., views=...)` (for example
 `Path(__file__).parent / "frontend"`).
 
 **server.py:**
@@ -62,19 +62,19 @@ The `views` folder name is only an example: pass any directory to `Amber(..., vi
 from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 from mcp.types import TextContent
-from gdansk import Amber
+from gdansk import Ship
 import uvicorn
 
 mcp = FastMCP("Hello World Server")
-amber = Amber(mcp=mcp, views=Path(__file__).parent / "views")
+ship = Ship(mcp=mcp, views=Path(__file__).parent / "views")
 
-@amber.tool(name="greet", widget=Path("hello"))
+@ship.tool(name="greet", widget=Path("hello"))
 def greet(name: str) -> list[TextContent]:
     """Greet someone by name."""
     return [TextContent(type="text", text=f"Hello, {name}!")]
 
 if __name__ == "__main__":
-    app = amber(dev=True)  # Enable hot-reload for development
+    app = ship(dev=True)  # Enable hot-reload for development
     uvicorn.run(app, port=3000)
 ```
 
@@ -127,7 +127,7 @@ Gdansk mounts your default export into `#root` automatically and wraps it with `
 Run the server with `python server.py`, configure it in your MCP client (like Claude Desktop), and you'll have an
 interactive greeting tool ready to use.
 
-HTML resources are cached in memory by default. Use `Amber(..., cache_html=False)` if you need uncached reads (for
+HTML resources are cached in memory by default. Use `Ship(..., cache_html=False)` if you need uncached reads (for
 example, intentionally dynamic SSR output).
 
 ## Why Use Gdansk?
@@ -144,7 +144,7 @@ example, intentionally dynamic SSR output).
 4. **Type-Safe** — Full type safety across the stack. Python type hints on the backend, TypeScript on the frontend, with
    automatic type checking via ruff and TypeScript compiler.
 
-5. **Developer-Friendly** — Simple decorator API (`@amber.tool()`), automatic resource registration, hot-reload dev
+5. **Developer-Friendly** — Simple decorator API (`@ship.tool()`), automatic resource registration, hot-reload dev
    mode, and comprehensive error messages. Get started in minutes, not hours.
 
 6. **Production Ready** — Comprehensive test suite covering Python 3.11-3.14 across Linux, macOS, and Windows. Used in

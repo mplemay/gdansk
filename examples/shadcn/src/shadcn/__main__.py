@@ -8,7 +8,7 @@ from uuid import uuid4
 import uvicorn
 from starlette.middleware.cors import CORSMiddleware
 
-from gdansk import Amber, VitePlugin
+from gdansk import Ship, VitePlugin
 
 try:
     FastMCP = importlib.import_module("mcp.server.fastmcp").FastMCP
@@ -16,7 +16,7 @@ except ImportError:
     FastMCP = importlib.import_module("mcp.server").MCPServer
 
 mcp = FastMCP("Todo Server")
-amber = Amber(
+ship = Ship(
     mcp=mcp,
     views=Path(__file__).parent / "views",
     plugins=[VitePlugin(specifier="@tailwindcss/vite")],
@@ -48,7 +48,7 @@ def _get_todo(todo_id: str) -> Todo:
     raise ValueError(msg)
 
 
-@amber.tool(name="list-todos", widget=Path("todo"), structured_output=True)
+@ship.tool(name="list-todos", widget=Path("todo"), structured_output=True)
 def list_todos() -> list[Todo]:
     """Return all todos."""
     return _serialize_todos()
@@ -84,7 +84,7 @@ def delete_todo(todo_id: str) -> list[Todo]:
 
 def main() -> None:
     """Run the development server for the todo example."""
-    app = amber(dev=True)
+    app = ship(dev=True)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
