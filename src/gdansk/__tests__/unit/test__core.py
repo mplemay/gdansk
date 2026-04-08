@@ -5,7 +5,11 @@ from typing import Any
 from unittest.mock import patch
 
 core_impl = importlib.import_module("gdansk._core")
+relative_import_impl: Any = getattr(core_impl, "_relative_import", None)
 run_module_impl: Any = getattr(core_impl, "_run_module", None)
+if relative_import_impl is None:
+    msg = "expected gdansk._core._relative_import"
+    raise RuntimeError(msg)
 if run_module_impl is None:
     msg = "expected gdansk._core._run_module"
     raise RuntimeError(msg)
@@ -56,3 +60,12 @@ async def test_run_module_uses_system_tempdir(tmp_path):
     assert "return 1" in source_path.read_text(encoding="utf-8")
     assert 'await import("./source.js")' in wrapper_path.read_text(encoding="utf-8")
     mock_from_file.assert_called_once_with(wrapper_path, type(None), object)
+
+
+def test_relative_import_uses_file_url_when_relpath_crosses_drives(tmp_path) -> None:
+    target = tmp_path / "component.tsx"
+    wrapper_path = tmp_path / "wrapper.js"
+    msg = "path is on mount 'D:', start on mount 'C:'"
+
+    with patch("gdansk._core.os.path.relpath", side_effect=ValueError(msg)):
+        assert relative_import_impl(target, from_file=wrapper_path) == target.resolve().as_uri()

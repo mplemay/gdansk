@@ -169,7 +169,10 @@ def _synthetic_import_specifier(path: Path, *, module_dir: Path) -> str:
     try:
         value = resolved_path.relative_to(resolved_module_dir).as_posix()
     except ValueError:
-        value = Path(os.path.relpath(resolved_path, resolved_module_dir)).as_posix()
+        try:
+            value = Path(os.path.relpath(resolved_path, resolved_module_dir)).as_posix()
+        except ValueError:
+            value = resolved_path.as_posix()
     if not value.startswith((".", "/")):
         return f"./{value}"
     return value

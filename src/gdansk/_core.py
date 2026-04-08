@@ -117,7 +117,11 @@ def _is_relative_specifier(specifier: str) -> bool:
 
 
 def _relative_import(target: Path, *, from_file: Path) -> str:
-    value = Path(os.path.relpath(target, from_file.parent)).as_posix()
+    try:
+        value = Path(os.path.relpath(target, from_file.parent)).as_posix()
+    except ValueError:
+        # Windows: target and wrapper dir on different drives (e.g. repo on D:, temp on C:)
+        return target.resolve().as_uri()
     if not value.startswith((".", "/")):
         return f"./{value}"
     return value

@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import importlib
+from unittest.mock import patch
+
 from gdansk_bundler import Bundler
 
 from gdansk_lightningcss import LightningCssPlugin, transform_css
+
+bundle_impl = importlib.import_module("gdansk_lightningcss.bundle")
 
 
 def test_bundler_accepts_lightning_css_plugin() -> None:
@@ -36,3 +41,15 @@ def test_lightning_css_plugin_transforms_css() -> None:
     got = p.transform(".a { color: green; }", "/z.css", "css")
     assert got is not None
     assert "green" in got["code"]
+
+
+def test_synthetic_import_specifier_uses_absolute_path_when_relpath_crosses_drives(tmp_path) -> None:
+    source_path = tmp_path / "styles.css"
+    module_dir = tmp_path / "synthetic"
+    msg = "path is on mount 'D:', start on mount 'C:'"
+
+    with patch("gdansk_lightningcss.bundle.os.path.relpath", side_effect=ValueError(msg)):
+        assert (
+            bundle_impl._synthetic_import_specifier(source_path, module_dir=module_dir)
+            == source_path.resolve().as_posix()
+        )
