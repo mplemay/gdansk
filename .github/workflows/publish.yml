@@ -43,6 +43,9 @@ jobs:
           uv version "$VERSION"
 
       - name: Build distributions
+        env:
+          V8_FROM_SOURCE: "1"
+          GN_ARGS: 'extra_cflags=["-DV8_TLS_USED_IN_LIBRARY"]'
         run: uv build
 
       - uses: actions/upload-artifact@v4
