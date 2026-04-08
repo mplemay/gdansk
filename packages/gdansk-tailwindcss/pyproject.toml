@@ -19,6 +19,7 @@ python-source = "src"
 
 [tool.uv]
 cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.py" }, { file = "src/**/*.mjs" }, { file = "src/**/*.rs" }, { file = "Cargo.toml" }, { file = "Cargo.lock" }]
+exclude-newer = "7 days"
 
 [tool.uv.sources]
 gdansk-bundler = { workspace = true }
