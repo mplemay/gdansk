@@ -1,9 +1,0 @@
-[workspace]
-members = [
-    "packages/gdansk-runtime",
-    "packages/gdansk-bundler",
-    "packages/gdansk-lightningcss",
-    "packages/gdansk-tailwindcss",
-    "packages/gdansk-vite",
-]
-resolver = "2"
