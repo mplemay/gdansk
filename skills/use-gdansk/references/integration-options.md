@@ -9,7 +9,7 @@ Use this file when the request goes beyond basic tool-page wiring.
 Enable SSR for all registered pages by default:
 
 ```python
-amber = Amber(mcp=mcp, views=views_path, ssr=True)
+ship = Ship(mcp=mcp, views=views_path, ssr=True)
 ```
 
 ### Per-tool SSR override
@@ -17,11 +17,11 @@ amber = Amber(mcp=mcp, views=views_path, ssr=True)
 Override the global setting on specific tools:
 
 ```python
-@amber.tool(widget=Path("reports"), ssr=True)
+@ship.tool(widget=Path("reports"), ssr=True)
 def reports():
     ...
 
-@amber.tool(widget=Path("settings"), ssr=False)
+@ship.tool(widget=Path("settings"), ssr=False)
 def settings():
     ...
 ```
@@ -37,7 +37,7 @@ Behavior:
 Default:
 
 ```python
-amber = Amber(mcp=mcp, views=views_path, cache_html=True)
+ship = Ship(mcp=mcp, views=views_path, cache_html=True)
 ```
 
 With caching enabled, rendered HTML is reused until the bundle fingerprint changes:
@@ -49,15 +49,15 @@ With caching enabled, rendered HTML is reused until the bundle fingerprint chang
 Disable caching when HTML must be freshly rendered each request:
 
 ```python
-amber = Amber(mcp=mcp, views=views_path, cache_html=False)
+ship = Ship(mcp=mcp, views=views_path, cache_html=False)
 ```
 
 ## Metadata behavior
 
-Set global metadata on `Amber`:
+Set global metadata on `Ship`:
 
 ```python
-amber = Amber(
+ship = Ship(
     mcp=mcp,
     views=views_path,
     metadata={
@@ -71,7 +71,7 @@ amber = Amber(
 Override per tool:
 
 ```python
-@amber.tool(
+@ship.tool(
     widget=Path("hello"),
     metadata={"title": "Tool Title", "openGraph": {"title": "Tool OG"}},
 )
@@ -96,11 +96,11 @@ from pathlib import Path
 from fastapi import FastAPI
 from mcp.server.fastmcp import FastMCP
 
-from gdansk import Amber
+from gdansk import Ship
 
 mcp = FastMCP("FastAPI Example Server", streamable_http_path="/")
-amber = Amber(mcp=mcp, views=Path(__file__).parent / "views")
-mcp_app = amber(dev=True)
+ship = Ship(mcp=mcp, views=Path(__file__).parent / "views")
+mcp_app = ship(dev=True)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -116,9 +116,9 @@ app.mount(path="/mcp", app=mcp_app)
 Attach a Vite plugin through `plugins`:
 
 ```python
-from gdansk import Amber, VitePlugin
+from gdansk import Ship, VitePlugin
 
-amber = Amber(
+ship = Ship(
     mcp=mcp,
     views=views_path,
     plugins=[VitePlugin(specifier="@tailwindcss/vite")],
@@ -141,11 +141,11 @@ Behavior summary:
 
 | Need | Option |
 | --- | --- |
-| Server-rendered initial HTML for all tools | `Amber(..., ssr=True)` |
-| Server-rendered initial HTML for one tool | `@amber.tool(..., ssr=True)` |
-| Force client-only rendering for one tool while global SSR is on | `@amber.tool(..., ssr=False)` |
-| Dynamic SSR output must not be cached | `Amber(..., cache_html=False)` |
+| Server-rendered initial HTML for all tools | `Ship(..., ssr=True)` |
+| Server-rendered initial HTML for one tool | `@ship.tool(..., ssr=True)` |
+| Force client-only rendering for one tool while global SSR is on | `@ship.tool(..., ssr=False)` |
+| Dynamic SSR output must not be cached | `Ship(..., cache_html=False)` |
 | Shared head metadata across tools | constructor `metadata=` |
-| Per-tool title or OG override | `@amber.tool(..., metadata=...)` |
+| Per-tool title or OG override | `@ship.tool(..., metadata=...)` |
 | Running inside existing FastAPI service | mount `mcp_app` + lifespan wrapper |
 | Tailwind CSS transform on generated CSS | add `plugins=[VitePlugin(specifier="@tailwindcss/vite")]` |

@@ -7,11 +7,11 @@ Use exact error text to choose the fastest fix.
 | Symptom or error text | Likely cause | Fix | Quick check |
 | --- | --- | --- | --- |
 | `must be a relative path` | Absolute path passed to `widget=` | Pass a path relative to `views/widgets` | Inspect decorator input; remove absolute prefix |
-| `must not contain traversal segments` | `.` or `..` in `widget=` | Normalize to direct relative path | `rg -n "@amber.tool\\(" -n` and inspect `widget=` |
+| `must not contain traversal segments` | `.` or `..` in `widget=` | Normalize to direct relative path | `rg -n "@ship.tool\\(" -n` and inspect `widget=` |
 | `must not start with widgets/` | `widget` begins with `widgets/...` | Remove `widgets/` prefix in decorator argument | Change `Path("widgets/hello/widget.tsx")` to `Path("hello/widget.tsx")` or `Path("hello")` |
 | `must match **/widget.tsx or **/widget.jsx` | Wrong file name (for example `app.tsx`) or wrong shape | Rename to `widget.tsx` or `widget.jsx`; update decorator path | `find views/widgets -type f \| rg "widget\\.(tsx\|jsx)$"` |
 | `was not found. Expected one of: .../widget.tsx, .../widget.jsx` | Directory shorthand points to missing widget entry files | Create `widget.tsx` or `widget.jsx` in target widget directory | `find views/widgets/<name> -maxdepth 2 -type f` |
-| `Client bundled output for ... not found. Has the bundler been run?` | Bundle did not run, failed, or output path is wrong | Start app with `amber(dev=True)` or run production startup path; resolve upstream bundle errors | Check `views/.gdansk/**/client.js` existence |
+| `Client bundled output for ... not found. Has the bundler been run?` | Bundle did not run, failed, or output path is wrong | Start app with `ship(dev=True)` or run production startup path; resolve upstream bundle errors | Check `views/.gdansk/**/client.js` existence |
 | `SSR bundled output for ... not found. Has the bundler been run?` | Effective SSR true but server bundle missing | Ensure SSR is enabled intentionally and bundle succeeded | Check `views/.gdansk/**/server.js` existence |
 | `Execution error: ...` during SSR | Server JS threw at runtime (SSR render or dependency issue) | Fix SSR widget default export and runtime-safe imports; retry | Open `server.js` bundle and run minimal SSR widget to isolate |
 | Build fails with message containing `default` for widget | Widget component missing default export | Export default React component from `widget.tsx`/`widget.jsx` | `rg -n "export default" views/widgets/**/widget.tsx views/widgets/**/widget.jsx` |

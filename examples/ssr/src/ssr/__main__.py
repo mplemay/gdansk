@@ -7,7 +7,7 @@ import uvicorn
 from mcp.types import TextContent
 from starlette.middleware.cors import CORSMiddleware
 
-from gdansk import Amber
+from gdansk import Ship
 
 try:
     FastMCP = importlib.import_module("mcp.server.fastmcp").FastMCP
@@ -15,10 +15,10 @@ except ImportError:
     FastMCP = importlib.import_module("mcp.server").MCPServer
 
 mcp = FastMCP("SSR Example Server")
-amber = Amber(mcp=mcp, views=Path(__file__).parent / "views", ssr=True)
+ship = Ship(mcp=mcp, views=Path(__file__).parent / "views", ssr=True)
 
 
-@amber.tool(name="hello-ssr", widget=Path("hello-ssr"))
+@ship.tool(name="hello-ssr", widget=Path("hello-ssr"))
 def hello_ssr() -> list[TextContent]:
     """Return a static greeting rendered from the SSR example."""
     return [TextContent(type="text", text="Hello from the SSR example")]
@@ -26,7 +26,7 @@ def hello_ssr() -> list[TextContent]:
 
 def main() -> None:
     """Run the development server for the SSR example."""
-    app = amber(dev=True)
+    app = ship(dev=True)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],

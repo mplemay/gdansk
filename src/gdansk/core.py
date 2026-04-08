@@ -38,12 +38,12 @@ def _validate_plugins(plugins: Sequence[Plugin] | None) -> None:
         if isinstance(plugin, Plugin):
             continue
 
-        msg = "Amber plugins must be gdansk_bundler.Plugin instances"
+        msg = "Ship plugins must be gdansk_bundler.Plugin instances"
         raise TypeError(msg)
 
 
 @dataclass(frozen=True, slots=True)
-class Amber:
+class Ship:
     """Registers widget-backed MCP tools and serves their bundled assets."""
 
     _widgets: set[Page] = field(default_factory=set, init=False)
@@ -77,7 +77,7 @@ class Amber:
 
     def _views_path(self) -> Path:
         if not isinstance(self.views, Path):
-            msg = "internal error: Amber.views was not normalized to pathlib.Path"
+            msg = "internal error: Ship.views was not normalized to pathlib.Path"
             raise TypeError(msg)
         return self.views
 
@@ -101,7 +101,7 @@ class Amber:
         exc = task.exception()
         if exc is None:
             return
-        logger.exception("Amber background task failed", exc_info=exc)
+        logger.exception("Ship background task failed", exc_info=exc)
 
     @staticmethod
     async def _shutdown_dev_tasks(
@@ -155,7 +155,7 @@ class Amber:
         widget_posix = PurePosixPath(widget.as_posix())
 
         if (
-            len(widget_posix.parts) < Amber._page_min_parts
+            len(widget_posix.parts) < Ship._page_min_parts
             or widget_posix.parts[0] == "widgets"
             or widget_posix.name not in {"widget.tsx", "widget.jsx"}
         ):
@@ -208,7 +208,7 @@ class Amber:
                     yield
                 finally:
                     if dev:
-                        await Amber._shutdown_dev_tasks(bundle_task=bundle_task)
+                        await Ship._shutdown_dev_tasks(bundle_task=bundle_task)
 
         app.router.lifespan_context = _lifespan
         return app

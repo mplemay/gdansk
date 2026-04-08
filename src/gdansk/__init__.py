@@ -1,4 +1,4 @@
-from gdansk.core import Amber, Page
+from gdansk.core import Page, Ship
 from gdansk.plugins import LightningCSS, VitePlugin
 
-__all__ = ["Amber", "LightningCSS", "Page", "VitePlugin"]
+__all__ = ["LightningCSS", "Page", "Ship", "VitePlugin"]

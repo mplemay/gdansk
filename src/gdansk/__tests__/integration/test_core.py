@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from gdansk.core import Amber
+from gdansk.core import Ship
 
 
 @contextmanager
@@ -42,13 +42,13 @@ def _lifespan(app, *, background: bool = False):
 def test_prod_bundles_and_serves_html(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     output = pages_dir / ".gdansk"
-    amber = Amber(mcp=mock_mcp, views=pages_dir)
+    ship = Ship(mcp=mock_mcp, views=pages_dir)
 
-    @amber.tool(Path("simple"))
+    @ship.tool(Path("simple"))
     def my_tool():
         return "result"
 
-    app = amber(dev=False)
+    app = ship(dev=False)
     with _lifespan(app):
         assert (output / "simple/client.js").exists()
 
@@ -70,13 +70,13 @@ def test_prod_bundles_and_serves_html(mock_mcp, pages_dir, tmp_path, monkeypatch
 def test_prod_ssr_bundles_and_serves_html(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     output = pages_dir / ".gdansk"
-    amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=True)
+    ship = Ship(mcp=mock_mcp, views=pages_dir, ssr=True)
 
-    @amber.tool(Path("simple"))
+    @ship.tool(Path("simple"))
     def my_tool():
         return "result"
 
-    app = amber(dev=False)
+    app = ship(dev=False)
     with _lifespan(app):
         assert (output / "simple/client.js").exists()
         assert (output / "simple/server.js").exists()
@@ -96,13 +96,13 @@ def test_prod_ssr_bundles_and_serves_html(mock_mcp, pages_dir, tmp_path, monkeyp
 def test_with_css_bundles_and_serves_html(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     output = pages_dir / ".gdansk"
-    amber = Amber(mcp=mock_mcp, views=pages_dir)
+    ship = Ship(mcp=mock_mcp, views=pages_dir)
 
-    @amber.tool(Path("with_css/widget.tsx"))
+    @ship.tool(Path("with_css/widget.tsx"))
     def my_tool():
         return "result"
 
-    app = amber(dev=False)
+    app = ship(dev=False)
     with _lifespan(app):
         assert (output / "with_css/client.js").exists()
         assert (output / "with_css/client.css").exists()
@@ -122,13 +122,13 @@ def test_with_css_bundles_and_serves_html(mock_mcp, pages_dir, tmp_path, monkeyp
 def test_with_css_bundles_when_plugin_list_is_empty(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     output = pages_dir / ".gdansk"
-    amber = Amber(mcp=mock_mcp, views=pages_dir, plugins=[])
+    ship = Ship(mcp=mock_mcp, views=pages_dir, plugins=[])
 
-    @amber.tool(Path("with_css/widget.tsx"))
+    @ship.tool(Path("with_css/widget.tsx"))
     def my_tool():
         return "result"
 
-    app = amber(dev=False)
+    app = ship(dev=False)
     with _lifespan(app):
         assert (output / "with_css/client.js").exists()
         assert (output / "with_css/client.css").exists()
@@ -150,13 +150,13 @@ export default function App() {
         + "\n",
         encoding="utf-8",
     )
-    amber = Amber(mcp=mock_mcp, views=pages_dir)
+    ship = Ship(mcp=mock_mcp, views=pages_dir)
 
-    @amber.tool(Path("with_css/widget.tsx"))
+    @ship.tool(Path("with_css/widget.tsx"))
     def my_tool():
         return "result"
 
-    app = amber(dev=False)
+    app = ship(dev=False)
     with _lifespan(app):
         assert (output / "with_css/client.js").exists()
         assert (output / "with_css/client.css").exists()
@@ -166,13 +166,13 @@ export default function App() {
 def test_dev_bundles_in_background(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     output = pages_dir / ".gdansk"
-    amber = Amber(mcp=mock_mcp, views=pages_dir)
+    ship = Ship(mcp=mock_mcp, views=pages_dir)
 
-    @amber.tool(Path("simple/widget.tsx"))
+    @ship.tool(Path("simple/widget.tsx"))
     def my_tool():
         return "result"
 
-    app = amber(dev=True)
+    app = ship(dev=True)
     with _lifespan(app, background=True):
         # Wait for the background bundler to produce output
         deadline = time.monotonic() + 20
@@ -188,17 +188,17 @@ def test_dev_bundles_in_background(mock_mcp, pages_dir, tmp_path, monkeypatch):
 def test_multiple_tools_all_bundled(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     output = pages_dir / ".gdansk"
-    amber = Amber(mcp=mock_mcp, views=pages_dir)
+    ship = Ship(mcp=mock_mcp, views=pages_dir)
 
-    @amber.tool(Path("simple/widget.tsx"))
+    @ship.tool(Path("simple/widget.tsx"))
     def tool_a():
         return "a"
 
-    @amber.tool(Path("nested/page/widget.tsx"))
+    @ship.tool(Path("nested/page/widget.tsx"))
     def tool_b():
         return "b"
 
-    app = amber(dev=False)
+    app = ship(dev=False)
     with _lifespan(app):
         assert (output / "simple/client.js").exists()
         assert (output / "nested/page/client.js").exists()
@@ -219,13 +219,13 @@ def test_directory_resolution_prefers_page_tsx(mock_mcp, pages_dir, tmp_path, mo
         encoding="utf-8",
     )
 
-    amber = Amber(mcp=mock_mcp, views=pages_dir)
+    ship = Ship(mcp=mock_mcp, views=pages_dir)
 
-    @amber.tool(Path("preferred"))
+    @ship.tool(Path("preferred"))
     def my_tool():
         return "result"
 
-    app = amber(dev=False)
+    app = ship(dev=False)
     with _lifespan(app):
         client = (output / "preferred/client.js").read_text(encoding="utf-8")
 
@@ -237,28 +237,28 @@ def test_directory_resolution_prefers_page_tsx(mock_mcp, pages_dir, tmp_path, mo
 def test_prod_fails_when_ui_has_no_default_export(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (pages_dir / "widgets/simple/widget.tsx").write_text("export const value = 1;\n", encoding="utf-8")
-    amber = Amber(mcp=mock_mcp, views=pages_dir)
+    ship = Ship(mcp=mock_mcp, views=pages_dir)
 
-    @amber.tool(Path("simple/widget.tsx"))
+    @ship.tool(Path("simple/widget.tsx"))
     def my_tool():
         return "result"
 
-    app = amber(dev=False)
+    app = ship(dev=False)
     with pytest.raises(RuntimeError, match="default"), _lifespan(app):
         pass
 
 
 @pytest.mark.integration
-def test_tool_ssr_true_overrides_amber_false(mock_mcp, pages_dir, tmp_path, monkeypatch):
+def test_tool_ssr_true_overrides_ship_false(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     output = pages_dir / ".gdansk"
-    amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=False)
+    ship = Ship(mcp=mock_mcp, views=pages_dir, ssr=False)
 
-    @amber.tool(Path("simple/widget.tsx"), ssr=True)
+    @ship.tool(Path("simple/widget.tsx"), ssr=True)
     def my_tool():
         return "result"
 
-    app = amber(dev=False)
+    app = ship(dev=False)
     with _lifespan(app):
         assert (output / "simple/server.js").exists()
 
@@ -273,16 +273,16 @@ def test_tool_ssr_true_overrides_amber_false(mock_mcp, pages_dir, tmp_path, monk
 
 
 @pytest.mark.integration
-def test_tool_ssr_false_overrides_amber_true(mock_mcp, pages_dir, tmp_path, monkeypatch):
+def test_tool_ssr_false_overrides_ship_true(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     output = pages_dir / ".gdansk"
-    amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=True)
+    ship = Ship(mcp=mock_mcp, views=pages_dir, ssr=True)
 
-    @amber.tool(Path("simple/widget.tsx"), ssr=False)
+    @ship.tool(Path("simple/widget.tsx"), ssr=False)
     def my_tool():
         return "result"
 
-    app = amber(dev=False)
+    app = ship(dev=False)
     with _lifespan(app):
         assert not (output / "simple/server.js").exists()
 
@@ -300,13 +300,13 @@ def test_tool_ssr_false_overrides_amber_true(mock_mcp, pages_dir, tmp_path, monk
 def test_ssr_runtime_failure_fails_fast(mock_mcp, pages_dir, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     output = pages_dir / ".gdansk"
-    amber = Amber(mcp=mock_mcp, views=pages_dir, ssr=True)
+    ship = Ship(mcp=mock_mcp, views=pages_dir, ssr=True)
 
-    @amber.tool(Path("simple/widget.tsx"))
+    @ship.tool(Path("simple/widget.tsx"))
     def my_tool():
         return "result"
 
-    app = amber(dev=False)
+    app = ship(dev=False)
     with _lifespan(app):
         assert (output / "simple/server.js").exists()
 

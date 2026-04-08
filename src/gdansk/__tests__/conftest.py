@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 from starlette.applications import Starlette
 
-from gdansk.core import Amber
+from gdansk.core import Ship
 
 
 @pytest.fixture
@@ -57,5 +57,5 @@ def pages_dir(tmp_path, fixture_pages_path):
 
 
 @pytest.fixture
-def amber(mock_mcp, pages_dir):
-    return Amber(mcp=mock_mcp, views=pages_dir)
+def ship(mock_mcp, pages_dir):
+    return Ship(mcp=mock_mcp, views=pages_dir)

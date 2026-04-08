@@ -8,7 +8,7 @@ import uvicorn
 from mcp.types import TextContent
 from starlette.middleware.cors import CORSMiddleware
 
-from gdansk import Amber
+from gdansk import Ship
 
 try:
     FastMCP = importlib.import_module("mcp.server.fastmcp").FastMCP
@@ -16,10 +16,10 @@ except ImportError:
     FastMCP = importlib.import_module("mcp.server").MCPServer
 
 mcp = FastMCP("Get Time Server")
-amber = Amber(mcp=mcp, views=Path(__file__).parent / "views")
+ship = Ship(mcp=mcp, views=Path(__file__).parent / "views")
 
 
-@amber.tool(name="get-time", widget=Path("get-time"))
+@ship.tool(name="get-time", widget=Path("get-time"))
 def get_time() -> list[TextContent]:
     """Get the current server time in ISO 8601 format."""
     time_str = datetime.now(tz=UTC).isoformat()
@@ -28,7 +28,7 @@ def get_time() -> list[TextContent]:
 
 def main() -> None:
     """Run the development server for the get-time example."""
-    app = amber(dev=True)
+    app = ship(dev=True)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],

@@ -591,7 +591,7 @@ def _build_once(
             vite_plugins.append(plugin)
             continue
         if not isinstance(plugin, Plugin):
-            msg = "Amber plugins must be gdansk_bundler.Plugin instances"
+            msg = "Ship plugins must be gdansk_bundler.Plugin instances"
             raise TypeError(msg)
         bundler_plugins.append(plugin)
         css_plugins.append(plugin)
@@ -663,7 +663,7 @@ def _prepare_dev_bundle_state(
             vite_plugins.append(plugin)
             continue
         if not isinstance(plugin, Plugin):
-            msg = "Amber plugins must be gdansk_bundler.Plugin instances"
+            msg = "Ship plugins must be gdansk_bundler.Plugin instances"
             raise TypeError(msg)
         bundler_plugins.append(plugin)
         css_plugins.append(plugin)
