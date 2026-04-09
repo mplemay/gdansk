@@ -12,6 +12,7 @@
   - *Rules:*
     - **Never run deno directy (i.e. `deno ...`), always executing it using `uv` (i.e. `uv run deno ...`).**
     - **Don't use other package managers for javascript / typescript dependencies (ex: `bun`, `npm`, etc.)**
+    - **Always use `package.json` for specifying dependencies and not `deno.json`.**
 
 ## Conventions
 
