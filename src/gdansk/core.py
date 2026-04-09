@@ -7,6 +7,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Final
 
 from deno import find_deno_bin
+from httpx import AsyncClient
 from mcp.server import MCPServer
 from mcp.server.mcpserver.resources import FunctionResource
 from mcp.server.mcpserver.tools.base import Tool
@@ -18,7 +19,7 @@ type PathType = str | PathLike[str]
 
 
 class Ship:
-    def __init__(self, views: PathType, *, metadata: Metadata | None = None) -> None:
+    def __init__(self, views: PathType, *, metadata: Metadata | None = None, client: AsyncClient | None = None) -> None:
         if not (views := Path(views)).exists():
             msg = f"The views directory (i.e. {views}) does not exist"
             raise FileNotFoundError(msg)
@@ -29,6 +30,7 @@ class Ship:
 
         self._views: Final[Path] = views.absolute().resolve()
         self._metadata: Final[Metadata] = metadata or Metadata()
+        self._client: Final[AsyncClient] = client or AsyncClient()
 
         self._deno: Final[Path] = Path(find_deno_bin()).resolve().absolute()
         self._registry: dict[Path, str] = {}
