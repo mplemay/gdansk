@@ -19,10 +19,35 @@ meta: Metadata = {
 ship = Ship(views=views_path, metadata=meta)
 ```
 
-Per-widget metadata can be passed to `@ship.widget` where supported in `core.py` (see that module for current kwargs).
+Per-widget metadata can be passed directly to `@ship.widget(..., metadata=...)`.
 
 Merge semantics for metadata helpers (such as `merge_metadata` in `gdansk.metadata`) are shallow top-level merge when
 you combine sources in application code.
+
+## Widget decorator surface
+
+`Ship.widget(...)` supports the following public knobs that matter for repo integrations:
+
+- `name`
+- `title`
+- `description`
+- `annotations`
+- `icons`
+- `meta`
+- `metadata`
+- `structured_output`
+
+Prefer these public arguments over custom wrapper logic when the request only needs tool metadata or typed output.
+
+## Structured output
+
+Use `structured_output=True` when the UI should receive typed data rather than parse text content manually.
+
+```python
+@ship.widget(path=Path("todo/widget.tsx"), name="list-todos", structured_output=True)
+def list_todos() -> list[Todo]:
+    return todos
+```
 
 ## Custom runtime host or port
 
@@ -68,7 +93,8 @@ from mcp.server import MCPServer
 
 from gdansk import Ship
 
-ship = Ship(views=Path(__file__).parent / "views")
+frontend_path = Path(__file__).parent / "frontend"
+ship = Ship(views=frontend_path)
 
 
 @asynccontextmanager
@@ -93,16 +119,17 @@ app.mount(path="/mcp", app=mcp_app)
 
 ## Styling and Tailwind
 
-Style widgets with normal frontend tooling in the `views` package (for example PostCSS, Tailwind, or component
-libraries). Put Vite-specific setup in `views/vite.config.ts`, import `@gdansk/vite` there, and keep framework plugins
-in that same file. Declare dependencies in `views/package.json`, run `uv run deno install` from `views/`, and commit
-`deno.lock` when it changes.
+Style widgets with normal frontend tooling in the frontend package (for example PostCSS, Tailwind, or component
+libraries). Put Vite-specific setup in `vite.config.ts`, import `@gdansk/vite` there, and keep framework plugins in
+that same file. Declare dependencies in `package.json`, run `uv run deno install` from the frontend package directory,
+and commit `deno.lock` when it changes.
 
 ## Decision matrix
 
 | Need | Option |
 | --- | --- |
 | Shared head metadata across widgets | constructor `metadata=` (`gdansk.metadata.Metadata`) |
-| Per-widget title or OG override | `@ship.widget(..., metadata=...)` when supported |
+| Per-widget title or OG override | `@ship.widget(..., metadata=...)` |
+| Typed tool responses for the UI | `@ship.widget(..., structured_output=True)` |
 | Running inside existing FastAPI service | mount `mcp_app` + nested lifespan |
 | Tool without a React surface | `@mcp.tool` / `add_tool` on `MCPServer` |

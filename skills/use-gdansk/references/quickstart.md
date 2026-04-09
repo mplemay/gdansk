@@ -7,7 +7,7 @@ Use this file for a minimal, working gdansk setup before adding complexity.
 ```text
 my-server/
 ├── server.py
-└── views/
+└── frontend/
     ├── package.json
     ├── vite.config.ts
     ├── deno.lock
@@ -16,8 +16,8 @@ my-server/
             └── widget.tsx
 ```
 
-The `views` directory name is arbitrary: `Ship(..., views=...)` accepts any path to the package root (the directory that
-contains `package.json`).
+The `frontend` directory name is arbitrary: `Ship(..., views=...)` accepts any path to the package root (the directory
+that contains `package.json`).
 
 ## Minimal Python server
 
@@ -33,7 +33,8 @@ from starlette.middleware.cors import CORSMiddleware
 
 from gdansk import Ship
 
-ship = Ship(views=Path(__file__).parent / "views")
+frontend_path = Path(__file__).parent / "frontend"
+ship = Ship(views=frontend_path)
 
 
 @ship.widget(path=Path("hello/widget.tsx"), name="hello")
@@ -63,7 +64,7 @@ if __name__ == "__main__":
 
 ## Minimal React widget
 
-`views/widgets/hello/widget.tsx`
+`frontend/widgets/hello/widget.tsx`
 
 ```tsx
 import { useApp } from "@modelcontextprotocol/ext-apps/react";
@@ -95,32 +96,33 @@ export default function App() {
 }
 ```
 
-## Baseline views package.json
+## Baseline frontend package.json
 
-`views/package.json`
+`frontend/package.json`
 
 ```json
 {
-  "name": "gdansk-views",
+  "name": "gdansk-frontend",
   "private": true,
   "type": "module",
   "dependencies": {
-    "@modelcontextprotocol/ext-apps": "^1.0.1",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "@gdansk/vite": "^0.1.0",
+    "@modelcontextprotocol/ext-apps": "^1.5.0",
+    "@vitejs/plugin-react": "^6.0.1",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "vite": "^8.0.8"
   },
   "devDependencies": {
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0"
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3"
   }
 }
 ```
 
-This example assumes the package also installs `@gdansk/vite`, `@vitejs/plugin-react`, and `vite`.
-
 Add a `vite.config.ts` in the same package and import `@gdansk/vite` there alongside any framework plugins:
 
-`views/vite.config.ts`
+`frontend/vite.config.ts`
 
 ```ts
 import react from "@vitejs/plugin-react";
@@ -135,7 +137,7 @@ export default defineConfig({
 If you need a non-default SSR address, set it on both sides:
 
 ```python
-ship = Ship(views=Path(__file__).parent / "views", host="127.0.0.1", port=14000)
+ship = Ship(views=Path(__file__).parent / "frontend", host="127.0.0.1", port=14000)
 ```
 
 ```ts
@@ -144,10 +146,11 @@ export default defineConfig({
 });
 ```
 
-After editing dependencies, install from `views/` with `uv run deno install` and commit `deno.lock` when it changes:
+After editing dependencies, install from `frontend/` with `uv run deno install` and commit `deno.lock` when it
+changes:
 
 ```bash
-cd views
+cd frontend
 uv run deno install
 ```
 
@@ -157,7 +160,7 @@ Standard server:
 
 ```bash
 uv sync
-( cd views && uv run deno install )
+( cd frontend && uv run deno install )
 uv run python server.py
 ```
 
@@ -176,7 +179,7 @@ from gdansk import Ship
 
 FastAPI = importlib.import_module("fastapi").FastAPI
 
-ship = Ship(views=Path(__file__).parent / "views")
+ship = Ship(views=Path(__file__).parent / "frontend")
 
 
 @ship.widget(path=Path("hello/widget.tsx"), name="hello")
@@ -216,11 +219,11 @@ uv run fastapi dev main.py
 After startup, confirm bundle output exists:
 
 ```bash
-find views/dist -maxdepth 3 -type f
+find frontend/dist -maxdepth 3 -type f
 ```
 
 Expected for a basic hello widget:
 
-- `views/dist/hello/client.js`
-- `views/dist/hello/server.js`
-- optional `views/dist/hello/client.css`
+- `frontend/dist/hello/client.js`
+- `frontend/dist/server.js`
+- optional `frontend/dist/hello/client.css`

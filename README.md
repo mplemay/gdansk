@@ -12,18 +12,31 @@ uv add gdansk
 
 ## Skill for Coding Agents
 
-If you use coding agents such as Claude Code or Cursor, we recommend adding this skill to your repository:
+If you use coding agents such as Claude Code or Cursor, add the gdansk skills to your repository:
 
 ```shell
 npx skills add mplemay/gdansk
 ```
 
+Then use:
+
+- `$use-gdansk` to bootstrap gdansk in a new repo or add another widget to an existing integration.
+- `$debug-gdansk` to diagnose widget path, bundling, SSR, and runtime failures in an existing gdansk setup.
+
+## Compatibility
+
+- Python: `gdansk` currently requires `>=3.12,<3.15`.
+- Frontend package: use an ESM package with `@gdansk/vite`, `vite`, `@vitejs/plugin-react`, `react`, `react-dom`,
+  and `@modelcontextprotocol/ext-apps`.
+- Runtime tooling: gdansk starts the frontend through `uv run deno ...`. If you run frontend package scripts directly,
+  the published `@gdansk/vite` package currently declares Node `>=22`.
+
 ## Examples
 
-- **[FastAPI](examples/fastapi):** FastAPI-based MCP server integration with mounted app routes.
-- **[get-time](examples/get-time):** Feature-rich MCP app covering tool calls, messaging, logging, and links.
-- **[ssr](examples/ssr):** Minimal example with a single tool UI.
-- **[shadcn](examples/shadcn):** Todo app example using `shadcn/ui` components with Gdansk.
+- **[FastAPI](examples/fastapi):** Mounting the MCP app inside an existing FastAPI service.
+- **[get-time](examples/get-time):** Small copyable widget example for first-time adoption in another repo.
+- **[ssr](examples/ssr):** Minimal SSR and hydration example with a single widget tool.
+- **[shadcn](examples/shadcn):** Multi-tool todo app with `structured_output=True` and `shadcn/ui`.
 
 ## Quick Start
 
@@ -34,15 +47,15 @@ Here's a complete example showing how to build a simple greeting tool with a Rea
 ```text
 my-mcp-server/
 ├── server.py
-└── views/
+└── frontend/
     ├── package.json
+    ├── vite.config.ts
     └── widgets/
         └── hello/
             └── widget.tsx
 ```
 
-The `views` folder name is only an example: pass any directory to `Ship(..., views=...)` (for example
-`Path(__file__).parent / "frontend"`).
+The `frontend` folder name is only an example. Pass any frontend package root to `Ship(..., views=...)`.
 That frontend package owns its own `vite.config.ts`; import `@gdansk/vite` there alongside any framework plugins.
 
 **server.py:**
@@ -59,7 +72,8 @@ from starlette.middleware.cors import CORSMiddleware
 
 from gdansk import Ship
 
-ship = Ship(views=Path(__file__).parent / "views")
+frontend_path = Path(__file__).parent / "frontend"
+ship = Ship(views=frontend_path)
 
 
 @ship.widget(path=Path("hello/widget.tsx"), name="greet")
@@ -92,7 +106,7 @@ if __name__ == "__main__":
     main()
 ```
 
-**views/widgets/hello/widget.tsx:**
+**frontend/widgets/hello/widget.tsx:**
 
 ```tsx
 import { useApp } from "@modelcontextprotocol/ext-apps/react";
@@ -122,9 +136,9 @@ export default function App() {
         onClick={async () => {
           const result = await app.callServerTool({
             name: "greet",
-            arguments: { name }
+            arguments: { name },
           });
-          const text = result.content?.find(c => c.type === "text");
+          const text = result.content?.find((c) => c.type === "text");
           if (text && "text" in text) setGreeting(text.text);
         }}
       >
@@ -136,7 +150,29 @@ export default function App() {
 }
 ```
 
-**views/vite.config.ts:**
+**frontend/package.json:**
+
+```json
+{
+  "name": "my-mcp-frontend",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@gdansk/vite": "^0.1.0",
+    "@modelcontextprotocol/ext-apps": "^1.5.0",
+    "@vitejs/plugin-react": "^6.0.1",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "vite": "^8.0.8"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3"
+  }
+}
+```
+
+**frontend/vite.config.ts:**
 
 ```ts
 import react from "@vitejs/plugin-react";
@@ -151,7 +187,7 @@ export default defineConfig({
 If you want a different SSR host or port, configure both sides explicitly:
 
 ```python
-ship = Ship(views=Path(__file__).parent / "views", host="127.0.0.1", port=14000)
+ship = Ship(views=Path(__file__).parent / "frontend", host="127.0.0.1", port=14000)
 ```
 
 ```ts
@@ -160,17 +196,17 @@ export default defineConfig({
 });
 ```
 
-Install the frontend package dependencies from `views/` after editing them:
+Install the frontend package dependencies from `frontend/` after editing them:
 
 ```bash
-cd views
+cd frontend
 uv run deno install
 ```
 
 Gdansk mounts your default export into `#root` automatically and wraps it with `React.StrictMode`.
 
-Run the server with `python server.py`, configure it in your MCP client (like Claude Desktop), and you'll have an
-interactive greeting tool ready to use.
+Run the server with `uv run python server.py`, configure it in your MCP client (like Claude Desktop), and you'll have
+an interactive greeting tool ready to use.
 
 ## Why Use Gdansk?
 

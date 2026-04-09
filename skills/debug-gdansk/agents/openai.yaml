@@ -1,0 +1,4 @@
+interface:
+  display_name: "Debug Gdansk"
+  short_description: "Diagnose broken gdansk widgets, bundling, and SSR"
+  default_prompt: "Use $debug-gdansk to diagnose and fix a broken gdansk integration in this repository."

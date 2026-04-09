@@ -1,70 +1,82 @@
 ---
 name: use-gdansk
-description: Comprehensive gdansk implementation and debugging guide for MCP app UIs. Use when adding or fixing Ship widget UIs, wiring `@ship.widget(..., path=...)` to React `views/widgets/**/widget.tsx` or `widget.jsx` entries, composing `ship.mcp(app=...)` with `mcp.server.MCPServer`, configuring `Metadata`, registering extra tools with `@mcp.tool` on the same server, mounting under FastAPI, or diagnosing gdansk bundling and runtime errors.
+description: Adoption and implementation guide for using gdansk in any repository. Use when bootstrapping a new gdansk-backed MCP app, adding a `Ship` widget UI, wiring `ship.mcp(app=...)` with `MCPServer`, configuring the frontend package with `@gdansk/vite`, adding metadata or structured output, registering extra `@mcp.tool` tools on the same server, or mounting the MCP app inside FastAPI.
 ---
 
 # Use Gdansk
 
-Use this workflow for all gdansk work. Follow the steps in order and use the linked references for exact templates and
-edge cases.
+Use this workflow when the job is to adopt gdansk in a repository or extend an existing gdansk integration with new
+widgets or server capabilities. Keep the implementation on gdansk's public API surface. Do not send the user into
+gdansk internals to figure out how to wire the feature.
 
 ## 1) Classify the request
 
-Map the request to one primary workflow before coding:
+Choose one primary path before making edits:
 
-1. Add a new tool UI:
-   - Define a Python function and map it to a React widget with `@ship.widget(path=Path(".../widget.tsx"), name=...)`.
-   - Use an `MCPServer` lifespan that enters `async with ship.mcp(app=app, dev=...)`.
-2. Fix a broken gdansk UI:
-   - Resolve widget path validation errors.
-   - Resolve missing bundle output or SSR runtime errors.
-3. Add advanced integration:
-   - Add `Metadata` on `Ship` or per-widget where supported.
-   - Register non-widget tools with `@mcp.tool` on the same `MCPServer`.
-   - Mount inside FastAPI.
+1. Bootstrap gdansk in a new repo:
+   - Add the Python dependency.
+   - Create the frontend package root and Vite config.
+   - Add the first `@ship.widget(...)` tool and widget entry.
+2. Add another widget to an existing repo:
+   - Define the tool function.
+   - Add a new `widgets/<name>/widget.tsx` or `widget.jsx`.
+   - Register it with `@ship.widget(path=Path(".../widget.tsx"), name=...)`.
+3. Add integration features:
+   - Global or per-widget metadata.
+   - `structured_output=True`.
+   - Extra `@mcp.tool(...)` tools on the same `MCPServer`.
+   - FastAPI mounting.
 
-If the user asks for multiple outcomes, implement one complete path first, then layer additional changes.
+If the request is primarily about a broken existing integration, switch to `$debug-gdansk`.
 
-## 2) Validate project layout and dependencies first
+## 2) Establish the repo layout and dependency baseline first
 
-Fail early on structure before writing feature code.
+Fail early on missing package structure before writing feature code.
 
-- Confirm the views root exists and contains `widgets/`.
-- Confirm each UI entry point is `views/widgets/**/widget.tsx` or `views/widgets/**/widget.jsx`.
-- Confirm each widget component has a default export.
-- Confirm `views/vite.config.ts` imports `@gdansk/vite` and the framework plugins you need.
-- Confirm the frontend package has the Vite dependency available through `views/package.json`.
-- Optional: `views/deno.json` may be a symlink to `node_modules/@gdansk/vite/deno.json` (the copy shipped with
-  `@gdansk/vite`) so Deno resolves the views directory as the config root; duplicate import maps in each app are
-  unnecessary.
-  - If you are using Deno-managed installs, confirm `views/package.json` has:
-  - `"type": "module"`
-  - `"@modelcontextprotocol/ext-apps"`
-  - `"react"` and `"react-dom"`
+- Confirm the Python project installs `gdansk` and targets a supported Python version.
+- Confirm the frontend package root exists and contains:
+  - `package.json`
+  - `vite.config.ts`
+  - `widgets/`
+- Confirm the frontend package is ESM with `"type": "module"`.
+- Confirm `package.json` includes:
+  - `@gdansk/vite`
+  - `vite`
+  - `@vitejs/plugin-react`
+  - `react`
+  - `react-dom`
+  - `@modelcontextprotocol/ext-apps`
+- After changing frontend dependencies, run `uv run deno install` from that package directory and update `deno.lock`
+  when the repo tracks it.
 
 Use [quickstart.md](references/quickstart.md) for the canonical baseline layout and minimum files.
+Use [adoption-checklist.md](references/adoption-checklist.md) for compatibility and dependency expectations.
 
-## 3) Implement widget wiring with strict path rules
+## 3) Wire the server and widget using only public APIs
 
-Always treat `path=` in `@ship.widget` as a logical path under the views root (typically resolving to
-`views/widgets/...`), never an absolute filesystem path. The directory passed to `Ship(..., views=...)` can be named
-anything; `views` in docs is a conventional label for the package root (the directory that contains `package.json`).
+Use the public integration points directly:
 
-- Use an explicit `.tsx` or `.jsx` file path (`path=Path("hello/widget.tsx")`).
-- Never prefix the `path` argument with `widgets/`.
-- Never include `.` or `..` traversal segments.
-- Keep the path relative.
+- Create `ship = Ship(views=Path(...))` with the frontend package root, not the widget directory.
+- Register the UI tool with `@ship.widget(path=Path("hello/widget.tsx"), name="hello")`.
+- Keep `path=` relative to `widgets/` inside the frontend package root.
+- Use an `MCPServer` lifespan that enters `async with ship.mcp(app=app, dev=...)`.
+- In the frontend package, import `@gdansk/vite` in `vite.config.ts` and compose it with the framework plugins you
+  need.
+- If you customize the runtime host or port, configure the same values in both `Ship(...)` and `gdansk(...)`.
+- Ensure the widget file default-exports the React component.
 
-Use [page-contract-and-tool-wiring.md](references/page-contract-and-tool-wiring.md) for accepted/rejected inputs and
-`ui://` URI mapping behavior.
+Do not use filesystem-absolute paths for widget registration. Do not assume the frontend package directory must be
+named `views`; any directory passed to `Ship(..., views=...)` is valid.
 
 ## 4) Apply optional integrations only when requested
 
 Choose the smallest integration needed:
 
 - Metadata:
-  - Set global metadata on `Ship` via `metadata=` (see `gdansk.metadata.Metadata`).
-  - Per-widget metadata kwargs on `@ship.widget` where wired in `core.py`.
+  - Set shared page metadata on `Ship(..., metadata=...)`.
+  - Override per-widget metadata with `@ship.widget(..., metadata=...)`.
+- Structured outputs:
+  - Use `structured_output=True` on widget tools when the UI needs typed tool data instead of plain text parsing.
 - Plain MCP tools (no React UI):
   - After `mcp = MCPServer(...)`, use `@mcp.tool(...)` or `mcp.add_tool(...)`.
 - FastAPI:
@@ -73,28 +85,29 @@ Choose the smallest integration needed:
 
 Use [integration-options.md](references/integration-options.md) for exact implementation shapes.
 
-## 5) Verify and diagnose before finishing
+## 5) Verify the integration before finishing
 
 After implementation:
 
-1. Start server with `ship.mcp(..., dev=True)` in development and confirm bundle output appears under `views/dist/`.
-2. Open or fetch the UI resource and confirm rendered HTML includes client script.
-3. For SSR paths, confirm server bundle exists and hydration path is correct.
-4. For CSS changes, confirm generated CSS is present.
+1. Start the server in development with `ship.mcp(..., dev=True)`.
+2. Confirm bundle output appears under `<frontend-package>/dist/`.
+3. Open or fetch the UI resource and confirm the rendered HTML includes the client script.
+4. Confirm the widget's `callServerTool(...)` calls use the registered MCP tool names.
+5. For metadata work, confirm the expected title or meta tags appear in the rendered page.
+6. For CSS changes, confirm the generated CSS file is present and referenced.
 
-If anything fails, match the exact error string and follow [troubleshooting.md](references/troubleshooting.md).
+If startup, bundling, or SSR fails, switch to `$debug-gdansk`.
 
 ## Guardrails
 
-- Do not invent alternative widget conventions (for example `app.tsx`); gdansk expects `widget.tsx` or `widget.jsx`.
-- Do not pass filesystem-absolute paths to `@ship.widget(path=...)`.
-- Do not use `widgets/...` as the `path` prefix.
-- Ensure each widget has a default export and that dependencies are SSR-compatible.
+- Do not tell the user to inspect gdansk internals for supported kwargs or wiring behavior when the public API already
+  covers the task.
+- Do not invent alternative widget entry conventions such as `app.tsx`; gdansk expects `widget.tsx` or `widget.jsx`.
+- Do not use `widgets/...` as the `path` prefix in `@ship.widget(...)`.
+- Ensure each widget default-exports the app component and that its imports are SSR-compatible.
 
 ## Reference map
 
 - Baseline templates and run commands: [quickstart.md](references/quickstart.md)
-- Strict widget path contract and URI behavior:
-  [page-contract-and-tool-wiring.md](references/page-contract-and-tool-wiring.md)
-- SSR, metadata, FastAPI, extra tools: [integration-options.md](references/integration-options.md)
-- Error-driven diagnosis: [troubleshooting.md](references/troubleshooting.md)
+- Compatibility and adoption checklist: [adoption-checklist.md](references/adoption-checklist.md)
+- Metadata, structured output, FastAPI, extra tools: [integration-options.md](references/integration-options.md)
