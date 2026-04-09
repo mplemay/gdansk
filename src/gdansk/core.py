@@ -156,7 +156,7 @@ class Ship:
         self._validate_widget_path(relative_path)
 
         posix_path = PurePosixPath(relative_path.as_posix())
-        key = _widget_key(posix_path)
+        key = PurePosixPath(*posix_path.parts[:-1]).as_posix()
         resolved_path = (self._widgets_root / relative_path).resolve()
 
         if not resolved_path.is_file():
@@ -386,7 +386,3 @@ class Ship:
 
     def _deno_command(self, *args: str) -> tuple[str, ...]:
         return ("uv", "run", "deno", *args)
-
-
-def _widget_key(path: PurePosixPath) -> str:
-    return PurePosixPath(*path.parts[:-1]).as_posix()
