@@ -78,7 +78,6 @@ gdansk/
 │       └── __tests__/      # Test files
 ├── packages/               # Helper workspace packages
 ├── examples/               # Example MCP servers
-├── Cargo.toml              # Cargo workspace for helper packages
 └── pyproject.toml         # Python project config
 ```
 
@@ -91,13 +90,6 @@ gdansk/
 - Write docstrings for public functions and classes
 - Use dataclasses for data structures
 - Target Python 3.11+ syntax and features
-
-### Rust
-
-- Follow standard Rust formatting (rustfmt)
-- Use clippy for linting
-- Write comprehensive error messages
-- Include unit tests for new functionality
 
 ### Testing
 

@@ -13,14 +13,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: lint
-
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
@@ -30,30 +22,9 @@ jobs:
 
       - uses: j178/prek-action@v1
 
-  test-rust:
-    name: test (rust, ${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: test-rust-${{ matrix.os }}-${{ runner.arch }}
-
-      - name: Run tests
-        run: cargo test
-
   test-python:
     name: test (python ${{ matrix.python-version }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    env:
-      CARGO_TARGET_DIR: ${{ github.workspace }}/target
     strategy:
       fail-fast: false
       matrix:
@@ -61,12 +32,6 @@ jobs:
         python-version: ["3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v6
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: test-python-${{ matrix.os }}-${{ runner.arch }}
 
       - uses: astral-sh/setup-uv@v7
         with:

@@ -1,4 +1,4 @@
-# Configuration file for `prek`, a git hook framework written in Rust.
+# Git hook configuration for this repository (prek).
 # See https://prek.j178.dev for more information.
 #:schema https://www.schemastore.org/prek.json
 

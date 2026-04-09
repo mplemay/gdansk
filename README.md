@@ -180,8 +180,8 @@ interactive greeting tool ready to use.
 2. **Built for MCP** — Composes with `MCPServer` from the official Python SDK: register widget tools and HTML resources
    via `Ship`, wire them in with `ship.mcp(app=...)`, and integrate with Claude Desktop and other MCP clients.
 
-3. **Rust-Powered Bundling** — Lightning-fast Rolldown bundler processes your TypeScript/JSX automatically. Hot-reload
-   in development mode means you see changes instantly without manual rebuilds.
+3. **Fast bundling with Rolldown** — The Rolldown bundler processes your TypeScript/JSX automatically. Hot-reload in
+   development mode means you see changes instantly without manual rebuilds.
 
 4. **Type-Safe** — Full type safety across the stack. Python type hints on the backend, TypeScript on the frontend, with
    automatic type checking via ruff and TypeScript compiler.
@@ -199,10 +199,9 @@ Gdansk builds on the shoulders of giants:
 - **[Model Context Protocol](https://modelcontextprotocol.io/)** — Official MCP documentation
 - **[@modelcontextprotocol/ext-apps](https://www.npmjs.com/package/@modelcontextprotocol/ext-apps)** — React hooks for
   MCP apps
-- **[Rolldown](https://rolldown.rs/)** — Fast Rust-based JavaScript bundler
-- **[PyO3](https://github.com/PyO3/pyo3)** — Rust bindings for Python
+- **[Rolldown](https://rolldown.rs/)** — Fast JavaScript bundler
 - **[mcp/python-sdk](https://github.com/modelcontextprotocol/python-sdk)** — Python SDK for MCP server development
-- **[Deno Core](https://docs.rs/deno_core/latest/deno_core/)** — JavaScript runtime that powers Gdansk's Rust runtime
+- **[Deno](https://deno.com/)** — JavaScript/TypeScript runtime used by the embedded Deno tooling
 
 Special thanks to the Model Context Protocol team at Anthropic for creating the MCP standard and the
 `@modelcontextprotocol/ext-apps` package.
