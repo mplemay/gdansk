@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+{% include "metadata.html" %}
+{% for fragment in head %}
+{{ fragment|safe }}
+{% endfor %}
+</head>
+<body>
+<div id="root">{{ body|safe if body else "" }}</div>
+{% for script in scripts %}
+<script type="module" src="{{ script|safe }}"></script>
+{% endfor %}
+</body>
+</html>

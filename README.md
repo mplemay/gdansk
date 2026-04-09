@@ -4,18 +4,6 @@
 > This project is currently in beta. The APIs are subject to change leading up to v1.0. The v1.0 release will
 > coincide with the v2.0 release of the [python mcp sdk](https://github.com/modelcontextprotocol/python-sdk)
 
-The name "Gdansk" (pronounced "guh-DANSK") is a nod to the Polish port city's historical role as a bridge between
-cultures and trade routes—much like this framework bridges Python backends and React frontends.
-
-Gdansk bridges Python backend logic with React/TypeScript UIs, letting you create rich, interactive tools for Model
-Context Protocol (MCP) servers without leaving the Python ecosystem.
-
-Gdansk combines [FastMCP](https://github.com/jlowin/fastmcp) for server-side Python logic with React for client-side
-interfaces, and uses [Rolldown](https://rolldown.rs/) (a Rust-based bundler) to handle all the JavaScript/TypeScript
-bundling automatically. Whether you're building data visualization tools, form-based interfaces, or interactive
-dashboards for Claude Desktop and other MCP clients, Gdansk provides a straightforward path from Python functions to
-polished UIs.
-
 ## Installation
 
 ```bash
@@ -34,7 +22,7 @@ npx skills add mplemay/gdansk
 
 - **[FastAPI](examples/fastapi):** FastAPI-based MCP server integration with mounted app routes.
 - **[get-time](examples/get-time):** Feature-rich MCP app covering tool calls, messaging, logging, and links.
-- **[ssr](examples/ssr):** Minimal SSR example using `Ship(ssr=True)` with a single tool UI.
+- **[ssr](examples/ssr):** Minimal example with a single tool UI.
 - **[shadcn](examples/shadcn):** Todo app example using `shadcn/ui` components with Gdansk.
 
 ## Quick Start
@@ -55,27 +43,53 @@ my-mcp-server/
 
 The `views` folder name is only an example: pass any directory to `Ship(..., views=...)` (for example
 `Path(__file__).parent / "frontend"`).
+That frontend package owns its own `vite.config.ts`; import `@gdansk/vite` there alongside any framework plugins.
 
 **server.py:**
 
 ```python
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
-from mcp.server.fastmcp import FastMCP
-from mcp.types import TextContent
-from gdansk import Ship
+
 import uvicorn
+from mcp.server import MCPServer
+from mcp.types import TextContent
+from starlette.middleware.cors import CORSMiddleware
 
-mcp = FastMCP("Hello World Server")
-ship = Ship(mcp=mcp, views=Path(__file__).parent / "views")
+from gdansk import Ship
 
-@ship.tool(name="greet", widget=Path("hello"))
+ship = Ship(views=Path(__file__).parent / "views")
+
+
+@ship.widget(path=Path("hello/widget.tsx"), name="greet")
 def greet(name: str) -> list[TextContent]:
     """Greet someone by name."""
     return [TextContent(type="text", text=f"Hello, {name}!")]
 
-if __name__ == "__main__":
-    app = ship(dev=True)  # Enable hot-reload for development
+
+@asynccontextmanager
+async def lifespan(app: MCPServer) -> AsyncIterator[None]:
+    async with ship.mcp(app=app, dev=True):
+        yield
+
+
+mcp = MCPServer(name="Hello World Server", lifespan=lifespan)
+
+
+def main() -> None:
+    app = mcp.streamable_http_app()
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     uvicorn.run(app, port=3000)
+
+
+if __name__ == "__main__":
+    main()
 ```
 
 **views/widgets/hello/widget.tsx:**
@@ -122,32 +136,60 @@ export default function App() {
 }
 ```
 
+**views/vite.config.ts:**
+
+```ts
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
+import gdansk from "@gdansk/vite";
+
+export default defineConfig({
+  plugins: [gdansk(), react()],
+});
+```
+
+If you want a different SSR host or port, configure both sides explicitly:
+
+```python
+ship = Ship(views=Path(__file__).parent / "views", host="127.0.0.1", port=14000)
+```
+
+```ts
+export default defineConfig({
+  plugins: [gdansk({ host: "127.0.0.1", port: 14000 }), react()],
+});
+```
+
+Install the frontend package dependencies from `views/` after editing them:
+
+```bash
+cd views
+uv run deno install
+```
+
 Gdansk mounts your default export into `#root` automatically and wraps it with `React.StrictMode`.
 
 Run the server with `python server.py`, configure it in your MCP client (like Claude Desktop), and you'll have an
 interactive greeting tool ready to use.
-
-HTML resources are cached in memory by default. Use `Ship(..., cache_html=False)` if you need uncached reads (for
-example, intentionally dynamic SSR output).
 
 ## Why Use Gdansk?
 
 1. **Python Backend, React Frontend** — Use familiar technologies you already know. Write your logic in Python with type
    hints, build your UI in React/TypeScript. No need to learn a new framework-specific language.
 
-2. **Built for MCP** — First-class support for FastMCP servers. Automatic resource registration, MCP app protocol
-   handling, and seamless integration with Claude Desktop and other MCP clients.
+2. **Built for MCP** — Composes with `MCPServer` from the official Python SDK: register widget tools and HTML resources
+   via `Ship`, wire them in with `ship.mcp(app=...)`, and integrate with Claude Desktop and other MCP clients.
 
-3. **Rust-Powered Bundling** — Lightning-fast Rolldown bundler processes your TypeScript/JSX automatically. Hot-reload
-   in development mode means you see changes instantly without manual rebuilds.
+3. **Fast bundling with Rolldown** — The Rolldown bundler processes your TypeScript/JSX automatically. Hot-reload in
+   development mode means you see changes instantly without manual rebuilds.
 
 4. **Type-Safe** — Full type safety across the stack. Python type hints on the backend, TypeScript on the frontend, with
    automatic type checking via ruff and TypeScript compiler.
 
-5. **Developer-Friendly** — Simple decorator API (`@ship.tool()`), automatic resource registration, hot-reload dev
-   mode, and comprehensive error messages. Get started in minutes, not hours.
+5. **Developer-Friendly** — Simple decorator API (`@ship.widget()`), automatic resource registration, dev mode on
+   `ship.mcp(...)`, and comprehensive error messages. Get started in minutes, not hours.
 
-6. **Production Ready** — Comprehensive test suite covering Python 3.11-3.14 across Linux, macOS, and Windows. Used in
+6. **Production Ready** — Comprehensive test suite covering Python 3.12+ across Linux, macOS, and Windows. Used in
    production MCP servers with proven reliability.
 
 ## Credits
@@ -157,10 +199,9 @@ Gdansk builds on the shoulders of giants:
 - **[Model Context Protocol](https://modelcontextprotocol.io/)** — Official MCP documentation
 - **[@modelcontextprotocol/ext-apps](https://www.npmjs.com/package/@modelcontextprotocol/ext-apps)** — React hooks for
   MCP apps
-- **[Rolldown](https://rolldown.rs/)** — Fast Rust-based JavaScript bundler
-- **[PyO3](https://github.com/PyO3/pyo3)** — Rust bindings for Python
+- **[Rolldown](https://rolldown.rs/)** — Fast JavaScript bundler
 - **[mcp/python-sdk](https://github.com/modelcontextprotocol/python-sdk)** — Python SDK for MCP server development
-- **[Deno Core](https://docs.rs/deno_core/latest/deno_core/)** — JavaScript runtime that powers Gdansk's Rust runtime
+- **[Deno](https://deno.com/)** — JavaScript/TypeScript runtime used by the embedded Deno tooling
 
 Special thanks to the Model Context Protocol team at Anthropic for creating the MCP standard and the
 `@modelcontextprotocol/ext-apps` package.

@@ -9,35 +9,55 @@ my-server/
 ├── server.py
 └── views/
     ├── package.json
+    ├── vite.config.ts
+    ├── deno.lock
     └── widgets/
         └── hello/
             └── widget.tsx
 ```
 
-The `views` directory name is arbitrary: `Ship(..., views=...)` accepts any path to the npm package root.
+The `views` directory name is arbitrary: `Ship(..., views=...)` accepts any path to the package root (the directory that
+contains `package.json`).
 
 ## Minimal Python server
 
 ```python
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
-from mcp.server.fastmcp import FastMCP
+from mcp.server import MCPServer
 from mcp.types import TextContent
+from starlette.middleware.cors import CORSMiddleware
 
 from gdansk import Ship
 
-mcp = FastMCP("Hello Server")
-ship = Ship(mcp=mcp, views=Path(__file__).parent / "views")
+ship = Ship(views=Path(__file__).parent / "views")
 
 
-@ship.tool(name="hello", widget=Path("hello"))
+@ship.widget(path=Path("hello/widget.tsx"), name="hello")
 def hello(name: str = "world") -> list[TextContent]:
     return [TextContent(type="text", text=f"Hello, {name}!")]
 
 
+@asynccontextmanager
+async def lifespan(app: MCPServer) -> AsyncIterator[None]:
+    async with ship.mcp(app=app, dev=True):
+        yield
+
+
+mcp = MCPServer(name="Hello Server", lifespan=lifespan)
+
+
 if __name__ == "__main__":
-    app = ship(dev=True)
+    app = mcp.streamable_http_app()
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     uvicorn.run(app, port=3001)
 ```
 
@@ -96,54 +116,89 @@ export default function App() {
 }
 ```
 
+This example assumes the package also installs `@gdansk/vite`, `@vitejs/plugin-react`, and `vite`.
+
+Add a `vite.config.ts` in the same package and import `@gdansk/vite` there alongside any framework plugins:
+
+`views/vite.config.ts`
+
+```ts
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
+import gdansk from "@gdansk/vite";
+
+export default defineConfig({
+  plugins: [gdansk(), react()],
+});
+```
+
+If you need a non-default SSR address, set it on both sides:
+
+```python
+ship = Ship(views=Path(__file__).parent / "views", host="127.0.0.1", port=14000)
+```
+
+```ts
+export default defineConfig({
+  plugins: [gdansk({ host: "127.0.0.1", port: 14000 }), react()],
+});
+```
+
+After editing dependencies, install from `views/` with `uv run deno install` and commit `deno.lock` when it changes:
+
+```bash
+cd views
+uv run deno install
+```
+
 ## Run commands
 
 Standard server:
 
 ```bash
 uv sync
-uv run python server.py
-```
-
-SSR variant:
-
-```python
-ship = Ship(mcp=mcp, views=Path(__file__).parent / "views", ssr=True)
-```
-
-Run:
-
-```bash
-uv sync
+( cd views && uv run deno install )
 uv run python server.py
 ```
 
 FastAPI mount pattern:
 
 ```python
+import importlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
-from mcp.server.fastmcp import FastMCP
+from mcp.server import MCPServer
 from mcp.types import TextContent
 
 from gdansk import Ship
 
-mcp = FastMCP("FastAPI Example Server", streamable_http_path="/")
-ship = Ship(mcp=mcp, views=Path(__file__).parent / "views")
+FastAPI = importlib.import_module("fastapi").FastAPI
 
-@ship.tool(name="hello", widget=Path("hello"))
+ship = Ship(views=Path(__file__).parent / "views")
+
+
+@ship.widget(path=Path("hello/widget.tsx"), name="hello")
 def hello(name: str = "world") -> list[TextContent]:
     return [TextContent(type="text", text=f"Hello, {name}!")]
 
-mcp_app = ship(dev=True)
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+async def mcp_lifespan(app: MCPServer) -> AsyncIterator[None]:
+    async with ship.mcp(app=app, dev=True):
+        yield
+
+
+mcp = MCPServer(name="FastAPI Example Server", lifespan=mcp_lifespan)
+mcp_app = mcp.streamable_http_app(streamable_http_path="/")
+
+
+@asynccontextmanager
+async def lifespan(_: object) -> AsyncIterator[None]:
     async with mcp_app.router.lifespan_context(mcp_app):
         yield
+
 
 app = FastAPI(lifespan=lifespan)
 app.mount(path="/mcp", app=mcp_app)
@@ -161,10 +216,11 @@ uv run fastapi dev main.py
 After startup, confirm bundle output exists:
 
 ```bash
-find views/.gdansk -maxdepth 3 -type f
+find views/dist -maxdepth 3 -type f
 ```
 
-Expected for non-SSR hello:
+Expected for a basic hello widget:
 
-- `views/.gdansk/hello/client.js`
-- optional `views/.gdansk/hello/client.css`
+- `views/dist/hello/client.js`
+- `views/dist/hello/server.js`
+- optional `views/dist/hello/client.css`

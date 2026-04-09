@@ -1,6 +1,7 @@
 import { useApp } from "@modelcontextprotocol/ext-apps/react";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { useState } from "react";
+
 import styles from "./global.css";
 
 export default function App() {
@@ -27,9 +28,7 @@ export default function App() {
   if (!app) return <div className={styles.notice}>Connecting...</div>;
 
   const serverTime = (() => {
-    const text = toolResult?.content?.find(
-      (c): c is { type: "text"; text: string } => c.type === "text",
-    );
+    const text = toolResult?.content?.find((c): c is { type: "text"; text: string } => c.type === "text");
     return text?.text ?? null;
   })();
 
@@ -41,14 +40,14 @@ export default function App() {
       <div className={styles.action}>
         <h3>Server Time</h3>
         <p>
-          <span className={styles.serverTime}>
-            {serverTime ?? "No time fetched yet."}
-          </span>
+          <span className={styles.serverTime}>{serverTime ?? "No time fetched yet."}</span>
         </p>
-        <button onClick={async () => {
-          const result = await app.callServerTool({ name: "get-time" });
-          setToolResult(result);
-        }}>
+        <button
+          onClick={async () => {
+            const result = await app.callServerTool({ name: "get-time" });
+            setToolResult(result);
+          }}
+        >
           Get Server Time
         </button>
       </div>
@@ -56,11 +55,7 @@ export default function App() {
       {/* Send Message */}
       <div className={styles.action}>
         <h3>Send Message</h3>
-        <textarea
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          placeholder="Type a message..."
-        />
+        <textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Type a message..." />
         <button
           onClick={() => {
             if (message.trim()) app.sendMessage({ role: "user", content: [{ type: "text", text: message }] });
@@ -73,11 +68,7 @@ export default function App() {
       {/* Send Log */}
       <div className={styles.action}>
         <h3>Send Log</h3>
-        <input
-          value={logMessage}
-          onChange={(e) => setLogMessage(e.target.value)}
-          placeholder="Log message..."
-        />
+        <input value={logMessage} onChange={(e) => setLogMessage(e.target.value)} placeholder="Log message..." />
         <button
           onClick={() => {
             if (logMessage.trim()) app.sendLog({ level: "info", data: logMessage });
@@ -90,11 +81,7 @@ export default function App() {
       {/* Open Link */}
       <div className={styles.action}>
         <h3>Open Link</h3>
-        <input
-          value={link}
-          onChange={(e) => setLink(e.target.value)}
-          placeholder="https://..."
-        />
+        <input value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://..." />
         <button
           onClick={() => {
             if (link.trim()) app.openLink({ url: link });

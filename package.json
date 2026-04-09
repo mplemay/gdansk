@@ -1,0 +1,13 @@
+{
+  "name": "gdansk-root",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "devDependencies": {
+    "oxfmt": "0.42.0",
+    "oxlint": "1.57.0",
+    "oxlint-tsgolint": "0.15.0"
+  }
+}

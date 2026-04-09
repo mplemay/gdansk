@@ -3,12 +3,16 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@modelcontextprotocol/ext-apps": "^1.0.1",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "@gdansk/vite": "file:../../../../../packages/vite",
+    "@modelcontextprotocol/ext-apps": "^1.5.0",
+    "@modelcontextprotocol/sdk": "^1.5.0",
+    "@vitejs/plugin-react": "6.0.1",
+    "react": "19.2.5",
+    "react-dom": "19.2.5",
+    "vite": "8.0.8"
   },
   "devDependencies": {
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0"
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3"
   }
 }

@@ -1,0 +1,50 @@
+{
+  "name": "@gdansk/vite",
+  "private": false,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "types/index.d.ts",
+  "files": [
+    "deno.json",
+    "dist",
+    "types"
+  ],
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./runtime": {
+      "types": "./types/runtime-entry.d.ts",
+      "import": "./dist/runtime.js"
+    }
+  },
+  "scripts": {
+    "build": "vite build && node ./node_modules/typescript/bin/tsc",
+    "clean": "rm -rf dist types",
+    "dev": "vite build --watch",
+    "test": "node ./node_modules/vitest/vitest.mjs run"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@hono/node-server": "1.19.13",
+    "@vitejs/plugin-react": "6.0.1",
+    "hono": "4.12.12",
+    "react": "19.2.5",
+    "react-dom": "19.2.5"
+  },
+  "peerDependencies": {
+    "vite": "8.0.8"
+  },
+  "devDependencies": {
+    "@types/node": "25.5.2",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "typescript": "~6.0.2",
+    "vite": "8.0.8",
+    "vitest": "4.1.4"
+  }
+}

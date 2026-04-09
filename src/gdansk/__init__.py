@@ -1,4 +1,4 @@
-from gdansk.core import Page, Ship
-from gdansk.plugins import LightningCSS, VitePlugin, ViteScript
+from .core import Ship
+from .metadata import Metadata
 
-__all__ = ["LightningCSS", "Page", "Ship", "VitePlugin", "ViteScript"]
+__all__: tuple[str, ...] = ("Metadata", "Ship")

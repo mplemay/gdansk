@@ -1,221 +1,319 @@
-"""Core integration between FastMCP tools and gdansk widget resources."""
-
 from __future__ import annotations
 
-import asyncio
-import logging
-import os
-import sys
-from contextlib import asynccontextmanager, suppress
-from dataclasses import dataclass, field
+from asyncio import sleep
+from asyncio.subprocess import DEVNULL, PIPE, Process, create_subprocess_exec
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from functools import partial
+from http import HTTPStatus
+from os import PathLike
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, Final, Literal
 
-from anyio import Path as APath
-from gdansk_bundler import Plugin
+from httpx import AsyncClient, RequestError
+from mcp.server.mcpserver.resources import FunctionResource
+from mcp.server.mcpserver.tools.base import Tool
+from pydantic import BaseModel, ConfigDict, ValidationError
 
-from gdansk._core import Page, bundle, run
 from gdansk.metadata import Metadata, merge_metadata
-from gdansk.render import ENV
+from gdansk.render import render_template
+from gdansk.utils import join_url
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable, Sequence
+    from collections.abc import AsyncIterator, Callable
 
-    from mcp.server import MCPServer as FastMCP
+    from mcp.server import MCPServer
     from mcp.types import Icon, ToolAnnotations
-    from starlette.applications import Starlette
 
-    from gdansk.protocol import PathType
+type PathType = str | PathLike[str]
 
-logger = logging.getLogger(__name__)
-
-
-def _validate_plugins(plugins: Sequence[Plugin] | None) -> None:
-    if plugins is None:
-        return
-
-    for plugin in plugins:
-        if isinstance(plugin, Plugin):
-            continue
-
-        msg = "Ship plugins must be gdansk_bundler.Plugin instances"
-        raise TypeError(msg)
+DEV_GENERATED_DIR: Final[str] = "dist-src"
+HEALTH_ENDPOINT: Final[str] = "/health"
+MAX_RUNTIME_PORT: Final[int] = 65535
+PRODUCTION_OUT_DIR: Final[str] = "dist"
+SSR_ENDPOINT: Final[str] = "/ssr"
 
 
-@dataclass(frozen=True, slots=True)
-class Ship:
-    """Registers widget-backed MCP tools and serves their bundled assets."""
+class HealthCheck(BaseModel):
+    model_config = ConfigDict(frozen=True)
 
-    _widgets: set[Page] = field(default_factory=set, init=False)
-    _template: ClassVar[str] = "template.html"
-    _page_min_parts: ClassVar[int] = 2
+    status: Literal["OK"] = "OK"
 
-    mcp: FastMCP
-    views: PathType
-    output: Path = field(init=False)
-    ssr: bool = field(default=False, kw_only=True)
-    cache_html: bool = field(default=True, kw_only=True)
-    metadata: Metadata | None = field(default=None, kw_only=True)
-    plugins: Sequence[Plugin] | None = field(default=None, kw_only=True)
 
-    def __post_init__(self) -> None:
-        """Validate required paths and initialize derived output paths."""
-        # Python 3.11 + Windows: Path(PurePosixPath("C:/...")) is built from POSIX parts and
-        # mangles drive letters; 3.12+ pathlib handles cross-flavour paths. Remove this branch
-        # when the minimum supported version is 3.12 (then use Path(self.views) only).
-        if sys.version_info[:2] == (3, 11):
-            views_path = Path(os.fspath(self.views))
-        else:
-            views_path = Path(self.views)
-        object.__setattr__(self, "views", views_path)
-        if not views_path.is_dir():
-            msg = f"The views directory {views_path} does not exist"
-            raise ValueError(msg)
+class GdanskRenderResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
 
-        _validate_plugins(self.plugins)
-        object.__setattr__(self, "output", views_path / ".gdansk")
+    body: str
+    head: list[str]
 
-    def _views_path(self) -> Path:
-        if not isinstance(self.views, Path):
-            msg = "internal error: Ship.views was not normalized to pathlib.Path"
-            raise TypeError(msg)
-        return self.views
 
-    async def _run_build_pipeline(self, *, dev: bool, ready_event: asyncio.Event | None = None) -> None:
-        views_root = self._views_path()
-        pages = sorted(self._widgets, key=lambda page: page.path.as_posix())
-        await bundle(
-            pages=pages,
-            dev=dev,
-            minify=not dev,
-            output=self.output,
-            cwd=views_root,
-            plugins=self.plugins,
-            _ready=ready_event,
+@dataclass(slots=True, kw_only=True, frozen=True)
+class WidgetSpec:
+    key: str
+    metadata: Metadata | None
+    resource: FunctionResource
+    tool: Tool
+    uri: str
+
+
+class ShipContext:
+    def __init__(
+        self,
+        views: Path,
+        *,
+        host: str,
+        port: int,
+        client: AsyncClient | None = None,
+    ) -> None:
+        self._client: Final[AsyncClient] = client or AsyncClient()
+        self._host: Final[str] = host
+        self._port: Final[int] = port
+        self._views: Final[Path] = views
+
+        self._active = False
+        self._dev = False
+        self._frontend: Process | None = None
+        self._runtime_origin: str | None = None
+
+    @asynccontextmanager
+    async def open(self, *, dev: bool) -> AsyncIterator[None]:
+        if self._active:
+            msg = "The frontend runtime context is already active"
+            raise RuntimeError(msg)
+
+        self._active = True
+        try:
+            await self._start(dev=dev)
+            try:
+                yield None
+            finally:
+                await self._stop()
+        finally:
+            self._active = False
+
+    async def render_widget_page(self, *, metadata: Metadata | None, widget_key: str) -> str:
+        runtime_origin = self._require_runtime_origin()
+
+        response = await self._client.post(
+            join_url(runtime_origin, SSR_ENDPOINT),
+            json={"widget": widget_key},
         )
 
-    @staticmethod
-    def _log_background_task_error(task: asyncio.Task[None]) -> None:
-        if task.cancelled():
+        if response.status_code != HTTPStatus.OK:
+            msg = f'Failed to render widget "{widget_key}": {response.status_code} {response.text}'
+            raise RuntimeError(msg)
+
+        try:
+            rendered = GdanskRenderResponse.model_validate_json(response.text)
+        except ValidationError as e:
+            msg = f'Failed to render widget "{widget_key}": invalid SSR payload'
+            raise TypeError(msg) from e
+
+        if self._dev:
+            scripts = [
+                join_url(runtime_origin, "/@vite/client"),
+                join_url(runtime_origin, f"/{DEV_GENERATED_DIR}/{widget_key}/client.tsx"),
+            ]
+        else:
+            scripts = [join_url(runtime_origin, f"/{PRODUCTION_OUT_DIR}/{widget_key}/client.js")]
+
+        return render_template(
+            "base.html",
+            body=rendered.body,
+            head=rendered.head,
+            metadata=metadata,
+            scripts=scripts,
+        )
+
+    def _require_runtime_origin(self) -> str:
+        if self._runtime_origin is None:
+            msg = "The frontend runtime is not running"
+            raise RuntimeError(msg)
+
+        return self._runtime_origin
+
+    async def _run_build(self) -> None:
+        proc = await create_subprocess_exec(
+            *self._deno_command("run", "-A", "--node-modules-dir=auto", "npm:vite", "build"),
+            cwd=self._views,
+            stdin=DEVNULL,
+            stdout=PIPE,
+            stderr=PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+
+        if proc.returncode == 0:
             return
-        exc = task.exception()
-        if exc is None:
-            return
-        logger.exception("Ship background task failed", exc_info=exc)
 
-    @staticmethod
-    async def _shutdown_dev_tasks(
-        *,
-        bundle_task: asyncio.Task[None] | None,
-    ) -> None:
-        tasks = [candidate for candidate in [bundle_task] if candidate is not None]
-        for task in tasks:
-            if not task.done():
-                task.cancel()
-        if tasks:
-            with suppress(asyncio.CancelledError):
-                await asyncio.gather(*tasks, return_exceptions=True)
+        stdout_text = stdout.decode("utf-8", errors="replace").strip()
+        stderr_text = stderr.decode("utf-8", errors="replace").strip()
+        output = "\n".join(part for part in (stdout_text, stderr_text) if part)
+        msg = "Failed to build the frontend"
+        if output:
+            msg = f"{msg}:\n{output}"
+        raise RuntimeError(msg)
 
-    @staticmethod
-    def _normalize_widget_input(widget: PathType) -> Path:
-        widget_path = Path(widget)
-        if widget_path.is_absolute():
-            msg = f"The widget path (i.e. {widget}) must be a relative path"
-            raise ValueError(msg)
+    async def _start(self, *, dev: bool) -> None:
+        if self._frontend is not None or self._runtime_origin is not None:
+            msg = "The frontend runtime context is already active"
+            raise RuntimeError(msg)
 
-        widget_posix = PurePosixPath(widget_path.as_posix())
-        if any(part in {"", ".", ".."} for part in widget_posix.parts):
-            msg = f"The widget path (i.e. {widget}) must not contain traversal segments"
-            raise ValueError(msg)
+        self._dev = dev
+        self._runtime_origin = f"http://{self._host}:{self._port}"
 
-        if widget_posix.parts and widget_posix.parts[0] == "widgets":
-            msg = f"The widget path (i.e. {widget}) must not start with widgets/"
-            raise ValueError(msg)
-
-        return Path(*widget_posix.parts)
-
-    @staticmethod
-    def _resolve_widget_path_candidates(widget: Path) -> tuple[Path, ...]:
-        if widget.suffix:
-            if widget.suffix not in {".tsx", ".jsx"}:
-                msg = f"The widget path (i.e. {widget}) must be a .tsx or .jsx file"
-                raise ValueError(msg)
-            if widget.name not in {"widget.tsx", "widget.jsx"}:
-                msg = (
-                    f"The widget path (i.e. {widget}) must match **/widget.tsx or **/widget.jsx "
-                    "and must not start with widgets/"
-                )
-                raise ValueError(msg)
-            return (widget,)
-
-        return (widget / "widget.tsx", widget / "widget.jsx")
-
-    @staticmethod
-    def _normalize_widget_path_and_uri(widget: Path) -> tuple[Path, Path, str]:
-        widget_posix = PurePosixPath(widget.as_posix())
-
-        if (
-            len(widget_posix.parts) < Ship._page_min_parts
-            or widget_posix.parts[0] == "widgets"
-            or widget_posix.name not in {"widget.tsx", "widget.jsx"}
-        ):
-            msg = (
-                f"The widget path (i.e. {widget}) must match **/widget.tsx or **/widget.jsx "
-                "and must not start with widgets/"
+        if dev:
+            command = self._deno_command(
+                "run",
+                "-A",
+                "--node-modules-dir=auto",
+                "npm:vite",
+                "dev",
+                "--host",
+                self._host,
+                "--port",
+                str(self._port),
+                "--strictPort",
             )
+        else:
+            await self._run_build()
+            server_path = self._views / PRODUCTION_OUT_DIR / "server.js"
+            if not server_path.is_file():
+                msg = f"Expected a production server entry at {server_path}"
+                raise RuntimeError(msg)
+
+            command = self._deno_command("run", "-A", "--node-modules-dir=auto", str(server_path))
+
+        try:
+            self._frontend = await create_subprocess_exec(
+                *command,
+                cwd=self._views,
+                stdin=DEVNULL,
+                stdout=DEVNULL,
+                stderr=DEVNULL,
+            )
+            await self._wait_for_health()
+        except Exception:
+            await self._stop()
+            raise
+
+    async def _stop(self) -> None:
+        self._dev = False
+        self._runtime_origin = None
+
+        if self._frontend is None:
+            return
+
+        self._frontend.terminate()
+        for _ in range(20):
+            if self._frontend.returncode is not None:
+                break
+            await sleep(0.05)
+
+        if self._frontend.returncode is None:
+            self._frontend.kill()
+            await self._frontend.wait()
+
+        self._frontend = None
+
+    async def _wait_for_health(self) -> None:
+        if self._frontend is None or self._runtime_origin is None:
+            msg = "The frontend process has not been started"
+            raise RuntimeError(msg)
+
+        health_url = join_url(self._runtime_origin, HEALTH_ENDPOINT)
+
+        for _ in range(1200):
+            if self._frontend.returncode is not None:
+                msg = (
+                    "The frontend process exited before the health endpoint became available "
+                    f"(exit code {self._frontend.returncode})"
+                )
+                raise RuntimeError(msg)
+
+            try:
+                response = await self._client.get(health_url, timeout=0.2)
+            except RequestError:
+                pass
+            else:
+                if response.status_code == HTTPStatus.OK:
+                    try:
+                        health = HealthCheck.model_validate(response.json())
+                    except (TypeError, ValueError):
+                        pass
+                    else:
+                        if health.status == "OK":
+                            return
+
+            await sleep(0.05)
+
+        msg = (
+            f"The frontend runtime did not start in time ({health_url}). "
+            f'Ensure Ship(host="{self._host}", port={self._port}) matches '
+            f'gdansk({{ host: "{self._host}", port: {self._port} }}).'
+        )
+        raise RuntimeError(msg)
+
+    def _deno_command(self, *args: str) -> tuple[str, ...]:
+        return ("uv", "run", "deno", *args)
+
+
+class Ship:
+    def __init__(
+        self,
+        views: PathType,
+        *,
+        host: str = "127.0.0.1",
+        port: int = 13714,
+        metadata: Metadata | None = None,
+        client: AsyncClient | None = None,
+    ) -> None:
+        if not (views := Path(views)).exists():
+            msg = f"The views directory (i.e. {views}) does not exist"
+            raise FileNotFoundError(msg)
+
+        if not views.is_dir():
+            msg = f"The views directory (i.e. {views}) is not a directory"
             raise ValueError(msg)
 
-        normalized_widget = Path(*widget_posix.parts)
-        bundle_page = Path("widgets", *widget_posix.parts)
-        uri = f"ui://{PurePosixPath(*widget_posix.parts[:-1])}"
-        return normalized_widget, bundle_page, uri
+        host = host.strip()
+        if not host:
+            msg = "The runtime host must not be empty"
+            raise ValueError(msg)
 
-    def __call__(self, *, dev: bool = False) -> Starlette:
-        """Build and return the Starlette app that serves registered resources."""
-        app = self.mcp.streamable_http_app()
-        if not self._widgets:
-            return app
+        if port <= 0 or port > MAX_RUNTIME_PORT:
+            msg = f"The runtime port must be an integer between 1 and {MAX_RUNTIME_PORT}"
+            raise ValueError(msg)
 
-        bundle_task: asyncio.Task[None] | None = None
-        original_lifespan = app.router.lifespan_context
+        self._host: Final[str] = host
+        self._port: Final[int] = port
+        self._views: Final[Path] = views.absolute().resolve()
+        self._widgets_root: Final[Path] = self._views / "widgets"
+        self._metadata: Final[Metadata] = metadata or Metadata()
+        self._widget_manager: dict[Path, WidgetSpec] = {}
+        self._context: Final[ShipContext] = ShipContext(
+            self._views,
+            host=self._host,
+            port=self._port,
+            client=client,
+        )
 
-        @asynccontextmanager
-        async def _lifespan(starlette_app: Starlette) -> AsyncIterator[None]:
-            if dev:
-                nonlocal bundle_task
-                ready_event = asyncio.Event()
-                bundle_task = asyncio.create_task(
-                    self._run_build_pipeline(dev=True, ready_event=ready_event),
-                )
-                bundle_task.add_done_callback(self._log_background_task_error)
-                ready_task = asyncio.get_running_loop().create_task(ready_event.wait())
-                done, pending = await asyncio.wait(
-                    {bundle_task, ready_task},
-                    return_when=asyncio.FIRST_COMPLETED,
-                )
-                if ready_task in pending:
-                    ready_task.cancel()
-                    with suppress(asyncio.CancelledError):
-                        await ready_task
-                if bundle_task in done:
-                    with suppress(Exception):
-                        bundle_task.result()
-            else:
-                await self._run_build_pipeline(dev=False)
+    @asynccontextmanager
+    async def mcp(self, app: MCPServer, *, dev: bool = False) -> AsyncIterator[None]:
+        for spec in self._widget_manager.values():
+            existing = app._tool_manager._tools.get(spec.tool.name)  # noqa: SLF001
+            if existing is not None and existing is not spec.tool:
+                msg = f"A tool with the name {spec.tool.name} has already been registered"
+                raise ValueError(msg)
 
-            async with original_lifespan(starlette_app):
-                try:
-                    yield
-                finally:
-                    if dev:
-                        await Ship._shutdown_dev_tasks(bundle_task=bundle_task)
+            app._tool_manager._tools.setdefault(spec.tool.name, spec.tool)  # noqa: SLF001
+            app.add_resource(resource=spec.resource)
 
-        app.router.lifespan_context = _lifespan
-        return app
+        async with self._context.open(dev=dev):
+            yield None
 
-    def tool(  # noqa: C901, PLR0913, PLR0915
+    def widget(  # noqa: PLR0913
         self,
-        widget: PathType,
+        path: PathType,
         name: str | None = None,
         *,
         title: str | None = None,
@@ -224,150 +322,69 @@ class Ship:
         icons: list[Icon] | None = None,
         meta: dict[str, Any] | None = None,
         metadata: Metadata | None = None,
-        ssr: bool | None = None,
         structured_output: bool | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-        """Register a tool and bind its widget resource into the MCP server."""
-        views_root = self._views_path()
-        widget_path = self._normalize_widget_input(widget)
-        widget_candidates = self._resolve_widget_path_candidates(widget_path)
+        relative_path = Path(path)
+        self._validate_widget_path(relative_path)
 
-        bundle_page: Path | None = None
-        uri: str | None = None
+        posix_path = PurePosixPath(relative_path.as_posix())
+        key = PurePosixPath(*posix_path.parts[:-1]).as_posix()
+        resolved_path = (self._widgets_root / relative_path).resolve()
 
-        for widget_candidate in widget_candidates:
-            _, candidate_bundle_page, candidate_uri = self._normalize_widget_path_and_uri(widget_candidate)
-            if (views_root / candidate_bundle_page).is_file():
-                bundle_page = candidate_bundle_page
-                uri = candidate_uri
-                break
-
-        if bundle_page is None or uri is None:
-            if len(widget_candidates) == 1:
-                msg = f"The widget path (i.e. {widget_path}) was not found"
-            else:
-                msg = (
-                    f"The widget path (i.e. {widget_path}) was not found. "
-                    f"Expected one of: {widget_candidates[0]}, {widget_candidates[1]}"
-                )
+        if not resolved_path.is_file():
+            msg = f"The widget path (i.e. {relative_path}) is not a file"
             raise FileNotFoundError(msg)
 
-        ssr = self.ssr if ssr is None else ssr
-        page_spec = Page(path=bundle_page, is_widget=True, ssr=ssr)
-        stale_pages = {registered for registered in self._widgets if registered.path == page_spec.path}
-        self._widgets.difference_update(stale_pages)
-        self._widgets.add(page_spec)
-
-        # Preserve protocol metadata key/scheme for MCP compatibility.
-        meta = meta or {}
-        meta["ui"] = {"resourceUri": uri}
-        cached_fingerprint: tuple[tuple[str, bool, int | None, int | None], ...] | None = None
-        cached_html: str | None = None
-        cache_lock = asyncio.Lock()
-        client_path = APath(self.output / page_spec.client)
-        server_path = APath(self.output / page_spec.server) if page_spec.server else None
-        css_path = APath(self.output / page_spec.css)
-
-        async def _compute_fingerprint() -> tuple[tuple[str, bool, int | None, int | None], ...]:
-            client_exists = await client_path.exists()
-            if not client_exists:
-                msg = f"Client bundled output for {widget} not found. Has the bundler been run?"
-                raise FileNotFoundError(msg)
-            client_stat = await client_path.stat()
-
-            if server_path is None:
-                if ssr:
-                    msg = f"SSR bundled output for {widget} not found. Has the bundler been run?"
-                    raise FileNotFoundError(msg)
-                server_fingerprint = ("server", False, None, None)
-            else:
-                server_exists = await server_path.exists()
-                if not server_exists:
-                    if ssr:
-                        msg = f"SSR bundled output for {widget} not found. Has the bundler been run?"
-                        raise FileNotFoundError(msg)
-                    server_fingerprint = ("server", False, None, None)
-                else:
-                    server_stat = await server_path.stat()
-                    server_fingerprint = ("server", True, server_stat.st_mtime_ns, server_stat.st_size)
-
-            if await css_path.exists():
-                css_stat = await css_path.stat()
-                css_fingerprint = ("css", True, css_stat.st_mtime_ns, css_stat.st_size)
-            else:
-                css_fingerprint = ("css", False, None, None)
-
-            return (
-                ("client", True, client_stat.st_mtime_ns, client_stat.st_size),
-                server_fingerprint,
-                css_fingerprint,
-            )
-
-        async def _render_resource_html() -> str:
-            client = None if not await client_path.exists() else await client_path.read_text(encoding="utf-8")
-
-            if not client:
-                msg = f"Client bundled output for {widget} not found. Has the bundler been run?"
-                raise FileNotFoundError(msg)
-
-            server = None
-            if server_path and await server_path.exists():
-                server = await server_path.read_text(encoding="utf-8")
-            html = await run(server) if server else None
-
-            if (not html) and ssr:
-                msg = f"SSR bundled output for {widget} not found. Has the bundler been run?"
-                raise FileNotFoundError(msg)
-
-            css = None if not await css_path.exists() else await css_path.read_text(encoding="utf-8")
-
-            return ENV.render_template(
-                "template.html",
-                js=client,
-                css=css,
-                html=html,
-                metadata=merge_metadata(self.metadata, metadata),
-            )
+        uri = f"ui://{key}"
+        tool_meta = {**(meta or {}), "ui": {"resourceUri": uri}}
+        merged_metadata = merge_metadata(self._metadata, metadata)
 
         def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
-            self.mcp.tool(
+            if relative_path in self._widget_manager:
+                msg = f"The widget {relative_path} has already been registered"
+                raise RuntimeError(msg)
+
+            tool = Tool.from_function(
+                fn=fn,
                 name=name,
                 title=title,
                 description=description,
                 annotations=annotations,
                 icons=icons,
-                meta=meta,
+                meta=tool_meta,
                 structured_output=structured_output,
-            )(fn)
-
-            @self.mcp.resource(
+            )
+            resource = FunctionResource.from_function(
+                fn=partial(self._context.render_widget_page, metadata=merged_metadata, widget_key=key),
                 uri=uri,
                 name=name,
                 title=title,
                 description=description,
                 mime_type="text/html;profile=mcp-app",
             )
-            async def _() -> str:
-                nonlocal cached_fingerprint
-                nonlocal cached_html
 
-                fingerprint = await _compute_fingerprint()
-                if self.cache_html and cached_fingerprint == fingerprint and cached_html is not None:
-                    return cached_html
-
-                if not self.cache_html:
-                    return await _render_resource_html()
-
-                async with cache_lock:
-                    fingerprint = await _compute_fingerprint()
-                    if cached_fingerprint == fingerprint and cached_html is not None:
-                        return cached_html
-
-                    rendered_html = await _render_resource_html()
-                    cached_fingerprint = fingerprint
-                    cached_html = rendered_html
-                    return rendered_html
+            self._widget_manager[relative_path] = WidgetSpec(
+                key=key,
+                metadata=merged_metadata,
+                resource=resource,
+                tool=tool,
+                uri=uri,
+            )
 
             return fn
 
         return decorator
+
+    def _validate_widget_path(self, path: Path) -> None:
+        if path.is_absolute():
+            msg = f"The widget path (i.e. {path}) must be a relative path"
+            raise ValueError(msg)
+
+        posix = PurePosixPath(path.as_posix())
+        if any(part in {"", ".", ".."} for part in posix.parts):
+            msg = f"The widget path (i.e. {path}) must not contain traversal segments"
+            raise ValueError(msg)
+
+        if posix.name not in {"widget.tsx", "widget.jsx"}:
+            msg = f"The widget path (i.e. {path}) must point to a widget.tsx or widget.jsx file"
+            raise ValueError(msg)

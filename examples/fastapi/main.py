@@ -5,17 +5,13 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from mcp.server import MCPServer
 from mcp.types import TextContent
 from pydantic_settings import BaseSettings
 
 from gdansk import Ship
 
 FastAPI = importlib.import_module("fastapi").FastAPI
-
-try:
-    FastMCP = importlib.import_module("mcp.server.fastmcp").FastMCP
-except ImportError:
-    FastMCP = importlib.import_module("mcp.server").MCPServer
 
 
 class Settings(BaseSettings):
@@ -26,21 +22,28 @@ class Settings(BaseSettings):
 
 SETTINGS = Settings()
 
-mcp = FastMCP("FastAPI Example Server", streamable_http_path="/")
-ship = Ship(mcp=mcp, views=Path(__file__).parent / "src/mount/views")
+ship = Ship(views=Path(__file__).parent / "src/mount/views")
 
 
-@ship.tool(name="hello", widget=Path("hello"))
+@ship.widget(name="hello", path=Path("hello/widget.tsx"))
 def hello(name: str = "world") -> list[TextContent]:
     """Return a greeting message."""
     return [TextContent(type="text", text=f"Hello, {name}!")]
 
 
-mcp_app = ship(dev=not SETTINGS.production)
+@asynccontextmanager
+async def mcp_lifespan(app: MCPServer) -> AsyncIterator[None]:
+    async with ship.mcp(app=app, dev=not SETTINGS.production):
+        yield
+
+
+mcp = MCPServer(name="FastAPI Example Server", lifespan=mcp_lifespan)
+
+mcp_app = mcp.streamable_http_app(streamable_http_path="/")
 
 
 @asynccontextmanager
-async def lifespan(_: object) -> AsyncIterator[None]:
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     """Run the MCP app lifespan with the FastAPI app."""
     async with mcp_app.router.lifespan_context(mcp_app):
         yield
