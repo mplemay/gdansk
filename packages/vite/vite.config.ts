@@ -5,13 +5,17 @@ export default defineConfig({
     copyPublicDir: false,
     minify: false,
     outDir: "dist",
-    rolldownOptions: {
+    rollupOptions: {
+      input: {
+        index: "src/index.ts",
+        runtime: "src/runtime-entry.ts",
+      },
       output: {
-        entryFileNames: "index.js",
+        entryFileNames: "[name].js",
       },
     },
+    ssr: true,
     sourcemap: true,
-    ssr: "src/index.ts",
     target: "es2023",
   },
   ssr: {

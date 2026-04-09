@@ -1,6 +1,8 @@
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import gdansk, { createGdanskRuntime } from "../src";
+import gdansk from "../src";
+import { createGdanskRuntime } from "../src/runtime";
+import react from "@vitejs/plugin-react";
 import { createServer } from "vite";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -23,16 +25,23 @@ describe("@gdansk/vite", () => {
     await expect(pathExists(`${root}/.gdansk/hello/server.js`)).resolves.toBe(true);
     await expect(pathExists(`${root}/.gdansk/nested/page/client.js`)).resolves.toBe(true);
     await expect(pathExists(`${root}/.gdansk/nested/page/server.js`)).resolves.toBe(true);
+    await expect(pathExists(`${root}/.gdansk/server.js`)).resolves.toBe(true);
 
     const metadata = await runtime.startProductionServer();
     const response = await renderWidget(metadata, { widget: "hello" });
 
     expect(response.body).toContain("Hello SSR");
     expect(response.body).toContain("from plugin");
-    expect(response.head).toContain('<link rel="stylesheet" href="/.gdansk/hello/client.css">');
+    expect(response.head.join("")).toContain(`${metadata.ssrOrigin}/.gdansk/hello/client.css`);
 
-    const runtimeMetadata = JSON.parse(await readFile(`${root}/.gdansk/runtime.json`, "utf8")) as { mode: string };
+    const runtimeMetadata = JSON.parse(await readFile(`${root}/.gdansk/runtime.json`, "utf8")) as {
+      assetOrigin: string;
+      mode: string;
+      widgets: Record<string, { clientPath: string }>;
+    };
+    expect(runtimeMetadata.assetOrigin).toBe(metadata.ssrOrigin);
     expect(runtimeMetadata.mode).toBe("production");
+    expect(runtimeMetadata.widgets.hello.clientPath).toBe("/.gdansk/hello/client.js");
 
     const assetResponse = await fetch(`${metadata.ssrOrigin}/.gdansk/hello/client.js`);
     expect(assetResponse.status).toBe(200);
@@ -52,11 +61,14 @@ describe("@gdansk/vite", () => {
     expect(response.head.join("")).toContain("data-vite-dev-id");
 
     const runtimeMetadata = JSON.parse(await readFile(`${root}/.gdansk/runtime.json`, "utf8")) as {
+      assetOrigin: string;
       viteOrigin: string | null;
-      widgets: string[];
+      widgets: Record<string, { clientPath: string }>;
     };
+    expect(runtimeMetadata.assetOrigin).toMatch(/^http:\/\/127\.0\.0\.1:/);
     expect(runtimeMetadata.viteOrigin).toMatch(/^http:\/\/127\.0\.0\.1:/);
-    expect(runtimeMetadata.widgets).toEqual(["hello", "nested/page"]);
+    expect(Object.keys(runtimeMetadata.widgets)).toEqual(["hello", "nested/page"]);
+    expect(runtimeMetadata.widgets.hello.clientPath).toBe("/.gdansk-src/hello/client.tsx");
 
     await runtime.close();
     expect(await pathExists(`${root}/.gdansk/runtime.json`)).toBe(false);
@@ -67,7 +79,7 @@ describe("@gdansk/vite", () => {
     const server = await createServer({
       appType: "custom",
       configFile: false,
-      plugins: [gdansk({ root, ssrPort: 0 })],
+      plugins: [gdansk({ root, ssrPort: 0 }), react()],
       root,
       server: {
         host: "127.0.0.1",
@@ -107,6 +119,10 @@ async function createFixture(options: { withLocalPlugin: boolean }): Promise<str
       null,
       2,
     ),
+  );
+  await writeFile(
+    `${root}/vite.config.ts`,
+    ['import react from "@vitejs/plugin-react";', 'import { defineConfig } from "vite";', "", "export default defineConfig({", "  plugins: [react()],", "});", ""].join("\n"),
   );
   await writeFile(`${root}/widgets/hello/global.css`, ".hello { color: red; }\n");
   await writeFile(

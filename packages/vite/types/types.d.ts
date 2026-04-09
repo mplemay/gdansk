@@ -1,4 +1,4 @@
-import type { Plugin, ViteDevServer } from "vite";
+import type { InlineConfig, Plugin, UserConfig, ViteDevServer } from "vite";
 export interface GdanskPluginOptions {
     root?: string;
     widgetsRoot?: string;
@@ -9,6 +9,8 @@ export interface GdanskPluginOptions {
     ssrEndpoint?: string;
 }
 export interface ResolvedGdanskOptions {
+    generatedDir: string;
+    generatedDirPath: string;
     host: string;
     outDir: string;
     outDirPath: string;
@@ -21,7 +23,9 @@ export interface ResolvedGdanskOptions {
 }
 export interface WidgetDefinition {
     clientCss: string;
+    clientDevEntry: string;
     clientEntry: string;
+    clientSource: string;
     entry: string;
     key: string;
     serverEntry: string;
@@ -39,11 +43,15 @@ export interface GdanskManifest {
     widgets: Record<string, ManifestWidget>;
 }
 export interface GdanskRuntimeMetadata {
+    assetOrigin: string;
     mode: "development" | "production";
     ssrEndpoint: string;
     ssrOrigin: string;
     viteOrigin: string | null;
-    widgets: string[];
+    widgets: Record<string, GdanskRuntimeWidget>;
+}
+export interface GdanskRuntimeWidget {
+    clientPath: string;
 }
 export interface GdanskRenderRequest {
     component?: string;
@@ -76,3 +84,4 @@ export interface GdanskRuntime {
     widgets: WidgetDefinition[];
 }
 export type ProjectPlugin = Plugin | Plugin[];
+export type LoadedProjectConfig = InlineConfig | UserConfig;

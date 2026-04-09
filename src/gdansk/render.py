@@ -1,0 +1,16 @@
+from pathlib import Path
+from typing import Final
+
+from minijinja import Environment
+
+from gdansk.metadata import resolve_metadata_url
+
+ENV: Final[Environment] = Environment()
+ENV.add_global("resolve_metadata_url", resolve_metadata_url)
+
+for file in Path(__file__).parent.glob("*.html.j2"):
+    ENV.add_template(name=file.stem, source=file.read_text(encoding="utf-8"))
+
+
+def render_template(name: str, /, **context: object) -> str:
+    return ENV.render_template(name, **context)

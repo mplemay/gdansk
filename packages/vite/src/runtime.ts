@@ -1,9 +1,7 @@
 import { rm } from "node:fs/promises";
-import react from "@vitejs/plugin-react";
-import { createServer } from "vite";
-import type { InlineConfig } from "vite";
+import { createServer, mergeConfig } from "vite";
 import { buildWidgets, readManifest, writeRuntimeMetadata } from "./build";
-import { discoverWidgets, loadProjectPlugins, resolveOptions } from "./context";
+import { loadUserViteConfig, prepareWidgets, resolveOptions } from "./context";
 import { resolveViteOrigin } from "./css";
 import { startSSRSidecar } from "./sidecar";
 import type {
@@ -40,9 +38,9 @@ class GdanskRuntimeImpl implements GdanskRuntime {
 
   async build(): Promise<GdanskManifest> {
     await this.refreshWidgets();
-    const plugins = await loadProjectPlugins(this.options);
+    const config = await loadUserViteConfig(this.options, "build");
 
-    this.#manifest = await buildWidgets(this.options, this.widgets, plugins);
+    this.#manifest = await buildWidgets(this.options, this.widgets, config);
 
     return this.#manifest;
   }
@@ -58,16 +56,26 @@ class GdanskRuntimeImpl implements GdanskRuntime {
   }
 
   async refreshWidgets(): Promise<void> {
-    this.widgets = await discoverWidgets(this.options);
+    this.widgets = await prepareWidgets(this.options);
   }
 
   async startDev(): Promise<GdanskRuntimeMetadata> {
     await this.close();
     await this.refreshWidgets();
 
-    const plugins = await loadProjectPlugins(this.options);
+    const config = await loadUserViteConfig(this.options, "serve");
 
-    this.#viteServer = await createServer(this.createViteConfig(plugins));
+    this.#viteServer = await createServer(
+      mergeConfig(config, {
+        appType: "custom",
+        configFile: false,
+        root: this.options.root,
+        server: {
+          host: this.options.host,
+          port: this.options.vitePort,
+        },
+      }),
+    );
     await this.#viteServer.listen();
 
     this.#sidecar = await startSSRSidecar({
@@ -78,11 +86,12 @@ class GdanskRuntimeImpl implements GdanskRuntime {
     });
 
     const metadata: GdanskRuntimeMetadata = {
+      assetOrigin: resolveViteOrigin(this.#viteServer),
       mode: "development",
       ssrEndpoint: this.options.ssrEndpoint,
       ssrOrigin: this.#sidecar.origin,
       viteOrigin: resolveViteOrigin(this.#viteServer),
-      widgets: this.widgets.map((widget) => widget.key),
+      widgets: Object.fromEntries(this.widgets.map((widget) => [widget.key, { clientPath: widget.clientDevEntry }])),
     };
 
     await writeRuntimeMetadata(this.runtimePath, metadata);
@@ -103,31 +112,20 @@ class GdanskRuntimeImpl implements GdanskRuntime {
     });
 
     const metadata: GdanskRuntimeMetadata = {
+      assetOrigin: this.#sidecar.origin,
       mode: "production",
       ssrEndpoint: this.options.ssrEndpoint,
       ssrOrigin: this.#sidecar.origin,
       viteOrigin: null,
-      widgets: this.widgets.map((widget) => widget.key),
+      widgets: Object.fromEntries(
+        Object.entries(this.#manifest.widgets).map(([key, widget]) => [key, { clientPath: `/${widget.client}` }]),
+      ),
     };
 
     await writeRuntimeMetadata(this.runtimePath, metadata);
 
     return metadata;
   }
-
-  createViteConfig(plugins: Awaited<ReturnType<typeof loadProjectPlugins>>): InlineConfig {
-    return {
-      appType: "custom",
-      configFile: false,
-      plugins: [react(), ...plugins],
-      root: this.options.root,
-      server: {
-        host: this.options.host,
-        port: this.options.vitePort,
-      },
-    };
-  }
-
   async loadOrBuildManifest(): Promise<GdanskManifest> {
     try {
       return await readManifest(this.manifestPath);

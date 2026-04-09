@@ -1,22 +1,20 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import react from "@vitejs/plugin-react";
-import { build } from "vite";
-import type { Plugin } from "vite";
+import { build, mergeConfig } from "vite";
 import { pathExists } from "./context";
-import type { GdanskManifest, ResolvedGdanskOptions, WidgetDefinition } from "./types";
+import type { GdanskManifest, LoadedProjectConfig, ResolvedGdanskOptions, WidgetDefinition } from "./types";
 
 export async function buildWidgets(
   options: ResolvedGdanskOptions,
   widgets: WidgetDefinition[],
-  plugins: Plugin[],
+  config: LoadedProjectConfig = {},
 ): Promise<GdanskManifest> {
   await rm(options.outDirPath, { force: true, recursive: true });
   await mkdir(options.outDirPath, { recursive: true });
 
   for (const widget of widgets) {
-    await buildClientWidget(options, widget, plugins);
-    await buildServerWidget(options, widget, plugins);
+    await buildClientWidget(options, widget, config);
+    await buildServerWidget(options, widget, config);
   }
 
   const manifest: GdanskManifest = {
@@ -38,6 +36,7 @@ export async function buildWidgets(
   };
 
   await writeJson(resolve(options.outDirPath, "manifest.json"), manifest);
+  await writeProductionServer(options);
 
   return manifest;
 }
@@ -53,54 +52,59 @@ export async function writeRuntimeMetadata(path: string, metadata: unknown): Pro
 async function buildClientWidget(
   options: ResolvedGdanskOptions,
   widget: WidgetDefinition,
-  plugins: Plugin[],
+  config: LoadedProjectConfig,
 ): Promise<void> {
-  await build({
-    appType: "custom",
-    build: {
-      cssCodeSplit: false,
-      emptyOutDir: false,
-      outDir: options.outDirPath,
-      rollupOptions: {
-        input: widget.entry,
-        output: {
-          assetFileNames: (assetInfo) => resolveClientAssetPath(options, widget, assetInfo),
-          entryFileNames: toOutputPath(options, widget.clientEntry),
-          inlineDynamicImports: true,
+  await build(
+    mergeConfig(config, {
+      appType: "custom",
+      build: {
+        copyPublicDir: false,
+        cssCodeSplit: false,
+        emptyOutDir: false,
+        outDir: options.outDirPath,
+        rollupOptions: {
+          input: widget.clientSource,
+          output: {
+            assetFileNames: (assetInfo: { names?: string[]; originalFileNames?: string[] }) =>
+              resolveClientAssetPath(options, widget, assetInfo),
+            entryFileNames: toOutputPath(options, widget.clientEntry),
+            inlineDynamicImports: true,
+          },
         },
+        sourcemap: true,
       },
-      sourcemap: true,
-    },
-    configFile: false,
-    plugins: [react(), ...plugins],
-    root: options.root,
-  });
+      configFile: false,
+      root: options.root,
+    }),
+  );
 }
 
 async function buildServerWidget(
   options: ResolvedGdanskOptions,
   widget: WidgetDefinition,
-  plugins: Plugin[],
+  config: LoadedProjectConfig,
 ): Promise<void> {
-  await build({
-    appType: "custom",
-    build: {
-      emptyOutDir: false,
-      outDir: options.outDirPath,
-      rollupOptions: {
-        input: widget.entry,
-        output: {
-          entryFileNames: toOutputPath(options, widget.serverEntry),
-          inlineDynamicImports: true,
+  await build(
+    mergeConfig(config, {
+      appType: "custom",
+      build: {
+        copyPublicDir: false,
+        emptyOutDir: false,
+        outDir: options.outDirPath,
+        rollupOptions: {
+          input: widget.entry,
+          output: {
+            entryFileNames: toOutputPath(options, widget.serverEntry),
+            inlineDynamicImports: true,
+          },
         },
+        sourcemap: true,
+        ssr: widget.entry,
       },
-      sourcemap: true,
-      ssr: widget.entry,
-    },
-    configFile: false,
-    plugins: [react(), ...plugins],
-    root: options.root,
-  });
+      configFile: false,
+      root: options.root,
+    }),
+  );
 }
 
 function resolveClientAssetPath(
@@ -130,4 +134,32 @@ function toOutputPath(options: ResolvedGdanskOptions, path: string): string {
   }
 
   return path;
+}
+
+async function writeProductionServer(options: ResolvedGdanskOptions): Promise<void> {
+  const path = resolve(options.outDirPath, "server.js");
+  const runtimeModuleUrl = new URL("../runtime.js", import.meta.url).href;
+  const runtimeOptions = {
+    host: options.host,
+    outDir: options.outDir,
+    ssrEndpoint: options.ssrEndpoint,
+    ssrPort: options.ssrPort,
+    vitePort: options.vitePort,
+    widgetsRoot: options.widgetsRoot,
+  };
+
+  await writeFile(
+    path,
+    [
+      'import { dirname, resolve } from "node:path";',
+      'import { fileURLToPath } from "node:url";',
+      `import { createGdanskRuntime } from "${runtimeModuleUrl}";`,
+      "",
+      "const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');",
+      `const runtime = await createGdanskRuntime({ ...${JSON.stringify(runtimeOptions)}, root });`,
+      "await runtime.startProductionServer();",
+      "await new Promise(() => {});",
+      "",
+    ].join("\n"),
+  );
 }

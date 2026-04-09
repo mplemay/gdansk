@@ -47,7 +47,7 @@ export async function startSSRSidecar(options: GdanskSidecarOptions): Promise<Gd
       const response =
         options.mode === "development"
           ? await renderDevelopmentWidget(widget, options)
-          : await renderProductionWidget(widget, options);
+          : await renderProductionWidget(widget, options, new URL(c.req.url).origin);
 
       return c.json(response);
     } catch (error) {
@@ -120,11 +120,12 @@ async function renderDevelopmentWidget(
 async function renderProductionWidget(
   widget: WidgetDefinition,
   options: GdanskSidecarOptions,
+  assetOrigin: string,
 ): Promise<GdanskRenderResponse> {
   const manifest = getManifestWidget(options.manifest, widget.key);
   const module = (await importServerModule(resolve(options.options.root, manifest.server))) as { default?: unknown };
   const component = getComponent(module.default, widget.key);
-  const href = manifest.css ? `${options.options.outDir.startsWith("/") ? "" : "/"}${manifest.css}` : null;
+  const href = manifest.css ? `${assetOrigin}/${manifest.css.replace(/^\/+/, "")}` : null;
 
   return {
     body: renderToString(createElement(component)),
