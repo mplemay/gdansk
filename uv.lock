@@ -7,7 +7,7 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-04-02T03:26:48.705277Z"
+exclude-newer = "2026-04-02T03:27:08.459677Z"
 exclude-newer-span = "P7D"
 
 [[package]]
@@ -182,10 +182,24 @@ wheels = [
 ]
 
 [[package]]
+name = "deno"
+version = "2.7.11"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d7/3f/a0477c72b847c0082ceb8885261eb14fb4addde22e8fb0146c011636979b/deno-2.7.11.tar.gz", hash = "sha256:342a656fca446fadc261ed22af35693b6c34e79129fa2bd387a1e5d39f496a99", size = 8167, upload-time = "2026-04-01T12:48:16.673Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d1/64/c8cb5a9c50135ada59b412b7511852d551d2618e169f48a8e7b8e90a382a/deno-2.7.11-py3-none-macosx_10_12_x86_64.whl", hash = "sha256:76aa633656b07f64cfda3aa94a1e16bc123034ba2fe676d23b179f8326728534", size = 47857669, upload-time = "2026-04-01T12:48:01.947Z" },
+    { url = "https://files.pythonhosted.org/packages/27/f3/250216e71e21cfc291ff6eb6503a479410ff927c9f97ebb644463c620692/deno-2.7.11-py3-none-macosx_11_0_arm64.whl", hash = "sha256:a1dd1ceb0c2109b54334a621503e5297d473f5c3e6702992dfa68d9b7cdf1177", size = 44607869, upload-time = "2026-04-01T12:48:05.23Z" },
+    { url = "https://files.pythonhosted.org/packages/01/51/b8fcb7d6882d659abd678f48fc5bc89aa0aa10f5a399fca3823680f277ca/deno-2.7.11-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:56578808c891d1daeadc279ac73445a24a83c2c721b37016fd92b1aa9224979b", size = 48394760, upload-time = "2026-04-01T12:48:08.049Z" },
+    { url = "https://files.pythonhosted.org/packages/a0/18/91d1ceb2e15b4446fcecdf4be17ed59b02f5b35d8c98c94e7eaadf10591e/deno-2.7.11-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:58eea29d18fe8f80f2a4354d96225a31961ed3fa68336a7fcdd6add331df6acd", size = 50418090, upload-time = "2026-04-01T12:48:10.84Z" },
+    { url = "https://files.pythonhosted.org/packages/b6/8d/7a801d85a0a8233d00ea1a381fd32e76c81be9db78ada162e211e7619221/deno-2.7.11-py3-none-win_amd64.whl", hash = "sha256:e2b69676e52543153b82e926f558983f9251db2251474f3225301cf7aca05a2b", size = 49417475, upload-time = "2026-04-01T12:48:14.158Z" },
+]
+
+[[package]]
 name = "gdansk"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "deno" },
     { name = "mcp" },
     { name = "minijinja" },
 ]
@@ -202,6 +216,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "deno", specifier = ">=2.7.11" },
     { name = "mcp", git = "https://github.com/modelcontextprotocol/python-sdk.git?rev=main" },
     { name = "minijinja", specifier = ">=2,<3" },
 ]
