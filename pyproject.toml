@@ -12,6 +12,7 @@ dependencies = [
     "deno>=2.7.11",
     "mcp>=1.25.1.dev114,<1.26",
     "minijinja>=2,<3",
+    "watchfiles>=1,<2",
 ]
 
 [dependency-groups]
