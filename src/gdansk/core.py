@@ -26,7 +26,6 @@ if TYPE_CHECKING:
 type PathType = str | PathLike[str]
 type RuntimeMode = Literal["development", "production"]
 
-VITE_VERSION: Final[str] = "8.0.3"
 RUNTIME_ENDPOINT: Final[str] = "/__gdansk_runtime"
 RUNTIME_HOST: Final[str] = "127.0.0.1"
 
@@ -242,7 +241,7 @@ class Ship:
 
     async def _run_build(self, *, env: Mapping[str, str] | None = None) -> None:
         proc = await create_subprocess_exec(
-            *self._deno_command("run", "-A", "--node-modules-dir=auto", f"npm:vite@{VITE_VERSION}", "build"),
+            *self._deno_command("run", "-A", "--node-modules-dir=auto", "npm:vite", "build"),
             cwd=self._views,
             env=env,
             stdin=DEVNULL,
@@ -272,7 +271,7 @@ class Ship:
         env = self._runtime_environment(self._runtime_port)
 
         if dev:
-            command = self._deno_command("run", "-A", "--node-modules-dir=auto", f"npm:vite@{VITE_VERSION}", "dev")
+            command = self._deno_command("run", "-A", "--node-modules-dir=auto", "npm:vite", "dev")
         else:
             await self._run_build(env=env)
             server_path = self._views / ".gdansk" / "server.js"

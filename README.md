@@ -43,6 +43,7 @@ my-mcp-server/
 
 The `views` folder name is only an example: pass any directory to `Ship(..., views=...)` (for example
 `Path(__file__).parent / "frontend"`).
+That frontend package owns its own `vite.config.ts`; import `@gdansk/vite` there alongside any framework plugins.
 
 **server.py:**
 
@@ -133,6 +134,25 @@ export default function App() {
     </main>
   );
 }
+```
+
+**views/vite.config.ts:**
+
+```ts
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
+import gdansk from "@gdansk/vite";
+
+export default defineConfig({
+  plugins: [gdansk(), react()],
+});
+```
+
+Install the frontend package dependencies from `views/` after editing them:
+
+```bash
+cd views
+uv run deno install
 ```
 
 Gdansk mounts your default export into `#root` automatically and wraps it with `React.StrictMode`.

@@ -1,12 +1,10 @@
 import { access, glob as globIterate, mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
-import { pathToFileURL } from "node:url";
 import { loadConfigFromFile, mergeConfig } from "vite";
 import type { InlineConfig, Plugin, PluginOption } from "vite";
 import type {
   GdanskPluginOptions,
   LoadedProjectConfig,
-  ProjectPlugin,
   ResolvedGdanskOptions,
   WidgetDefinition,
 } from "./types";
@@ -96,10 +94,7 @@ export async function loadUserViteConfig(
   const loadedConfig = loaded?.config ?? ({} satisfies InlineConfig);
   const { plugins: _, ...configWithoutPlugins } = loadedConfig;
 
-  const plugins = [
-    ...(await normalizePlugins(loadedConfig.plugins)).filter((plugin) => plugin.name !== "@gdansk/vite"),
-    ...(await loadProjectPlugins(options)),
-  ];
+  const plugins = (await normalizePlugins(loadedConfig.plugins)).filter((plugin) => plugin.name !== "@gdansk/vite");
 
   return mergeConfig(
     configWithoutPlugins,
@@ -114,37 +109,6 @@ export async function prepareWidgets(options: ResolvedGdanskOptions): Promise<Wi
   const widgets = await discoverWidgets(options);
   await Promise.all(widgets.map((widget) => writeClientEntry(widget)));
   return widgets;
-}
-
-export async function loadProjectPlugins(options: ResolvedGdanskOptions): Promise<Plugin[]> {
-  const pluginsPath = resolve(options.root, "plugins");
-
-  if (!(await pathExists(pluginsPath))) {
-    return [];
-  }
-
-  const pluginFiles = await globPaths("*.mjs", {
-    absolute: true,
-    cwd: pluginsPath,
-  });
-
-  const plugins: Plugin[] = [];
-
-  for (const pluginFile of pluginFiles.sort()) {
-    const module = (await import(pathToFileURL(pluginFile).href)) as { default?: ProjectPlugin };
-
-    if (!module.default) {
-      continue;
-    }
-
-    const entries = (Array.isArray(module.default) ? module.default : [module.default]) as Plugin[];
-
-    for (const entry of entries) {
-      plugins.push(entry);
-    }
-  }
-
-  return plugins;
 }
 
 export async function pathExists(path: string): Promise<boolean> {

@@ -32,7 +32,9 @@ Fail early on structure before writing feature code.
 - Confirm the views root exists and contains `widgets/`.
 - Confirm each UI entry point is `views/widgets/**/widget.tsx` or `views/widgets/**/widget.jsx`.
 - Confirm each widget component has a default export.
-- Confirm `views/package.json` has:
+- Confirm `views/vite.config.ts` imports `@gdansk/vite` and the framework plugins you need.
+- Confirm the frontend package has the Vite dependency available through `views/package.json` and/or `views/deno.json`.
+  - If you are using Deno-managed installs, confirm `views/package.json` has:
   - `"type": "module"`
   - `"@modelcontextprotocol/ext-apps"`
   - `"react"` and `"react-dom"`

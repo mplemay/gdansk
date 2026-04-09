@@ -9,6 +9,7 @@ my-server/
 ├── server.py
 └── views/
     ├── package.json
+    ├── vite.config.ts
     ├── deno.lock
     └── widgets/
         └── hello/
@@ -113,6 +114,22 @@ export default function App() {
     "@types/react-dom": "^19.0.0"
   }
 }
+```
+
+This example assumes the package also installs `@gdansk/vite`, `@vitejs/plugin-react`, and `vite`.
+
+Add a `vite.config.ts` in the same package and import `@gdansk/vite` there alongside any framework plugins:
+
+`views/vite.config.ts`
+
+```ts
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
+import gdansk from "@gdansk/vite";
+
+export default defineConfig({
+  plugins: [gdansk(), react()],
+});
 ```
 
 After editing dependencies, install from `views/` with `uv run deno install` and commit `deno.lock` when it changes:

@@ -11,7 +11,7 @@ Use exact error text to choose the fastest fix.
 | `must not start with widgets/` | `path` begins with `widgets/...` | Remove `widgets/` prefix in decorator argument | Change `Path("widgets/hello/widget.tsx")` to `Path("hello/widget.tsx")` |
 | `must be a .tsx or .jsx file` | Wrong file name or extension | Rename to `widget.tsx` or `widget.jsx`; update `path=` | `find views/widgets -type f \| rg "widget\\.(tsx\|jsx)$"` |
 | `was not found` / missing widget entry files | `path=` points at missing file | Create `widget.tsx` or `widget.jsx` in target widget directory | `find views/widgets/<name> -maxdepth 2 -type f` |
-| `Client bundled output for ... not found. Has the bundler been run?` | Bundle did not run, failed, or output path is wrong | Start server with `ship.mcp(..., dev=True)` in development; resolve upstream bundle errors | Check `views/.gdansk/**/client.js` existence |
+| `Client bundled output for ... not found. Has the bundler been run?` | Bundle did not run, failed, or output path is wrong | Start server with `ship.mcp(..., dev=True)` in development; confirm `views/vite.config.ts` imports `@gdansk/vite`; resolve upstream bundle errors | Check `views/.gdansk/**/client.js` existence |
 | `SSR bundled output for ... not found. Has the bundler been run?` | Effective SSR true but server bundle missing | Ensure SSR is enabled intentionally and bundle succeeded | Check `views/.gdansk/**/server.js` existence |
 | `Execution error: ...` during SSR | Server JS threw at runtime (SSR render or dependency issue) | Fix SSR widget default export and runtime-safe imports; retry | Open `server.js` bundle and run minimal SSR widget to isolate |
 | Build fails with message containing `default` for widget | Widget component missing default export | Export default React component from `widget.tsx`/`widget.jsx` | `rg -n "export default" views/widgets/**/widget.tsx views/widgets/**/widget.jsx` |
@@ -21,10 +21,11 @@ Use exact error text to choose the fastest fix.
 
 1. Validate `path=` contract first.
 2. Confirm `views/widgets/**/widget.tsx|jsx` exists and has default export.
-3. Confirm `views/package.json` has `type=module`, `react`, `react-dom`, and `@modelcontextprotocol/ext-apps`.
-4. Confirm bundler outputs are present under `views/.gdansk/`.
-5. For SSR-specific failures, confirm `server.js` exists and isolate runtime errors.
-6. For CSS-specific failures, confirm the `views` package PostCSS/Tailwind (or similar) setup.
+3. Confirm `views/vite.config.ts` imports `@gdansk/vite` and the framework plugins you expect.
+4. Confirm `views/package.json` has `type=module`, `react`, `react-dom`, and `@modelcontextprotocol/ext-apps`.
+5. Confirm bundler outputs are present under `views/.gdansk/`.
+6. For SSR-specific failures, confirm `server.js` exists and isolate runtime errors.
+7. For CSS-specific failures, confirm the `views` package PostCSS/Tailwind (or similar) setup.
 
 ## Minimal command set
 

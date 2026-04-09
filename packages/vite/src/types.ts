@@ -1,4 +1,4 @@
-import type { InlineConfig, Plugin, UserConfig, ViteDevServer } from "vite";
+import type { InlineConfig, UserConfig, ViteDevServer } from "vite";
 
 export interface GdanskPluginOptions {
   root?: string;
@@ -97,5 +97,4 @@ export interface GdanskRuntime {
   widgets: WidgetDefinition[];
 }
 
-export type ProjectPlugin = Plugin | Plugin[];
 export type LoadedProjectConfig = InlineConfig | UserConfig;

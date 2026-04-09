@@ -117,10 +117,25 @@ async function createFixture(options: { withLocalPlugin: boolean }): Promise<str
       2,
     ),
   );
-  await writeFile(
-    `${root}/vite.config.ts`,
-    ['import react from "@vitejs/plugin-react";', 'import { defineConfig } from "vite";', "", "export default defineConfig({", "  plugins: [react()],", "});", ""].join("\n"),
+  const viteConfigLines = [
+    'import gdansk from "../src/index.ts";',
+    'import react from "@vitejs/plugin-react";',
+    'import { defineConfig } from "vite";',
+  ];
+
+  if (options.withLocalPlugin) {
+    viteConfigLines.push('import messagePlugin from "./virtual-message.mjs";');
+  }
+
+  viteConfigLines.push(
+    "",
+    "export default defineConfig({",
+    options.withLocalPlugin ? "  plugins: [gdansk(), react(), messagePlugin]," : "  plugins: [gdansk(), react()],",
+    "});",
+    "",
   );
+
+  await writeFile(`${root}/vite.config.ts`, viteConfigLines.join("\n"));
   await writeFile(`${root}/widgets/hello/global.css`, ".hello { color: red; }\n");
   await writeFile(
     `${root}/widgets/hello/widget.tsx`,
@@ -154,9 +169,8 @@ async function createFixture(options: { withLocalPlugin: boolean }): Promise<str
   );
 
   if (options.withLocalPlugin) {
-    await mkdir(`${root}/plugins`, { recursive: true });
     await writeFile(
-      `${root}/plugins/virtual-message.mjs`,
+      `${root}/virtual-message.mjs`,
       [
         "export default {",
         '  name: "virtual-message",',

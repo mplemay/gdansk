@@ -120,3 +120,38 @@ async def test_widget_resource_renders_complete_document(views_path: Path):
     assert '<div id="root"><main>Hello from SSR</main></div>' in html
     assert '<script type="module" src="http://vite.test/@vite/client"></script>' in html
     assert '<script type="module" src="http://assets.test/.gdansk-src/hello/client.tsx"></script>' in html
+
+
+async def test_run_build_uses_the_views_vite_entrypoint(views_path: Path, monkeypatch: pytest.MonkeyPatch):
+    captured_args: tuple[str, ...] | None = None
+    captured_kwargs: dict[str, object] | None = None
+
+    class FakeBuildProcess:
+        returncode = 0
+
+        async def communicate(self) -> tuple[bytes, bytes]:
+            return b"", b""
+
+    async def fake_create_subprocess_exec(*args: str, **kwargs: object) -> FakeBuildProcess:
+        nonlocal captured_args, captured_kwargs
+        captured_args = args
+        captured_kwargs = kwargs
+        return FakeBuildProcess()
+
+    ship = Ship(views=views_path)
+    monkeypatch.setattr("gdansk.core.create_subprocess_exec", fake_create_subprocess_exec)
+
+    await ship._run_build()
+
+    assert captured_args == (
+        "uv",
+        "run",
+        "deno",
+        "run",
+        "-A",
+        "--node-modules-dir=auto",
+        "npm:vite",
+        "build",
+    )
+    assert captured_kwargs is not None
+    assert captured_kwargs["cwd"] == views_path
