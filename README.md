@@ -4,18 +4,6 @@
 > This project is currently in beta. The APIs are subject to change leading up to v1.0. The v1.0 release will
 > coincide with the v2.0 release of the [python mcp sdk](https://github.com/modelcontextprotocol/python-sdk)
 
-The name "Gdansk" (pronounced "guh-DANSK") is a nod to the Polish port city's historical role as a bridge between
-cultures and trade routes—much like this framework bridges Python backends and React frontends.
-
-Gdansk bridges Python backend logic with React/TypeScript UIs, letting you create rich, interactive tools for Model
-Context Protocol (MCP) servers without leaving the Python ecosystem.
-
-Gdansk works with the [Model Context Protocol Python SDK](https://github.com/modelcontextprotocol/python-sdk)
-(`mcp.server.MCPServer`) for server-side Python logic, React for client-side interfaces, and uses
-[Rolldown](https://rolldown.rs/) (a Rust-based bundler) to handle all the JavaScript/TypeScript bundling automatically.
-Whether you're building data visualization tools, form-based interfaces, or interactive dashboards for Claude Desktop
-and other MCP clients, Gdansk provides a straightforward path from Python functions to polished UIs.
-
 ## Installation
 
 ```bash
