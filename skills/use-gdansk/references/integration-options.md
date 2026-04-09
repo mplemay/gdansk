@@ -110,8 +110,8 @@ app.mount(path="/mcp", app=mcp_app)
 ## Styling and Tailwind
 
 Style widgets with normal frontend tooling in the `views` package (for example PostCSS, Tailwind, or component
-libraries). Install and configure those dependencies in `views/package.json`; gdansk does not ship a separate Vite
-plugin API in the public Python package.
+libraries). Declare dependencies in `views/package.json`, run `uv run deno install` from `views/`, and commit
+`deno.lock` when it changes; gdansk does not ship a separate Vite plugin API in the public Python package.
 
 ## Decision matrix
 

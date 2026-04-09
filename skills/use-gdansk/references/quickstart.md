@@ -9,12 +9,14 @@ my-server/
 ├── server.py
 └── views/
     ├── package.json
+    ├── deno.lock
     └── widgets/
         └── hello/
             └── widget.tsx
 ```
 
-The `views` directory name is arbitrary: `Ship(..., views=...)` accepts any path to the npm package root.
+The `views` directory name is arbitrary: `Ship(..., views=...)` accepts any path to the package root (the directory that
+contains `package.json`).
 
 ## Minimal Python server
 
@@ -113,12 +115,20 @@ export default function App() {
 }
 ```
 
+After editing dependencies, install from `views/` with `uv run deno install` and commit `deno.lock` when it changes:
+
+```bash
+cd views
+uv run deno install
+```
+
 ## Run commands
 
 Standard server:
 
 ```bash
 uv sync
+( cd views && uv run deno install )
 uv run python server.py
 ```
 
@@ -132,6 +142,7 @@ Run:
 
 ```bash
 uv sync
+( cd views && uv run deno install )
 uv run python server.py
 ```
 

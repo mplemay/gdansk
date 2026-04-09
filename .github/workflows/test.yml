@@ -72,18 +72,16 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-          cache: npm
-          cache-dependency-path: examples/shadcn/src/shadcn/views/package-lock.json
-
-      - name: Install shadcn example npm dependencies
-        working-directory: examples/shadcn/src/shadcn/views
-        run: npm ci
-
       - name: Install dependencies
         run: uv sync --all-groups --all-extras --all-packages
+
+      - name: Install example views dependencies (Deno)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for d in examples/fastapi/src/mount/views examples/get-time/src/get_time/views examples/ssr/src/ssr/views examples/shadcn/src/shadcn/views; do
+            (cd "$d" && uv run deno install)
+          done
 
       - name: Run tests
         run: uv run pytest

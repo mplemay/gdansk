@@ -44,7 +44,7 @@ Use [quickstart.md](references/quickstart.md) for the canonical baseline layout 
 
 Always treat `path=` in `@ship.widget` as a logical path under the views root (typically resolving to
 `views/widgets/...`), never an absolute filesystem path. The directory passed to `Ship(..., views=...)` can be named
-anything; `views` in docs is a conventional label for the npm package root.
+anything; `views` in docs is a conventional label for the package root (the directory that contains `package.json`).
 
 - Use an explicit `.tsx` or `.jsx` file path (`path=Path("hello/widget.tsx")`).
 - Never prefix the `path` argument with `widgets/`.
