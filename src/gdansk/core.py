@@ -1,17 +1,13 @@
-from asyncio import create_subprocess_exec
-from asyncio.subprocess import PIPE
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from os import PathLike
 from pathlib import Path, PurePosixPath
 from typing import Any, Final
 
-from asyncer import syncify
-from deno import find_deno_bin
 from mcp.server import MCPServer
-from mcp.server.streamable_http import EventStore
-from mcp.server.transport_security import TransportSecuritySettings
+from mcp.server.mcpserver.resources import FunctionResource
+from mcp.server.mcpserver.tools.base import Tool
 from mcp.types import Icon, ToolAnnotations
-from starlette.applications import Starlette
 
 from gdansk.metadata import Metadata
 
@@ -19,7 +15,7 @@ type PathType = str | PathLike[str]
 
 
 class Ship:
-    def __init__(self, mcp: MCPServer, views: PathType, *, metadata: Metadata | None = None, ssr: bool = False) -> None:
+    def __init__(self, views: PathType, *, metadata: Metadata | None = None, ssr: bool = False) -> None:
         if not (views := Path(views)).exists():
             msg = f"The views directory (i.e. {views}) does not exist"
             raise FileNotFoundError(msg)
@@ -28,54 +24,25 @@ class Ship:
             msg = f"The views directory (i.e. {views}) is not a directory"
             raise ValueError(msg)
 
-        self._mcp: Final[MCPServer] = mcp
         self._views: Final[Path] = views.absolute().resolve()
         self._metadata: Final[Metadata] = metadata or Metadata()
         self._ssr: Final[bool] = ssr
 
         self._registry: dict[Path, str] = {}
+        self._widget_manager: dict[Path, tuple[Tool, FunctionResource]] = {}
 
-    async def build(self, *, dev: bool = False) -> None:
-        deno = find_deno_bin()
-        mode = "dev" if dev else "build"
+    @asynccontextmanager
+    async def mcp(self, app: MCPServer, *, dev: bool = False) -> AsyncIterator[None]:  # noqa: ARG002
+        # register the widgets
+        for tool, resource in self._widget_manager.values():
+            if tool.name in app._tool_manager._tools:  # noqa: SLF001
+                msg = f"A tool with the name {tool.name} has already been registred"
+                raise ValueError(msg)
 
-        proc = await create_subprocess_exec(
-            deno,
-            "run",
-            "vite",
-            mode,
-            stdout=PIPE,
-            stdin=PIPE,
-        )
+            app._tool_manager._tools[tool.name] = tool  # noqa: SLF001
+            app.add_resource(resource=resource)
 
-        await proc.wait()
-
-    def __call__(
-        self,
-        *,
-        streamable_http_path: str = "/mcp",
-        json_response: bool = False,
-        stateless_http: bool = False,
-        event_store: EventStore | None = None,
-        retry_interval: int | None = None,
-        transport_security: TransportSecuritySettings | None = None,
-        host: str = "127.0.0.1",
-        dev: bool = False,
-    ) -> Starlette:
-        app = self._mcp.streamable_http_app(
-            streamable_http_path=streamable_http_path,
-            json_response=json_response,
-            stateless_http=stateless_http,
-            event_store=event_store,
-            retry_interval=retry_interval,
-            transport_security=transport_security,
-            host=host,
-        )
-
-        # run the build asynchronously (and possibly in the background)
-        syncify(self.build)(dev=dev)
-
-        return app
+        yield
 
     def widget(  # noqa: PLR0913
         self,
@@ -113,26 +80,34 @@ class Ship:
         meta = meta or {}
         meta["ui"] = {"resourceUri": uri}
 
-        def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
-            self._mcp.tool(
-                name=name,
-                title=title,
-                description=description,
-                annotations=annotations,
-                icons=icons,
-                meta=meta,
-                structured_output=structured_output,
-            )(fn)
+        def resource_fn() -> str | None:
+            return self._registry.get(path)
 
-            @self._mcp.resource(
-                uri=uri,
-                name=name,
-                title=title,
-                description=description,
-                mime_type="text/html;profile=mcp-app",
+        def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
+            if path in self._widget_manager:
+                msg = f"The widget {path} has already been registered"
+                raise RuntimeError(msg)
+
+            self._widget_manager[path] = (
+                Tool.from_function(
+                    fn=fn,
+                    name=name,
+                    title=title,
+                    description=description,
+                    annotations=annotations,
+                    icons=icons,
+                    meta=meta,
+                    structured_output=structured_output,
+                ),
+                FunctionResource.from_function(
+                    fn=resource_fn,
+                    uri=uri,
+                    name=name,
+                    title=title,
+                    description=description,
+                    mime_type="text/html;profile=mcp-app",
+                ),
             )
-            def _() -> str | None:
-                return self._registry.get(path)
 
             return fn
 

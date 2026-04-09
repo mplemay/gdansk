@@ -9,7 +9,6 @@ authors = [
 ]
 requires-python = ">=3.12,<3.15"
 dependencies = [
-    "asyncer>=0.0.17",
     "deno>=2.7,<3",
     "mcp>=1.25.1.dev114,<1.26",
     "minijinja>=2,<3",
@@ -48,6 +47,8 @@ select = ["ALL"]
 "__init__.py" = [
     "F401", # imported but unused (common in __init__.py to re-export symbols)
 ]
+"main.py" = ["D"]
+"src/gdansk/**/*.py" = ["D"]
 "examples/fastapi/main.py" = [
     "INP001", # example entrypoint is intentionally not part of a package
 ]

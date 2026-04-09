@@ -8,7 +8,7 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-04-01T19:42:58.533094Z"
+exclude-newer = "2026-04-02T14:36:25.907334Z"
 exclude-newer-span = "P7D"
 
 [[package]]
@@ -40,6 +40,20 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/19/14/2c5dd9f512b66549ae92767a9c7b330ae88e1932ca57876909410251fe13/anyio-4.13.0.tar.gz", hash = "sha256:334b70e641fd2221c1505b3890c69882fe4a2df910cba14d97019b90b24439dc", size = 231622, upload-time = "2026-03-24T12:59:09.671Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/da/42/e921fccf5015463e32a3cf6ee7f980a6ed0f395ceeaa45060b61d86486c2/anyio-4.13.0-py3-none-any.whl", hash = "sha256:08b310f9e24a9594186fd75b4f73f4a4152069e3853f1ed8bfbf58369f4ad708", size = 114353, upload-time = "2026-03-24T12:59:08.246Z" },
+]
+
+[[package]]
+name = "asyncer"
+version = "0.0.17"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "sniffio" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d2/4c/62b6044679e08788322bbd0dee5b487a6f7f60bb4e2bd45617ff0d94d1e3/asyncer-0.0.17.tar.gz", hash = "sha256:8a41e185e7ec2ecd583c269d72907a0f9f832e744b6c7474aeb21e349c4becf4", size = 19516, upload-time = "2026-02-21T16:35:54.068Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2a/c5/b72735a095b4b3170b34150e89314a40dd0450d0eb6746b331cb664479d1/asyncer-0.0.17-py3-none-any.whl", hash = "sha256:b0055950e094fb84fd8d21611c7e7b6f5715ddcb57c522c058f64c20badd1438", size = 9252, upload-time = "2026-02-21T16:35:55.022Z" },
 ]
 
 [[package]]
@@ -189,6 +203,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/44/46/466269e833f1c4718d6cd496ffe20c56c9c8d013486ff66b4f69c302a68d/cryptography-46.0.6-cp38-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:6617f67b1606dfd9fe4dbfa354a9508d4a6d37afe30306fe6c101b7ce3274b72", size = 4659255, upload-time = "2026-03-25T23:34:33.679Z" },
     { url = "https://files.pythonhosted.org/packages/0a/09/ddc5f630cc32287d2c953fc5d32705e63ec73e37308e5120955316f53827/cryptography-46.0.6-cp38-abi3-win32.whl", hash = "sha256:7f6690b6c55e9c5332c0b59b9c8a3fb232ebf059094c17f9019a51e9827df91c", size = 3010660, upload-time = "2026-03-25T23:34:35.418Z" },
     { url = "https://files.pythonhosted.org/packages/1b/82/ca4893968aeb2709aacfb57a30dec6fa2ab25b10fa9f064b8882ce33f599/cryptography-46.0.6-cp38-abi3-win_amd64.whl", hash = "sha256:79e865c642cfc5c0b3eb12af83c35c5aeff4fa5c672dc28c43721c2c9fdd2f0f", size = 3471160, upload-time = "2026-03-25T23:34:37.191Z" },
+]
+
+[[package]]
+name = "deno"
+version = "2.7.11"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d7/3f/a0477c72b847c0082ceb8885261eb14fb4addde22e8fb0146c011636979b/deno-2.7.11.tar.gz", hash = "sha256:342a656fca446fadc261ed22af35693b6c34e79129fa2bd387a1e5d39f496a99", size = 8167, upload-time = "2026-04-01T12:48:16.673Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d1/64/c8cb5a9c50135ada59b412b7511852d551d2618e169f48a8e7b8e90a382a/deno-2.7.11-py3-none-macosx_10_12_x86_64.whl", hash = "sha256:76aa633656b07f64cfda3aa94a1e16bc123034ba2fe676d23b179f8326728534", size = 47857669, upload-time = "2026-04-01T12:48:01.947Z" },
+    { url = "https://files.pythonhosted.org/packages/27/f3/250216e71e21cfc291ff6eb6503a479410ff927c9f97ebb644463c620692/deno-2.7.11-py3-none-macosx_11_0_arm64.whl", hash = "sha256:a1dd1ceb0c2109b54334a621503e5297d473f5c3e6702992dfa68d9b7cdf1177", size = 44607869, upload-time = "2026-04-01T12:48:05.23Z" },
+    { url = "https://files.pythonhosted.org/packages/01/51/b8fcb7d6882d659abd678f48fc5bc89aa0aa10f5a399fca3823680f277ca/deno-2.7.11-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:56578808c891d1daeadc279ac73445a24a83c2c721b37016fd92b1aa9224979b", size = 48394760, upload-time = "2026-04-01T12:48:08.049Z" },
+    { url = "https://files.pythonhosted.org/packages/a0/18/91d1ceb2e15b4446fcecdf4be17ed59b02f5b35d8c98c94e7eaadf10591e/deno-2.7.11-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:58eea29d18fe8f80f2a4354d96225a31961ed3fa68336a7fcdd6add331df6acd", size = 50418090, upload-time = "2026-04-01T12:48:10.84Z" },
+    { url = "https://files.pythonhosted.org/packages/b6/8d/7a801d85a0a8233d00ea1a381fd32e76c81be9db78ada162e211e7619221/deno-2.7.11-py3-none-win_amd64.whl", hash = "sha256:e2b69676e52543153b82e926f558983f9251db2251474f3225301cf7aca05a2b", size = 49417475, upload-time = "2026-04-01T12:48:14.158Z" },
 ]
 
 [[package]]
@@ -357,78 +384,30 @@ name = "gdansk"
 version = "0.1.0"
 source = { editable = "../../" }
 dependencies = [
-    { name = "gdansk-bundler" },
-    { name = "gdansk-lightningcss" },
-    { name = "gdansk-runtime" },
-    { name = "gdansk-vite" },
+    { name = "asyncer" },
+    { name = "deno" },
     { name = "mcp" },
     { name = "minijinja" },
+    { name = "watchfiles" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "gdansk-bundler", editable = "../../packages/gdansk-bundler" },
-    { name = "gdansk-lightningcss", editable = "../../packages/gdansk-lightningcss" },
-    { name = "gdansk-runtime", editable = "../../packages/gdansk-runtime" },
-    { name = "gdansk-vite", editable = "../../packages/gdansk-vite" },
+    { name = "asyncer", specifier = ">=0.0.17" },
+    { name = "deno", specifier = ">=2.7,<3" },
     { name = "mcp", git = "https://github.com/modelcontextprotocol/python-sdk.git?rev=main" },
     { name = "minijinja", specifier = ">=2,<3" },
+    { name = "watchfiles", specifier = ">=1.1.1" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "anyio", specifier = ">=4" },
-    { name = "gdansk-bundler", editable = "../../packages/gdansk-bundler" },
-    { name = "gdansk-lightningcss", editable = "../../packages/gdansk-lightningcss" },
-    { name = "gdansk-runtime", editable = "../../packages/gdansk-runtime" },
-    { name = "gdansk-vite", editable = "../../packages/gdansk-vite" },
     { name = "prek", specifier = ">=0.3.6" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "ruff", specifier = ">=0.15.1" },
     { name = "rumdl", specifier = ">=0.1.21" },
     { name = "ty", specifier = ">=0.0.17" },
-]
-
-[[package]]
-name = "gdansk-bundler"
-version = "0.1.0"
-source = { editable = "../../packages/gdansk-bundler" }
-
-[[package]]
-name = "gdansk-lightningcss"
-version = "0.1.0"
-source = { editable = "../../packages/gdansk-lightningcss" }
-dependencies = [
-    { name = "gdansk-bundler" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "gdansk-bundler", editable = "../../packages/gdansk-bundler" }]
-
-[[package]]
-name = "gdansk-runtime"
-version = "0.1.0"
-source = { editable = "../../packages/gdansk-runtime" }
-dependencies = [
-    { name = "pydantic" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "pydantic", specifier = ">=2,<3" }]
-
-[[package]]
-name = "gdansk-vite"
-version = "0.1.0"
-source = { editable = "../../packages/gdansk-vite" }
-dependencies = [
-    { name = "gdansk-bundler" },
-    { name = "gdansk-runtime" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "gdansk-bundler", editable = "../../packages/gdansk-bundler" },
-    { name = "gdansk-runtime", editable = "../../packages/gdansk-runtime" },
 ]
 
 [[package]]
@@ -1161,6 +1140,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/58/15/8b3609fd3830ef7b27b655beb4b4e9c62313a4e8da8c676e142cc210d58e/shellingham-1.5.4.tar.gz", hash = "sha256:8dbca0739d487e5bd35ab3ca4b36e11c4078f3a234bfce294b0a0291363404de", size = 10310, upload-time = "2023-10-24T04:13:40.426Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e0/f9/0595336914c5619e5f28a1fb793285925a8cd4b432c9da0a987836c7f822/shellingham-1.5.4-py2.py3-none-any.whl", hash = "sha256:7ecfff8f2fd72616f7481040475a65b2bf8af90a56c89140852d1120324e8686", size = 9755, upload-time = "2023-10-24T04:13:38.866Z" },
+]
+
+[[package]]
+name = "sniffio"
+version = "1.3.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a2/87/a6771e1546d97e7e041b6ae58d80074f81b7d5121207425c964ddf5cfdbd/sniffio-1.3.1.tar.gz", hash = "sha256:f4324edc670a0f49750a81b895f35c3adb843cca46f0530f79fc1babb23789dc", size = 20372, upload-time = "2024-02-25T23:20:04.057Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e9/44/75a9c9421471a6c4805dbf2356f7c181a29c1879239abab1ea2cc8f38b40/sniffio-1.3.1-py3-none-any.whl", hash = "sha256:2f6da418d1f1e0fddd844478f41680e794e6051915791a034ff65e5f100525a2", size = 10235, upload-time = "2024-02-25T23:20:01.196Z" },
 ]
 
 [[package]]
