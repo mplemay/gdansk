@@ -26,8 +26,6 @@ if TYPE_CHECKING:
 type PathType = str | PathLike[str]
 type RuntimeMode = Literal["development", "production"]
 
-DEFAULT_RUNTIME_HOST: Final[str] = "127.0.0.1"
-DEFAULT_RUNTIME_PORT: Final[int] = 13714
 MAX_RUNTIME_PORT: Final[int] = 65535
 RUNTIME_ENDPOINT: Final[str] = "/__gdansk_runtime"
 
@@ -88,8 +86,8 @@ class Ship:
         self,
         views: PathType,
         *,
-        host: str = DEFAULT_RUNTIME_HOST,
-        port: int = DEFAULT_RUNTIME_PORT,
+        host: str = "127.0.0.1",
+        port: int = 13714,
         metadata: Metadata | None = None,
         client: AsyncClient | None = None,
     ) -> None:
