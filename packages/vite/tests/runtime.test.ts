@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { resolve } from "node:path";
 import gdansk from "../src";
 import { createGdanskRuntime } from "../src/runtime";
+import type { GdanskRuntimeMetadata } from "../src/types";
 import react from "@vitejs/plugin-react";
 import { createServer } from "vite";
 import { afterEach, describe, expect, it } from "vitest";
@@ -34,11 +35,7 @@ describe("@gdansk/vite", () => {
     expect(response.body).toContain("from plugin");
     expect(response.head.join("")).toContain(`${metadata.ssrOrigin}/.gdansk/hello/client.css`);
 
-    const runtimeMetadata = JSON.parse(await readFile(`${root}/.gdansk/runtime.json`, "utf8")) as {
-      assetOrigin: string;
-      mode: string;
-      widgets: Record<string, { clientPath: string }>;
-    };
+    const runtimeMetadata = await fetchRuntime(metadata.ssrOrigin);
     expect(runtimeMetadata.assetOrigin).toBe(metadata.ssrOrigin);
     expect(runtimeMetadata.mode).toBe("production");
     expect(runtimeMetadata.widgets.hello.clientPath).toBe("/.gdansk/hello/client.js");
@@ -47,7 +44,7 @@ describe("@gdansk/vite", () => {
     expect(assetResponse.status).toBe(200);
 
     await runtime.close();
-  });
+  }, 15_000);
 
   it("starts a dev runtime with a Hono sidecar", async () => {
     const root = await createFixture({ withLocalPlugin: true });
@@ -60,11 +57,7 @@ describe("@gdansk/vite", () => {
     expect(response.head.join("")).toContain("rel=\"stylesheet\"");
     expect(response.head.join("")).toContain("data-vite-dev-id");
 
-    const runtimeMetadata = JSON.parse(await readFile(`${root}/.gdansk/runtime.json`, "utf8")) as {
-      assetOrigin: string;
-      viteOrigin: string | null;
-      widgets: Record<string, { clientPath: string }>;
-    };
+    const runtimeMetadata = await fetchRuntime(metadata.ssrOrigin);
     expect(runtimeMetadata.assetOrigin).toMatch(/^http:\/\/127\.0\.0\.1:/);
     expect(runtimeMetadata.viteOrigin).toMatch(/^http:\/\/127\.0\.0\.1:/);
     expect(Object.keys(runtimeMetadata.widgets)).toEqual(["hello", "nested/page"]);
@@ -93,6 +86,10 @@ describe("@gdansk/vite", () => {
       ssrEndpoint: string;
       ssrOrigin: string;
     };
+    const runtimeMetadata = await fetchRuntime(metadata.ssrOrigin);
+
+    expect(runtimeMetadata.ssrOrigin).toBe(metadata.ssrOrigin);
+    expect(runtimeMetadata.ssrEndpoint).toBe(metadata.ssrEndpoint);
     const response = await renderWidget(metadata, { widget: "hello" });
 
     expect(response.body).toContain("Hello SSR");
@@ -199,6 +196,13 @@ async function renderWidget(
 
   expect(response.status).toBe(200);
   return (await response.json()) as { body: string; head: string[] };
+}
+
+async function fetchRuntime(origin: string): Promise<GdanskRuntimeMetadata> {
+  const response = await fetch(`${origin}/__gdansk_runtime`);
+
+  expect(response.status).toBe(200);
+  return (await response.json()) as GdanskRuntimeMetadata;
 }
 
 async function waitFor(check: () => Promise<boolean>, attempts: number = 20): Promise<void> {

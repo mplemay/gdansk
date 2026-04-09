@@ -11,8 +11,15 @@ if TYPE_CHECKING:
 
 
 class FakeResponse:
-    def __init__(self, *, body: str, head: list[str], status_code: int = 200) -> None:
-        self._payload = {"body": body, "head": head}
+    def __init__(
+        self,
+        *,
+        body: str = "",
+        head: list[str] | None = None,
+        payload: dict[str, Any] | None = None,
+        status_code: int = 200,
+    ) -> None:
+        self._payload = payload if payload is not None else {"body": body, "head": head or []}
         self.status_code = status_code
         self.text = "ok"
 
@@ -23,6 +30,22 @@ class FakeResponse:
 class FakeClient:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, str]]] = []
+        self.get_calls: list[tuple[str, float | None]] = []
+        self.runtime_payload: dict[str, Any] = {
+            "assetOrigin": "http://assets.test",
+            "mode": "development",
+            "ssrEndpoint": "/__gdansk_ssr",
+            "ssrOrigin": "http://ssr.test",
+            "viteOrigin": "http://vite.test",
+            "widgets": {
+                "hello": {"clientPath": "/.gdansk-src/hello/client.tsx"},
+            },
+        }
+
+    async def get(self, url: str, **kwargs: float | None) -> FakeResponse:
+        timeout = kwargs.get("timeout")
+        self.get_calls.append((url, timeout))
+        return FakeResponse(payload=self.runtime_payload)
 
     async def post(self, url: str, *, json: dict[str, str]) -> FakeResponse:
         self.calls.append((url, json))
@@ -30,6 +53,10 @@ class FakeClient:
             body="<main>Hello from SSR</main>",
             head=['<meta name="robots" content="noindex" />'],
         )
+
+
+class FakeProcess:
+    returncode: int | None = None
 
 
 @pytest.fixture
@@ -45,6 +72,19 @@ def test_widget_rejects_missing_widget_file(views_path: Path):
 
     with pytest.raises(FileNotFoundError, match="is not a file"):
         ship.widget(path=Path("missing/widget.tsx"))
+
+
+async def test_wait_for_runtime_reads_endpoint(views_path: Path):
+    client = FakeClient()
+    ship = Ship(views=views_path, client=cast("AsyncClient", client))
+    ship._frontend = cast("Any", FakeProcess())
+    ship._runtime_origin = "http://runtime.test"
+
+    runtime = await ship._wait_for_runtime()
+
+    assert client.get_calls == [("http://runtime.test/__gdansk_runtime", 0.2)]
+    assert runtime.asset_origin == "http://assets.test"
+    assert runtime.vite_origin == "http://vite.test"
 
 
 async def test_widget_resource_renders_complete_document(views_path: Path):

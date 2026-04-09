@@ -45,14 +45,16 @@ export function gdansk(options: GdanskPluginOptions = {}): Plugin {
     async configureServer(server) {
       const resolvedOptions = resolved ?? resolveOptions(options, server.config.root);
       const { startSSRSidecar } = await import("./sidecar");
+      let metadata: GdanskRuntimeMetadata | undefined;
       const sidecar = await startSSRSidecar({
         mode: "development",
         options: resolvedOptions,
+        getRuntime: () => metadata,
         viteServer: server,
         widgets,
       });
 
-      const metadata: GdanskRuntimeMetadata = {
+      metadata = {
         assetOrigin: resolveViteOrigin(server),
         mode: "development",
         ssrEndpoint: resolvedOptions.ssrEndpoint,

@@ -78,14 +78,16 @@ class GdanskRuntimeImpl implements GdanskRuntime {
     );
     await this.#viteServer.listen();
 
+    let metadata: GdanskRuntimeMetadata | undefined;
     this.#sidecar = await startSSRSidecar({
       mode: "development",
       options: this.options,
       viteServer: this.#viteServer,
       widgets: this.widgets,
+      getRuntime: () => metadata,
     });
 
-    const metadata: GdanskRuntimeMetadata = {
+    metadata = {
       assetOrigin: resolveViteOrigin(this.#viteServer),
       mode: "development",
       ssrEndpoint: this.options.ssrEndpoint,
@@ -104,14 +106,16 @@ class GdanskRuntimeImpl implements GdanskRuntime {
     await this.refreshWidgets();
 
     this.#manifest = this.#manifest ?? (await this.loadOrBuildManifest());
+    let metadata: GdanskRuntimeMetadata | undefined;
     this.#sidecar = await startSSRSidecar({
       manifest: this.#manifest,
       mode: "production",
       options: this.options,
+      getRuntime: () => metadata,
       widgets: this.widgets,
     });
 
-    const metadata: GdanskRuntimeMetadata = {
+    metadata = {
       assetOrigin: this.#sidecar.origin,
       mode: "production",
       ssrEndpoint: this.options.ssrEndpoint,

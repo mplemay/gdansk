@@ -1,18 +1,18 @@
 from __future__ import annotations
 
+import socket
 from asyncio import sleep
 from asyncio.subprocess import DEVNULL, PIPE, Process, create_subprocess_exec
 from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from http import HTTPStatus
-from json import JSONDecodeError
-from os import PathLike
+from os import PathLike, environ
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Final, Literal
 from urllib.parse import urlparse, urlunparse
 
-from httpx import AsyncClient
+from httpx import AsyncClient, RequestError
 from mcp.server.mcpserver.resources import FunctionResource
 from mcp.server.mcpserver.tools.base import Tool
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -28,6 +28,8 @@ type PathType = str | PathLike[str]
 type RuntimeMode = Literal["development", "production"]
 
 VITE_VERSION: Final[str] = "8.0.3"
+RUNTIME_ENDPOINT: Final[str] = "/__gdansk_runtime"
+RUNTIME_HOST: Final[str] = "127.0.0.1"
 
 
 class RuntimeWidget(BaseModel):
@@ -92,6 +94,8 @@ class Ship:
 
         self._frontend: Process | None = None
         self._runtime: FrontendRuntime | None = None
+        self._runtime_origin: str | None = None
+        self._runtime_port: int | None = None
         self._widget_manager: dict[Path, WidgetSpec] = {}
 
     @asynccontextmanager
@@ -237,10 +241,11 @@ class Ship:
 
         return self._runtime
 
-    async def _run_build(self) -> None:
+    async def _run_build(self, *, env: Mapping[str, str] | None = None) -> None:
         proc = await create_subprocess_exec(
             *self._deno_command("run", "-A", "--node-modules-dir=auto", f"npm:vite@{VITE_VERSION}", "build"),
             cwd=self._views,
+            env=env,
             stdin=DEVNULL,
             stdout=PIPE,
             stderr=PIPE,
@@ -262,11 +267,15 @@ class Ship:
         await self._stop_frontend()
 
         self._runtime_path.unlink(missing_ok=True)
+        # Pin the sidecar port so the Python process can poll the runtime endpoint directly.
+        self._runtime_port = self._reserve_runtime_port()
+        self._runtime_origin = f"http://{RUNTIME_HOST}:{self._runtime_port}"
+        env = self._runtime_environment(self._runtime_port)
 
         if dev:
             command = self._deno_command("run", "-A", "--node-modules-dir=auto", f"npm:vite@{VITE_VERSION}", "dev")
         else:
-            await self._run_build()
+            await self._run_build(env=env)
             server_path = self._views / ".gdansk" / "server.js"
             if not server_path.is_file():
                 msg = f"Expected a production server entry at {server_path}"
@@ -274,19 +283,26 @@ class Ship:
 
             command = self._deno_command("run", "-A", "--node-modules-dir=auto", str(server_path))
 
-        self._frontend = await create_subprocess_exec(
-            *command,
-            cwd=self._views,
-            stdin=DEVNULL,
-            stdout=DEVNULL,
-            stderr=DEVNULL,
-        )
-        self._runtime = await self._wait_for_runtime()
-        self._validate_runtime()
+        try:
+            self._frontend = await create_subprocess_exec(
+                *command,
+                cwd=self._views,
+                env=env,
+                stdin=DEVNULL,
+                stdout=DEVNULL,
+                stderr=DEVNULL,
+            )
+            self._runtime = await self._wait_for_runtime()
+            self._validate_runtime()
+        except Exception:
+            await self._stop_frontend()
+            raise
 
     async def _stop_frontend(self) -> None:
         self._runtime = None
         self._runtime_path.unlink(missing_ok=True)
+        self._runtime_origin = None
+        self._runtime_port = None
 
         if self._frontend is None:
             return
@@ -304,27 +320,34 @@ class Ship:
         self._frontend = None
 
     async def _wait_for_runtime(self) -> FrontendRuntime:
-        if self._frontend is None:
+        if self._frontend is None or self._runtime_origin is None:
             msg = "The frontend process has not been started"
             raise RuntimeError(msg)
 
-        for _ in range(400):
-            if self._runtime_path.is_file():
-                try:
-                    return FrontendRuntime.model_validate_json(self._runtime_path.read_text(encoding="utf-8"))
-                except (JSONDecodeError, OSError, TypeError, ValueError):
-                    pass
+        runtime_url = _join_url(self._runtime_origin, RUNTIME_ENDPOINT)
 
+        for _ in range(1200):
             if self._frontend.returncode is not None:
                 msg = (
-                    "The frontend process exited before it wrote runtime metadata "
+                    "The frontend process exited before the runtime endpoint became available "
                     f"(exit code {self._frontend.returncode})"
                 )
                 raise RuntimeError(msg)
 
+            try:
+                response = await self._client.get(runtime_url, timeout=0.2)
+            except RequestError:
+                pass
+            else:
+                if response.status_code == HTTPStatus.OK:
+                    try:
+                        return FrontendRuntime.model_validate(response.json())
+                    except (TypeError, ValueError):
+                        pass
+
             await sleep(0.05)
 
-        msg = f"The frontend runtime did not start in time ({self._runtime_path})"
+        msg = f"The frontend runtime did not start in time ({runtime_url})"
         raise RuntimeError(msg)
 
     def _validate_runtime(self) -> None:
@@ -352,6 +375,17 @@ class Ship:
 
     def _deno_command(self, *args: str) -> tuple[str, ...]:
         return ("uv", "run", "deno", *args)
+
+    def _runtime_environment(self, port: int) -> dict[str, str]:
+        env = dict(environ)
+        env["GDANSK_HOST"] = RUNTIME_HOST
+        env["GDANSK_SSR_PORT"] = str(port)
+        return env
+
+    def _reserve_runtime_port(self) -> int:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind((RUNTIME_HOST, 0))
+            return sock.getsockname()[1]
 
 
 def _join_url(origin: str, path: str) -> str:

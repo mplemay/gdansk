@@ -62,6 +62,7 @@ export interface GdanskRenderResponse {
     head: string[];
 }
 export interface GdanskSidecarOptions {
+    getRuntime?: () => GdanskRuntimeMetadata | undefined;
     manifest?: GdanskManifest;
     mode: "development" | "production";
     options: ResolvedGdanskOptions;

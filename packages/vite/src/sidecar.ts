@@ -17,10 +17,26 @@ import type {
   WidgetDefinition,
 } from "./types";
 
+const RUNTIME_ENDPOINT = "/__gdansk_runtime";
+
 export async function startSSRSidecar(options: GdanskSidecarOptions): Promise<GdanskSidecarHandle> {
   const app = new Hono();
   const widgetMap = new Map(options.widgets.map((widget) => [widget.key, widget]));
   const outDirPrefix = `/${options.options.outDir.replace(/^\/+/, "")}`;
+
+  // The Python host polls this route until the runtime metadata is populated.
+  app.get(RUNTIME_ENDPOINT, (c) => {
+    const runtime = options.getRuntime?.();
+
+    if (!runtime) {
+      return c.json(
+        { error: { message: "Frontend runtime metadata is not ready yet", type: "runtime_not_ready" } },
+        503,
+      );
+    }
+
+    return c.json(runtime);
+  });
 
   app.post(options.options.ssrEndpoint, async (c) => {
     let payload: GdanskRenderRequest;

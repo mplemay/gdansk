@@ -19,7 +19,7 @@ export function resolveOptions(
   const widgetsRoot = options.widgetsRoot ?? "widgets";
   const outDir = (options.outDir ?? ".gdansk").replace(/\/+$/, "");
   const generatedDir = `${outDir}-src`;
-  const host = options.host ?? "127.0.0.1";
+  const host = process.env.GDANSK_HOST?.trim() || options.host || "127.0.0.1";
   const ssrEndpoint = options.ssrEndpoint?.startsWith("/") ? options.ssrEndpoint : `/${options.ssrEndpoint ?? "__gdansk_ssr"}`;
 
   return {
@@ -30,7 +30,7 @@ export function resolveOptions(
     outDirPath: resolve(root, outDir),
     root,
     ssrEndpoint,
-    ssrPort: options.ssrPort,
+    ssrPort: readPort(process.env.GDANSK_SSR_PORT) ?? options.ssrPort,
     vitePort: options.vitePort,
     widgetsRoot,
     widgetsRootPath: resolve(root, widgetsRoot),
@@ -193,6 +193,24 @@ async function normalizePlugins(plugins: PluginOption | PluginOption[] | undefin
 
 function toPublicPath(path: string): string {
   return `/${path.replace(/^\/+/, "")}`;
+}
+
+function readPort(value: string | undefined): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const normalized = value.trim();
+  if (normalized === "") {
+    return undefined;
+  }
+
+  const port = Number(normalized);
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    return undefined;
+  }
+
+  return port;
 }
 
 async function writeClientEntry(widget: WidgetDefinition): Promise<void> {
