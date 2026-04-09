@@ -20,8 +20,12 @@ jobs:
       - name: Install python dependencies
         run: uv sync --all-groups --all-extras --all-packages
 
+      - uses: denoland/setup-deno@v2
+        with:
+          cache: true
+
       - name: Install deno dependencies
-        run: uv run deno install
+        run: deno install
 
       - uses: j178/prek-action@v1
 
