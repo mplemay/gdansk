@@ -9,7 +9,6 @@
     "npm:hono@^4.12.12": "4.12.12",
     "npm:react-dom@19": "19.2.5_react@19.2.5",
     "npm:react@19": "19.2.5",
-    "npm:tinyglobby@~0.2.15": "0.2.16",
     "npm:typescript@~6.0.2": "6.0.2",
     "npm:vite@^8.0.4": "8.0.7_@types+node@24.12.2_esbuild@0.27.7",
     "npm:vitest@^4.1.2": "4.1.4_@types+node@24.12.2_vite@8.0.7__@types+node@24.12.2__esbuild@0.27.7_esbuild@0.27.7"
@@ -699,7 +698,6 @@
         "npm:hono@^4.12.12",
         "npm:react-dom@19",
         "npm:react@19",
-        "npm:tinyglobby@~0.2.15",
         "npm:typescript@~6.0.2",
         "npm:vite@^8.0.4",
         "npm:vitest@^4.1.2"

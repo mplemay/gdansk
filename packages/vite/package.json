@@ -21,11 +21,13 @@
     "dev": "vite build --watch",
     "test": "node ./node_modules/vitest/vitest.mjs run"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "dependencies": {
     "@hono/node-server": "^1.19.13",
     "@vitejs/plugin-react": "^6.0.1",
-    "hono": "^4.12.12",
-    "tinyglobby": "^0.2.15"
+    "hono": "^4.12.12"
   },
   "peerDependencies": {
     "react": "^19.0.0",

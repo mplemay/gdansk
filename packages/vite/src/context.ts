@@ -1,7 +1,6 @@
-import { access } from "node:fs/promises";
+import { access, glob as globIterate } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
-import { glob } from "tinyglobby";
 import type { Plugin } from "vite";
 import type { GdanskPluginOptions, ProjectPlugin, ResolvedGdanskOptions, WidgetDefinition } from "./types";
 
@@ -28,11 +27,21 @@ export function resolveOptions(
   };
 }
 
+async function globPaths(
+  pattern: string,
+  options: { absolute?: boolean; cwd: string },
+): Promise<string[]> {
+  const { cwd, absolute = false } = options;
+  const matches: string[] = [];
+  for await (const entry of globIterate(pattern, { cwd })) {
+    matches.push(absolute ? resolve(cwd, entry) : entry);
+  }
+  return matches;
+}
+
 export async function discoverWidgets(options: ResolvedGdanskOptions): Promise<WidgetDefinition[]> {
-  const entries = await glob("**/widget.{tsx,jsx}", {
-    absolute: false,
+  const entries = await globPaths("**/widget.{tsx,jsx}", {
     cwd: options.widgetsRootPath,
-    onlyFiles: true,
   });
 
   return entries
@@ -59,10 +68,9 @@ export async function loadProjectPlugins(options: ResolvedGdanskOptions): Promis
     return [];
   }
 
-  const pluginFiles = await glob("*.mjs", {
+  const pluginFiles = await globPaths("*.mjs", {
     absolute: true,
     cwd: pluginsPath,
-    onlyFiles: true,
   });
 
   const plugins: Plugin[] = [];
