@@ -108,12 +108,12 @@ class Ship:
             app._tool_manager._tools.setdefault(spec.tool.name, spec.tool)  # noqa: SLF001
             app.add_resource(resource=spec.resource)
 
-        await self._start_frontend(dev=dev)
+        await self.start(dev=dev)
 
         try:
             yield None
         finally:
-            await self._stop_frontend()
+            await self.stop()
 
     def widget(  # noqa: PLR0913
         self,
@@ -262,8 +262,8 @@ class Ship:
             msg = f"{msg}:\n{output}"
         raise RuntimeError(msg)
 
-    async def _start_frontend(self, *, dev: bool) -> None:
-        await self._stop_frontend()
+    async def start(self, *, dev: bool) -> None:
+        await self.stop()
 
         self._runtime_path.unlink(missing_ok=True)
         # Pin the sidecar port so the Python process can poll the runtime endpoint directly.
@@ -294,10 +294,10 @@ class Ship:
             self._runtime = await self._wait_for_runtime()
             self._validate_runtime()
         except Exception:
-            await self._stop_frontend()
+            await self.stop()
             raise
 
-    async def _stop_frontend(self) -> None:
+    async def stop(self) -> None:
         self._runtime = None
         self._runtime_path.unlink(missing_ok=True)
         self._runtime_origin = None
