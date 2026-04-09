@@ -65,6 +65,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: prepare_release
     if: needs.prepare_release.outputs.on_main == 'true'
+    environment:
+      name: NPM_TOKEN
     permissions:
       id-token: write
       contents: read
