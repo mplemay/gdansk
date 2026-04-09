@@ -248,6 +248,8 @@ pyrightconfig.json
 [Bb]in
 [Ii]nclude
 [Ll]ib
+!examples/shadcn/src/shadcn/views/lib/
+!examples/shadcn/src/shadcn/views/lib/**
 [Ll]ib64
 [Ll]ocal
 [Ss]cripts
