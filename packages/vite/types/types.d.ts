@@ -1,4 +1,4 @@
-import type { InlineConfig, UserConfig, ViteDevServer } from "vite";
+import type { InlineConfig, UserConfig } from "vite";
 export interface GdanskPluginOptions {
     root?: string;
     widgetsRoot?: string;
@@ -24,18 +24,17 @@ export interface WidgetDefinition {
     clientSource: string;
     entry: string;
     key: string;
-    serverEntry: string;
     widgetPath: string;
 }
 export interface ManifestWidget {
     client: string;
-    css: string | null;
+    css: string[];
     entry: string;
-    server: string;
 }
 export interface GdanskManifest {
     outDir: string;
     root: string;
+    server: string;
     widgets: Record<string, ManifestWidget>;
 }
 export interface GdanskRuntimeMetadata {
@@ -57,14 +56,18 @@ export interface GdanskRenderResponse {
     body: string;
     head: string[];
 }
-export interface GdanskSidecarOptions {
-    manifest?: GdanskManifest;
-    mode: "development" | "production";
-    options: ResolvedGdanskOptions;
-    viteServer?: ViteDevServer;
+export type GdanskRenderFunction = (widgetKey: string) => Promise<GdanskRenderResponse> | GdanskRenderResponse;
+export interface GdanskPreparedProject {
+    ssrEntry: string;
     widgets: WidgetDefinition[];
 }
-export interface GdanskSidecarHandle {
+export interface GdanskServerOptions {
+    manifest: GdanskManifest;
+    options: ResolvedGdanskOptions;
+    render: GdanskRenderFunction;
+    widgets: WidgetDefinition[];
+}
+export interface GdanskServerHandle {
     close(): Promise<void>;
     origin: string;
     port: number;

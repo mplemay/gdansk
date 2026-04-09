@@ -26,7 +26,7 @@ you combine sources in application code.
 
 ## Custom runtime host or port
 
-The default SSR sidecar address is `127.0.0.1:13714`. If you change it, keep Python and Vite in sync:
+The default frontend runtime address is `127.0.0.1:13714`. If you change it, keep Python and Vite in sync:
 
 ```python
 ship = Ship(views=views_path, host="127.0.0.1", port=14000)

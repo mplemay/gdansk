@@ -21,7 +21,7 @@ afterEach(async () => {
 });
 
 describe("@gdansk/vite", () => {
-  it("defaults the SSR sidecar to localhost on port 13714", () => {
+  it("defaults the frontend runtime to localhost on port 13714", () => {
     const options = resolveOptions({ root: process.cwd() });
 
     expect(options.host).toBe("127.0.0.1");
@@ -37,10 +37,10 @@ describe("@gdansk/vite", () => {
     expect(Object.keys(manifest.widgets)).toEqual(["hello", "nested/page"]);
     await expect(pathExists(`${root}/dist/hello/client.js`)).resolves.toBe(true);
     await expect(pathExists(`${root}/dist/hello/client.css`)).resolves.toBe(true);
-    await expect(pathExists(`${root}/dist/hello/server.js`)).resolves.toBe(true);
     await expect(pathExists(`${root}/dist/nested/page/client.js`)).resolves.toBe(true);
-    await expect(pathExists(`${root}/dist/nested/page/server.js`)).resolves.toBe(true);
+    await expect(pathExists(`${root}/dist/ssr.js`)).resolves.toBe(true);
     await expect(pathExists(`${root}/dist/server.js`)).resolves.toBe(true);
+    expect(manifest.server).toBe("dist/ssr.js");
 
     const metadata = await runtime.startProductionServer();
     const response = await renderWidget(metadata, { widget: "hello" });
@@ -59,7 +59,7 @@ describe("@gdansk/vite", () => {
     await runtime.close();
   }, 15_000);
 
-  it("starts a dev runtime with a Hono sidecar", async () => {
+  it("starts a dev runtime on a single Vite origin", async () => {
     const root = await createFixture({ withLocalPlugin: true });
     const runtime = await createGdanskRuntime({ root, port: 0 });
     const metadata = await runtime.startDev();
@@ -73,14 +73,15 @@ describe("@gdansk/vite", () => {
     const health = await fetchHealth(metadata.ssrOrigin);
     expect(health).toEqual({ status: "OK" });
     expect(metadata.ssrEndpoint).toBe("/ssr");
-    expect(metadata.viteOrigin).toBe("http://127.0.0.1:5173");
+    expect(metadata.viteOrigin).toBe(metadata.ssrOrigin);
+    expect(metadata.assetOrigin).toBe(metadata.ssrOrigin);
     expect(Object.keys(metadata.widgets)).toEqual(["hello", "nested/page"]);
     expect(metadata.widgets.hello.clientPath).toBe("/dist-src/hello/client.tsx");
 
     await runtime.close();
   });
 
-  it("exports a Vite plugin that starts the sidecar during dev", async () => {
+  it("exports a Vite plugin that serves health and SSR from the Vite dev server", async () => {
     const root = await createFixture({ withLocalPlugin: false });
     const server = await createServer({
       appType: "custom",
@@ -98,6 +99,7 @@ describe("@gdansk/vite", () => {
 
     expect(metadata).toBeDefined();
     expect(metadata?.ssrEndpoint).toBe("/ssr");
+    expect(metadata?.ssrOrigin).toBe(server.resolvedUrls?.local[0]?.replace(/\/$/, ""));
     expect(await fetchHealth(metadata!.ssrOrigin)).toEqual({ status: "OK" });
     const response = await renderWidget(metadata!, { widget: "hello" });
 

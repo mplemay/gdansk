@@ -139,8 +139,8 @@ async def test_widget_resource_renders_complete_document(views_path: Path):
     assert '<meta name="description" content="Widget description" />' in html
     assert '<meta name="robots" content="noindex" />' in html
     assert '<div id="root"><main>Hello from SSR</main></div>' in html
-    assert '<script type="module" src="http://127.0.0.1:5173/@vite/client"></script>' in html
-    assert '<script type="module" src="http://127.0.0.1:5173/dist-src/hello/client.tsx"></script>' in html
+    assert '<script type="module" src="http://ssr.test/@vite/client"></script>' in html
+    assert '<script type="module" src="http://ssr.test/dist-src/hello/client.tsx"></script>' in html
 
 
 async def test_widget_resource_renders_production_scripts(views_path: Path):
@@ -304,7 +304,7 @@ async def test_ship_context_open_cleans_up_runtime_on_start_failure(views_path: 
     assert ship._context._runtime_origin is None
 
 
-async def test_start_dev_uses_fixed_vite_port(views_path: Path, monkeypatch: pytest.MonkeyPatch):
+async def test_start_dev_uses_runtime_port(views_path: Path, monkeypatch: pytest.MonkeyPatch):
     captured_args: tuple[str, ...] | None = None
 
     async def fake_create_subprocess_exec(*args: str, **_kwargs: object) -> FakeManagedProcess:
@@ -315,7 +315,7 @@ async def test_start_dev_uses_fixed_vite_port(views_path: Path, monkeypatch: pyt
     async def fake_wait_for_health() -> None:
         return None
 
-    ship = Ship(views=views_path)
+    ship = Ship(views=views_path, port=43123)
     monkeypatch.setattr("gdansk.core.create_subprocess_exec", fake_create_subprocess_exec)
     monkeypatch.setattr(ship._context, "_wait_for_health", fake_wait_for_health)
 
@@ -334,7 +334,7 @@ async def test_start_dev_uses_fixed_vite_port(views_path: Path, monkeypatch: pyt
         "--host",
         "127.0.0.1",
         "--port",
-        "5173",
+        "43123",
         "--strictPort",
     )
 

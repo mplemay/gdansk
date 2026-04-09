@@ -1,7 +1,9 @@
 import type { Plugin, ViteDevServer } from "vite";
-import { buildWidgets } from "./build";
-import { ensureNoopEntry, loadUserViteConfig, prepareWidgets, resolveOptions } from "./context";
-import type { GdanskPluginOptions, ResolvedGdanskOptions, WidgetDefinition } from "./types";
+import { createBuildConfig } from "./build";
+import { prepareProject, resolveOptions } from "./context";
+import { resolveViteOrigin } from "./css";
+import { installDevSSRMiddleware } from "./ssr";
+import type { GdanskPluginOptions, GdanskPreparedProject, ResolvedGdanskOptions } from "./types";
 
 type GdanskDevServerMetadata = {
   ssrEndpoint: string;
@@ -13,8 +15,18 @@ type GdanskDevServer = ViteDevServer & {
 };
 
 export function gdansk(options: GdanskPluginOptions = {}): Plugin {
+  let prepared: GdanskPreparedProject | undefined;
+  let preparePromise: Promise<GdanskPreparedProject> | undefined;
   let resolved: ResolvedGdanskOptions | undefined;
-  let widgets: WidgetDefinition[] = [];
+
+  const ensurePrepared = (configRoot?: string): Promise<GdanskPreparedProject> => {
+    resolved = resolveOptions(options, configRoot);
+    preparePromise ??= prepareProject(resolved).then((result) => {
+      prepared = result;
+      return result;
+    });
+    return preparePromise;
+  };
 
   return {
     async config(config, env) {
@@ -26,76 +38,43 @@ export function gdansk(options: GdanskPluginOptions = {}): Plugin {
         };
       }
 
-      const noopEntry = await ensureNoopEntry(resolved);
+      const project = await ensurePrepared(config.root);
 
-      return {
-        appType: "custom",
-        build: {
-          copyPublicDir: false,
-          emptyOutDir: false,
-          outDir: resolved.outDir,
-          rollupOptions: {
-            input: noopEntry,
-            output: {
-              entryFileNames: "__gdansk_noop__.js",
-              inlineDynamicImports: true,
-            },
-          },
-        },
-      };
+      return createBuildConfig(resolved, project);
     },
     async configResolved(config) {
-      resolved = resolveOptions(options, config.root);
-      widgets = await prepareWidgets(resolved);
+      await ensurePrepared(config.root);
     },
     name: "@gdansk/vite",
     async configureServer(server) {
+      const project = prepared ?? (await ensurePrepared(server.config.root));
       const resolvedOptions = resolved ?? resolveOptions(options, server.config.root);
-      const { startSSRSidecar } = await import("./sidecar");
-      const sidecar = await startSSRSidecar({
-        mode: "development",
+
+      installDevSSRMiddleware({
         options: resolvedOptions,
-        viteServer: server,
-        widgets,
+        server,
+        ssrEntry: project.ssrEntry,
+        widgets: project.widgets,
       });
-      (server as GdanskDevServer).__gdansk = {
-        ssrEndpoint: resolvedOptions.ssrEndpoint,
-        ssrOrigin: sidecar.origin,
+
+      const updateMetadata = (): void => {
+        (server as GdanskDevServer).__gdansk = {
+          ssrEndpoint: resolvedOptions.ssrEndpoint,
+          ssrOrigin: resolveViteOrigin(server),
+        };
       };
 
-      attachCleanup(server, async () => {
-        await sidecar.close();
+      const clearMetadata = (): void => {
         delete (server as GdanskDevServer).__gdansk;
-      });
+      };
 
-      server.config.logger.info(`Gdansk SSR dev endpoint: ${sidecar.origin}${resolvedOptions.ssrEndpoint}`);
-    },
-    async closeBundle() {
-      if (!resolved) {
-        return;
+      if (server.httpServer?.listening) {
+        updateMetadata();
+      } else {
+        server.httpServer?.once("listening", updateMetadata);
       }
 
-      const config = await loadUserViteConfig(resolved, "build");
-      await buildWidgets(resolved, widgets, config);
+      server.httpServer?.once("close", clearMetadata);
     },
   };
-}
-
-function attachCleanup(server: ViteDevServer, callback: () => Promise<void>): void {
-  const httpServer = server.httpServer;
-
-  if (!httpServer) {
-    return;
-  }
-
-  let cleanedUp = false;
-
-  httpServer.once("close", () => {
-    if (cleanedUp) {
-      return;
-    }
-
-    cleanedUp = true;
-    callback().catch(() => {});
-  });
 }

@@ -28,7 +28,6 @@ if TYPE_CHECKING:
 type PathType = str | PathLike[str]
 
 DEV_GENERATED_DIR: Final[str] = "dist-src"
-DEV_VITE_PORT: Final[int] = 5173
 HEALTH_ENDPOINT: Final[str] = "/health"
 MAX_RUNTIME_PORT: Final[int] = 65535
 PRODUCTION_OUT_DIR: Final[str] = "dist"
@@ -111,10 +110,9 @@ class ShipContext:
             raise TypeError(msg) from e
 
         if self._dev:
-            vite_origin = f"http://{self._host}:{DEV_VITE_PORT}"
             scripts = [
-                join_url(vite_origin, "/@vite/client"),
-                join_url(vite_origin, f"/{DEV_GENERATED_DIR}/{widget_key}/client.tsx"),
+                join_url(runtime_origin, "/@vite/client"),
+                join_url(runtime_origin, f"/{DEV_GENERATED_DIR}/{widget_key}/client.tsx"),
             ]
         else:
             scripts = [join_url(runtime_origin, f"/{PRODUCTION_OUT_DIR}/{widget_key}/client.js")]
@@ -173,7 +171,7 @@ class ShipContext:
                 "--host",
                 self._host,
                 "--port",
-                str(DEV_VITE_PORT),
+                str(self._port),
                 "--strictPort",
             )
         else:

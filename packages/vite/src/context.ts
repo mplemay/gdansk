@@ -3,6 +3,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { loadConfigFromFile, mergeConfig } from "vite";
 import type { InlineConfig, Plugin, PluginOption } from "vite";
 import type {
+  GdanskPreparedProject,
   GdanskPluginOptions,
   LoadedProjectConfig,
   ResolvedGdanskOptions,
@@ -65,17 +66,9 @@ export async function discoverWidgets(options: ResolvedGdanskOptions): Promise<W
         clientSource: resolve(options.root, clientSource),
         entry: resolve(options.widgetsRootPath, entry),
         key,
-        serverEntry: toPosixPath(join(options.outDir, key, "server.js")),
         widgetPath,
       };
     });
-}
-
-export async function ensureNoopEntry(options: ResolvedGdanskOptions): Promise<string> {
-  const path = resolve(options.generatedDirPath, "__noop__.ts");
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, "export default null;\n");
-  return path;
 }
 
 export async function loadUserViteConfig(
@@ -104,10 +97,17 @@ export async function loadUserViteConfig(
   );
 }
 
-export async function prepareWidgets(options: ResolvedGdanskOptions): Promise<WidgetDefinition[]> {
+export async function prepareProject(options: ResolvedGdanskOptions): Promise<GdanskPreparedProject> {
   const widgets = await discoverWidgets(options);
   await Promise.all(widgets.map((widget) => writeClientEntry(widget)));
-  return widgets;
+
+  const ssrEntry = resolve(options.generatedDirPath, "__gdansk_ssr__.ts");
+  await writeSSRRenderEntry(ssrEntry, widgets);
+
+  return {
+    ssrEntry,
+    widgets,
+  };
 }
 
 export async function pathExists(path: string): Promise<boolean> {
@@ -185,6 +185,43 @@ async function writeClientEntry(widget: WidgetDefinition): Promise<void> {
       "  hydrateRoot(root, element);",
       "} else {",
       "  createRoot(root).render(element);",
+      "}",
+      "",
+    ].join("\n"),
+  );
+}
+
+async function writeSSRRenderEntry(path: string, widgets: WidgetDefinition[]): Promise<void> {
+  const imports = widgets.map((widget, index) => {
+    const specifier = createImportPath(path, widget.entry);
+    return `import Widget${index} from "${specifier}";`;
+  });
+
+  const widgetEntries = widgets.map((widget, index) => `  ${JSON.stringify(widget.key)}: Widget${index},`);
+
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(
+    path,
+    [
+      'import { createElement } from "react";',
+      'import { renderToString } from "react-dom/server";',
+      ...imports,
+      "",
+      "const widgets = {",
+      ...widgetEntries,
+      "} as const;",
+      "",
+      "export default async function renderWidget(widgetKey: string) {",
+      "  const component = widgets[widgetKey as keyof typeof widgets];",
+      "",
+      "  if (!component) {",
+      '    throw new Error(`Unknown widget: ${widgetKey}`);',
+      "  }",
+      "",
+      "  return {",
+      "    body: renderToString(createElement(component)),",
+      "    head: [],",
+      "  };",
       "}",
       "",
     ].join("\n"),
