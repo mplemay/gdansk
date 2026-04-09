@@ -33,7 +33,10 @@ Fail early on structure before writing feature code.
 - Confirm each UI entry point is `views/widgets/**/widget.tsx` or `views/widgets/**/widget.jsx`.
 - Confirm each widget component has a default export.
 - Confirm `views/vite.config.ts` imports `@gdansk/vite` and the framework plugins you need.
-- Confirm the frontend package has the Vite dependency available through `views/package.json` and/or `views/deno.json`.
+- Confirm the frontend package has the Vite dependency available through `views/package.json`.
+- Optional: `views/deno.json` may be a symlink to `node_modules/@gdansk/vite/deno.json` (the copy shipped with
+  `@gdansk/vite`) so Deno resolves the views directory as the config root; duplicate import maps in each app are
+  unnecessary.
   - If you are using Deno-managed installs, confirm `views/package.json` has:
   - `"type": "module"`
   - `"@modelcontextprotocol/ext-apps"`
