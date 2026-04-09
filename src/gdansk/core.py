@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal
 from httpx import AsyncClient, RequestError
 from mcp.server.mcpserver.resources import FunctionResource
 from mcp.server.mcpserver.tools.base import Tool
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import render_template
@@ -62,6 +62,13 @@ class FrontendRuntime(BaseModel):
             str(key): value for key, value in widgets_payload.items() if isinstance(value, (BaseModel, Mapping))
         }
         return normalized
+
+
+class GdanskRenderResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    body: str
+    head: list[str]
 
 
 @dataclass(slots=True, kw_only=True, frozen=True)
@@ -200,21 +207,11 @@ class Ship:
             msg = f'Failed to render widget "{spec.key}": {response.status_code} {response.text}'
             raise RuntimeError(msg)
 
-        payload = response.json()
-        if not isinstance(payload, Mapping):
+        try:
+            rendered = GdanskRenderResponse.model_validate_json(response.text)
+        except ValidationError as e:
             msg = f'Failed to render widget "{spec.key}": invalid SSR payload'
-            raise TypeError(msg)
-
-        head = payload.get("head")
-        body = payload.get("body")
-
-        if not isinstance(head, list) or not all(isinstance(fragment, str) for fragment in head):
-            msg = f'Failed to render widget "{spec.key}": invalid SSR head payload'
-            raise TypeError(msg)
-
-        if not isinstance(body, str):
-            msg = f'Failed to render widget "{spec.key}": invalid SSR body payload'
-            raise TypeError(msg)
+            raise TypeError(msg) from e
 
         scripts = [join_url(runtime.asset_origin, runtime_widget.client_path)]
         if runtime.mode == "development":
@@ -226,8 +223,8 @@ class Ship:
 
         return render_template(
             "base.html",
-            body=body,
-            head=head,
+            body=rendered.body,
+            head=rendered.head,
             metadata=spec.metadata,
             scripts=scripts,
         )

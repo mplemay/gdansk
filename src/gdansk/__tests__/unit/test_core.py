@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -18,10 +19,11 @@ class FakeResponse:
         head: list[str] | None = None,
         payload: dict[str, Any] | None = None,
         status_code: int = 200,
+        raw_text: str | None = None,
     ) -> None:
         self._payload = payload if payload is not None else {"body": body, "head": head or []}
         self.status_code = status_code
-        self.text = "ok"
+        self.text = raw_text if raw_text is not None else json.dumps(self._payload)
 
     def json(self) -> dict[str, Any]:
         return cast("dict[str, Any]", self._payload)
@@ -31,6 +33,7 @@ class FakeClient:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, str]]] = []
         self.get_calls: list[tuple[str, float | None]] = []
+        self.ssr_payload: dict[str, Any] | None = None
         self.runtime_payload: dict[str, Any] = {
             "assetOrigin": "http://assets.test",
             "mode": "development",
@@ -49,6 +52,8 @@ class FakeClient:
 
     async def post(self, url: str, *, json: dict[str, str]) -> FakeResponse:
         self.calls.append((url, json))
+        if self.ssr_payload is not None:
+            return FakeResponse(payload=self.ssr_payload)
         return FakeResponse(
             body="<main>Hello from SSR</main>",
             head=['<meta name="robots" content="noindex" />'],
@@ -120,6 +125,33 @@ async def test_widget_resource_renders_complete_document(views_path: Path):
     assert '<div id="root"><main>Hello from SSR</main></div>' in html
     assert '<script type="module" src="http://vite.test/@vite/client"></script>' in html
     assert '<script type="module" src="http://assets.test/.gdansk-src/hello/client.tsx"></script>' in html
+
+
+async def test_widget_resource_raises_on_invalid_ssr_payload(views_path: Path):
+    client = FakeClient()
+    client.ssr_payload = {"body": "<main>x</main>", "head": "not-a-list"}
+    ship = Ship(
+        views=views_path,
+        client=cast("AsyncClient", client),
+    )
+
+    @ship.widget(path=Path("hello/widget.tsx"), name="hello")
+    def hello() -> None:
+        return None
+
+    ship._runtime = FrontendRuntime(
+        assetOrigin="http://assets.test",
+        mode="development",
+        ssrEndpoint="/__gdansk_ssr",
+        ssrOrigin="http://ssr.test",
+        viteOrigin="http://vite.test",
+        widgets={
+            "hello": RuntimeWidget(clientPath="/.gdansk-src/hello/client.tsx"),
+        },
+    )
+
+    with pytest.raises(TypeError, match="invalid SSR payload"):
+        await ship._render_widget_page(Path("hello/widget.tsx"))
 
 
 async def test_run_build_uses_the_views_vite_entrypoint(views_path: Path, monkeypatch: pytest.MonkeyPatch):
