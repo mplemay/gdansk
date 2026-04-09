@@ -9,7 +9,7 @@ authors = [
 ]
 requires-python = ">=3.12,<3.15"
 dependencies = [
-    "deno>=2.7,<3",
+    "deno>=2.7.12,<3",
     "mcp>=1.25.1.dev114,<1.26",
     "minijinja>=2,<3",
     "pydantic>=2.12.5",
@@ -32,6 +32,7 @@ build-backend = "uv_build"
 
 [tool.uv]
 exclude-newer = "7 days"
+exclude-newer-package = { deno = false }
 
 [tool.uv.sources]
 mcp = { git = "https://github.com/modelcontextprotocol/python-sdk.git", rev = "main" }

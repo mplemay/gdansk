@@ -7,8 +7,11 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-04-02T18:49:24.131207Z"
+exclude-newer = "2026-04-02T20:45:34.668477Z"
 exclude-newer-span = "P7D"
+
+[options.exclude-newer-package]
+deno = false
 
 [[package]]
 name = "annotated-types"
@@ -183,15 +186,15 @@ wheels = [
 
 [[package]]
 name = "deno"
-version = "2.7.11"
+version = "2.7.12"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/d7/3f/a0477c72b847c0082ceb8885261eb14fb4addde22e8fb0146c011636979b/deno-2.7.11.tar.gz", hash = "sha256:342a656fca446fadc261ed22af35693b6c34e79129fa2bd387a1e5d39f496a99", size = 8167, upload-time = "2026-04-01T12:48:16.673Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5c/ac/39b45b51e7aaf9cad1de36f91bd58677818a7d7a867fa0721faff43b67c4/deno-2.7.12.tar.gz", hash = "sha256:7ef413693b4a9d86837a6f4991738429908f6f42f6f3ed85254ab0e679438049", size = 8167, upload-time = "2026-04-09T20:39:50.505Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d1/64/c8cb5a9c50135ada59b412b7511852d551d2618e169f48a8e7b8e90a382a/deno-2.7.11-py3-none-macosx_10_12_x86_64.whl", hash = "sha256:76aa633656b07f64cfda3aa94a1e16bc123034ba2fe676d23b179f8326728534", size = 47857669, upload-time = "2026-04-01T12:48:01.947Z" },
-    { url = "https://files.pythonhosted.org/packages/27/f3/250216e71e21cfc291ff6eb6503a479410ff927c9f97ebb644463c620692/deno-2.7.11-py3-none-macosx_11_0_arm64.whl", hash = "sha256:a1dd1ceb0c2109b54334a621503e5297d473f5c3e6702992dfa68d9b7cdf1177", size = 44607869, upload-time = "2026-04-01T12:48:05.23Z" },
-    { url = "https://files.pythonhosted.org/packages/01/51/b8fcb7d6882d659abd678f48fc5bc89aa0aa10f5a399fca3823680f277ca/deno-2.7.11-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:56578808c891d1daeadc279ac73445a24a83c2c721b37016fd92b1aa9224979b", size = 48394760, upload-time = "2026-04-01T12:48:08.049Z" },
-    { url = "https://files.pythonhosted.org/packages/a0/18/91d1ceb2e15b4446fcecdf4be17ed59b02f5b35d8c98c94e7eaadf10591e/deno-2.7.11-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:58eea29d18fe8f80f2a4354d96225a31961ed3fa68336a7fcdd6add331df6acd", size = 50418090, upload-time = "2026-04-01T12:48:10.84Z" },
-    { url = "https://files.pythonhosted.org/packages/b6/8d/7a801d85a0a8233d00ea1a381fd32e76c81be9db78ada162e211e7619221/deno-2.7.11-py3-none-win_amd64.whl", hash = "sha256:e2b69676e52543153b82e926f558983f9251db2251474f3225301cf7aca05a2b", size = 49417475, upload-time = "2026-04-01T12:48:14.158Z" },
+    { url = "https://files.pythonhosted.org/packages/77/f0/0be717182294e9b61e58cd89b88d1b711c7e9c134e53890474b8d1e95704/deno-2.7.12-py3-none-macosx_10_12_x86_64.whl", hash = "sha256:74677d1be23426b1f16ce33c1a96868bc7554e1d41a12fb4d446017bb1955d1d", size = 47683364, upload-time = "2026-04-09T20:39:35.086Z" },
+    { url = "https://files.pythonhosted.org/packages/8d/44/ca1de5368b193c9819c57d505ff8ceb86dc38e2e87856b23c23b58abd234/deno-2.7.12-py3-none-macosx_11_0_arm64.whl", hash = "sha256:acf94fa815ac84a948b196f53a7e088ed126ec2e390a25d92cdfdc8c5d8a851e", size = 44460697, upload-time = "2026-04-09T20:39:38.5Z" },
+    { url = "https://files.pythonhosted.org/packages/ce/68/ce111604f5877220e53fb10c5180ffaa484f829f20fcbc7f7115a90afadd/deno-2.7.12-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:ab7c12ee0e10cd232dbb8f7cf5802bfdbcc3462c0b1453726b158d8a27d4185f", size = 48237362, upload-time = "2026-04-09T20:39:41.555Z" },
+    { url = "https://files.pythonhosted.org/packages/d7/07/d8ba3284e098128076cd9f84e85d2e62d12fa1e5b8e5c47681983017af1a/deno-2.7.12-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:b396675fef296530c386387990d26d118398452bac47541e739b353b9ff8809f", size = 50247653, upload-time = "2026-04-09T20:39:44.956Z" },
+    { url = "https://files.pythonhosted.org/packages/07/b0/c6c215eca2aa54b700a95867901832245518b2f217edfc78e733401bf8b3/deno-2.7.12-py3-none-win_amd64.whl", hash = "sha256:ddeeb03427d7ce0979a395ae2d1aa5ebcddeb97ab0fd9e7dfa56a08e0e5b817c", size = 49200604, upload-time = "2026-04-09T20:39:48.218Z" },
 ]
 
 [[package]]
@@ -208,7 +211,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "deno", specifier = ">=2.7,<3" },
+    { name = "deno", specifier = ">=2.7.12,<3" },
     { name = "mcp", git = "https://github.com/modelcontextprotocol/python-sdk.git?rev=main" },
     { name = "minijinja", specifier = ">=2,<3" },
     { name = "pydantic", specifier = ">=2.12.5" },
