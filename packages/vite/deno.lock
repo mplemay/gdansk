@@ -6,8 +6,6 @@
     "npm:@types/react-dom@19": "19.2.3_@types+react@19.2.14",
     "npm:@types/react@19": "19.2.14",
     "npm:@vitejs/plugin-react@^6.0.1": "6.0.1_vite@8.0.7__@types+node@24.12.2__esbuild@0.27.7_@types+node@24.12.2_esbuild@0.27.7",
-    "npm:esbuild-node-externals@^1.20.1": "1.22.0_esbuild@0.27.7",
-    "npm:esbuild@~0.27.3": "0.27.7",
     "npm:hono@^4.12.12": "4.12.12",
     "npm:react-dom@19": "19.2.5_react@19.2.5",
     "npm:react@19": "19.2.5",
@@ -389,18 +387,8 @@
     "detect-libc@2.1.2": {
       "integrity": "sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ=="
     },
-    "empathic@2.0.0": {
-      "integrity": "sha512-i6UzDscO/XfAcNYD75CfICkmfLedpyPDdozrLMmQc5ORaQcdMoc21OnlEylMIqI7U8eniKrPMxxtj8k0vhmJhA=="
-    },
     "es-module-lexer@2.0.0": {
       "integrity": "sha512-5POEcUuZybH7IdmGsD8wlf0AI55wMecM9rVBTI/qEAy2c1kTOm3DjFYjrBdI2K3BaJjJYfYFeRtM0t9ssnRuxw=="
-    },
-    "esbuild-node-externals@1.22.0_esbuild@0.27.7": {
-      "integrity": "sha512-5MOqbBYAjGayiA6JPCDJ+QOvW1Xl6M9LlQbYMgwbE0DE/pv6NyXKzPzQhksU6lY1ZB8MWMn6Ov6IGooMAZnTyQ==",
-      "dependencies": [
-        "empathic",
-        "esbuild"
-      ]
     },
     "esbuild@0.27.7": {
       "integrity": "sha512-IxpibTjyVnmrIQo5aqNpCgoACA/dTKLTlhMHihVHhdkxKyPO1uBBthumT0rdHmcsk9uMonIWS0m4FljWzILh3w==",
@@ -708,8 +696,6 @@
         "npm:@types/react-dom@19",
         "npm:@types/react@19",
         "npm:@vitejs/plugin-react@^6.0.1",
-        "npm:esbuild-node-externals@^1.20.1",
-        "npm:esbuild@~0.27.3",
         "npm:hono@^4.12.12",
         "npm:react-dom@19",
         "npm:react@19",

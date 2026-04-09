@@ -16,9 +16,9 @@
     }
   },
   "scripts": {
-    "build": "node ./build.js && node ./node_modules/typescript/bin/tsc",
+    "build": "vite build && node ./node_modules/typescript/bin/tsc",
     "clean": "rm -rf dist types",
-    "dev": "node ./build.js --watch",
+    "dev": "vite build --watch",
     "test": "node ./node_modules/vitest/vitest.mjs run"
   },
   "dependencies": {
@@ -36,8 +36,6 @@
     "@types/node": "^24.10.13",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "esbuild": "^0.27.3",
-    "esbuild-node-externals": "^1.20.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "typescript": "~6.0.2",
