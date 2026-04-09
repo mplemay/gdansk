@@ -18,7 +18,7 @@ mcp = FastMCP("SSR Example Server")
 ship = Ship(mcp=mcp, views=Path(__file__).parent / "views", ssr=True)
 
 
-@ship.tool(name="hello-ssr", widget=Path("hello-ssr"))
+@ship.tool(name="hello-ssr", widget=Path("hello-ssr/widget.tsx"))
 def hello_ssr() -> list[TextContent]:
     """Return a static greeting rendered from the SSR example."""
     return [TextContent(type="text", text="Hello from the SSR example")]

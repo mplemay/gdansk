@@ -68,7 +68,7 @@ import uvicorn
 mcp = FastMCP("Hello World Server")
 ship = Ship(mcp=mcp, views=Path(__file__).parent / "views")
 
-@ship.tool(name="greet", widget=Path("hello"))
+@ship.tool(name="greet", widget=Path("hello/widget.tsx"))
 def greet(name: str) -> list[TextContent]:
     """Greet someone by name."""
     return [TextContent(type="text", text=f"Hello, {name}!")]

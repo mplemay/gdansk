@@ -99,7 +99,8 @@ class Ship:
             msg = f"The widget path (i.e. {path}) must be a relative path"
             raise ValueError(msg)
 
-        if any(part in {"", ".", ".."} for part in (posix := PurePosixPath(path.as_posix())).parts):
+        posix = PurePosixPath(path.as_posix())
+        if any(part in {"", ".", ".."} for part in posix.parts):
             msg = f"The widget path (i.e. {path}) must not contain traversal segments"
             raise ValueError(msg)
 

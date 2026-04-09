@@ -30,7 +30,7 @@ mcp = FastMCP("FastAPI Example Server", streamable_http_path="/")
 ship = Ship(mcp=mcp, views=Path(__file__).parent / "src/mount/views")
 
 
-@ship.tool(name="hello", widget=Path("hello"))
+@ship.tool(name="hello", widget=Path("hello/widget.tsx"))
 def hello(name: str = "world") -> list[TextContent]:
     """Return a greeting message."""
     return [TextContent(type="text", text=f"Hello, {name}!")]

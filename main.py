@@ -1,7 +1,4 @@
-"""Get Time MCP Server — returns the current time."""
-
 import importlib
-from datetime import UTC, datetime
 from pathlib import Path
 
 import uvicorn
@@ -15,19 +12,18 @@ try:
 except ImportError:
     FastMCP = importlib.import_module("mcp.server").MCPServer
 
-mcp = FastMCP("Get Time Server")
-ship = Ship(mcp=mcp, views=Path(__file__).parent / "views")
+mcp = FastMCP("SSR Example Server")
+ship = Ship(mcp=mcp, views=Path(__file__).parent / "views", ssr=True)
 
 
-@ship.tool(name="get-time", widget=Path("get-time/widget.tsx"))
-def get_time() -> list[TextContent]:
-    """Get the current server time in ISO 8601 format."""
-    time_str = datetime.now(tz=UTC).isoformat()
-    return [TextContent(type="text", text=time_str)]
+@ship.tool(name="hello-ssr", widget=Path("hello-ssr"))
+def hello_ssr() -> list[TextContent]:
+    """Return a static greeting rendered from the SSR example."""
+    return [TextContent(type="text", text="Hello from the SSR example")]
 
 
 def main() -> None:
-    """Run the development server for the get-time example."""
+    """Run the development server for the SSR example."""
     app = ship(dev=True)
     app.add_middleware(
         CORSMiddleware,
