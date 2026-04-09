@@ -1,9 +1,12 @@
+from asyncio import create_task
+from asyncio.subprocess import DEVNULL, create_subprocess_exec
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from os import PathLike
 from pathlib import Path, PurePosixPath
 from typing import Any, Final
 
+from deno import find_deno_bin
 from mcp.server import MCPServer
 from mcp.server.mcpserver.resources import FunctionResource
 from mcp.server.mcpserver.tools.base import Tool
@@ -28,11 +31,12 @@ class Ship:
         self._metadata: Final[Metadata] = metadata or Metadata()
         self._ssr: Final[bool] = ssr
 
+        self._deno: Final[Path] = Path(find_deno_bin()).resolve().absolute()
         self._registry: dict[Path, str] = {}
         self._widget_manager: dict[Path, tuple[Tool, FunctionResource]] = {}
 
     @asynccontextmanager
-    async def mcp(self, app: MCPServer, *, dev: bool = False) -> AsyncIterator[None]:  # noqa: ARG002
+    async def mcp(self, app: MCPServer, *, dev: bool = False) -> AsyncIterator[None]:
         # register the widgets
         for tool, resource in self._widget_manager.values():
             if tool.name in app._tool_manager._tools:  # noqa: SLF001
@@ -42,7 +46,23 @@ class Ship:
             app._tool_manager._tools[tool.name] = tool  # noqa: SLF001
             app.add_resource(resource=resource)
 
-        yield
+        args = ["run", "vite"]
+        args += ["dev"] if dev else ["build"]
+
+        proc = create_subprocess_exec(self._deno, *args, stdin=DEVNULL, stdout=DEVNULL, stderr=DEVNULL)
+
+        # production
+        if not dev:
+            await (await proc).wait()
+
+            args = ["run", "vite", "..."]
+            proc = create_subprocess_exec(self._deno, *args, stdin=DEVNULL, stdout=DEVNULL, stderr=DEVNULL)
+
+        task = await create_task(proc)
+
+        yield None
+
+        task.kill()
 
     def widget(  # noqa: PLR0913
         self,
