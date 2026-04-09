@@ -64,29 +64,28 @@ def test_delete_todo_errors_when_todo_not_found():
         todo_main.delete_todo("missing")
 
 
-async def test_list_tools_exposes_todo_output_schema():
-    tools = await todo_main.mcp.list_tools()
-    schemas = {tool.name: getattr(tool, "output_schema", getattr(tool, "outputSchema", None)) for tool in tools}
+async def test_mcp_list_tools_schemas_and_structured_calls():
+    async with todo_main.ship.mcp(app=todo_main.mcp, dev=True):
+        tools = await todo_main.mcp.list_tools()
+        schemas = {tool.name: getattr(tool, "output_schema", getattr(tool, "outputSchema", None)) for tool in tools}
 
-    for tool_name in ("list-todos", "add-todo", "toggle-todo", "delete-todo"):
-        schema = schemas[tool_name]
-        assert schema is not None
-        assert schema["type"] == "object"
-        assert "result" in schema["properties"]
+        for tool_name in ("list-todos", "add-todo", "toggle-todo", "delete-todo"):
+            schema = schemas[tool_name]
+            assert schema is not None
+            assert schema["type"] == "object"
+            assert "result" in schema["properties"]
 
+        structured = _structured_from_call_result(await todo_main.mcp.call_tool("list-todos", {}))
+        assert structured == {"result": []}
 
-async def test_mcp_call_tool_returns_structured_todos():
-    structured = _structured_from_call_result(await todo_main.mcp.call_tool("list-todos", {}))
-    assert structured == {"result": []}
+        structured = _structured_from_call_result(await todo_main.mcp.call_tool("add-todo", {"title": "Buy milk"}))
+        assert len(structured["result"]) == 1
+        assert structured["result"][0]["title"] == "Buy milk"
+        assert structured["result"][0]["completed"] is False
 
-    structured = _structured_from_call_result(await todo_main.mcp.call_tool("add-todo", {"title": "Buy milk"}))
-    assert len(structured["result"]) == 1
-    assert structured["result"][0]["title"] == "Buy milk"
-    assert structured["result"][0]["completed"] is False
+        todo_id = structured["result"][0]["id"]
+        structured = _structured_from_call_result(await todo_main.mcp.call_tool("toggle-todo", {"todo_id": todo_id}))
+        assert structured["result"][0]["completed"] is True
 
-    todo_id = structured["result"][0]["id"]
-    structured = _structured_from_call_result(await todo_main.mcp.call_tool("toggle-todo", {"todo_id": todo_id}))
-    assert structured["result"][0]["completed"] is True
-
-    structured = _structured_from_call_result(await todo_main.mcp.call_tool("delete-todo", {"todo_id": todo_id}))
-    assert structured == {"result": []}
+        structured = _structured_from_call_result(await todo_main.mcp.call_tool("delete-todo", {"todo_id": todo_id}))
+        assert structured == {"result": []}

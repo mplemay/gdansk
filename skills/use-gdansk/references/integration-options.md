@@ -1,92 +1,78 @@
 # Integration Options
 
-Use this file when the request goes beyond basic tool-page wiring.
+Use this file when the request goes beyond basic widget wiring.
 
 ## SSR options
 
 ### Global SSR default
 
-Enable SSR for all registered pages by default:
+Enable SSR for all registered widgets by default:
 
 ```python
-ship = Ship(mcp=mcp, views=views_path, ssr=True)
+ship = Ship(views=views_path, ssr=True)
 ```
 
-### Per-tool SSR override
+### Per-widget SSR override
 
-Override the global setting on specific tools:
+Override the global setting on specific widgets:
 
 ```python
-@ship.tool(widget=Path("reports"), ssr=True)
+@ship.widget(path=Path("reports/widget.tsx"), ssr=True)
 def reports():
     ...
 
-@ship.tool(widget=Path("settings"), ssr=False)
+@ship.widget(path=Path("settings/widget.tsx"), ssr=False)
 def settings():
     ...
 ```
 
 Behavior:
 
-- Tool-level `ssr` overrides constructor `ssr`.
+- Widget-level `ssr` overrides constructor `ssr`.
 - If effective SSR is `True`, server bundle is required.
 - If effective SSR is `False`, no server runtime execution occurs.
 
-## `cache_html` behavior
-
-Default:
-
-```python
-ship = Ship(mcp=mcp, views=views_path, cache_html=True)
-```
-
-With caching enabled, rendered HTML is reused until the bundle fingerprint changes:
-
-- client JS mtime/size
-- server JS mtime/size (if present)
-- CSS mtime/size (or presence change)
-
-Disable caching when HTML must be freshly rendered each request:
-
-```python
-ship = Ship(mcp=mcp, views=views_path, cache_html=False)
-```
-
 ## Metadata behavior
 
-Set global metadata on `Ship`:
+`Ship` accepts optional `metadata` using the `Metadata` shape from `gdansk.metadata` (a `TypedDict`).
 
 ```python
-ship = Ship(
-    mcp=mcp,
-    views=views_path,
-    metadata={
-        "title": "Root App",
-        "description": "Shared description",
-        "openGraph": {"title": "Shared OG"},
-    },
-)
+from gdansk import Ship
+from gdansk.metadata import Metadata
+
+meta: Metadata = {
+    "title": "Root App",
+    "description": "Shared description",
+    "openGraph": {"title": "Shared OG"},
+}
+
+ship = Ship(views=views_path, metadata=meta)
 ```
 
-Override per tool:
+Per-widget metadata can be passed to `@ship.widget` where supported in `core.py` (see that module for current kwargs).
+
+Merge semantics for metadata helpers (such as `merge_metadata` in `gdansk.metadata`) are shallow top-level merge when
+you combine sources in application code.
+
+## Plain MCP tools (no React UI)
+
+Register tools on the same `MCPServer` instance that you pass into `ship.mcp(app=...)`:
 
 ```python
-@ship.tool(
-    widget=Path("hello"),
-    metadata={"title": "Tool Title", "openGraph": {"title": "Tool OG"}},
-)
-def hello():
-    ...
+mcp = MCPServer(name="My Server", lifespan=lifespan)
+
+
+@mcp.tool(name="ping")
+def ping() -> str:
+    return "pong"
 ```
 
-Merge semantics are shallow top-level merge:
-
-- tool metadata replaces same top-level keys from constructor metadata
-- nested objects are replaced, not deep merged
+Use `mcp.add_tool(...)` if you prefer imperative registration.
 
 ## FastAPI mounting pattern
 
-When embedding MCP app in FastAPI, use `streamable_http_path="/"` and wire lifespan:
+When embedding the MCP Streamable HTTP app in FastAPI, use `streamable_http_path="/"` on the inner app and wire both
+lifespans:
 
 ```python
 from collections.abc import AsyncIterator
@@ -94,59 +80,47 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
-from mcp.server.fastmcp import FastMCP
+from mcp.server import MCPServer
 
 from gdansk import Ship
 
-mcp = FastMCP("FastAPI Example Server", streamable_http_path="/")
-ship = Ship(mcp=mcp, views=Path(__file__).parent / "views")
-mcp_app = ship(dev=True)
+ship = Ship(views=Path(__file__).parent / "views")
+
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+async def mcp_lifespan(app: MCPServer) -> AsyncIterator[None]:
+    async with ship.mcp(app=app, dev=True):
+        yield
+
+
+mcp = MCPServer(name="FastAPI Example Server", lifespan=mcp_lifespan)
+mcp_app = mcp.streamable_http_app(streamable_http_path="/")
+
+
+@asynccontextmanager
+async def lifespan(_: object) -> AsyncIterator[None]:
     async with mcp_app.router.lifespan_context(mcp_app):
         yield
+
 
 app = FastAPI(lifespan=lifespan)
 app.mount(path="/mcp", app=mcp_app)
 ```
 
-## Vite CSS plugins
+## Styling and Tailwind
 
-Attach a Vite plugin through `plugins`:
-
-```python
-from gdansk import Ship, VitePlugin, ViteScript
-
-ship = Ship(
-    mcp=mcp,
-    views=views_path,
-    plugins=[VitePlugin(script=ViteScript.from_file(views_path / "plugins" / "tailwind-wrapper.mjs"))],
-)
-```
-
-Use this pattern for Tailwind CSS or any other build-time CSS transform that can run as a Vite plugin.
-
-Requirements in `views/`:
-
-- install the adapter package dependencies, such as `@tailwindcss/vite` and `tailwindcss`
-- the `views` package must already have its regular bundling dependencies installed
-- the script should configure the Vite plugin itself, for example `export default tailwindcss()`
-
-Behavior summary:
-
-- `build`: runs matching Vite CSS transform hooks once after the bundle and can rewrite generated `.gdansk/**/*.css`
-- `watch` in dev: polls CSS outputs and re-runs the transforms when generated CSS changes
+Style widgets with normal frontend tooling in the `views` package (for example PostCSS, Tailwind, or component
+libraries). Install and configure those dependencies in `views/package.json`; gdansk does not ship a separate Vite
+plugin API in the public Python package.
 
 ## Decision matrix
 
 | Need | Option |
 | --- | --- |
-| Server-rendered initial HTML for all tools | `Ship(..., ssr=True)` |
-| Server-rendered initial HTML for one tool | `@ship.tool(..., ssr=True)` |
-| Force client-only rendering for one tool while global SSR is on | `@ship.tool(..., ssr=False)` |
-| Dynamic SSR output must not be cached | `Ship(..., cache_html=False)` |
-| Shared head metadata across tools | constructor `metadata=` |
-| Per-tool title or OG override | `@ship.tool(..., metadata=...)` |
-| Running inside existing FastAPI service | mount `mcp_app` + lifespan wrapper |
-| Tailwind CSS transform on generated CSS | add `plugins=[VitePlugin(script=ViteScript.from_file(...))]` |
+| Server-rendered initial HTML for all widgets | `Ship(..., ssr=True)` |
+| Server-rendered initial HTML for one widget | `@ship.widget(..., ssr=True)` |
+| Force client-only rendering for one widget while global SSR is on | `@ship.widget(..., ssr=False)` |
+| Shared head metadata across widgets | constructor `metadata=` (`gdansk.metadata.Metadata`) |
+| Per-widget title or OG override | `@ship.widget(..., metadata=...)` when supported |
+| Running inside existing FastAPI service | mount `mcp_app` + nested lifespan |
+| Tool without a React surface | `@mcp.tool` / `add_tool` on `MCPServer` |

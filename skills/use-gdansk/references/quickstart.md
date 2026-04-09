@@ -19,25 +19,42 @@ The `views` directory name is arbitrary: `Ship(..., views=...)` accepts any path
 ## Minimal Python server
 
 ```python
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
-from mcp.server.fastmcp import FastMCP
+from mcp.server import MCPServer
 from mcp.types import TextContent
+from starlette.middleware.cors import CORSMiddleware
 
 from gdansk import Ship
 
-mcp = FastMCP("Hello Server")
-ship = Ship(mcp=mcp, views=Path(__file__).parent / "views")
+ship = Ship(views=Path(__file__).parent / "views")
 
 
-@ship.tool(name="hello", widget=Path("hello"))
+@ship.widget(path=Path("hello/widget.tsx"), name="hello")
 def hello(name: str = "world") -> list[TextContent]:
     return [TextContent(type="text", text=f"Hello, {name}!")]
 
 
+@asynccontextmanager
+async def lifespan(app: MCPServer) -> AsyncIterator[None]:
+    async with ship.mcp(app=app, dev=True):
+        yield
+
+
+mcp = MCPServer(name="Hello Server", lifespan=lifespan)
+
+
 if __name__ == "__main__":
-    app = ship(dev=True)
+    app = mcp.streamable_http_app()
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     uvicorn.run(app, port=3001)
 ```
 
@@ -108,7 +125,7 @@ uv run python server.py
 SSR variant:
 
 ```python
-ship = Ship(mcp=mcp, views=Path(__file__).parent / "views", ssr=True)
+ship = Ship(views=Path(__file__).parent / "views", ssr=True)
 ```
 
 Run:
@@ -121,29 +138,41 @@ uv run python server.py
 FastAPI mount pattern:
 
 ```python
+import importlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
-from mcp.server.fastmcp import FastMCP
+from mcp.server import MCPServer
 from mcp.types import TextContent
 
 from gdansk import Ship
 
-mcp = FastMCP("FastAPI Example Server", streamable_http_path="/")
-ship = Ship(mcp=mcp, views=Path(__file__).parent / "views")
+FastAPI = importlib.import_module("fastapi").FastAPI
 
-@ship.tool(name="hello", widget=Path("hello"))
+ship = Ship(views=Path(__file__).parent / "views")
+
+
+@ship.widget(path=Path("hello/widget.tsx"), name="hello")
 def hello(name: str = "world") -> list[TextContent]:
     return [TextContent(type="text", text=f"Hello, {name}!")]
 
-mcp_app = ship(dev=True)
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+async def mcp_lifespan(app: MCPServer) -> AsyncIterator[None]:
+    async with ship.mcp(app=app, dev=True):
+        yield
+
+
+mcp = MCPServer(name="FastAPI Example Server", lifespan=mcp_lifespan)
+mcp_app = mcp.streamable_http_app(streamable_http_path="/")
+
+
+@asynccontextmanager
+async def lifespan(_: object) -> AsyncIterator[None]:
     async with mcp_app.router.lifespan_context(mcp_app):
         yield
+
 
 app = FastAPI(lifespan=lifespan)
 app.mount(path="/mcp", app=mcp_app)

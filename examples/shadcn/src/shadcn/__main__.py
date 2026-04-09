@@ -1,27 +1,19 @@
 """Shadcn todo example server."""
 
-import importlib
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
 import uvicorn
+from mcp.server import MCPServer
 from starlette.middleware.cors import CORSMiddleware
 
-from gdansk import Ship, VitePlugin, ViteScript
+from gdansk import Ship
 
-try:
-    FastMCP = importlib.import_module("mcp.server.fastmcp").FastMCP
-except ImportError:
-    FastMCP = importlib.import_module("mcp.server").MCPServer
-
-mcp = FastMCP("Todo Server")
 views_path = Path(__file__).parent / "views"
-ship = Ship(
-    mcp=mcp,
-    views=views_path,
-    plugins=[VitePlugin(script=ViteScript.from_file(views_path / "plugins" / "tailwind-wrapper.mjs"))],
-)
+ship = Ship(views=views_path)
 
 
 @dataclass(slots=True, kw_only=True)
@@ -49,10 +41,19 @@ def _get_todo(todo_id: str) -> Todo:
     raise ValueError(msg)
 
 
-@ship.tool(name="list-todos", widget=Path("todo/widget.tsx"), structured_output=True)
+@ship.widget(path=Path("todo/widget.tsx"), name="list-todos", structured_output=True)
 def list_todos() -> list[Todo]:
     """Return all todos."""
     return _serialize_todos()
+
+
+@asynccontextmanager
+async def lifespan(app: MCPServer) -> AsyncIterator[None]:  # noqa: D103
+    async with ship.mcp(app=app, dev=True):
+        yield
+
+
+mcp = MCPServer(name="Todo Server", lifespan=lifespan)
 
 
 @mcp.tool(name="add-todo", structured_output=True)
@@ -85,7 +86,7 @@ def delete_todo(todo_id: str) -> list[Todo]:
 
 def main() -> None:
     """Run the development server for the todo example."""
-    app = ship(dev=True)
+    app = mcp.streamable_http_app()
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],

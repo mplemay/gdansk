@@ -1,32 +1,37 @@
 """Server-side rendering example server."""
 
-import importlib
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
+from mcp.server import MCPServer
 from mcp.types import TextContent
 from starlette.middleware.cors import CORSMiddleware
 
 from gdansk import Ship
 
-try:
-    FastMCP = importlib.import_module("mcp.server.fastmcp").FastMCP
-except ImportError:
-    FastMCP = importlib.import_module("mcp.server").MCPServer
-
-mcp = FastMCP("SSR Example Server")
-ship = Ship(mcp=mcp, views=Path(__file__).parent / "views", ssr=True)
+ship = Ship(views=Path(__file__).parent / "views", ssr=True)
 
 
-@ship.tool(name="hello-ssr", widget=Path("hello-ssr/widget.tsx"))
+@ship.widget(name="hello-ssr", path=Path("hello-ssr/widget.tsx"))
 def hello_ssr() -> list[TextContent]:
     """Return a static greeting rendered from the SSR example."""
     return [TextContent(type="text", text="Hello from the SSR example")]
 
 
+@asynccontextmanager
+async def lifespan(app: MCPServer) -> AsyncIterator[None]:  # noqa: D103
+    async with ship.mcp(app=app, dev=True):
+        yield
+
+
+mcp = MCPServer(name="SSR Example Server", lifespan=lifespan)
+
+
 def main() -> None:
     """Run the development server for the SSR example."""
-    app = ship(dev=True)
+    app = mcp.streamable_http_app()
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
