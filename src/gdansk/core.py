@@ -6,15 +6,16 @@ from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from http import HTTPStatus
-from json import JSONDecodeError, loads
+from json import JSONDecodeError
 from os import PathLike
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Any, Final, Literal, cast
+from typing import TYPE_CHECKING, Any, Final, Literal
 from urllib.parse import urlparse, urlunparse
 
 from httpx import AsyncClient
 from mcp.server.mcpserver.resources import FunctionResource
 from mcp.server.mcpserver.tools.base import Tool
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import render_template
@@ -29,41 +30,38 @@ type RuntimeMode = Literal["development", "production"]
 VITE_VERSION: Final[str] = "8.0.3"
 
 
-@dataclass(slots=True, kw_only=True, frozen=True)
-class RuntimeWidget:
-    client_path: str
+class RuntimeWidget(BaseModel):
+    model_config = ConfigDict(frozen=True, populate_by_name=True)
+
+    client_path: str = Field(alias="clientPath")
 
 
-@dataclass(slots=True, kw_only=True, frozen=True)
-class FrontendRuntime:
-    asset_origin: str
+class FrontendRuntime(BaseModel):
+    model_config = ConfigDict(frozen=True, populate_by_name=True)
+
+    asset_origin: str = Field(alias="assetOrigin")
     mode: RuntimeMode
-    ssr_endpoint: str
-    ssr_origin: str
-    vite_origin: str | None
+    ssr_endpoint: str = Field(alias="ssrEndpoint")
+    ssr_origin: str = Field(alias="ssrOrigin")
+    vite_origin: str | None = Field(alias="viteOrigin")
     widgets: dict[str, RuntimeWidget]
 
+    @model_validator(mode="before")
     @classmethod
-    def from_payload(cls, payload: Mapping[str, Any]) -> FrontendRuntime:
-        widgets_payload = payload.get("widgets")
+    def normalize_widgets(cls, data: object) -> object:
+        if not isinstance(data, dict):
+            return data
+        normalized = dict(data)
+        widgets_payload = normalized.get("widgets")
+        if widgets_payload is None:
+            return normalized
         if not isinstance(widgets_payload, Mapping):
             msg = 'Frontend runtime metadata is missing a valid "widgets" mapping'
             raise TypeError(msg)
-
-        widgets = {
-            str(key): RuntimeWidget(client_path=_expect_string(value, "clientPath"))
-            for key, value in widgets_payload.items()
-            if isinstance(value, Mapping)
+        normalized["widgets"] = {
+            str(key): value for key, value in widgets_payload.items() if isinstance(value, (BaseModel, Mapping))
         }
-
-        return cls(
-            asset_origin=_expect_string(payload, "assetOrigin"),
-            mode=_expect_mode(payload),
-            ssr_endpoint=_expect_string(payload, "ssrEndpoint"),
-            ssr_origin=_expect_string(payload, "ssrOrigin"),
-            vite_origin=_expect_optional_string(payload, "viteOrigin"),
-            widgets=widgets,
-        )
+        return normalized
 
 
 @dataclass(slots=True, kw_only=True, frozen=True)
@@ -313,8 +311,8 @@ class Ship:
         for _ in range(400):
             if self._runtime_path.is_file():
                 try:
-                    return FrontendRuntime.from_payload(loads(self._runtime_path.read_text(encoding="utf-8")))
-                except (JSONDecodeError, OSError, ValueError):
+                    return FrontendRuntime.model_validate_json(self._runtime_path.read_text(encoding="utf-8"))
+                except (JSONDecodeError, OSError, TypeError, ValueError):
                     pass
 
             if self._frontend.returncode is not None:
@@ -354,35 +352,6 @@ class Ship:
 
     def _deno_command(self, *args: str) -> tuple[str, ...]:
         return ("uv", "run", "deno", *args)
-
-
-def _expect_mode(payload: Mapping[str, Any]) -> RuntimeMode:
-    mode = _expect_string(payload, "mode")
-    if mode not in {"development", "production"}:
-        msg = f"Frontend runtime metadata has an invalid mode: {mode!r}"
-        raise ValueError(msg)
-
-    return cast("RuntimeMode", mode)
-
-
-def _expect_optional_string(payload: Mapping[str, Any], key: str) -> str | None:
-    value = payload.get(key)
-    if value is None:
-        return None
-    if isinstance(value, str):
-        return value
-
-    msg = f'Frontend runtime metadata has an invalid "{key}" value'
-    raise ValueError(msg)
-
-
-def _expect_string(payload: Mapping[str, Any], key: str) -> str:
-    value = payload.get(key)
-    if isinstance(value, str):
-        return value
-
-    msg = f'Frontend runtime metadata is missing a valid "{key}" value'
-    raise ValueError(msg)
 
 
 def _join_url(origin: str, path: str) -> str:

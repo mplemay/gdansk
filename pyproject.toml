@@ -12,6 +12,7 @@ dependencies = [
     "deno>=2.7,<3",
     "mcp>=1.25.1.dev114,<1.26",
     "minijinja>=2,<3",
+    "pydantic>=2.12.5",
     "watchfiles>=1.1.1",
 ]
 

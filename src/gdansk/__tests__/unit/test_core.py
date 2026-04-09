@@ -60,13 +60,13 @@ async def test_widget_resource_renders_complete_document(views_path: Path):
         return None
 
     ship._runtime = FrontendRuntime(
-        asset_origin="http://assets.test",
+        assetOrigin="http://assets.test",
         mode="development",
-        ssr_endpoint="/__gdansk_ssr",
-        ssr_origin="http://ssr.test",
-        vite_origin="http://vite.test",
+        ssrEndpoint="/__gdansk_ssr",
+        ssrOrigin="http://ssr.test",
+        viteOrigin="http://vite.test",
         widgets={
-            "hello": RuntimeWidget(client_path="/.gdansk-src/hello/client.tsx"),
+            "hello": RuntimeWidget(clientPath="/.gdansk-src/hello/client.tsx"),
         },
     )
 
