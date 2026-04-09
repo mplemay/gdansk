@@ -27,7 +27,6 @@ if TYPE_CHECKING:
 type PathType = str | PathLike[str]
 type RuntimeMode = Literal["development", "production"]
 
-MAX_RUNTIME_PORT: Final[int] = 65535
 RUNTIME_ENDPOINT: Final[str] = "/__gdansk_runtime"
 
 
@@ -312,8 +311,8 @@ class Ship:
             msg = "The runtime host must not be empty"
             raise ValueError(msg)
 
-        if port <= 0 or port > MAX_RUNTIME_PORT:
-            msg = f"The runtime port must be an integer between 1 and {MAX_RUNTIME_PORT}"
+        if port <= 0 or port > 65535:  # noqa: PLR2004
+            msg = "The runtime port must be an integer between 1 and 65535"
             raise ValueError(msg)
 
         self._host: Final[str] = host
