@@ -1,5 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+
 import type { ViteDevServer } from "vite";
+
 import { collectCSSFromModuleGraph } from "./css";
 import type {
   GdanskManifest,
@@ -42,12 +44,7 @@ type InstallDevSSRMiddlewareOptions = {
   widgets: WidgetDefinition[];
 };
 
-export function installDevSSRMiddleware({
-  options,
-  server,
-  ssrEntry,
-  widgets,
-}: InstallDevSSRMiddlewareOptions): void {
+export function installDevSSRMiddleware({ options, server, ssrEntry, widgets }: InstallDevSSRMiddlewareOptions): void {
   server.middlewares.use(HEALTH_ENDPOINT, (req, res, next) => {
     if (req.method !== "GET") {
       next();
@@ -172,14 +169,14 @@ function resolveRenderFunction(candidate: unknown, entry: string): GdanskRenderF
 
 function validateRenderResponse(result: unknown): GdanskRenderResponse {
   if (!result || typeof result !== "object") {
-    throw new Error('SSR render must return { head: string[], body: string }');
+    throw new Error("SSR render must return { head: string[], body: string }");
   }
 
   const body = Reflect.get(result, "body");
   const head = Reflect.get(result, "head");
 
   if (typeof body !== "string" || !Array.isArray(head) || !head.every((value) => typeof value === "string")) {
-    throw new Error('SSR render must return { head: string[], body: string }');
+    throw new Error("SSR render must return { head: string[], body: string }");
   }
 
   return {
@@ -206,10 +203,7 @@ function createProductionCssHead(
   return widget.css.map((href) => `<link rel="stylesheet" href="${assetOrigin}/${href.replace(/^\/+/, "")}">`);
 }
 
-function createErrorResponse(
-  error: unknown,
-  type: GdanskErrorResponse["error"]["type"],
-): GdanskErrorResponse {
+function createErrorResponse(error: unknown, type: GdanskErrorResponse["error"]["type"]): GdanskErrorResponse {
   return {
     error: {
       message: getErrorMessage(error),

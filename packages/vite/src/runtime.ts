@@ -1,7 +1,9 @@
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+
 import { createServer, mergeConfig } from "vite";
+
 import { buildWidgets, readManifest } from "./build";
 import { loadUserViteConfig, prepareProject, resolveOptions } from "./context";
 import { resolveViteOrigin } from "./css";
@@ -97,7 +99,9 @@ class GdanskRuntimeImpl implements GdanskRuntime {
       ssrEndpoint: this.options.ssrEndpoint,
       ssrOrigin: origin,
       viteOrigin: origin,
-      widgets: Object.fromEntries(prepared.widgets.map((widget) => [widget.key, { clientPath: widget.clientDevEntry }])),
+      widgets: Object.fromEntries(
+        prepared.widgets.map((widget) => [widget.key, { clientPath: widget.clientDevEntry }]),
+      ),
     };
   }
 
@@ -140,10 +144,7 @@ class GdanskRuntimeImpl implements GdanskRuntime {
   }
 }
 
-async function loadServerRenderFunction(
-  options: ResolvedGdanskOptions,
-  serverEntry: string,
-) {
+async function loadServerRenderFunction(options: ResolvedGdanskOptions, serverEntry: string) {
   const path = resolveServerPath(options, serverEntry);
   const modified = await stat(path);
   return importRenderFunction(`${pathToFileURL(path).href}?t=${modified.mtimeMs}`);

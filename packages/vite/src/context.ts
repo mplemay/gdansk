@@ -1,7 +1,9 @@
 import { access, glob as globIterate, mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
+
 import { loadConfigFromFile, mergeConfig } from "vite";
 import type { InlineConfig, Plugin, PluginOption } from "vite";
+
 import type {
   GdanskPreparedProject,
   GdanskPluginOptions,
@@ -10,10 +12,7 @@ import type {
   WidgetDefinition,
 } from "./types";
 
-export function resolveOptions(
-  options: GdanskPluginOptions = {},
-  configRoot?: string,
-): ResolvedGdanskOptions {
+export function resolveOptions(options: GdanskPluginOptions = {}, configRoot?: string): ResolvedGdanskOptions {
   const root = resolve(configRoot ?? options.root ?? process.cwd());
   const widgetsRoot = options.widgetsRoot ?? "widgets";
   const outDir = "dist";
@@ -35,10 +34,7 @@ export function resolveOptions(
   };
 }
 
-async function globPaths(
-  pattern: string,
-  options: { absolute?: boolean; cwd: string },
-): Promise<string[]> {
+async function globPaths(pattern: string, options: { absolute?: boolean; cwd: string }): Promise<string[]> {
   const { cwd, absolute = false } = options;
   const matches: string[] = [];
   for await (const entry of globIterate(pattern, { cwd })) {
@@ -52,23 +48,21 @@ export async function discoverWidgets(options: ResolvedGdanskOptions): Promise<W
     cwd: options.widgetsRootPath,
   });
 
-  return entries
-    .sort()
-    .map((entry) => {
-      const widgetPath = toPosixPath(entry);
-      const key = toPosixPath(dirname(widgetPath));
-      const clientSource = toPosixPath(join(options.generatedDir, key, "client.tsx"));
+  return entries.sort().map((entry) => {
+    const widgetPath = toPosixPath(entry);
+    const key = toPosixPath(dirname(widgetPath));
+    const clientSource = toPosixPath(join(options.generatedDir, key, "client.tsx"));
 
-      return {
-        clientCss: toPosixPath(join(options.outDir, key, "client.css")),
-        clientDevEntry: toPublicPath(clientSource),
-        clientEntry: toPosixPath(join(options.outDir, key, "client.js")),
-        clientSource: resolve(options.root, clientSource),
-        entry: resolve(options.widgetsRootPath, entry),
-        key,
-        widgetPath,
-      };
-    });
+    return {
+      clientCss: toPosixPath(join(options.outDir, key, "client.css")),
+      clientDevEntry: toPublicPath(clientSource),
+      clientEntry: toPosixPath(join(options.outDir, key, "client.js")),
+      clientSource: resolve(options.root, clientSource),
+      entry: resolve(options.widgetsRootPath, entry),
+      key,
+      widgetPath,
+    };
+  });
 }
 
 export async function loadUserViteConfig(
@@ -88,13 +82,10 @@ export async function loadUserViteConfig(
 
   const plugins = (await normalizePlugins(loadedConfig.plugins)).filter((plugin) => plugin.name !== "@gdansk/vite");
 
-  return mergeConfig(
-    configWithoutPlugins,
-    {
-      plugins,
-      root: options.root,
-    } satisfies InlineConfig,
-  );
+  return mergeConfig(configWithoutPlugins, {
+    plugins,
+    root: options.root,
+  } satisfies InlineConfig);
 }
 
 export async function prepareProject(options: ResolvedGdanskOptions): Promise<GdanskPreparedProject> {
@@ -172,7 +163,7 @@ async function writeClientEntry(widget: WidgetDefinition): Promise<void> {
       'const root = document.getElementById("root");',
       "",
       "if (!root) {",
-      '  throw new Error(\'Gdansk expected a #root element for widget hydration.\');',
+      "  throw new Error('Gdansk expected a #root element for widget hydration.');",
       "}",
       "",
       "const element = (",
@@ -215,7 +206,7 @@ async function writeSSRRenderEntry(path: string, widgets: WidgetDefinition[]): P
       "  const component = widgets[widgetKey as keyof typeof widgets];",
       "",
       "  if (!component) {",
-      '    throw new Error(`Unknown widget: ${widgetKey}`);',
+      "    throw new Error(`Unknown widget: ${widgetKey}`);",
       "  }",
       "",
       "  return {",

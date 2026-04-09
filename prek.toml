@@ -87,4 +87,20 @@ hooks = [
     types = ["markdown"],
     require_serial = true,
   },
+  {
+    id = "oxlint",
+    name = "oxlint",
+    entry = "uv run deno run -A npm:oxlint",
+    args = ["--fix"],
+    language = "system",
+    types_or = ["javascript", "jsx", "ts", "tsx"],
+  },
+  {
+    id = "oxfmt",
+    name = "oxfmt",
+    entry = "uv run deno run -A npm:oxfmt",
+    language = "system",
+    require_serial = true,
+    types_or = ["javascript", "jsx", "ts", "tsx"],
+  },
 ]

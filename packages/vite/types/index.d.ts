@@ -1,2 +1,2 @@
 export { gdansk as default, gdansk } from "./plugin";
-export type { GdanskPluginOptions, ResolvedGdanskOptions, } from "./types";
+export type { GdanskPluginOptions, ResolvedGdanskOptions } from "./types";

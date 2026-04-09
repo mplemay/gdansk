@@ -1,7 +1,9 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
+
 import { build, mergeConfig } from "vite";
 import type { UserConfig } from "vite";
+
 import { pathExists, toPosixPath } from "./context";
 import type {
   GdanskManifest,
@@ -19,10 +21,7 @@ type ViteManifestEntry = {
   file: string;
 };
 
-export function createBuildConfig(
-  options: ResolvedGdanskOptions,
-  prepared: GdanskPreparedProject,
-): UserConfig {
+export function createBuildConfig(options: ResolvedGdanskOptions, prepared: GdanskPreparedProject): UserConfig {
   return {
     appType: "custom",
     builder: {
@@ -117,10 +116,7 @@ function createClientBuildOptions(
   };
 }
 
-function createSSRBuildOptions(
-  options: ResolvedGdanskOptions,
-  prepared: GdanskPreparedProject,
-): UserConfig["build"] {
+function createSSRBuildOptions(options: ResolvedGdanskOptions, prepared: GdanskPreparedProject): UserConfig["build"] {
   return {
     copyPublicDir: false,
     emptyOutDir: false,

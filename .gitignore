@@ -64,6 +64,9 @@ Temporary Items
 # iCloud generated files
 *.icloud
 
+### JavaScript / Node (root tooling) ###
+node_modules/
+
 ### Python ###
 # Byte-compiled / optimized / DLL files
 __pycache__/

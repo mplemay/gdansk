@@ -1,10 +1,12 @@
 import { useApp } from "@modelcontextprotocol/ext-apps/react";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { useCallback, useEffect, useState } from "react";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+
 import styles from "../../global.css";
 
 type Todo = {
@@ -69,34 +71,35 @@ export default function App() {
     },
   });
 
-  const syncTodos = useCallback(async (name: string, args?: Record<string, unknown>): Promise<boolean> => {
-    if (!app) {
-      return false;
-    }
-
-    setErrorMessage(null);
-    setIsLoading(true);
-    try {
-      const result = await app.callServerTool({
-        name,
-        ...(args ? { arguments: args } : {}),
-      });
-
-      if (result.isError) {
-        throw new Error(getFirstTextContent(result));
+  const syncTodos = useCallback(
+    async (name: string, args?: Record<string, unknown>): Promise<boolean> => {
+      if (!app) {
+        return false;
       }
 
-      setTodos(parseTodos(result));
-      return true;
-    } catch (callError) {
-      setErrorMessage(
-        callError instanceof Error ? callError.message : "Unexpected error while syncing todos.",
-      );
-      return false;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [app]);
+      setErrorMessage(null);
+      setIsLoading(true);
+      try {
+        const result = await app.callServerTool({
+          name,
+          ...(args ? { arguments: args } : {}),
+        });
+
+        if (result.isError) {
+          throw new Error(getFirstTextContent(result));
+        }
+
+        setTodos(parseTodos(result));
+        return true;
+      } catch (callError) {
+        setErrorMessage(callError instanceof Error ? callError.message : "Unexpected error while syncing todos.");
+        return false;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [app],
+  );
 
   useEffect(() => {
     if (!app) return;
@@ -147,14 +150,14 @@ export default function App() {
           </form>
 
           {errorMessage ? (
-            <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <div className="border-destructive/40 bg-destructive/10 text-destructive rounded-lg border px-3 py-2 text-sm">
               {errorMessage}
             </div>
           ) : null}
 
           <ul className="space-y-2">
             {todos.length === 0 ? (
-              <li className="rounded-lg border border-dashed px-3 py-4 text-sm text-muted-foreground">
+              <li className="text-muted-foreground rounded-lg border border-dashed px-3 py-4 text-sm">
                 No todos yet. Add one above.
               </li>
             ) : (
@@ -169,9 +172,7 @@ export default function App() {
                       }}
                       aria-label={`Toggle ${todo.title}`}
                     />
-                    <span
-                      className={`truncate text-sm ${todo.completed ? "text-muted-foreground line-through" : ""}`}
-                    >
+                    <span className={`truncate text-sm ${todo.completed ? "text-muted-foreground line-through" : ""}`}>
                       {todo.title}
                     </span>
                   </label>

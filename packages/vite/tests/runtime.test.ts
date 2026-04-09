@@ -1,11 +1,13 @@
 import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { resolveOptions } from "../src/context";
-import gdansk from "../src";
-import { createGdanskRuntime } from "../src/runtime";
+
 import react from "@vitejs/plugin-react";
 import { createServer, type ViteDevServer } from "vite";
 import { afterEach, describe, expect, it } from "vitest";
+
+import gdansk from "../src";
+import { resolveOptions } from "../src/context";
+import { createGdanskRuntime } from "../src/runtime";
 
 const fixtureRoots: string[] = [];
 
@@ -67,7 +69,7 @@ describe("@gdansk/vite", () => {
 
     expect(response.body).toContain("Hello SSR");
     expect(response.body).toContain("from plugin");
-    expect(response.head.join("")).toContain("rel=\"stylesheet\"");
+    expect(response.head.join("")).toContain('rel="stylesheet"');
     expect(response.head.join("")).toContain("data-vite-dev-id");
 
     const health = await fetchHealth(metadata.ssrOrigin);
@@ -171,12 +173,7 @@ async function createFixture(options: { withLocalPlugin: boolean }): Promise<str
   );
   await writeFile(
     `${root}/widgets/nested/page/widget.tsx`,
-    [
-      "export default function App() {",
-      '  return <section><h2>Nested widget</h2></section>;',
-      "}",
-      "",
-    ].join("\n"),
+    ["export default function App() {", "  return <section><h2>Nested widget</h2></section>;", "}", ""].join("\n"),
   );
 
   if (options.withLocalPlugin) {
@@ -189,7 +186,7 @@ async function createFixture(options: { withLocalPlugin: boolean }): Promise<str
         '    return id === "virtual:message" ? id : null;',
         "  },",
         "  load(id) {",
-        '    return id === "virtual:message" ? \'export default \"from plugin\";\' : null;',
+        '    return id === "virtual:message" ? \'export default "from plugin";\' : null;',
         "  },",
         "};",
         "",
