@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from http import HTTPStatus
-from os import PathLike, environ
+from os import PathLike
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Final, Literal
 
@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import render_template
-from gdansk.utils import get_port, join_url
+from gdansk.utils import join_url
 
 if TYPE_CHECKING:
     from mcp.server import MCPServer
@@ -26,8 +26,10 @@ if TYPE_CHECKING:
 type PathType = str | PathLike[str]
 type RuntimeMode = Literal["development", "production"]
 
+DEFAULT_RUNTIME_HOST: Final[str] = "127.0.0.1"
+DEFAULT_RUNTIME_PORT: Final[int] = 13714
+MAX_RUNTIME_PORT: Final[int] = 65535
 RUNTIME_ENDPOINT: Final[str] = "/__gdansk_runtime"
-RUNTIME_HOST: Final[str] = "127.0.0.1"
 
 
 class RuntimeWidget(BaseModel):
@@ -82,7 +84,15 @@ class WidgetSpec:
 
 
 class Ship:
-    def __init__(self, views: PathType, *, metadata: Metadata | None = None, client: AsyncClient | None = None) -> None:
+    def __init__(
+        self,
+        views: PathType,
+        *,
+        host: str = DEFAULT_RUNTIME_HOST,
+        port: int = DEFAULT_RUNTIME_PORT,
+        metadata: Metadata | None = None,
+        client: AsyncClient | None = None,
+    ) -> None:
         if not (views := Path(views)).exists():
             msg = f"The views directory (i.e. {views}) does not exist"
             raise FileNotFoundError(msg)
@@ -91,6 +101,17 @@ class Ship:
             msg = f"The views directory (i.e. {views}) is not a directory"
             raise ValueError(msg)
 
+        host = host.strip()
+        if not host:
+            msg = "The runtime host must not be empty"
+            raise ValueError(msg)
+
+        if isinstance(port, bool) or not isinstance(port, int) or port <= 0 or port > MAX_RUNTIME_PORT:
+            msg = f"The runtime port must be an integer between 1 and {MAX_RUNTIME_PORT}"
+            raise ValueError(msg)
+
+        self._host: Final[str] = host
+        self._port: Final[int] = port
         self._views: Final[Path] = views.absolute().resolve()
         self._widgets_root: Final[Path] = self._views / "widgets"
         self._runtime_path: Final[Path] = self._views / ".gdansk" / "runtime.json"
@@ -100,7 +121,6 @@ class Ship:
         self._frontend: Process | None = None
         self._runtime: FrontendRuntime | None = None
         self._runtime_origin: str | None = None
-        self._runtime_port: int | None = None
         self._widget_manager: dict[Path, WidgetSpec] = {}
 
     @asynccontextmanager
@@ -236,11 +256,10 @@ class Ship:
 
         return self._runtime
 
-    async def _run_build(self, *, env: Mapping[str, str] | None = None) -> None:
+    async def _run_build(self) -> None:
         proc = await create_subprocess_exec(
             *self._deno_command("run", "-A", "--node-modules-dir=auto", "npm:vite", "build"),
             cwd=self._views,
-            env=env,
             stdin=DEVNULL,
             stdout=PIPE,
             stderr=PIPE,
@@ -262,15 +281,12 @@ class Ship:
         await self.stop()
 
         self._runtime_path.unlink(missing_ok=True)
-        # Pin the sidecar port so the Python process can poll the runtime endpoint directly.
-        self._runtime_port = get_port(RUNTIME_HOST)
-        self._runtime_origin = f"http://{RUNTIME_HOST}:{self._runtime_port}"
-        env = self._runtime_environment(self._runtime_port)
+        self._runtime_origin = f"http://{self._host}:{self._port}"
 
         if dev:
             command = self._deno_command("run", "-A", "--node-modules-dir=auto", "npm:vite", "dev")
         else:
-            await self._run_build(env=env)
+            await self._run_build()
             server_path = self._views / ".gdansk" / "server.js"
             if not server_path.is_file():
                 msg = f"Expected a production server entry at {server_path}"
@@ -282,7 +298,6 @@ class Ship:
             self._frontend = await create_subprocess_exec(
                 *command,
                 cwd=self._views,
-                env=env,
                 stdin=DEVNULL,
                 stdout=DEVNULL,
                 stderr=DEVNULL,
@@ -297,7 +312,6 @@ class Ship:
         self._runtime = None
         self._runtime_path.unlink(missing_ok=True)
         self._runtime_origin = None
-        self._runtime_port = None
 
         if self._frontend is None:
             return
@@ -342,7 +356,11 @@ class Ship:
 
             await sleep(0.05)
 
-        msg = f"The frontend runtime did not start in time ({runtime_url})"
+        msg = (
+            f"The frontend runtime did not start in time ({runtime_url}). "
+            f'Ensure Ship(host="{self._host}", port={self._port}) matches '
+            f'gdansk({{ host: "{self._host}", port: {self._port} }}).'
+        )
         raise RuntimeError(msg)
 
     def _validate_runtime(self) -> None:
@@ -370,12 +388,6 @@ class Ship:
 
     def _deno_command(self, *args: str) -> tuple[str, ...]:
         return ("uv", "run", "deno", *args)
-
-    def _runtime_environment(self, port: int) -> dict[str, str]:
-        env = dict(environ)
-        env["GDANSK_HOST"] = RUNTIME_HOST
-        env["GDANSK_SSR_PORT"] = str(port)
-        return env
 
 
 def _widget_key(path: PurePosixPath) -> str:

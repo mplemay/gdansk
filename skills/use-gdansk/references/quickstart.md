@@ -132,6 +132,18 @@ export default defineConfig({
 });
 ```
 
+If you need a non-default SSR address, set it on both sides:
+
+```python
+ship = Ship(views=Path(__file__).parent / "views", host="127.0.0.1", port=14000)
+```
+
+```ts
+export default defineConfig({
+  plugins: [gdansk({ host: "127.0.0.1", port: 14000 }), react()],
+});
+```
+
 After editing dependencies, install from `views/` with `uv run deno install` and commit `deno.lock` when it changes:
 
 ```bash

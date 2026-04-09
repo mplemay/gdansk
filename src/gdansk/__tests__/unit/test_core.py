@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
+from httpx import Request, RequestError
 
 from gdansk.core import FrontendRuntime, RuntimeWidget, Ship
 from gdansk.metadata import Metadata
@@ -77,6 +78,18 @@ def test_widget_rejects_missing_widget_file(views_path: Path):
 
     with pytest.raises(FileNotFoundError, match="is not a file"):
         ship.widget(path=Path("missing/widget.tsx"))
+
+
+def test_ship_uses_default_runtime_host_and_port(views_path: Path):
+    ship = Ship(views=views_path)
+
+    assert ship._host == "127.0.0.1"
+    assert ship._port == 13714
+
+
+def test_ship_rejects_invalid_runtime_port(views_path: Path):
+    with pytest.raises(ValueError, match="runtime port"):
+        Ship(views=views_path, port=0)
 
 
 async def test_wait_for_runtime_reads_endpoint(views_path: Path):
@@ -187,3 +200,34 @@ async def test_run_build_uses_the_views_vite_entrypoint(views_path: Path, monkey
     )
     assert captured_kwargs is not None
     assert captured_kwargs["cwd"] == views_path
+    assert "env" not in captured_kwargs
+
+
+async def test_wait_for_runtime_timeout_mentions_matching_ship_and_plugin_config(
+    views_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    class UnreachableClient:
+        async def get(self, url: str, **_kwargs: float | None) -> FakeResponse:
+            msg = "connection failed"
+            raise RequestError(msg, request=Request("GET", url))
+
+    async def fake_sleep(_: float) -> None:
+        return None
+
+    ship = Ship(
+        views=views_path,
+        host="localhost",
+        port=43123,
+        client=cast("AsyncClient", UnreachableClient()),
+    )
+    ship._frontend = cast("Any", FakeProcess())
+    ship._runtime_origin = "http://localhost:43123"
+    monkeypatch.setattr("gdansk.core.sleep", fake_sleep)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        await ship._wait_for_runtime()
+
+    error = str(exc_info.value)
+    assert 'Ensure Ship(host="localhost", port=43123)' in error
+    assert 'gdansk({ host: "localhost", port: 43123 })' in error

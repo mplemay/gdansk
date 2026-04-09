@@ -24,6 +24,20 @@ Per-widget metadata can be passed to `@ship.widget` where supported in `core.py`
 Merge semantics for metadata helpers (such as `merge_metadata` in `gdansk.metadata`) are shallow top-level merge when
 you combine sources in application code.
 
+## Custom runtime host or port
+
+The default SSR sidecar address is `127.0.0.1:13714`. If you change it, keep Python and Vite in sync:
+
+```python
+ship = Ship(views=views_path, host="127.0.0.1", port=14000)
+```
+
+```ts
+export default defineConfig({
+  plugins: [gdansk({ host: "127.0.0.1", port: 14000 }), react()],
+});
+```
+
 ## Plain MCP tools (no React UI)
 
 Register tools on the same `MCPServer` instance that you pass into `ship.mcp(app=...)`:

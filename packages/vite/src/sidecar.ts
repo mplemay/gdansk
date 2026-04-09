@@ -81,14 +81,14 @@ export async function startSSRSidecar(options: GdanskSidecarOptions): Promise<Gd
     }),
   );
 
-  let resolvedPort = options.options.ssrPort ?? 0;
+  let resolvedPort = options.options.port;
 
   const server = await new Promise<ReturnType<typeof serve>>((resolveServer) => {
     const instance = serve(
       {
         fetch: app.fetch,
         hostname: options.options.host,
-        port: options.options.ssrPort ?? 0,
+        port: options.options.port,
       },
       (info) => {
         resolvedPort = info.port;

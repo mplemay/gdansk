@@ -148,6 +148,18 @@ export default defineConfig({
 });
 ```
 
+If you want a different SSR host or port, configure both sides explicitly:
+
+```python
+ship = Ship(views=Path(__file__).parent / "views", host="127.0.0.1", port=14000)
+```
+
+```ts
+export default defineConfig({
+  plugins: [gdansk({ host: "127.0.0.1", port: 14000 }), react()],
+});
+```
+
 Install the frontend package dependencies from `views/` after editing them:
 
 ```bash

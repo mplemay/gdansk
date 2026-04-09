@@ -1,5 +1,6 @@
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { resolveOptions } from "../src/context";
 import gdansk from "../src";
 import { createGdanskRuntime } from "../src/runtime";
 import type { GdanskRuntimeMetadata } from "../src/types";
@@ -14,9 +15,16 @@ afterEach(async () => {
 });
 
 describe("@gdansk/vite", () => {
+  it("defaults the SSR sidecar to localhost on port 13714", () => {
+    const options = resolveOptions({ root: process.cwd() });
+
+    expect(options.host).toBe("127.0.0.1");
+    expect(options.port).toBe(13_714);
+  });
+
   it("builds widget outputs and serves production SSR", async () => {
     const root = await createFixture({ withLocalPlugin: true });
-    const runtime = await createGdanskRuntime({ root, ssrPort: 0 });
+    const runtime = await createGdanskRuntime({ root, port: 0 });
 
     const manifest = await runtime.build();
 
@@ -48,7 +56,7 @@ describe("@gdansk/vite", () => {
 
   it("starts a dev runtime with a Hono sidecar", async () => {
     const root = await createFixture({ withLocalPlugin: true });
-    const runtime = await createGdanskRuntime({ root, ssrPort: 0, vitePort: 0 });
+    const runtime = await createGdanskRuntime({ root, port: 0, vitePort: 0 });
     const metadata = await runtime.startDev();
     const response = await renderWidget(metadata, { component: "hello" });
 
@@ -72,7 +80,7 @@ describe("@gdansk/vite", () => {
     const server = await createServer({
       appType: "custom",
       configFile: false,
-      plugins: [gdansk({ root, ssrPort: 0 }), react()],
+      plugins: [gdansk({ root, port: 0 }), react()],
       root,
       server: {
         host: "127.0.0.1",

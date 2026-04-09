@@ -5,8 +5,8 @@ export interface GdanskPluginOptions {
   widgetsRoot?: string;
   outDir?: string;
   host?: string;
+  port?: number;
   vitePort?: number;
-  ssrPort?: number;
   ssrEndpoint?: string;
 }
 
@@ -18,7 +18,7 @@ export interface ResolvedGdanskOptions {
   outDirPath: string;
   root: string;
   ssrEndpoint: string;
-  ssrPort?: number;
+  port: number;
   vitePort?: number;
   widgetsRoot: string;
   widgetsRootPath: string;

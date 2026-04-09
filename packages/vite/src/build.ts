@@ -142,8 +142,8 @@ async function writeProductionServer(options: ResolvedGdanskOptions): Promise<vo
   const runtimeOptions = {
     host: options.host,
     outDir: options.outDir,
+    port: options.port,
     ssrEndpoint: options.ssrEndpoint,
-    ssrPort: options.ssrPort,
     vitePort: options.vitePort,
     widgetsRoot: options.widgetsRoot,
   };

@@ -64,7 +64,16 @@ def test_delete_todo_errors_when_todo_not_found():
         todo_main.delete_todo("missing")
 
 
-async def test_mcp_list_tools_schemas_and_structured_calls():
+async def test_mcp_list_tools_schemas_and_structured_calls(monkeypatch: pytest.MonkeyPatch):
+    async def fake_start(**_: object) -> None:
+        return None
+
+    async def fake_stop() -> None:
+        return None
+
+    monkeypatch.setattr(todo_main.ship, "start", fake_start)
+    monkeypatch.setattr(todo_main.ship, "stop", fake_stop)
+
     async with todo_main.ship.mcp(app=todo_main.mcp, dev=True):
         tools = await todo_main.mcp.list_tools()
         schemas = {tool.name: getattr(tool, "output_schema", getattr(tool, "outputSchema", None)) for tool in tools}
