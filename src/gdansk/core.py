@@ -106,7 +106,7 @@ class Ship:
             msg = "The runtime host must not be empty"
             raise ValueError(msg)
 
-        if isinstance(port, bool) or not isinstance(port, int) or port <= 0 or port > MAX_RUNTIME_PORT:
+        if port <= 0 or port > MAX_RUNTIME_PORT:
             msg = f"The runtime port must be an integer between 1 and {MAX_RUNTIME_PORT}"
             raise ValueError(msg)
 
