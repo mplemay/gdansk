@@ -1,4 +1,5 @@
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, cast
 
@@ -65,14 +66,12 @@ def test_delete_todo_errors_when_todo_not_found():
 
 
 async def test_mcp_list_tools_schemas_and_structured_calls(monkeypatch: pytest.MonkeyPatch):
-    async def fake_start(**_: object) -> None:
-        return None
+    @asynccontextmanager
+    async def fake_open(*, dev: bool):
+        assert dev is True
+        yield None
 
-    async def fake_stop() -> None:
-        return None
-
-    monkeypatch.setattr(todo_main.ship, "start", fake_start)
-    monkeypatch.setattr(todo_main.ship, "stop", fake_stop)
+    monkeypatch.setattr(todo_main.ship._context, "open", fake_open)
 
     async with todo_main.ship.mcp(app=todo_main.mcp, dev=True):
         tools = await todo_main.mcp.list_tools()

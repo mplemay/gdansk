@@ -82,130 +82,45 @@ class WidgetSpec:
     uri: str
 
 
-class Ship:
+class ShipContext:
     def __init__(
         self,
-        views: PathType,
+        views: Path,
         *,
-        host: str = "127.0.0.1",
-        port: int = 13714,
-        metadata: Metadata | None = None,
+        host: str,
+        port: int,
+        widget_manager: Mapping[Path, WidgetSpec],
         client: AsyncClient | None = None,
     ) -> None:
-        if not (views := Path(views)).exists():
-            msg = f"The views directory (i.e. {views}) does not exist"
-            raise FileNotFoundError(msg)
-
-        if not views.is_dir():
-            msg = f"The views directory (i.e. {views}) is not a directory"
-            raise ValueError(msg)
-
-        host = host.strip()
-        if not host:
-            msg = "The runtime host must not be empty"
-            raise ValueError(msg)
-
-        if port <= 0 or port > MAX_RUNTIME_PORT:
-            msg = f"The runtime port must be an integer between 1 and {MAX_RUNTIME_PORT}"
-            raise ValueError(msg)
-
+        self._client: Final[AsyncClient] = client or AsyncClient()
         self._host: Final[str] = host
         self._port: Final[int] = port
-        self._views: Final[Path] = views.absolute().resolve()
-        self._widgets_root: Final[Path] = self._views / "widgets"
+        self._views: Final[Path] = views
+        self._widget_manager: Final[Mapping[Path, WidgetSpec]] = widget_manager
         self._runtime_path: Final[Path] = self._views / "dist" / "runtime.json"
-        self._metadata: Final[Metadata] = metadata or Metadata()
-        self._client: Final[AsyncClient] = client or AsyncClient()
 
+        self._active = False
         self._frontend: Process | None = None
         self._runtime: FrontendRuntime | None = None
         self._runtime_origin: str | None = None
-        self._widget_manager: dict[Path, WidgetSpec] = {}
 
     @asynccontextmanager
-    async def mcp(self, app: MCPServer, *, dev: bool = False) -> AsyncIterator[None]:
-        for spec in self._widget_manager.values():
-            existing = app._tool_manager._tools.get(spec.tool.name)  # noqa: SLF001
-            if existing is not None and existing is not spec.tool:
-                msg = f"A tool with the name {spec.tool.name} has already been registered"
-                raise ValueError(msg)
+    async def open(self, *, dev: bool) -> AsyncIterator[None]:
+        if self._active:
+            msg = "The frontend runtime context is already active"
+            raise RuntimeError(msg)
 
-            app._tool_manager._tools.setdefault(spec.tool.name, spec.tool)  # noqa: SLF001
-            app.add_resource(resource=spec.resource)
-
-        await self.start(dev=dev)
-
+        self._active = True
         try:
-            yield None
+            await self._start(dev=dev)
+            try:
+                yield None
+            finally:
+                await self._stop()
         finally:
-            await self.stop()
+            self._active = False
 
-    def widget(  # noqa: PLR0913
-        self,
-        path: PathType,
-        name: str | None = None,
-        *,
-        title: str | None = None,
-        description: str | None = None,
-        annotations: ToolAnnotations | None = None,
-        icons: list[Icon] | None = None,
-        meta: dict[str, Any] | None = None,
-        metadata: Metadata | None = None,
-        structured_output: bool | None = None,
-    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-        relative_path = Path(path)
-        self._validate_widget_path(relative_path)
-
-        posix_path = PurePosixPath(relative_path.as_posix())
-        key = PurePosixPath(*posix_path.parts[:-1]).as_posix()
-        resolved_path = (self._widgets_root / relative_path).resolve()
-
-        if not resolved_path.is_file():
-            msg = f"The widget path (i.e. {relative_path}) is not a file"
-            raise FileNotFoundError(msg)
-
-        uri = f"ui://{key}"
-        tool_meta = {**(meta or {}), "ui": {"resourceUri": uri}}
-        merged_metadata = merge_metadata(self._metadata, metadata)
-
-        def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
-            if relative_path in self._widget_manager:
-                msg = f"The widget {relative_path} has already been registered"
-                raise RuntimeError(msg)
-
-            tool = Tool.from_function(
-                fn=fn,
-                name=name,
-                title=title,
-                description=description,
-                annotations=annotations,
-                icons=icons,
-                meta=tool_meta,
-                structured_output=structured_output,
-            )
-            resource = FunctionResource.from_function(
-                fn=partial(self._render_widget_page, relative_path),
-                uri=uri,
-                name=name,
-                title=title,
-                description=description,
-                mime_type="text/html;profile=mcp-app",
-            )
-
-            self._widget_manager[relative_path] = WidgetSpec(
-                key=key,
-                metadata=merged_metadata,
-                path=relative_path,
-                resource=resource,
-                tool=tool,
-                uri=uri,
-            )
-
-            return fn
-
-        return decorator
-
-    async def _render_widget_page(self, path: Path) -> str:
+    async def render_widget_page(self, *, path: Path) -> str:
         spec = self._widget_manager[path]
         runtime = self._require_runtime()
         runtime_widget = runtime.widgets.get(spec.key)
@@ -273,8 +188,10 @@ class Ship:
             msg = f"{msg}:\n{output}"
         raise RuntimeError(msg)
 
-    async def start(self, *, dev: bool) -> None:
-        await self.stop()
+    async def _start(self, *, dev: bool) -> None:
+        if self._frontend is not None or self._runtime is not None or self._runtime_origin is not None:
+            msg = "The frontend runtime context is already active"
+            raise RuntimeError(msg)
 
         self._runtime_path.unlink(missing_ok=True)
         self._runtime_origin = f"http://{self._host}:{self._port}"
@@ -301,10 +218,10 @@ class Ship:
             self._runtime = await self._wait_for_runtime()
             self._validate_runtime()
         except Exception:
-            await self.stop()
+            await self._stop()
             raise
 
-    async def stop(self) -> None:
+    async def _stop(self) -> None:
         self._runtime = None
         self._runtime_path.unlink(missing_ok=True)
         self._runtime_origin = None
@@ -368,6 +285,130 @@ class Ship:
         msg = f"Frontend runtime is missing widgets: {', '.join(missing)}"
         raise RuntimeError(msg)
 
+    def _deno_command(self, *args: str) -> tuple[str, ...]:
+        return ("uv", "run", "deno", *args)
+
+
+class Ship:
+    def __init__(
+        self,
+        views: PathType,
+        *,
+        host: str = "127.0.0.1",
+        port: int = 13714,
+        metadata: Metadata | None = None,
+        client: AsyncClient | None = None,
+    ) -> None:
+        if not (views := Path(views)).exists():
+            msg = f"The views directory (i.e. {views}) does not exist"
+            raise FileNotFoundError(msg)
+
+        if not views.is_dir():
+            msg = f"The views directory (i.e. {views}) is not a directory"
+            raise ValueError(msg)
+
+        host = host.strip()
+        if not host:
+            msg = "The runtime host must not be empty"
+            raise ValueError(msg)
+
+        if port <= 0 or port > MAX_RUNTIME_PORT:
+            msg = f"The runtime port must be an integer between 1 and {MAX_RUNTIME_PORT}"
+            raise ValueError(msg)
+
+        self._host: Final[str] = host
+        self._port: Final[int] = port
+        self._views: Final[Path] = views.absolute().resolve()
+        self._widgets_root: Final[Path] = self._views / "widgets"
+        self._metadata: Final[Metadata] = metadata or Metadata()
+        self._widget_manager: dict[Path, WidgetSpec] = {}
+        self._context: Final[ShipContext] = ShipContext(
+            self._views,
+            host=self._host,
+            port=self._port,
+            widget_manager=self._widget_manager,
+            client=client,
+        )
+
+    @asynccontextmanager
+    async def mcp(self, app: MCPServer, *, dev: bool = False) -> AsyncIterator[None]:
+        for spec in self._widget_manager.values():
+            existing = app._tool_manager._tools.get(spec.tool.name)  # noqa: SLF001
+            if existing is not None and existing is not spec.tool:
+                msg = f"A tool with the name {spec.tool.name} has already been registered"
+                raise ValueError(msg)
+
+            app._tool_manager._tools.setdefault(spec.tool.name, spec.tool)  # noqa: SLF001
+            app.add_resource(resource=spec.resource)
+
+        async with self._context.open(dev=dev):
+            yield None
+
+    def widget(  # noqa: PLR0913
+        self,
+        path: PathType,
+        name: str | None = None,
+        *,
+        title: str | None = None,
+        description: str | None = None,
+        annotations: ToolAnnotations | None = None,
+        icons: list[Icon] | None = None,
+        meta: dict[str, Any] | None = None,
+        metadata: Metadata | None = None,
+        structured_output: bool | None = None,
+    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+        relative_path = Path(path)
+        self._validate_widget_path(relative_path)
+
+        posix_path = PurePosixPath(relative_path.as_posix())
+        key = PurePosixPath(*posix_path.parts[:-1]).as_posix()
+        resolved_path = (self._widgets_root / relative_path).resolve()
+
+        if not resolved_path.is_file():
+            msg = f"The widget path (i.e. {relative_path}) is not a file"
+            raise FileNotFoundError(msg)
+
+        uri = f"ui://{key}"
+        tool_meta = {**(meta or {}), "ui": {"resourceUri": uri}}
+        merged_metadata = merge_metadata(self._metadata, metadata)
+
+        def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
+            if relative_path in self._widget_manager:
+                msg = f"The widget {relative_path} has already been registered"
+                raise RuntimeError(msg)
+
+            tool = Tool.from_function(
+                fn=fn,
+                name=name,
+                title=title,
+                description=description,
+                annotations=annotations,
+                icons=icons,
+                meta=tool_meta,
+                structured_output=structured_output,
+            )
+            resource = FunctionResource.from_function(
+                fn=partial(self._context.render_widget_page, path=relative_path),
+                uri=uri,
+                name=name,
+                title=title,
+                description=description,
+                mime_type="text/html;profile=mcp-app",
+            )
+
+            self._widget_manager[relative_path] = WidgetSpec(
+                key=key,
+                metadata=merged_metadata,
+                path=relative_path,
+                resource=resource,
+                tool=tool,
+                uri=uri,
+            )
+
+            return fn
+
+        return decorator
+
     def _validate_widget_path(self, path: Path) -> None:
         if path.is_absolute():
             msg = f"The widget path (i.e. {path}) must be a relative path"
@@ -381,6 +422,3 @@ class Ship:
         if posix.name not in {"widget.tsx", "widget.jsx"}:
             msg = f"The widget path (i.e. {path}) must point to a widget.tsx or widget.jsx file"
             raise ValueError(msg)
-
-    def _deno_command(self, *args: str) -> tuple[str, ...]:
-        return ("uv", "run", "deno", *args)

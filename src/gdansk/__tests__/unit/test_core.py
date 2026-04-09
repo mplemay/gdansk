@@ -65,6 +65,28 @@ class FakeProcess:
     returncode: int | None = None
 
 
+class FakeManagedProcess:
+    def __init__(self) -> None:
+        self.killed = False
+        self.returncode: int | None = None
+        self.terminated = False
+        self.waited = False
+
+    def terminate(self) -> None:
+        self.terminated = True
+        self.returncode = 0
+
+    def kill(self) -> None:
+        self.killed = True
+        self.returncode = -9
+
+    async def wait(self) -> int:
+        self.waited = True
+        if self.returncode is None:
+            self.returncode = 0
+        return self.returncode
+
+
 @pytest.fixture
 def views_path(tmp_path: Path) -> Path:
     views = tmp_path / "views"
@@ -95,10 +117,10 @@ def test_ship_rejects_invalid_runtime_port(views_path: Path):
 async def test_wait_for_runtime_reads_endpoint(views_path: Path):
     client = FakeClient()
     ship = Ship(views=views_path, client=cast("AsyncClient", client))
-    ship._frontend = cast("Any", FakeProcess())
-    ship._runtime_origin = "http://runtime.test"
+    ship._context._frontend = cast("Any", FakeProcess())
+    ship._context._runtime_origin = "http://runtime.test"
 
-    runtime = await ship._wait_for_runtime()
+    runtime = await ship._context._wait_for_runtime()
 
     assert client.get_calls == [("http://runtime.test/__gdansk_runtime", 0.2)]
     assert runtime.asset_origin == "http://assets.test"
@@ -117,7 +139,7 @@ async def test_widget_resource_renders_complete_document(views_path: Path):
     def hello() -> None:
         return None
 
-    ship._runtime = FrontendRuntime(
+    ship._context._runtime = FrontendRuntime(
         assetOrigin="http://assets.test",
         mode="development",
         ssrEndpoint="/__gdansk_ssr",
@@ -152,7 +174,7 @@ async def test_widget_resource_raises_on_invalid_ssr_payload(views_path: Path):
     def hello() -> None:
         return None
 
-    ship._runtime = FrontendRuntime(
+    ship._context._runtime = FrontendRuntime(
         assetOrigin="http://assets.test",
         mode="development",
         ssrEndpoint="/__gdansk_ssr",
@@ -164,7 +186,7 @@ async def test_widget_resource_raises_on_invalid_ssr_payload(views_path: Path):
     )
 
     with pytest.raises(TypeError, match="invalid SSR payload"):
-        await ship._render_widget_page(Path("hello/widget.tsx"))
+        await ship._context.render_widget_page(path=Path("hello/widget.tsx"))
 
 
 async def test_run_build_uses_the_views_vite_entrypoint(views_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -186,7 +208,7 @@ async def test_run_build_uses_the_views_vite_entrypoint(views_path: Path, monkey
     ship = Ship(views=views_path)
     monkeypatch.setattr("gdansk.core.create_subprocess_exec", fake_create_subprocess_exec)
 
-    await ship._run_build()
+    await ship._context._run_build()
 
     assert captured_args == (
         "uv",
@@ -221,13 +243,98 @@ async def test_wait_for_runtime_timeout_mentions_matching_ship_and_plugin_config
         port=43123,
         client=cast("AsyncClient", UnreachableClient()),
     )
-    ship._frontend = cast("Any", FakeProcess())
-    ship._runtime_origin = "http://localhost:43123"
+    ship._context._frontend = cast("Any", FakeProcess())
+    ship._context._runtime_origin = "http://localhost:43123"
     monkeypatch.setattr("gdansk.core.sleep", fake_sleep)
 
     with pytest.raises(RuntimeError) as exc_info:
-        await ship._wait_for_runtime()
+        await ship._context._wait_for_runtime()
 
     error = str(exc_info.value)
     assert 'Ensure Ship(host="localhost", port=43123)' in error
     assert 'gdansk({ host: "localhost", port: 43123 })' in error
+
+
+async def test_ship_context_open_cleans_up_runtime_on_exit(views_path: Path, monkeypatch: pytest.MonkeyPatch):
+    process = FakeManagedProcess()
+    ship = Ship(views=views_path)
+    runtime = FrontendRuntime(
+        assetOrigin="http://assets.test",
+        mode="development",
+        ssrEndpoint="/__gdansk_ssr",
+        ssrOrigin="http://ssr.test",
+        viteOrigin="http://vite.test",
+        widgets={},
+    )
+
+    async def fake_create_subprocess_exec(*_args: str, **_kwargs: object) -> FakeManagedProcess:
+        return process
+
+    async def fake_wait_for_runtime() -> FrontendRuntime:
+        return runtime
+
+    monkeypatch.setattr("gdansk.core.create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(ship._context, "_wait_for_runtime", fake_wait_for_runtime)
+
+    async with ship._context.open(dev=True):
+        assert ship._context._active is True
+        assert ship._context._frontend is process
+        assert ship._context._runtime == runtime
+        assert ship._context._runtime_origin == "http://127.0.0.1:13714"
+
+    assert process.terminated is True
+    assert process.killed is False
+    assert process.waited is False
+    assert ship._context._active is False
+    assert ship._context._frontend is None
+    assert ship._context._runtime is None
+    assert ship._context._runtime_origin is None
+
+
+async def test_ship_context_open_cleans_up_runtime_on_start_failure(views_path: Path, monkeypatch: pytest.MonkeyPatch):
+    process = FakeManagedProcess()
+    ship = Ship(views=views_path)
+
+    async def fake_create_subprocess_exec(*_args: str, **_kwargs: object) -> FakeManagedProcess:
+        return process
+
+    async def fake_wait_for_runtime() -> FrontendRuntime:
+        msg = "boom"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr("gdansk.core.create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(ship._context, "_wait_for_runtime", fake_wait_for_runtime)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        async with ship._context.open(dev=True):
+            pytest.fail("ShipContext.open() should not yield after startup failure")
+
+    assert process.terminated is True
+    assert process.killed is False
+    assert process.waited is False
+    assert ship._context._active is False
+    assert ship._context._frontend is None
+    assert ship._context._runtime is None
+    assert ship._context._runtime_origin is None
+
+
+async def test_ship_context_open_rejects_reentry(views_path: Path, monkeypatch: pytest.MonkeyPatch):
+    ship = Ship(views=views_path)
+    calls: list[tuple[str, bool] | str] = []
+
+    async def fake_start(*, dev: bool) -> None:
+        calls.append(("start", dev))
+
+    async def fake_stop() -> None:
+        calls.append("stop")
+
+    monkeypatch.setattr(ship._context, "_start", fake_start)
+    monkeypatch.setattr(ship._context, "_stop", fake_stop)
+
+    async with ship._context.open(dev=True):
+        with pytest.raises(RuntimeError, match="already active"):
+            async with ship._context.open(dev=False):
+                pytest.fail("Nested ShipContext.open() should not yield")
+
+    assert calls == [("start", True), "stop"]
+    assert ship._context._active is False
