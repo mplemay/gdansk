@@ -9,7 +9,7 @@
     "react-dom/server": "npm:react-dom@19.2.5/server",
     "react/jsx-dev-runtime": "npm:react@19.2.5/jsx-dev-runtime",
     "react/jsx-runtime": "npm:react@19.2.5/jsx-runtime",
-    "vite": "npm:vite@8.0.3"
+    "vite": "npm:vite@8.0.8"
   },
   "nodeModulesDir": "auto"
 }
