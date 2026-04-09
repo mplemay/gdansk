@@ -3,6 +3,11 @@
   "private": false,
   "version": "0.1.0",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mplemay/gdansk",
+    "directory": "packages/vite"
+  },
   "main": "dist/index.js",
   "types": "types/index.d.ts",
   "files": [
