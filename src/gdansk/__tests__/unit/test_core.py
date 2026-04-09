@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 from httpx import Request, RequestError
 
-from gdansk.core import FrontendRuntime, RuntimeWidget, Ship
+from gdansk.core import Ship
 from gdansk.metadata import Metadata
 
 if TYPE_CHECKING:
@@ -34,22 +34,13 @@ class FakeClient:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, str]]] = []
         self.get_calls: list[tuple[str, float | None]] = []
+        self.health_payload: dict[str, Any] = {"status": "OK"}
         self.ssr_payload: dict[str, Any] | None = None
-        self.runtime_payload: dict[str, Any] = {
-            "assetOrigin": "http://assets.test",
-            "mode": "development",
-            "ssrEndpoint": "/__gdansk_ssr",
-            "ssrOrigin": "http://ssr.test",
-            "viteOrigin": "http://vite.test",
-            "widgets": {
-                "hello": {"clientPath": "/dist-src/hello/client.tsx"},
-            },
-        }
 
     async def get(self, url: str, **kwargs: float | None) -> FakeResponse:
         timeout = kwargs.get("timeout")
         self.get_calls.append((url, timeout))
-        return FakeResponse(payload=self.runtime_payload)
+        return FakeResponse(payload=self.health_payload)
 
     async def post(self, url: str, *, json: dict[str, str]) -> FakeResponse:
         self.calls.append((url, json))
@@ -114,17 +105,15 @@ def test_ship_rejects_invalid_runtime_port(views_path: Path):
         Ship(views=views_path, port=0)
 
 
-async def test_wait_for_runtime_reads_endpoint(views_path: Path):
+async def test_wait_for_health_reads_endpoint(views_path: Path):
     client = FakeClient()
     ship = Ship(views=views_path, client=cast("AsyncClient", client))
     ship._context._frontend = cast("Any", FakeProcess())
     ship._context._runtime_origin = "http://runtime.test"
 
-    runtime = await ship._context._wait_for_runtime()
+    await ship._context._wait_for_health()
 
-    assert client.get_calls == [("http://runtime.test/__gdansk_runtime", 0.2)]
-    assert runtime.asset_origin == "http://assets.test"
-    assert runtime.vite_origin == "http://vite.test"
+    assert client.get_calls == [("http://runtime.test/health", 0.2)]
 
 
 async def test_widget_resource_renders_complete_document(views_path: Path):
@@ -139,27 +128,40 @@ async def test_widget_resource_renders_complete_document(views_path: Path):
     def hello() -> None:
         return None
 
-    ship._context._runtime = FrontendRuntime(
-        assetOrigin="http://assets.test",
-        mode="development",
-        ssrEndpoint="/__gdansk_ssr",
-        ssrOrigin="http://ssr.test",
-        viteOrigin="http://vite.test",
-        widgets={
-            "hello": RuntimeWidget(clientPath="/dist-src/hello/client.tsx"),
-        },
-    )
+    ship._context._dev = True
+    ship._context._runtime_origin = "http://ssr.test"
 
     html = await ship._widget_manager[Path("hello/widget.tsx")].resource.read()
     assert isinstance(html, str)
 
-    assert client.calls == [("http://ssr.test/__gdansk_ssr", {"widget": "hello"})]
+    assert client.calls == [("http://ssr.test/ssr", {"widget": "hello"})]
     assert "<title>Base title</title>" in html
     assert '<meta name="description" content="Widget description" />' in html
     assert '<meta name="robots" content="noindex" />' in html
     assert '<div id="root"><main>Hello from SSR</main></div>' in html
-    assert '<script type="module" src="http://vite.test/@vite/client"></script>' in html
-    assert '<script type="module" src="http://assets.test/dist-src/hello/client.tsx"></script>' in html
+    assert '<script type="module" src="http://127.0.0.1:5173/@vite/client"></script>' in html
+    assert '<script type="module" src="http://127.0.0.1:5173/dist-src/hello/client.tsx"></script>' in html
+
+
+async def test_widget_resource_renders_production_scripts(views_path: Path):
+    client = FakeClient()
+    ship = Ship(
+        views=views_path,
+        client=cast("AsyncClient", client),
+    )
+
+    @ship.widget(path=Path("hello/widget.tsx"), name="hello")
+    def hello() -> None:
+        return None
+
+    ship._context._runtime_origin = "http://ssr.test"
+
+    html = await ship._widget_manager[Path("hello/widget.tsx")].resource.read()
+    assert isinstance(html, str)
+
+    assert client.calls == [("http://ssr.test/ssr", {"widget": "hello"})]
+    assert '<script type="module" src="http://ssr.test/dist/hello/client.js"></script>' in html
+    assert "/@vite/client" not in html
 
 
 async def test_widget_resource_raises_on_invalid_ssr_payload(views_path: Path):
@@ -174,19 +176,11 @@ async def test_widget_resource_raises_on_invalid_ssr_payload(views_path: Path):
     def hello() -> None:
         return None
 
-    ship._context._runtime = FrontendRuntime(
-        assetOrigin="http://assets.test",
-        mode="development",
-        ssrEndpoint="/__gdansk_ssr",
-        ssrOrigin="http://ssr.test",
-        viteOrigin="http://vite.test",
-        widgets={
-            "hello": RuntimeWidget(clientPath="/dist-src/hello/client.tsx"),
-        },
-    )
+    ship._context._dev = True
+    ship._context._runtime_origin = "http://ssr.test"
 
     with pytest.raises(TypeError, match="invalid SSR payload"):
-        await ship._context.render_widget_page(path=Path("hello/widget.tsx"))
+        await ship._context.render_widget_page(metadata=None, widget_key="hello")
 
 
 async def test_run_build_uses_the_views_vite_entrypoint(views_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -225,7 +219,7 @@ async def test_run_build_uses_the_views_vite_entrypoint(views_path: Path, monkey
     assert "env" not in captured_kwargs
 
 
-async def test_wait_for_runtime_timeout_mentions_matching_ship_and_plugin_config(
+async def test_wait_for_health_timeout_mentions_matching_ship_and_plugin_config(
     views_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -248,7 +242,7 @@ async def test_wait_for_runtime_timeout_mentions_matching_ship_and_plugin_config
     monkeypatch.setattr("gdansk.core.sleep", fake_sleep)
 
     with pytest.raises(RuntimeError) as exc_info:
-        await ship._context._wait_for_runtime()
+        await ship._context._wait_for_health()
 
     error = str(exc_info.value)
     assert 'Ensure Ship(host="localhost", port=43123)' in error
@@ -258,36 +252,28 @@ async def test_wait_for_runtime_timeout_mentions_matching_ship_and_plugin_config
 async def test_ship_context_open_cleans_up_runtime_on_exit(views_path: Path, monkeypatch: pytest.MonkeyPatch):
     process = FakeManagedProcess()
     ship = Ship(views=views_path)
-    runtime = FrontendRuntime(
-        assetOrigin="http://assets.test",
-        mode="development",
-        ssrEndpoint="/__gdansk_ssr",
-        ssrOrigin="http://ssr.test",
-        viteOrigin="http://vite.test",
-        widgets={},
-    )
 
     async def fake_create_subprocess_exec(*_args: str, **_kwargs: object) -> FakeManagedProcess:
         return process
 
-    async def fake_wait_for_runtime() -> FrontendRuntime:
-        return runtime
+    async def fake_wait_for_health() -> None:
+        return None
 
     monkeypatch.setattr("gdansk.core.create_subprocess_exec", fake_create_subprocess_exec)
-    monkeypatch.setattr(ship._context, "_wait_for_runtime", fake_wait_for_runtime)
+    monkeypatch.setattr(ship._context, "_wait_for_health", fake_wait_for_health)
 
     async with ship._context.open(dev=True):
         assert ship._context._active is True
+        assert ship._context._dev is True
         assert ship._context._frontend is process
-        assert ship._context._runtime == runtime
         assert ship._context._runtime_origin == "http://127.0.0.1:13714"
 
     assert process.terminated is True
     assert process.killed is False
     assert process.waited is False
     assert ship._context._active is False
+    assert ship._context._dev is False
     assert ship._context._frontend is None
-    assert ship._context._runtime is None
     assert ship._context._runtime_origin is None
 
 
@@ -298,12 +284,12 @@ async def test_ship_context_open_cleans_up_runtime_on_start_failure(views_path: 
     async def fake_create_subprocess_exec(*_args: str, **_kwargs: object) -> FakeManagedProcess:
         return process
 
-    async def fake_wait_for_runtime() -> FrontendRuntime:
+    async def fake_wait_for_health() -> None:
         msg = "boom"
         raise RuntimeError(msg)
 
     monkeypatch.setattr("gdansk.core.create_subprocess_exec", fake_create_subprocess_exec)
-    monkeypatch.setattr(ship._context, "_wait_for_runtime", fake_wait_for_runtime)
+    monkeypatch.setattr(ship._context, "_wait_for_health", fake_wait_for_health)
 
     with pytest.raises(RuntimeError, match="boom"):
         async with ship._context.open(dev=True):
@@ -313,9 +299,44 @@ async def test_ship_context_open_cleans_up_runtime_on_start_failure(views_path: 
     assert process.killed is False
     assert process.waited is False
     assert ship._context._active is False
+    assert ship._context._dev is False
     assert ship._context._frontend is None
-    assert ship._context._runtime is None
     assert ship._context._runtime_origin is None
+
+
+async def test_start_dev_uses_fixed_vite_port(views_path: Path, monkeypatch: pytest.MonkeyPatch):
+    captured_args: tuple[str, ...] | None = None
+
+    async def fake_create_subprocess_exec(*args: str, **_kwargs: object) -> FakeManagedProcess:
+        nonlocal captured_args
+        captured_args = args
+        return FakeManagedProcess()
+
+    async def fake_wait_for_health() -> None:
+        return None
+
+    ship = Ship(views=views_path)
+    monkeypatch.setattr("gdansk.core.create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(ship._context, "_wait_for_health", fake_wait_for_health)
+
+    await ship._context._start(dev=True)
+    await ship._context._stop()
+
+    assert captured_args == (
+        "uv",
+        "run",
+        "deno",
+        "run",
+        "-A",
+        "--node-modules-dir=auto",
+        "npm:vite",
+        "dev",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "5173",
+        "--strictPort",
+    )
 
 
 async def test_ship_context_open_rejects_reentry(views_path: Path, monkeypatch: pytest.MonkeyPatch):

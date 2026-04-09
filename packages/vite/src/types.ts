@@ -3,11 +3,8 @@ import type { InlineConfig, UserConfig, ViteDevServer } from "vite";
 export interface GdanskPluginOptions {
   root?: string;
   widgetsRoot?: string;
-  outDir?: string;
   host?: string;
   port?: number;
-  vitePort?: number;
-  ssrEndpoint?: string;
 }
 
 export interface ResolvedGdanskOptions {
@@ -19,7 +16,6 @@ export interface ResolvedGdanskOptions {
   root: string;
   ssrEndpoint: string;
   port: number;
-  vitePort?: number;
   widgetsRoot: string;
   widgetsRootPath: string;
 }
@@ -72,7 +68,6 @@ export interface GdanskRenderResponse {
 }
 
 export interface GdanskSidecarOptions {
-  getRuntime?: () => GdanskRuntimeMetadata | undefined;
   manifest?: GdanskManifest;
   mode: "development" | "production";
   options: ResolvedGdanskOptions;
@@ -91,7 +86,6 @@ export interface GdanskRuntime {
   close(): Promise<void>;
   manifestPath: string;
   options: ResolvedGdanskOptions;
-  runtimePath: string;
   startDev(): Promise<GdanskRuntimeMetadata>;
   startProductionServer(): Promise<GdanskRuntimeMetadata>;
   widgets: WidgetDefinition[];

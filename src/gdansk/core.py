@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from asyncio import sleep
 from asyncio.subprocess import DEVNULL, PIPE, Process, create_subprocess_exec
-from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from functools import partial
@@ -14,54 +13,32 @@ from typing import TYPE_CHECKING, Any, Final, Literal
 from httpx import AsyncClient, RequestError
 from mcp.server.mcpserver.resources import FunctionResource
 from mcp.server.mcpserver.tools.base import Tool
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import render_template
 from gdansk.utils import join_url
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator, Callable
+
     from mcp.server import MCPServer
     from mcp.types import Icon, ToolAnnotations
 
 type PathType = str | PathLike[str]
-type RuntimeMode = Literal["development", "production"]
 
-RUNTIME_ENDPOINT: Final[str] = "/__gdansk_runtime"
-
-
-class RuntimeWidget(BaseModel):
-    model_config = ConfigDict(frozen=True, populate_by_name=True)
-
-    client_path: str = Field(alias="clientPath")
+DEV_GENERATED_DIR: Final[str] = "dist-src"
+DEV_VITE_PORT: Final[int] = 5173
+HEALTH_ENDPOINT: Final[str] = "/health"
+MAX_RUNTIME_PORT: Final[int] = 65535
+PRODUCTION_OUT_DIR: Final[str] = "dist"
+SSR_ENDPOINT: Final[str] = "/ssr"
 
 
-class FrontendRuntime(BaseModel):
-    model_config = ConfigDict(frozen=True, populate_by_name=True)
+class HealthCheck(BaseModel):
+    model_config = ConfigDict(frozen=True)
 
-    asset_origin: str = Field(alias="assetOrigin")
-    mode: RuntimeMode
-    ssr_endpoint: str = Field(alias="ssrEndpoint")
-    ssr_origin: str = Field(alias="ssrOrigin")
-    vite_origin: str | None = Field(alias="viteOrigin")
-    widgets: dict[str, RuntimeWidget]
-
-    @model_validator(mode="before")
-    @classmethod
-    def normalize_widgets(cls, data: object) -> object:
-        if not isinstance(data, dict):
-            return data
-        normalized = dict(data)
-        widgets_payload = normalized.get("widgets")
-        if widgets_payload is None:
-            return normalized
-        if not isinstance(widgets_payload, Mapping):
-            msg = 'Frontend runtime metadata is missing a valid "widgets" mapping'
-            raise TypeError(msg)
-        normalized["widgets"] = {
-            str(key): value for key, value in widgets_payload.items() if isinstance(value, (BaseModel, Mapping))
-        }
-        return normalized
+    status: Literal["OK"] = "OK"
 
 
 class GdanskRenderResponse(BaseModel):
@@ -75,7 +52,6 @@ class GdanskRenderResponse(BaseModel):
 class WidgetSpec:
     key: str
     metadata: Metadata | None
-    path: Path
     resource: FunctionResource
     tool: Tool
     uri: str
@@ -88,19 +64,16 @@ class ShipContext:
         *,
         host: str,
         port: int,
-        widget_manager: Mapping[Path, WidgetSpec],
         client: AsyncClient | None = None,
     ) -> None:
         self._client: Final[AsyncClient] = client or AsyncClient()
         self._host: Final[str] = host
         self._port: Final[int] = port
         self._views: Final[Path] = views
-        self._widget_manager: Final[Mapping[Path, WidgetSpec]] = widget_manager
-        self._runtime_path: Final[Path] = self._views / "dist" / "runtime.json"
 
         self._active = False
+        self._dev = False
         self._frontend: Process | None = None
-        self._runtime: FrontendRuntime | None = None
         self._runtime_origin: str | None = None
 
     @asynccontextmanager
@@ -119,52 +92,47 @@ class ShipContext:
         finally:
             self._active = False
 
-    async def render_widget_page(self, *, path: Path) -> str:
-        spec = self._widget_manager[path]
-        runtime = self._require_runtime()
-        runtime_widget = runtime.widgets.get(spec.key)
-
-        if runtime_widget is None:
-            msg = f'The frontend runtime is missing widget "{spec.key}"'
-            raise RuntimeError(msg)
+    async def render_widget_page(self, *, metadata: Metadata | None, widget_key: str) -> str:
+        runtime_origin = self._require_runtime_origin()
 
         response = await self._client.post(
-            join_url(runtime.ssr_origin, runtime.ssr_endpoint),
-            json={"widget": spec.key},
+            join_url(runtime_origin, SSR_ENDPOINT),
+            json={"widget": widget_key},
         )
 
         if response.status_code != HTTPStatus.OK:
-            msg = f'Failed to render widget "{spec.key}": {response.status_code} {response.text}'
+            msg = f'Failed to render widget "{widget_key}": {response.status_code} {response.text}'
             raise RuntimeError(msg)
 
         try:
             rendered = GdanskRenderResponse.model_validate_json(response.text)
         except ValidationError as e:
-            msg = f'Failed to render widget "{spec.key}": invalid SSR payload'
+            msg = f'Failed to render widget "{widget_key}": invalid SSR payload'
             raise TypeError(msg) from e
 
-        scripts = [join_url(runtime.asset_origin, runtime_widget.client_path)]
-        if runtime.mode == "development":
-            if runtime.vite_origin is None:
-                msg = "Development runtime metadata is missing viteOrigin"
-                raise RuntimeError(msg)
-
-            scripts.insert(0, join_url(runtime.vite_origin, "/@vite/client"))
+        if self._dev:
+            vite_origin = f"http://{self._host}:{DEV_VITE_PORT}"
+            scripts = [
+                join_url(vite_origin, "/@vite/client"),
+                join_url(vite_origin, f"/{DEV_GENERATED_DIR}/{widget_key}/client.tsx"),
+            ]
+        else:
+            scripts = [join_url(runtime_origin, f"/{PRODUCTION_OUT_DIR}/{widget_key}/client.js")]
 
         return render_template(
             "base.html",
             body=rendered.body,
             head=rendered.head,
-            metadata=spec.metadata,
+            metadata=metadata,
             scripts=scripts,
         )
 
-    def _require_runtime(self) -> FrontendRuntime:
-        if self._runtime is None:
+    def _require_runtime_origin(self) -> str:
+        if self._runtime_origin is None:
             msg = "The frontend runtime is not running"
             raise RuntimeError(msg)
 
-        return self._runtime
+        return self._runtime_origin
 
     async def _run_build(self) -> None:
         proc = await create_subprocess_exec(
@@ -188,18 +156,29 @@ class ShipContext:
         raise RuntimeError(msg)
 
     async def _start(self, *, dev: bool) -> None:
-        if self._frontend is not None or self._runtime is not None or self._runtime_origin is not None:
+        if self._frontend is not None or self._runtime_origin is not None:
             msg = "The frontend runtime context is already active"
             raise RuntimeError(msg)
 
-        self._runtime_path.unlink(missing_ok=True)
+        self._dev = dev
         self._runtime_origin = f"http://{self._host}:{self._port}"
 
         if dev:
-            command = self._deno_command("run", "-A", "--node-modules-dir=auto", "npm:vite", "dev")
+            command = self._deno_command(
+                "run",
+                "-A",
+                "--node-modules-dir=auto",
+                "npm:vite",
+                "dev",
+                "--host",
+                self._host,
+                "--port",
+                str(DEV_VITE_PORT),
+                "--strictPort",
+            )
         else:
             await self._run_build()
-            server_path = self._views / "dist" / "server.js"
+            server_path = self._views / PRODUCTION_OUT_DIR / "server.js"
             if not server_path.is_file():
                 msg = f"Expected a production server entry at {server_path}"
                 raise RuntimeError(msg)
@@ -214,15 +193,13 @@ class ShipContext:
                 stdout=DEVNULL,
                 stderr=DEVNULL,
             )
-            self._runtime = await self._wait_for_runtime()
-            self._validate_runtime()
+            await self._wait_for_health()
         except Exception:
             await self._stop()
             raise
 
     async def _stop(self) -> None:
-        self._runtime = None
-        self._runtime_path.unlink(missing_ok=True)
+        self._dev = False
         self._runtime_origin = None
 
         if self._frontend is None:
@@ -240,48 +217,42 @@ class ShipContext:
 
         self._frontend = None
 
-    async def _wait_for_runtime(self) -> FrontendRuntime:
+    async def _wait_for_health(self) -> None:
         if self._frontend is None or self._runtime_origin is None:
             msg = "The frontend process has not been started"
             raise RuntimeError(msg)
 
-        runtime_url = join_url(self._runtime_origin, RUNTIME_ENDPOINT)
+        health_url = join_url(self._runtime_origin, HEALTH_ENDPOINT)
 
         for _ in range(1200):
             if self._frontend.returncode is not None:
                 msg = (
-                    "The frontend process exited before the runtime endpoint became available "
+                    "The frontend process exited before the health endpoint became available "
                     f"(exit code {self._frontend.returncode})"
                 )
                 raise RuntimeError(msg)
 
             try:
-                response = await self._client.get(runtime_url, timeout=0.2)
+                response = await self._client.get(health_url, timeout=0.2)
             except RequestError:
                 pass
             else:
                 if response.status_code == HTTPStatus.OK:
                     try:
-                        return FrontendRuntime.model_validate(response.json())
+                        health = HealthCheck.model_validate(response.json())
                     except (TypeError, ValueError):
                         pass
+                    else:
+                        if health.status == "OK":
+                            return
 
             await sleep(0.05)
 
         msg = (
-            f"The frontend runtime did not start in time ({runtime_url}). "
+            f"The frontend runtime did not start in time ({health_url}). "
             f'Ensure Ship(host="{self._host}", port={self._port}) matches '
             f'gdansk({{ host: "{self._host}", port: {self._port} }}).'
         )
-        raise RuntimeError(msg)
-
-    def _validate_runtime(self) -> None:
-        runtime = self._require_runtime()
-        missing = sorted(spec.key for spec in self._widget_manager.values() if spec.key not in runtime.widgets)
-        if not missing:
-            return
-
-        msg = f"Frontend runtime is missing widgets: {', '.join(missing)}"
         raise RuntimeError(msg)
 
     def _deno_command(self, *args: str) -> tuple[str, ...]:
@@ -311,8 +282,8 @@ class Ship:
             msg = "The runtime host must not be empty"
             raise ValueError(msg)
 
-        if port <= 0 or port > 65535:  # noqa: PLR2004
-            msg = "The runtime port must be an integer between 1 and 65535"
+        if port <= 0 or port > MAX_RUNTIME_PORT:
+            msg = f"The runtime port must be an integer between 1 and {MAX_RUNTIME_PORT}"
             raise ValueError(msg)
 
         self._host: Final[str] = host
@@ -325,7 +296,6 @@ class Ship:
             self._views,
             host=self._host,
             port=self._port,
-            widget_manager=self._widget_manager,
             client=client,
         )
 
@@ -387,7 +357,7 @@ class Ship:
                 structured_output=structured_output,
             )
             resource = FunctionResource.from_function(
-                fn=partial(self._context.render_widget_page, path=relative_path),
+                fn=partial(self._context.render_widget_page, metadata=merged_metadata, widget_key=key),
                 uri=uri,
                 name=name,
                 title=title,
@@ -398,7 +368,6 @@ class Ship:
             self._widget_manager[relative_path] = WidgetSpec(
                 key=key,
                 metadata=merged_metadata,
-                path=relative_path,
                 resource=resource,
                 tool=tool,
                 uri=uri,

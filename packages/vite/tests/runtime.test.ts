@@ -1,14 +1,20 @@
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { resolveOptions } from "../src/context";
 import gdansk from "../src";
 import { createGdanskRuntime } from "../src/runtime";
-import type { GdanskRuntimeMetadata } from "../src/types";
 import react from "@vitejs/plugin-react";
-import { createServer } from "vite";
+import { createServer, type ViteDevServer } from "vite";
 import { afterEach, describe, expect, it } from "vitest";
 
 const fixtureRoots: string[] = [];
+
+type GdanskDevServer = ViteDevServer & {
+  __gdansk?: {
+    ssrEndpoint: string;
+    ssrOrigin: string;
+  };
+};
 
 afterEach(async () => {
   await Promise.all(fixtureRoots.splice(0).map((root) => rm(root, { force: true, recursive: true })));
@@ -43,10 +49,9 @@ describe("@gdansk/vite", () => {
     expect(response.body).toContain("from plugin");
     expect(response.head.join("")).toContain(`${metadata.ssrOrigin}/dist/hello/client.css`);
 
-    const runtimeMetadata = await fetchRuntime(metadata.ssrOrigin);
-    expect(runtimeMetadata.assetOrigin).toBe(metadata.ssrOrigin);
-    expect(runtimeMetadata.mode).toBe("production");
-    expect(runtimeMetadata.widgets.hello.clientPath).toBe("/dist/hello/client.js");
+    const health = await fetchHealth(metadata.ssrOrigin);
+    expect(health).toEqual({ status: "OK" });
+    expect(metadata.ssrEndpoint).toBe("/ssr");
 
     const assetResponse = await fetch(`${metadata.ssrOrigin}/dist/hello/client.js`);
     expect(assetResponse.status).toBe(200);
@@ -56,7 +61,7 @@ describe("@gdansk/vite", () => {
 
   it("starts a dev runtime with a Hono sidecar", async () => {
     const root = await createFixture({ withLocalPlugin: true });
-    const runtime = await createGdanskRuntime({ root, port: 0, vitePort: 0 });
+    const runtime = await createGdanskRuntime({ root, port: 0 });
     const metadata = await runtime.startDev();
     const response = await renderWidget(metadata, { component: "hello" });
 
@@ -65,14 +70,14 @@ describe("@gdansk/vite", () => {
     expect(response.head.join("")).toContain("rel=\"stylesheet\"");
     expect(response.head.join("")).toContain("data-vite-dev-id");
 
-    const runtimeMetadata = await fetchRuntime(metadata.ssrOrigin);
-    expect(runtimeMetadata.assetOrigin).toMatch(/^http:\/\/127\.0\.0\.1:/);
-    expect(runtimeMetadata.viteOrigin).toMatch(/^http:\/\/127\.0\.0\.1:/);
-    expect(Object.keys(runtimeMetadata.widgets)).toEqual(["hello", "nested/page"]);
-    expect(runtimeMetadata.widgets.hello.clientPath).toBe("/dist-src/hello/client.tsx");
+    const health = await fetchHealth(metadata.ssrOrigin);
+    expect(health).toEqual({ status: "OK" });
+    expect(metadata.ssrEndpoint).toBe("/ssr");
+    expect(metadata.viteOrigin).toBe("http://127.0.0.1:5173");
+    expect(Object.keys(metadata.widgets)).toEqual(["hello", "nested/page"]);
+    expect(metadata.widgets.hello.clientPath).toBe("/dist-src/hello/client.tsx");
 
     await runtime.close();
-    expect(await pathExists(`${root}/dist/runtime.json`)).toBe(false);
   });
 
   it("exports a Vite plugin that starts the sidecar during dev", async () => {
@@ -89,21 +94,17 @@ describe("@gdansk/vite", () => {
     });
 
     await server.listen();
+    const metadata = (server as GdanskDevServer).__gdansk;
 
-    const metadata = JSON.parse(await readFile(`${root}/dist/runtime.json`, "utf8")) as {
-      ssrEndpoint: string;
-      ssrOrigin: string;
-    };
-    const runtimeMetadata = await fetchRuntime(metadata.ssrOrigin);
-
-    expect(runtimeMetadata.ssrOrigin).toBe(metadata.ssrOrigin);
-    expect(runtimeMetadata.ssrEndpoint).toBe(metadata.ssrEndpoint);
-    const response = await renderWidget(metadata, { widget: "hello" });
+    expect(metadata).toBeDefined();
+    expect(metadata?.ssrEndpoint).toBe("/ssr");
+    expect(await fetchHealth(metadata!.ssrOrigin)).toEqual({ status: "OK" });
+    const response = await renderWidget(metadata!, { widget: "hello" });
 
     expect(response.body).toContain("Hello SSR");
 
     await server.close();
-    await waitFor(async () => !(await pathExists(`${root}/dist/runtime.json`)));
+    await waitFor(async () => (server as GdanskDevServer).__gdansk === undefined);
   });
 });
 
@@ -220,11 +221,11 @@ async function renderWidget(
   return (await response.json()) as { body: string; head: string[] };
 }
 
-async function fetchRuntime(origin: string): Promise<GdanskRuntimeMetadata> {
-  const response = await fetch(`${origin}/__gdansk_runtime`);
+async function fetchHealth(origin: string): Promise<{ status: string }> {
+  const response = await fetch(`${origin}/health`);
 
   expect(response.status).toBe(200);
-  return (await response.json()) as GdanskRuntimeMetadata;
+  return (await response.json()) as { status: string };
 }
 
 async function waitFor(check: () => Promise<boolean>, attempts: number = 20): Promise<void> {

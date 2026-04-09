@@ -1,6 +1,5 @@
-import { rm } from "node:fs/promises";
 import { createServer, mergeConfig } from "vite";
-import { buildWidgets, readManifest, writeRuntimeMetadata } from "./build";
+import { buildWidgets, readManifest } from "./build";
 import { loadUserViteConfig, prepareWidgets, resolveOptions } from "./context";
 import { resolveViteOrigin } from "./css";
 import { startSSRSidecar } from "./sidecar";
@@ -23,7 +22,6 @@ export async function createGdanskRuntime(options: GdanskPluginOptions = {}): Pr
 class GdanskRuntimeImpl implements GdanskRuntime {
   readonly manifestPath: string;
   readonly options: ResolvedGdanskOptions;
-  readonly runtimePath: string;
   widgets: WidgetDefinition[] = [];
 
   #manifest?: GdanskManifest;
@@ -33,7 +31,6 @@ class GdanskRuntimeImpl implements GdanskRuntime {
   constructor(options: ResolvedGdanskOptions) {
     this.manifestPath = `${options.outDirPath}/manifest.json`;
     this.options = options;
-    this.runtimePath = `${options.outDirPath}/runtime.json`;
   }
 
   async build(): Promise<GdanskManifest> {
@@ -51,8 +48,6 @@ class GdanskRuntimeImpl implements GdanskRuntime {
 
     await this.#viteServer?.close();
     this.#viteServer = undefined;
-
-    await rm(this.runtimePath, { force: true });
   }
 
   async refreshWidgets(): Promise<void> {
@@ -72,22 +67,21 @@ class GdanskRuntimeImpl implements GdanskRuntime {
         root: this.options.root,
         server: {
           host: this.options.host,
-          port: this.options.vitePort,
+          port: 5173,
+          strictPort: true,
         },
       }),
     );
     await this.#viteServer.listen();
 
-    let metadata: GdanskRuntimeMetadata | undefined;
     this.#sidecar = await startSSRSidecar({
       mode: "development",
       options: this.options,
       viteServer: this.#viteServer,
       widgets: this.widgets,
-      getRuntime: () => metadata,
     });
 
-    metadata = {
+    return {
       assetOrigin: resolveViteOrigin(this.#viteServer),
       mode: "development",
       ssrEndpoint: this.options.ssrEndpoint,
@@ -95,10 +89,6 @@ class GdanskRuntimeImpl implements GdanskRuntime {
       viteOrigin: resolveViteOrigin(this.#viteServer),
       widgets: Object.fromEntries(this.widgets.map((widget) => [widget.key, { clientPath: widget.clientDevEntry }])),
     };
-
-    await writeRuntimeMetadata(this.runtimePath, metadata);
-
-    return metadata;
   }
 
   async startProductionServer(): Promise<GdanskRuntimeMetadata> {
@@ -106,16 +96,14 @@ class GdanskRuntimeImpl implements GdanskRuntime {
     await this.refreshWidgets();
 
     this.#manifest = this.#manifest ?? (await this.loadOrBuildManifest());
-    let metadata: GdanskRuntimeMetadata | undefined;
     this.#sidecar = await startSSRSidecar({
       manifest: this.#manifest,
       mode: "production",
       options: this.options,
-      getRuntime: () => metadata,
       widgets: this.widgets,
     });
 
-    metadata = {
+    return {
       assetOrigin: this.#sidecar.origin,
       mode: "production",
       ssrEndpoint: this.options.ssrEndpoint,
@@ -125,11 +113,8 @@ class GdanskRuntimeImpl implements GdanskRuntime {
         Object.entries(this.#manifest.widgets).map(([key, widget]) => [key, { clientPath: `/${widget.client}` }]),
       ),
     };
-
-    await writeRuntimeMetadata(this.runtimePath, metadata);
-
-    return metadata;
   }
+
   async loadOrBuildManifest(): Promise<GdanskManifest> {
     try {
       return await readManifest(this.manifestPath);

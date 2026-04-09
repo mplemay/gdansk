@@ -15,10 +15,10 @@ export function resolveOptions(
 ): ResolvedGdanskOptions {
   const root = resolve(configRoot ?? options.root ?? process.cwd());
   const widgetsRoot = options.widgetsRoot ?? "widgets";
-  const outDir = (options.outDir ?? "dist").replace(/\/+$/, "");
-  const generatedDir = `${outDir}-src`;
+  const outDir = "dist";
+  const generatedDir = "dist-src";
   const host = options.host ?? "127.0.0.1";
-  const ssrEndpoint = options.ssrEndpoint?.startsWith("/") ? options.ssrEndpoint : `/${options.ssrEndpoint ?? "__gdansk_ssr"}`;
+  const ssrEndpoint = "/ssr";
 
   return {
     generatedDir,
@@ -29,7 +29,6 @@ export function resolveOptions(
     root,
     ssrEndpoint,
     port: options.port ?? 13714,
-    vitePort: options.vitePort,
     widgetsRoot,
     widgetsRootPath: resolve(root, widgetsRoot),
   };

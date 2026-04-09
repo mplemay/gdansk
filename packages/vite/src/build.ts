@@ -45,10 +45,6 @@ export async function readManifest(path: string): Promise<GdanskManifest> {
   return JSON.parse(await readFile(path, "utf8")) as GdanskManifest;
 }
 
-export async function writeRuntimeMetadata(path: string, metadata: unknown): Promise<void> {
-  await writeJson(path, metadata);
-}
-
 async function buildClientWidget(
   options: ResolvedGdanskOptions,
   widget: WidgetDefinition,
@@ -141,10 +137,7 @@ async function writeProductionServer(options: ResolvedGdanskOptions): Promise<vo
   const runtimeModuleUrl = new URL("../runtime.js", import.meta.url).href;
   const runtimeOptions = {
     host: options.host,
-    outDir: options.outDir,
     port: options.port,
-    ssrEndpoint: options.ssrEndpoint,
-    vitePort: options.vitePort,
     widgetsRoot: options.widgetsRoot,
   };
 

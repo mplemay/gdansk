@@ -1,9 +1,16 @@
-import { rm } from "node:fs/promises";
 import type { Plugin, ViteDevServer } from "vite";
-import { buildWidgets, writeRuntimeMetadata } from "./build";
+import { buildWidgets } from "./build";
 import { ensureNoopEntry, loadUserViteConfig, prepareWidgets, resolveOptions } from "./context";
-import { resolveViteOrigin } from "./css";
-import type { GdanskPluginOptions, GdanskRuntimeMetadata, ResolvedGdanskOptions, WidgetDefinition } from "./types";
+import type { GdanskPluginOptions, ResolvedGdanskOptions, WidgetDefinition } from "./types";
+
+type GdanskDevServerMetadata = {
+  ssrEndpoint: string;
+  ssrOrigin: string;
+};
+
+type GdanskDevServer = ViteDevServer & {
+  __gdansk?: GdanskDevServerMetadata;
+};
 
 export function gdansk(options: GdanskPluginOptions = {}): Plugin {
   let resolved: ResolvedGdanskOptions | undefined;
@@ -45,29 +52,20 @@ export function gdansk(options: GdanskPluginOptions = {}): Plugin {
     async configureServer(server) {
       const resolvedOptions = resolved ?? resolveOptions(options, server.config.root);
       const { startSSRSidecar } = await import("./sidecar");
-      let metadata: GdanskRuntimeMetadata | undefined;
       const sidecar = await startSSRSidecar({
         mode: "development",
         options: resolvedOptions,
-        getRuntime: () => metadata,
         viteServer: server,
         widgets,
       });
-
-      metadata = {
-        assetOrigin: resolveViteOrigin(server),
-        mode: "development",
+      (server as GdanskDevServer).__gdansk = {
         ssrEndpoint: resolvedOptions.ssrEndpoint,
         ssrOrigin: sidecar.origin,
-        viteOrigin: resolveViteOrigin(server),
-        widgets: Object.fromEntries(widgets.map((widget) => [widget.key, { clientPath: widget.clientDevEntry }])),
       };
-
-      await writeRuntimeMetadata(`${resolvedOptions.outDirPath}/runtime.json`, metadata);
 
       attachCleanup(server, async () => {
         await sidecar.close();
-        await rm(`${resolvedOptions.outDirPath}/runtime.json`, { force: true });
+        delete (server as GdanskDevServer).__gdansk;
       });
 
       server.config.logger.info(`Gdansk SSR dev endpoint: ${sidecar.origin}${resolvedOptions.ssrEndpoint}`);
