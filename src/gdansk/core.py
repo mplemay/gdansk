@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import socket
 from asyncio import sleep
 from asyncio.subprocess import DEVNULL, PIPE, Process, create_subprocess_exec
 from collections.abc import AsyncIterator, Callable, Mapping
@@ -10,7 +9,6 @@ from http import HTTPStatus
 from os import PathLike, environ
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Final, Literal
-from urllib.parse import urlparse, urlunparse
 
 from httpx import AsyncClient, RequestError
 from mcp.server.mcpserver.resources import FunctionResource
@@ -19,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import render_template
+from gdansk.utils import get_port, join_url
 
 if TYPE_CHECKING:
     from mcp.server import MCPServer
@@ -194,7 +193,7 @@ class Ship:
             raise RuntimeError(msg)
 
         response = await self._client.post(
-            _join_url(runtime.ssr_origin, runtime.ssr_endpoint),
+            join_url(runtime.ssr_origin, runtime.ssr_endpoint),
             json={"widget": spec.key},
         )
 
@@ -218,13 +217,13 @@ class Ship:
             msg = f'Failed to render widget "{spec.key}": invalid SSR body payload'
             raise TypeError(msg)
 
-        scripts = [_join_url(runtime.asset_origin, runtime_widget.client_path)]
+        scripts = [join_url(runtime.asset_origin, runtime_widget.client_path)]
         if runtime.mode == "development":
             if runtime.vite_origin is None:
                 msg = "Development runtime metadata is missing viteOrigin"
                 raise RuntimeError(msg)
 
-            scripts.insert(0, _join_url(runtime.vite_origin, "/@vite/client"))
+            scripts.insert(0, join_url(runtime.vite_origin, "/@vite/client"))
 
         return render_template(
             "base.html",
@@ -268,7 +267,7 @@ class Ship:
 
         self._runtime_path.unlink(missing_ok=True)
         # Pin the sidecar port so the Python process can poll the runtime endpoint directly.
-        self._runtime_port = self._reserve_runtime_port()
+        self._runtime_port = get_port(RUNTIME_HOST)
         self._runtime_origin = f"http://{RUNTIME_HOST}:{self._runtime_port}"
         env = self._runtime_environment(self._runtime_port)
 
@@ -324,7 +323,7 @@ class Ship:
             msg = "The frontend process has not been started"
             raise RuntimeError(msg)
 
-        runtime_url = _join_url(self._runtime_origin, RUNTIME_ENDPOINT)
+        runtime_url = join_url(self._runtime_origin, RUNTIME_ENDPOINT)
 
         for _ in range(1200):
             if self._frontend.returncode is not None:
@@ -381,17 +380,6 @@ class Ship:
         env["GDANSK_HOST"] = RUNTIME_HOST
         env["GDANSK_SSR_PORT"] = str(port)
         return env
-
-    def _reserve_runtime_port(self) -> int:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.bind((RUNTIME_HOST, 0))
-            return sock.getsockname()[1]
-
-
-def _join_url(origin: str, path: str) -> str:
-    parsed = urlparse(origin)
-    normalized_path = path if path.startswith("/") else f"/{path}"
-    return urlunparse((parsed.scheme, parsed.netloc, normalized_path, "", "", ""))
 
 
 def _widget_key(path: PurePosixPath) -> str:
