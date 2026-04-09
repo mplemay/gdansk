@@ -20,12 +20,13 @@ jobs:
       - name: Install python dependencies
         run: uv sync --all-groups --all-extras --all-packages
 
-      - uses: denoland/setup-deno@v2
-        with:
-          cache: true
-
-      - name: Install deno dependencies
-        run: deno install
+      - name: Install TypeScript package dependencies (Deno)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for d in packages/vite examples/fastapi/src/mount/views examples/get-time/src/get_time/views examples/ssr/src/ssr/views examples/shadcn/src/shadcn/views; do
+            (cd "$d" && uv run deno install)
+          done
 
       - uses: j178/prek-action@v1
 
