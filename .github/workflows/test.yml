@@ -24,6 +24,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          uv run deno install
           for d in packages/vite examples/fastapi/src/mount/views examples/get-time/src/get_time/views examples/ssr/src/ssr/views examples/shadcn/src/shadcn/views; do
             (cd "$d" && uv run deno install)
           done
