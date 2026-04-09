@@ -17,8 +17,11 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Install dependencies
+      - name: Install python dependencies
         run: uv sync --all-groups --all-extras --all-packages
+
+      - name: Install deno dependencies
+        run: uv run deno install
 
       - uses: j178/prek-action@v1
 
