@@ -5,6 +5,7 @@ from asyncio.subprocess import DEVNULL, PIPE, Process, create_subprocess_exec
 from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from functools import partial
 from http import HTTPStatus
 from os import PathLike
 from pathlib import Path, PurePosixPath
@@ -167,9 +168,6 @@ class Ship:
         tool_meta = {**(meta or {}), "ui": {"resourceUri": uri}}
         merged_metadata = merge_metadata(self._metadata, metadata)
 
-        async def resource_fn() -> str:
-            return await self._render_widget_page(relative_path)
-
         def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
             if relative_path in self._widget_manager:
                 msg = f"The widget {relative_path} has already been registered"
@@ -186,7 +184,7 @@ class Ship:
                 structured_output=structured_output,
             )
             resource = FunctionResource.from_function(
-                fn=resource_fn,
+                fn=partial(self._render_widget_page, relative_path),
                 uri=uri,
                 name=name,
                 title=title,
