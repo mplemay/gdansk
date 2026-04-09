@@ -22,7 +22,7 @@ npx skills add mplemay/gdansk
 
 - **[FastAPI](examples/fastapi):** FastAPI-based MCP server integration with mounted app routes.
 - **[get-time](examples/get-time):** Feature-rich MCP app covering tool calls, messaging, logging, and links.
-- **[ssr](examples/ssr):** Minimal SSR example using `Ship(ssr=True)` with a single tool UI.
+- **[ssr](examples/ssr):** Minimal example with a single tool UI.
 - **[shadcn](examples/shadcn):** Todo app example using `shadcn/ui` components with Gdansk.
 
 ## Quick Start

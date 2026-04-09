@@ -1,6 +1,6 @@
 ---
 name: use-gdansk
-description: Comprehensive gdansk implementation and debugging guide for MCP app UIs. Use when adding or fixing Ship widget UIs, wiring `@ship.widget(..., path=...)` to React `views/widgets/**/widget.tsx` or `widget.jsx` entries, composing `ship.mcp(app=...)` with `mcp.server.MCPServer`, enabling SSR, configuring `Metadata`, registering extra tools with `@mcp.tool` on the same server, mounting under FastAPI, or diagnosing gdansk bundling and runtime errors.
+description: Comprehensive gdansk implementation and debugging guide for MCP app UIs. Use when adding or fixing Ship widget UIs, wiring `@ship.widget(..., path=...)` to React `views/widgets/**/widget.tsx` or `widget.jsx` entries, composing `ship.mcp(app=...)` with `mcp.server.MCPServer`, configuring `Metadata`, registering extra tools with `@mcp.tool` on the same server, mounting under FastAPI, or diagnosing gdansk bundling and runtime errors.
 ---
 
 # Use Gdansk
@@ -19,7 +19,6 @@ Map the request to one primary workflow before coding:
    - Resolve widget path validation errors.
    - Resolve missing bundle output or SSR runtime errors.
 3. Add advanced integration:
-   - Enable SSR globally or per widget.
    - Add `Metadata` on `Ship` or per-widget where supported.
    - Register non-widget tools with `@mcp.tool` on the same `MCPServer`.
    - Mount inside FastAPI.
@@ -58,9 +57,6 @@ Use [page-contract-and-tool-wiring.md](references/page-contract-and-tool-wiring.
 
 Choose the smallest integration needed:
 
-- SSR:
-  - Global default: `Ship(..., ssr=True)`.
-  - Per-widget override: `@ship.widget(..., ssr=True|False)`.
 - Metadata:
   - Set global metadata on `Ship` via `metadata=` (see `gdansk.metadata.Metadata`).
   - Per-widget metadata kwargs on `@ship.widget` where wired in `core.py`.
@@ -88,7 +84,7 @@ If anything fails, match the exact error string and follow [troubleshooting.md](
 - Do not invent alternative widget conventions (for example `app.tsx`); gdansk expects `widget.tsx` or `widget.jsx`.
 - Do not pass filesystem-absolute paths to `@ship.widget(path=...)`.
 - Do not use `widgets/...` as the `path` prefix.
-- Do not enable SSR without checking that the widget has a default export and that dependencies are SSR-compatible.
+- Ensure each widget has a default export and that dependencies are SSR-compatible.
 
 ## Reference map
 

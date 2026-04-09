@@ -18,7 +18,7 @@ type PathType = str | PathLike[str]
 
 
 class Ship:
-    def __init__(self, views: PathType, *, metadata: Metadata | None = None, ssr: bool = False) -> None:
+    def __init__(self, views: PathType, *, metadata: Metadata | None = None) -> None:
         if not (views := Path(views)).exists():
             msg = f"The views directory (i.e. {views}) does not exist"
             raise FileNotFoundError(msg)
@@ -29,7 +29,6 @@ class Ship:
 
         self._views: Final[Path] = views.absolute().resolve()
         self._metadata: Final[Metadata] = metadata or Metadata()
-        self._ssr: Final[bool] = ssr
 
         self._deno: Final[Path] = Path(find_deno_bin()).resolve().absolute()
         self._registry: dict[Path, str] = {}
@@ -75,7 +74,6 @@ class Ship:
         icons: list[Icon] | None = None,
         meta: dict[str, Any] | None = None,
         metadata: Metadata | None = None,  # noqa: ARG002
-        ssr: bool | None = None,
         structured_output: bool | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         if (path := Path(path)).is_file():
@@ -95,7 +93,6 @@ class Ship:
             msg = f"The widget path (i.e. {path}) must be a .tsx or .jsx file"
             raise ValueError(msg)
 
-        ssr = self._ssr or ssr
         uri = f"ui://{PurePosixPath(*posix.parts[:-1])}"
         meta = meta or {}
         meta["ui"] = {"resourceUri": uri}

@@ -2,36 +2,6 @@
 
 Use this file when the request goes beyond basic widget wiring.
 
-## SSR options
-
-### Global SSR default
-
-Enable SSR for all registered widgets by default:
-
-```python
-ship = Ship(views=views_path, ssr=True)
-```
-
-### Per-widget SSR override
-
-Override the global setting on specific widgets:
-
-```python
-@ship.widget(path=Path("reports/widget.tsx"), ssr=True)
-def reports():
-    ...
-
-@ship.widget(path=Path("settings/widget.tsx"), ssr=False)
-def settings():
-    ...
-```
-
-Behavior:
-
-- Widget-level `ssr` overrides constructor `ssr`.
-- If effective SSR is `True`, server bundle is required.
-- If effective SSR is `False`, no server runtime execution occurs.
-
 ## Metadata behavior
 
 `Ship` accepts optional `metadata` using the `Metadata` shape from `gdansk.metadata` (a `TypedDict`).
@@ -117,9 +87,6 @@ libraries). Declare dependencies in `views/package.json`, run `uv run deno insta
 
 | Need | Option |
 | --- | --- |
-| Server-rendered initial HTML for all widgets | `Ship(..., ssr=True)` |
-| Server-rendered initial HTML for one widget | `@ship.widget(..., ssr=True)` |
-| Force client-only rendering for one widget while global SSR is on | `@ship.widget(..., ssr=False)` |
 | Shared head metadata across widgets | constructor `metadata=` (`gdansk.metadata.Metadata`) |
 | Per-widget title or OG override | `@ship.widget(..., metadata=...)` when supported |
 | Running inside existing FastAPI service | mount `mcp_app` + nested lifespan |

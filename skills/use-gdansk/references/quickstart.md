@@ -132,20 +132,6 @@ uv sync
 uv run python server.py
 ```
 
-SSR variant:
-
-```python
-ship = Ship(views=Path(__file__).parent / "views", ssr=True)
-```
-
-Run:
-
-```bash
-uv sync
-( cd views && uv run deno install )
-uv run python server.py
-```
-
 FastAPI mount pattern:
 
 ```python
@@ -204,7 +190,8 @@ After startup, confirm bundle output exists:
 find views/.gdansk -maxdepth 3 -type f
 ```
 
-Expected for non-SSR hello:
+Expected for a basic hello widget:
 
 - `views/.gdansk/hello/client.js`
+- `views/.gdansk/hello/server.js`
 - optional `views/.gdansk/hello/client.css`
