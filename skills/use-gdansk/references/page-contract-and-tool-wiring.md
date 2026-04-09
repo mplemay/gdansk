@@ -59,9 +59,9 @@ Examples:
 
 For `hello/widget.tsx`:
 
-- client bundle: `.gdansk/hello/client.js`
-- optional client css: `.gdansk/hello/client.css`
-- SSR server bundle (when enabled): `.gdansk/hello/server.js`
+- client bundle: `dist/hello/client.js`
+- optional client css: `dist/hello/client.css`
+- SSR server bundle (when enabled): `dist/hello/server.js`
 
 ## Guardrail checklist before merge
 

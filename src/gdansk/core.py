@@ -114,7 +114,7 @@ class Ship:
         self._port: Final[int] = port
         self._views: Final[Path] = views.absolute().resolve()
         self._widgets_root: Final[Path] = self._views / "widgets"
-        self._runtime_path: Final[Path] = self._views / ".gdansk" / "runtime.json"
+        self._runtime_path: Final[Path] = self._views / "dist" / "runtime.json"
         self._metadata: Final[Metadata] = metadata or Metadata()
         self._client: Final[AsyncClient] = client or AsyncClient()
 
@@ -287,7 +287,7 @@ class Ship:
             command = self._deno_command("run", "-A", "--node-modules-dir=auto", "npm:vite", "dev")
         else:
             await self._run_build()
-            server_path = self._views / ".gdansk" / "server.js"
+            server_path = self._views / "dist" / "server.js"
             if not server_path.is_file():
                 msg = f"Expected a production server entry at {server_path}"
                 raise RuntimeError(msg)

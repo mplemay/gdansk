@@ -216,11 +216,11 @@ uv run fastapi dev main.py
 After startup, confirm bundle output exists:
 
 ```bash
-find views/.gdansk -maxdepth 3 -type f
+find views/dist -maxdepth 3 -type f
 ```
 
 Expected for a basic hello widget:
 
-- `views/.gdansk/hello/client.js`
-- `views/.gdansk/hello/server.js`
-- optional `views/.gdansk/hello/client.css`
+- `views/dist/hello/client.js`
+- `views/dist/hello/server.js`
+- optional `views/dist/hello/client.css`

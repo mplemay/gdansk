@@ -15,7 +15,7 @@ export function resolveOptions(
 ): ResolvedGdanskOptions {
   const root = resolve(configRoot ?? options.root ?? process.cwd());
   const widgetsRoot = options.widgetsRoot ?? "widgets";
-  const outDir = (options.outDir ?? ".gdansk").replace(/\/+$/, "");
+  const outDir = (options.outDir ?? "dist").replace(/\/+$/, "");
   const generatedDir = `${outDir}-src`;
   const host = options.host ?? "127.0.0.1";
   const ssrEndpoint = options.ssrEndpoint?.startsWith("/") ? options.ssrEndpoint : `/${options.ssrEndpoint ?? "__gdansk_ssr"}`;

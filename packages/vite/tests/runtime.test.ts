@@ -29,26 +29,26 @@ describe("@gdansk/vite", () => {
     const manifest = await runtime.build();
 
     expect(Object.keys(manifest.widgets)).toEqual(["hello", "nested/page"]);
-    await expect(pathExists(`${root}/.gdansk/hello/client.js`)).resolves.toBe(true);
-    await expect(pathExists(`${root}/.gdansk/hello/client.css`)).resolves.toBe(true);
-    await expect(pathExists(`${root}/.gdansk/hello/server.js`)).resolves.toBe(true);
-    await expect(pathExists(`${root}/.gdansk/nested/page/client.js`)).resolves.toBe(true);
-    await expect(pathExists(`${root}/.gdansk/nested/page/server.js`)).resolves.toBe(true);
-    await expect(pathExists(`${root}/.gdansk/server.js`)).resolves.toBe(true);
+    await expect(pathExists(`${root}/dist/hello/client.js`)).resolves.toBe(true);
+    await expect(pathExists(`${root}/dist/hello/client.css`)).resolves.toBe(true);
+    await expect(pathExists(`${root}/dist/hello/server.js`)).resolves.toBe(true);
+    await expect(pathExists(`${root}/dist/nested/page/client.js`)).resolves.toBe(true);
+    await expect(pathExists(`${root}/dist/nested/page/server.js`)).resolves.toBe(true);
+    await expect(pathExists(`${root}/dist/server.js`)).resolves.toBe(true);
 
     const metadata = await runtime.startProductionServer();
     const response = await renderWidget(metadata, { widget: "hello" });
 
     expect(response.body).toContain("Hello SSR");
     expect(response.body).toContain("from plugin");
-    expect(response.head.join("")).toContain(`${metadata.ssrOrigin}/.gdansk/hello/client.css`);
+    expect(response.head.join("")).toContain(`${metadata.ssrOrigin}/dist/hello/client.css`);
 
     const runtimeMetadata = await fetchRuntime(metadata.ssrOrigin);
     expect(runtimeMetadata.assetOrigin).toBe(metadata.ssrOrigin);
     expect(runtimeMetadata.mode).toBe("production");
-    expect(runtimeMetadata.widgets.hello.clientPath).toBe("/.gdansk/hello/client.js");
+    expect(runtimeMetadata.widgets.hello.clientPath).toBe("/dist/hello/client.js");
 
-    const assetResponse = await fetch(`${metadata.ssrOrigin}/.gdansk/hello/client.js`);
+    const assetResponse = await fetch(`${metadata.ssrOrigin}/dist/hello/client.js`);
     expect(assetResponse.status).toBe(200);
 
     await runtime.close();
@@ -69,10 +69,10 @@ describe("@gdansk/vite", () => {
     expect(runtimeMetadata.assetOrigin).toMatch(/^http:\/\/127\.0\.0\.1:/);
     expect(runtimeMetadata.viteOrigin).toMatch(/^http:\/\/127\.0\.0\.1:/);
     expect(Object.keys(runtimeMetadata.widgets)).toEqual(["hello", "nested/page"]);
-    expect(runtimeMetadata.widgets.hello.clientPath).toBe("/.gdansk-src/hello/client.tsx");
+    expect(runtimeMetadata.widgets.hello.clientPath).toBe("/dist-src/hello/client.tsx");
 
     await runtime.close();
-    expect(await pathExists(`${root}/.gdansk/runtime.json`)).toBe(false);
+    expect(await pathExists(`${root}/dist/runtime.json`)).toBe(false);
   });
 
   it("exports a Vite plugin that starts the sidecar during dev", async () => {
@@ -90,7 +90,7 @@ describe("@gdansk/vite", () => {
 
     await server.listen();
 
-    const metadata = JSON.parse(await readFile(`${root}/.gdansk/runtime.json`, "utf8")) as {
+    const metadata = JSON.parse(await readFile(`${root}/dist/runtime.json`, "utf8")) as {
       ssrEndpoint: string;
       ssrOrigin: string;
     };
@@ -103,7 +103,7 @@ describe("@gdansk/vite", () => {
     expect(response.body).toContain("Hello SSR");
 
     await server.close();
-    await waitFor(async () => !(await pathExists(`${root}/.gdansk/runtime.json`)));
+    await waitFor(async () => !(await pathExists(`${root}/dist/runtime.json`)));
   });
 });
 

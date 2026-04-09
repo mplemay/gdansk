@@ -77,7 +77,7 @@ Use [integration-options.md](references/integration-options.md) for exact implem
 
 After implementation:
 
-1. Start server with `ship.mcp(..., dev=True)` in development and confirm bundle output appears under `views/.gdansk/`.
+1. Start server with `ship.mcp(..., dev=True)` in development and confirm bundle output appears under `views/dist/`.
 2. Open or fetch the UI resource and confirm rendered HTML includes client script.
 3. For SSR paths, confirm server bundle exists and hydration path is correct.
 4. For CSS changes, confirm generated CSS is present.

@@ -42,7 +42,7 @@ class FakeClient:
             "ssrOrigin": "http://ssr.test",
             "viteOrigin": "http://vite.test",
             "widgets": {
-                "hello": {"clientPath": "/.gdansk-src/hello/client.tsx"},
+                "hello": {"clientPath": "/dist-src/hello/client.tsx"},
             },
         }
 
@@ -124,7 +124,7 @@ async def test_widget_resource_renders_complete_document(views_path: Path):
         ssrOrigin="http://ssr.test",
         viteOrigin="http://vite.test",
         widgets={
-            "hello": RuntimeWidget(clientPath="/.gdansk-src/hello/client.tsx"),
+            "hello": RuntimeWidget(clientPath="/dist-src/hello/client.tsx"),
         },
     )
 
@@ -137,7 +137,7 @@ async def test_widget_resource_renders_complete_document(views_path: Path):
     assert '<meta name="robots" content="noindex" />' in html
     assert '<div id="root"><main>Hello from SSR</main></div>' in html
     assert '<script type="module" src="http://vite.test/@vite/client"></script>' in html
-    assert '<script type="module" src="http://assets.test/.gdansk-src/hello/client.tsx"></script>' in html
+    assert '<script type="module" src="http://assets.test/dist-src/hello/client.tsx"></script>' in html
 
 
 async def test_widget_resource_raises_on_invalid_ssr_payload(views_path: Path):
@@ -159,7 +159,7 @@ async def test_widget_resource_raises_on_invalid_ssr_payload(views_path: Path):
         ssrOrigin="http://ssr.test",
         viteOrigin="http://vite.test",
         widgets={
-            "hello": RuntimeWidget(clientPath="/.gdansk-src/hello/client.tsx"),
+            "hello": RuntimeWidget(clientPath="/dist-src/hello/client.tsx"),
         },
     )
 
