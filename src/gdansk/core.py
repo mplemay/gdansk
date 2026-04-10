@@ -30,6 +30,8 @@ if TYPE_CHECKING:
     from starlette.responses import Response
     from starlette.types import Scope
 
+    from gdansk.widget import WidgetMeta
+
 type PathType = str | PathLike[str]
 
 DEV_GENERATED_DIR: Final[str] = "dist-src"
@@ -392,7 +394,7 @@ class Ship:
         description: str | None = None,
         annotations: ToolAnnotations | None = None,
         icons: list[Icon] | None = None,
-        meta: dict[str, Any] | None = None,
+        meta: WidgetMeta | None = None,
         metadata: Metadata | None = None,
         structured_output: bool | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
