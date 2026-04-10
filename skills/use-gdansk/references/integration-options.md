@@ -24,6 +24,41 @@ Per-widget metadata can be passed directly to `@ship.widget(..., metadata=...)`.
 Merge semantics for metadata helpers (such as `merge_metadata` in `gdansk.metadata`) are shallow top-level merge when
 you combine sources in application code.
 
+## Widget resource metadata
+
+`Ship` also accepts optional `resource_meta` for widget resource `_meta`, separate from HTML head `metadata` and tool
+`meta`.
+
+```python
+from gdansk import ResourceMeta, Ship
+
+resource_meta: ResourceMeta = {
+    "openai/widgetDescription": "Shows an interactive widget.",
+    "ui": {
+        "csp": {
+            "connectDomains": ["https://api.example.com"],
+            "resourceDomains": ["https://cdn.example.com"],
+        }
+    },
+}
+
+ship = Ship(
+    views=views_path,
+    base_url="https://example.com/app",
+    resource_meta=resource_meta,
+)
+```
+
+When `base_url` is set, gdansk automatically derives a same-origin widget domain and CSP baseline for the `ui://...`
+resource:
+
+- `ui.domain` becomes the normalized origin of `base_url`
+- `ui.csp.connectDomains` includes that origin
+- `ui.csp.resourceDomains` includes that origin
+
+Per-widget `@ship.widget(..., resource_meta=...)` overrides the domain and appends additional CSP domains with
+ordered de-duplication.
+
 ## Widget decorator surface
 
 `Ship.widget(...)` supports the following public knobs that matter for repo integrations:
@@ -35,6 +70,7 @@ you combine sources in application code.
 - `icons`
 - `meta`
 - `metadata`
+- `resource_meta`
 - `structured_output`
 
 Prefer these public arguments over custom wrapper logic when the request only needs tool metadata or typed output.

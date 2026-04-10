@@ -75,6 +75,9 @@ Choose the smallest integration needed:
 - Metadata:
   - Set shared page metadata on `Ship(..., metadata=...)`.
   - Override per-widget metadata with `@ship.widget(..., metadata=...)`.
+- Widget resource metadata:
+  - Use `Ship(..., resource_meta=...)` for shared widget resource `_meta` like widget CSP or domain.
+  - Override per-widget widget resource metadata with `@ship.widget(..., resource_meta=...)`.
 - Structured outputs:
   - Use `structured_output=True` on widget tools when the UI needs typed tool data instead of plain text parsing.
 - Plain MCP tools (no React UI):
