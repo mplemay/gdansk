@@ -28,6 +28,7 @@ export async function startGdanskServer(options: GdanskServerOptions): Promise<G
     `${outDirPrefix}/*`,
     serveStatic({
       onFound: (_, c) => {
+        c.header("Access-Control-Allow-Origin", "*");
         c.header("Cache-Control", "public, max-age=31536000, immutable");
       },
       root: options.options.root,

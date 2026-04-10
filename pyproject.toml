@@ -13,6 +13,7 @@ dependencies = [
     "mcp>=1.25.1.dev114,<1.26",
     "minijinja>=2,<3",
     "pydantic>=2.12.5",
+    "starlette>=1.0.0",
     "watchfiles>=1.1.1",
 ]
 

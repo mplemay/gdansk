@@ -4,34 +4,38 @@ from asyncio import sleep
 from asyncio.subprocess import DEVNULL, PIPE, Process, create_subprocess_exec
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from functools import partial
+from functools import cached_property, partial
 from http import HTTPStatus
-from os import PathLike
+from os import PathLike, stat_result
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Final, Literal
+from urllib.parse import urlparse
 
 from deno import find_deno_bin
 from httpx import AsyncClient, RequestError
 from mcp.server.mcpserver.resources import FunctionResource
 from mcp.server.mcpserver.tools.base import Tool
 from pydantic import BaseModel, ConfigDict, ValidationError
+from starlette.staticfiles import StaticFiles
 
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import render_template
-from gdansk.utils import join_url
+from gdansk.utils import join_url, join_url_path
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable
 
     from mcp.server import MCPServer
     from mcp.types import Icon, ToolAnnotations
+    from starlette.responses import Response
+    from starlette.types import Scope
 
 type PathType = str | PathLike[str]
 
 DEV_GENERATED_DIR: Final[str] = "dist-src"
+DEFAULT_ASSETS_DIR: Final[str] = "assets"
 HEALTH_ENDPOINT: Final[str] = "/health"
 MAX_RUNTIME_PORT: Final[int] = 65535
-PRODUCTION_OUT_DIR: Final[str] = "dist"
 SSR_ENDPOINT: Final[str] = "/ssr"
 
 
@@ -57,19 +61,36 @@ class WidgetSpec:
     uri: str
 
 
+class AssetFiles(StaticFiles):
+    def file_response(
+        self,
+        full_path: PathType,
+        stat_result: stat_result,
+        scope: Scope,
+        status_code: int = HTTPStatus.OK,
+    ) -> Response:
+        response = super().file_response(full_path, stat_result, scope, status_code)
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        return response
+
+
 class ShipContext:
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         views: Path,
         *,
+        assets: str,
         host: str,
         port: int,
+        server_url: str | None = None,
         client: AsyncClient | None = None,
     ) -> None:
+        self._assets_dir: Final[str] = assets
         self._client: Final[AsyncClient] = client or AsyncClient()
         self._deno: Final[str] = find_deno_bin()
         self._host: Final[str] = host
         self._port: Final[int] = port
+        self._server_url: Final[str | None] = server_url
         self._views: Final[Path] = views
 
         self._active = False
@@ -95,10 +116,14 @@ class ShipContext:
 
     async def render_widget_page(self, *, metadata: Metadata | None, widget_key: str) -> str:
         runtime_origin = self._require_runtime_origin()
+        asset_base_url = self._asset_base_url()
+        payload = {"widget": widget_key}
+        if asset_base_url is not None:
+            payload["assetBaseUrl"] = asset_base_url
 
         response = await self._client.post(
             join_url(runtime_origin, SSR_ENDPOINT),
-            json={"widget": widget_key},
+            json=payload,
         )
 
         if response.status_code != HTTPStatus.OK:
@@ -117,7 +142,7 @@ class ShipContext:
                 join_url(runtime_origin, f"/{DEV_GENERATED_DIR}/{widget_key}/client.tsx"),
             ]
         else:
-            scripts = [join_url(runtime_origin, f"/{PRODUCTION_OUT_DIR}/{widget_key}/client.js")]
+            scripts = [self._production_asset_url(runtime_origin=runtime_origin, widget_key=widget_key)]
 
         return render_template(
             "base.html",
@@ -135,6 +160,19 @@ class ShipContext:
             raise RuntimeError(msg)
 
         return self._runtime_origin
+
+    def _asset_base_url(self) -> str | None:
+        if self._server_url is None:
+            return None
+
+        return join_url(self._server_url, f"/{self._assets_dir}")
+
+    def _production_asset_url(self, *, runtime_origin: str, widget_key: str) -> str:
+        base = self._asset_base_url()
+        if base is not None:
+            return join_url_path(base, f"{widget_key}/client.js")
+
+        return join_url(runtime_origin, f"/{self._assets_dir}/{widget_key}/client.js")
 
     async def _run_build(self) -> None:
         proc = await create_subprocess_exec(
@@ -186,7 +224,7 @@ class ShipContext:
             )
         else:
             await self._run_build()
-            server_path = self._views / PRODUCTION_OUT_DIR / "server.js"
+            server_path = self._views / self._assets_dir / "server.js"
             if not server_path.is_file():
                 msg = f"Expected a production server entry at {server_path}"
                 raise RuntimeError(msg)
@@ -265,13 +303,15 @@ class ShipContext:
 
 
 class Ship:
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         views: PathType,
         *,
+        assets: str = DEFAULT_ASSETS_DIR,
         host: str = "127.0.0.1",
         port: int = 13714,
         metadata: Metadata | None = None,
+        server_url: str | None = None,
         client: AsyncClient | None = None,
     ) -> None:
         if not (views := Path(views)).exists():
@@ -287,10 +327,16 @@ class Ship:
             msg = "The runtime host must not be empty"
             raise ValueError(msg)
 
+        assets = self._normalize_assets(assets)
         if port <= 0 or port > MAX_RUNTIME_PORT:
             msg = f"The runtime port must be an integer between 1 and {MAX_RUNTIME_PORT}"
             raise ValueError(msg)
 
+        if server_url is not None and urlparse(server_url).hostname is None:
+            msg = "The server URL must be an absolute URL with a hostname"
+            raise ValueError(msg)
+
+        self._assets_dir: Final[str] = assets
         self._host: Final[str] = host
         self._port: Final[int] = port
         self._views: Final[Path] = views.absolute().resolve()
@@ -299,10 +345,16 @@ class Ship:
         self._widget_manager: dict[Path, WidgetSpec] = {}
         self._context: Final[ShipContext] = ShipContext(
             self._views,
+            assets=self._assets_dir,
             host=self._host,
             port=self._port,
+            server_url=server_url,
             client=client,
         )
+
+    @cached_property
+    def assets(self) -> StaticFiles:
+        return AssetFiles(directory=self._views / self._assets_dir, check_dir=False)
 
     @asynccontextmanager
     async def mcp(self, app: MCPServer, *, dev: bool = False) -> AsyncIterator[None]:
@@ -317,6 +369,20 @@ class Ship:
 
         async with self._context.open(dev=dev):
             yield None
+
+    @staticmethod
+    def _normalize_assets(assets: str) -> str:
+        cleaned = assets.strip().strip("/")
+        if not cleaned:
+            msg = "The assets directory must not be empty"
+            raise ValueError(msg)
+
+        posix = PurePosixPath(cleaned)
+        if posix.is_absolute() or any(part in {"", ".", ".."} for part in posix.parts):
+            msg = f"The assets directory (i.e. {assets}) must be a relative path without traversal segments"
+            raise ValueError(msg)
+
+        return posix.as_posix()
 
     def widget(  # noqa: PLR0913
         self,

@@ -15,7 +15,7 @@ import type {
 export function resolveOptions(options: GdanskPluginOptions = {}, configRoot?: string): ResolvedGdanskOptions {
   const root = resolve(configRoot ?? options.root ?? process.cwd());
   const widgetsRoot = options.widgetsRoot ?? "widgets";
-  const outDir = "dist";
+  const outDir = options.assets ?? "assets";
   const generatedDir = "dist-src";
   const host = options.host ?? "127.0.0.1";
   const ssrEndpoint = "/ssr";

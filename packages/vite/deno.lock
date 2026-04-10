@@ -13,6 +13,7 @@
     "npm:typescript@*": "6.0.2",
     "npm:typescript@~6.0.2": "6.0.2",
     "npm:vite@8.0.8": "8.0.8_@types+node@25.5.2",
+    "npm:vitest@*": "4.1.4_@types+node@25.5.2_vite@8.0.8__@types+node@25.5.2",
     "npm:vitest@4.1.4": "4.1.4_@types+node@25.5.2_vite@8.0.8__@types+node@25.5.2"
   },
   "npm": {
