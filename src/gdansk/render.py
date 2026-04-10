@@ -4,8 +4,10 @@ from typing import Final
 from minijinja import Environment
 
 from gdansk.metadata import resolve_metadata_url
+from gdansk.utils import join_url
 
 ENV: Final[Environment] = Environment()
+ENV.add_global("join_url", join_url)
 ENV.add_global("resolve_metadata_url", resolve_metadata_url)
 
 for file in Path(__file__).parent.glob("*.html.j2"):

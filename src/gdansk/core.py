@@ -122,8 +122,10 @@ class ShipContext:
         return render_template(
             "base.html",
             body=rendered.body,
+            dev=self._dev,
             head=rendered.head,
             metadata=metadata,
+            runtime_origin=runtime_origin,
             scripts=scripts,
         )
 
