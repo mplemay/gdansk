@@ -14,6 +14,17 @@
     - **Don't use other package managers for javascript / typescript dependencies (ex: `bun`, `npm`, etc.)**
     - **Always use `package.json` for specifying dependencies and not `deno.json`.**
 
+## Workflows
+
+### After Changes
+
+1. Run `bun test` to verify the code works. If it is broken, figure out the root cause, fix it, and then restart
+   this workflow.
+2. Run `bun run lint` before staging. If the linter makes any changes, or changes are required, figure
+   out the root cause, fix it, and then restart this workflow.
+3. Stage the changes and commit with a lowercase conventional commit message, for example:
+   `fix: update workflow instructions`.
+
 ## Conventions
 
 ### Python
