@@ -173,8 +173,8 @@ async def test_ship_mcp_preserves_widget_meta_when_adding_dev_runtime_origin(
             },
             "ui": {
                 "csp": {
-                    "connectDomains": ["https://api.example.com"],
-                    "resourceDomains": ["https://cdn.example.com/assets"],
+                    "connect_domains": ["https://api.example.com"],
+                    "resource_domains": ["https://cdn.example.com/assets"],
                 },
             },
         },
@@ -186,7 +186,7 @@ async def test_ship_mcp_preserves_widget_meta_when_adding_dev_runtime_origin(
         name="hello",
         widget_meta={
             "ui": {
-                "csp": {"frameDomains": ["https://embed.example.com/frame"]},
+                "csp": {"frame_domains": ["https://embed.example.com/frame"]},
                 "domain": "https://widgets.example.com/app",
             },
         },

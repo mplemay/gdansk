@@ -9,9 +9,9 @@ from urllib.parse import urlparse, urlunparse
 
 
 class WidgetCSP(TypedDict, total=False):
-    connectDomains: list[str]
-    resourceDomains: list[str]
-    frameDomains: list[str]
+    connect_domains: list[str]
+    resource_domains: list[str]
+    frame_domains: list[str]
 
 
 class OpenAIWidgetCSP(TypedDict, total=False):
@@ -43,9 +43,9 @@ type WidgetMetaField = Literal[
     "base_url",
     "runtime_origin",
     "ui.domain",
-    "ui.csp.connectDomains",
-    "ui.csp.resourceDomains",
-    "ui.csp.frameDomains",
+    "ui.csp.connect_domains",
+    "ui.csp.resource_domains",
+    "ui.csp.frame_domains",
     "openai.widgetCSP.connect_domains",
     "openai.widgetCSP.resource_domains",
     "openai.widgetCSP.frame_domains",
@@ -69,7 +69,7 @@ def merge_widget_meta(*metas: WidgetMeta | None) -> WidgetMeta | None:
     merged = MergedWidgetMeta()
 
     for meta in metas:
-        _merge_meta(merged, meta)
+        merged = _merge_meta(merged, meta)
 
     return _build_widget_meta(merged)
 
@@ -145,8 +145,8 @@ def _widget_meta_csp_from_origin(origin: str, *, field_name: WidgetMetaField) ->
     return {
         "ui": {
             "csp": {
-                "connectDomains": [normalized_origin],
-                "resourceDomains": [normalized_origin],
+                "connect_domains": [normalized_origin],
+                "resource_domains": [normalized_origin],
             },
         },
     }
@@ -173,11 +173,11 @@ def _build_openai_resource_meta(merged: MergedWidgetMeta) -> OpenAIWidgetResourc
 def _build_widget_csp(merged: MergedWidgetMeta) -> WidgetCSP | None:
     csp: WidgetCSP = {}
     if merged.connect_domains:
-        csp["connectDomains"] = merged.connect_domains
+        csp["connect_domains"] = merged.connect_domains
     if merged.resource_domains:
-        csp["resourceDomains"] = merged.resource_domains
+        csp["resource_domains"] = merged.resource_domains
     if merged.frame_domains:
-        csp["frameDomains"] = merged.frame_domains
+        csp["frame_domains"] = merged.frame_domains
     return csp or None
 
 
@@ -192,9 +192,9 @@ def _build_widget_ui(merged: MergedWidgetMeta) -> WidgetUI | None:
     return ui or None
 
 
-def _merge_openai_widget_csp(merged: MergedWidgetMeta, csp: OpenAIWidgetCSP | None) -> None:
+def _merge_openai_widget_csp(merged: MergedWidgetMeta, csp: OpenAIWidgetCSP | None) -> MergedWidgetMeta:
     if csp is None:
-        return
+        return merged
 
     merged.connect_domains = merge_domains(
         merged.connect_domains,
@@ -216,39 +216,41 @@ def _merge_openai_widget_csp(merged: MergedWidgetMeta, csp: OpenAIWidgetCSP | No
         csp.get("redirect_domains"),
         field_name="openai.widgetCSP.redirect_domains",
     )
+    return merged
 
 
-def _merge_csp(merged: MergedWidgetMeta, csp: WidgetCSP | None) -> None:
+def _merge_csp(merged: MergedWidgetMeta, csp: WidgetCSP | None) -> MergedWidgetMeta:
     if csp is None:
-        return
+        return merged
 
     merged.connect_domains = merge_domains(
         merged.connect_domains,
-        csp.get("connectDomains"),
-        field_name="ui.csp.connectDomains",
+        csp.get("connect_domains"),
+        field_name="ui.csp.connect_domains",
     )
     merged.resource_domains = merge_domains(
         merged.resource_domains,
-        csp.get("resourceDomains"),
-        field_name="ui.csp.resourceDomains",
+        csp.get("resource_domains"),
+        field_name="ui.csp.resource_domains",
     )
     merged.frame_domains = merge_domains(
         merged.frame_domains,
-        csp.get("frameDomains"),
-        field_name="ui.csp.frameDomains",
+        csp.get("frame_domains"),
+        field_name="ui.csp.frame_domains",
     )
+    return merged
 
 
-def _merge_meta(merged: MergedWidgetMeta, meta: WidgetMeta | None) -> None:
+def _merge_meta(merged: MergedWidgetMeta, meta: WidgetMeta | None) -> MergedWidgetMeta:
     if meta is None:
-        return
+        return merged
 
     if (ui := meta.get("ui")) is not None:
         if (domain := ui.get("domain")) is not None:
             merged.domain = normalize_origin(domain, field_name="ui.domain")
         if (prefers := ui.get("prefersBorder")) is not None:
             merged.prefers_border = prefers
-        _merge_csp(merged, ui.get("csp"))
+        merged = _merge_csp(merged, ui.get("csp"))
 
     if (openai := meta.get("openai")) is not None:
         if (description := openai.get("widgetDescription")) is not None:
@@ -257,7 +259,9 @@ def _merge_meta(merged: MergedWidgetMeta, meta: WidgetMeta | None) -> None:
             merged.prefers_border = prefers
         if (domain := openai.get("widgetDomain")) is not None:
             merged.domain = normalize_origin(domain, field_name="openai.widgetDomain")
-        _merge_openai_widget_csp(merged, openai.get("widgetCSP"))
+        merged = _merge_openai_widget_csp(merged, openai.get("widgetCSP"))
+
+    return merged
 
 
 def _openai_widget_csp_to_dict(csp: OpenAIWidgetCSP | None) -> dict[str, Any] | None:
@@ -281,11 +285,11 @@ def _widget_csp_to_dict(csp: WidgetCSP | None) -> dict[str, Any] | None:
         return None
 
     result: dict[str, Any] = {}
-    if (connect_domains := csp.get("connectDomains")) is not None:
+    if (connect_domains := csp.get("connect_domains")) is not None:
         result["connectDomains"] = list(connect_domains)
-    if (resource_domains := csp.get("resourceDomains")) is not None:
+    if (resource_domains := csp.get("resource_domains")) is not None:
         result["resourceDomains"] = list(resource_domains)
-    if (frame_domains := csp.get("frameDomains")) is not None:
+    if (frame_domains := csp.get("frame_domains")) is not None:
         result["frameDomains"] = list(frame_domains)
     return result or None
 

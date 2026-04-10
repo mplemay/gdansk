@@ -51,8 +51,8 @@ def test_ship_resource_meta_extends_default_resource_meta(views_path: Path):
         },
         "ui": {
             "csp": {
-                "connectDomains": ["https://api.example.com/v1"],
-                "resourceDomains": ["https://cdn.example.com/assets"],
+                "connect_domains": ["https://api.example.com/v1"],
+                "resource_domains": ["https://cdn.example.com/assets"],
             },
         },
     }
@@ -85,8 +85,8 @@ def test_widget_resource_meta_overrides_domain_and_augments_csp(views_path: Path
         },
         "ui": {
             "csp": {
-                "connectDomains": ["https://api.example.com"],
-                "resourceDomains": ["https://cdn.example.com"],
+                "connect_domains": ["https://api.example.com"],
+                "resource_domains": ["https://cdn.example.com"],
             },
         },
     }
@@ -96,9 +96,9 @@ def test_widget_resource_meta_overrides_domain_and_augments_csp(views_path: Path
         },
         "ui": {
             "csp": {
-                "connectDomains": ["https://api.partner.example.com/v2"],
-                "frameDomains": ["https://embed.example.com/app"],
-                "resourceDomains": ["https://cdn.example.com/assets", "https://images.example.com/library"],
+                "connect_domains": ["https://api.partner.example.com/v2"],
+                "frame_domains": ["https://embed.example.com/app"],
+                "resource_domains": ["https://cdn.example.com/assets", "https://images.example.com/library"],
             },
             "domain": "https://widgets.example.com/app",
         },
@@ -149,12 +149,12 @@ def test_ship_rejects_invalid_resource_meta_domain(views_path: Path):
 def test_widget_rejects_invalid_resource_meta_csp_domain(views_path: Path):
     ship = Ship(views=views_path)
 
-    with pytest.raises(ValueError, match=r"ui\.csp\.connectDomains must be an absolute URL with a hostname"):
+    with pytest.raises(ValueError, match=r"ui\.csp\.connect_domains must be an absolute URL with a hostname"):
 
         @ship.widget(
             path=Path("hello/widget.tsx"),
             name="hello",
-            widget_meta={"ui": {"csp": {"connectDomains": ["/relative"]}}},
+            widget_meta={"ui": {"csp": {"connect_domains": ["/relative"]}}},
         )
         def hello() -> None:
             return None
