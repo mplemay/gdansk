@@ -205,9 +205,7 @@ async def test_run_build_uses_the_views_vite_entrypoint(views_path: Path, monkey
     await ship._context._run_build()
 
     assert captured_args == (
-        "uv",
-        "run",
-        "deno",
+        ship._context._deno,
         "run",
         "-A",
         "--node-modules-dir=auto",
@@ -323,9 +321,7 @@ async def test_start_dev_uses_runtime_port(views_path: Path, monkeypatch: pytest
     await ship._context._stop()
 
     assert captured_args == (
-        "uv",
-        "run",
-        "deno",
+        ship._context._deno,
         "run",
         "-A",
         "--node-modules-dir=auto",
