@@ -21,7 +21,13 @@ from starlette.staticfiles import StaticFiles
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import render_template
 from gdansk.utils import join_url, join_url_path
-from gdansk.widget_meta import WidgetMeta, merge_widget_meta, widget_meta_from_base_url, widget_meta_to_dict
+from gdansk.widget_meta import (
+    WidgetMeta,
+    _widget_meta_csp_from_origin,
+    merge_widget_meta,
+    widget_meta_from_base_url,
+    widget_meta_to_dict,
+)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable
@@ -60,6 +66,11 @@ class WidgetSpec:
     resource: FunctionResource
     tool: Tool
     uri: str
+    widget_meta: WidgetMeta | None
+
+
+def _format_runtime_origin(*, host: str, port: int) -> str:
+    return f"http://{host}:{port}"
 
 
 class AssetFiles(StaticFiles):
@@ -205,7 +216,7 @@ class ShipContext:
             raise RuntimeError(msg)
 
         self._dev = dev
-        self._runtime_origin = f"http://{self._host}:{self._port}"
+        self._runtime_origin = _format_runtime_origin(host=self._host, port=self._port)
 
         if dev:
             command = (
@@ -369,6 +380,7 @@ class Ship:
                 msg = f"A tool with the name {spec.tool.name} has already been registered"
                 raise ValueError(msg)
 
+            spec.resource.meta = self._resource_meta(widget_meta=spec.widget_meta, dev=dev)
             app._tool_manager._tools.setdefault(spec.tool.name, spec.tool)  # noqa: SLF001
             app.add_resource(resource=spec.resource)
 
@@ -388,6 +400,16 @@ class Ship:
             raise ValueError(msg)
 
         return posix.as_posix()
+
+    def _resource_meta(self, *, widget_meta: WidgetMeta | None, dev: bool) -> dict[str, Any] | None:
+        if not dev:
+            return widget_meta_to_dict(widget_meta)
+
+        runtime_widget_meta = _widget_meta_csp_from_origin(
+            _format_runtime_origin(host=self._host, port=self._port),
+            field_name="runtime_origin",
+        )
+        return widget_meta_to_dict(merge_widget_meta(widget_meta, runtime_widget_meta))
 
     def widget(  # noqa: PLR0913
         self,
@@ -441,7 +463,7 @@ class Ship:
                 title=title,
                 description=description,
                 mime_type="text/html;profile=mcp-app",
-                meta=widget_meta_to_dict(merged_widget_meta),
+                meta=self._resource_meta(widget_meta=merged_widget_meta, dev=False),
             )
 
             self._widget_manager[relative_path] = WidgetSpec(
@@ -450,6 +472,7 @@ class Ship:
                 resource=resource,
                 tool=tool,
                 uri=uri,
+                widget_meta=merged_widget_meta,
             )
 
             return fn

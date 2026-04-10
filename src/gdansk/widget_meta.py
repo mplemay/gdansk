@@ -41,6 +41,7 @@ class WidgetMeta(TypedDict, total=False):
 
 type WidgetMetaField = Literal[
     "base_url",
+    "runtime_origin",
     "ui.domain",
     "ui.csp.connectDomains",
     "ui.csp.resourceDomains",
@@ -80,10 +81,7 @@ def widget_meta_from_base_url(base_url: str | None) -> WidgetMeta | None:
     origin = normalize_origin(base_url, field_name="base_url")
     return {
         "ui": {
-            "csp": {
-                "connectDomains": [origin],
-                "resourceDomains": [origin],
-            },
+            **_widget_meta_csp_from_origin(origin, field_name="base_url")["ui"],
             "domain": origin,
         },
     }
@@ -140,6 +138,18 @@ def normalize_origin(value: str, *, field_name: WidgetMetaField) -> str:
 
     netloc = hostname if parsed.port is None else f"{hostname}:{parsed.port}"
     return urlunparse((parsed.scheme, netloc, "", "", "", ""))
+
+
+def _widget_meta_csp_from_origin(origin: str, *, field_name: WidgetMetaField) -> WidgetMeta:
+    normalized_origin = normalize_origin(origin, field_name=field_name)
+    return {
+        "ui": {
+            "csp": {
+                "connectDomains": [normalized_origin],
+                "resourceDomains": [normalized_origin],
+            },
+        },
+    }
 
 
 def _build_widget_meta(merged: MergedWidgetMeta) -> WidgetMeta | None:

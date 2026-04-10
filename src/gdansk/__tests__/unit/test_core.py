@@ -1,4 +1,6 @@
 import json
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -79,6 +81,20 @@ class FakeManagedProcess:
         return self.returncode
 
 
+class FakeToolRegistry:
+    def __init__(self) -> None:
+        self._tools: dict[str, object] = {}
+
+
+class FakeApp:
+    def __init__(self) -> None:
+        self._tool_manager = FakeToolRegistry()
+        self.resources: list[object] = []
+
+    def add_resource(self, *, resource: object) -> None:
+        self.resources.append(resource)
+
+
 @pytest.fixture
 def views_path(tmp_path: Path) -> Path:
     views = tmp_path / "views"
@@ -112,6 +128,144 @@ def test_ship_rejects_invalid_runtime_port(views_path: Path):
 def test_ship_rejects_invalid_base_url(views_path: Path):
     with pytest.raises(ValueError, match="base URL"):
         Ship(views=views_path, base_url="/relative")
+
+
+async def test_ship_mcp_sets_dev_runtime_origin_in_widget_resource_meta(
+    views_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    ship = Ship(views=views_path)
+    app = FakeApp()
+
+    @ship.widget(path=Path("hello/widget.tsx"), name="hello")
+    def hello() -> None:
+        return None
+
+    @asynccontextmanager
+    async def fake_open(*, dev: bool) -> AsyncIterator[None]:
+        assert dev is True
+        yield
+
+    monkeypatch.setattr(ship._context, "open", fake_open)
+
+    async with ship.mcp(app=cast("Any", app), dev=True):
+        assert ship._widget_manager[Path("hello/widget.tsx")].resource.meta == {
+            "ui": {
+                "csp": {
+                    "connectDomains": ["http://127.0.0.1:13714"],
+                    "resourceDomains": ["http://127.0.0.1:13714"],
+                },
+            },
+        }
+
+
+async def test_ship_mcp_preserves_widget_meta_when_adding_dev_runtime_origin(
+    views_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    ship = Ship(
+        views=views_path,
+        base_url="https://example.com/app",
+        widget_meta={
+            "openai": {
+                "widgetCSP": {"redirect_domains": ["https://allow.example.com/callback"]},
+                "widgetDescription": "Shared widget description",
+            },
+            "ui": {
+                "csp": {
+                    "connectDomains": ["https://api.example.com"],
+                    "resourceDomains": ["https://cdn.example.com/assets"],
+                },
+            },
+        },
+    )
+    app = FakeApp()
+
+    @ship.widget(
+        path=Path("hello/widget.tsx"),
+        name="hello",
+        widget_meta={
+            "ui": {
+                "csp": {"frameDomains": ["https://embed.example.com/frame"]},
+                "domain": "https://widgets.example.com/app",
+            },
+        },
+    )
+    def hello() -> None:
+        return None
+
+    @asynccontextmanager
+    async def fake_open(*, dev: bool) -> AsyncIterator[None]:
+        assert dev is True
+        yield
+
+    monkeypatch.setattr(ship._context, "open", fake_open)
+
+    async with ship.mcp(app=cast("Any", app), dev=True):
+        assert ship._widget_manager[Path("hello/widget.tsx")].resource.meta == {
+            "openai/widgetCSP": {"redirect_domains": ["https://allow.example.com"]},
+            "openai/widgetDescription": "Shared widget description",
+            "ui": {
+                "csp": {
+                    "connectDomains": [
+                        "https://example.com",
+                        "https://api.example.com",
+                        "http://127.0.0.1:13714",
+                    ],
+                    "frameDomains": ["https://embed.example.com"],
+                    "resourceDomains": [
+                        "https://example.com",
+                        "https://cdn.example.com",
+                        "http://127.0.0.1:13714",
+                    ],
+                },
+                "domain": "https://widgets.example.com",
+            },
+        }
+
+
+async def test_ship_mcp_restores_production_widget_resource_meta_after_dev_mode(
+    views_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    ship = Ship(views=views_path, base_url="https://example.com/app")
+    app = FakeApp()
+    open_calls: list[bool] = []
+
+    @ship.widget(path=Path("hello/widget.tsx"), name="hello")
+    def hello() -> None:
+        return None
+
+    @asynccontextmanager
+    async def fake_open(*, dev: bool) -> AsyncIterator[None]:
+        open_calls.append(dev)
+        yield
+
+    monkeypatch.setattr(ship._context, "open", fake_open)
+
+    async with ship.mcp(app=cast("Any", app), dev=True):
+        assert ship._widget_manager[Path("hello/widget.tsx")].resource.meta == {
+            "ui": {
+                "csp": {
+                    "connectDomains": ["https://example.com", "http://127.0.0.1:13714"],
+                    "resourceDomains": ["https://example.com", "http://127.0.0.1:13714"],
+                },
+                "domain": "https://example.com",
+            },
+        }
+
+    async with ship.mcp(app=cast("Any", app), dev=False):
+        assert ship._widget_manager[Path("hello/widget.tsx")].resource.meta == {
+            "ui": {
+                "csp": {
+                    "connectDomains": ["https://example.com"],
+                    "resourceDomains": ["https://example.com"],
+                },
+                "domain": "https://example.com",
+            },
+        }
+
+    assert open_calls == [True, False]
 
 
 async def test_wait_for_health_reads_endpoint(views_path: Path):
