@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from functools import partial
 from http import HTTPStatus
+from json import dumps
 from os import PathLike
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Final, Literal
@@ -112,19 +113,36 @@ class ShipContext:
             raise TypeError(msg) from e
 
         if self._dev:
+            head = [self._react_refresh_preamble(runtime_origin), *rendered.head]
             scripts = [
                 join_url(runtime_origin, "/@vite/client"),
                 join_url(runtime_origin, f"/{DEV_GENERATED_DIR}/{widget_key}/client.tsx"),
             ]
         else:
+            head = rendered.head
             scripts = [join_url(runtime_origin, f"/{PRODUCTION_OUT_DIR}/{widget_key}/client.js")]
 
         return render_template(
             "base.html",
             body=rendered.body,
-            head=rendered.head,
+            head=head,
             metadata=metadata,
             scripts=scripts,
+        )
+
+    def _react_refresh_preamble(self, runtime_origin: str) -> str:
+        refresh_runtime = dumps(join_url(runtime_origin, "/@react-refresh"))
+
+        return "\n".join(
+            (
+                '<script type="module">',
+                f"import RefreshRuntime from {refresh_runtime};",
+                "RefreshRuntime.injectIntoGlobalHook(window);",
+                "window.$RefreshReg$ = () => {};",
+                "window.$RefreshSig$ = () => (type) => type;",
+                "window.__vite_plugin_react_preamble_installed__ = true;",
+                "</script>",
+            ),
         )
 
     def _require_runtime_origin(self) -> str:
