@@ -1,9 +1,22 @@
+{% macro react_refresh_preamble(dev, runtime_origin) -%}
+{%- if dev and runtime_origin -%}
+<script type="module">
+import RefreshRuntime from "{{ join_url(runtime_origin, "/@react-refresh")|safe }}"
+RefreshRuntime.injectIntoGlobalHook(window)
+window.$RefreshReg$ = () => {}
+window.$RefreshSig$ = () => (type) => type
+window.__vite_plugin_react_preamble_installed__ = true
+</script>
+{%- endif -%}
+{%- endmacro %}
+
 <!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 {% include "metadata.html" %}
+{{ react_refresh_preamble(dev, runtime_origin) }}
 {% for fragment in head %}
 {{ fragment|safe }}
 {% endfor %}

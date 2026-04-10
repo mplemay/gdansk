@@ -138,8 +138,8 @@ async def test_widget_resource_renders_complete_document(views_path: Path):
     assert "<title>Base title</title>" in html
     assert '<meta name="description" content="Widget description" />' in html
     assert '<meta name="robots" content="noindex" />' in html
-    assert 'import RefreshRuntime from "http://ssr.test/@react-refresh";' in html
-    assert "window.__vite_plugin_react_preamble_installed__ = true;" in html
+    assert 'import RefreshRuntime from "http://ssr.test/@react-refresh"' in html
+    assert "window.__vite_plugin_react_preamble_installed__ = true" in html
     assert '<div id="root"><main>Hello from SSR</main></div>' in html
     assert '<script type="module" src="http://ssr.test/@vite/client"></script>' in html
     assert '<script type="module" src="http://ssr.test/dist-src/hello/client.tsx"></script>' in html
