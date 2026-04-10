@@ -10,6 +10,7 @@ from os import PathLike
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Final, Literal
 
+from deno import find_deno_bin
 from httpx import AsyncClient, RequestError
 from mcp.server.mcpserver.resources import FunctionResource
 from mcp.server.mcpserver.tools.base import Tool
@@ -134,7 +135,12 @@ class ShipContext:
 
     async def _run_build(self) -> None:
         proc = await create_subprocess_exec(
-            *self._deno_command("run", "-A", "--node-modules-dir=auto", "npm:vite", "build"),
+            find_deno_bin(),
+            "run",
+            "-A",
+            "--node-modules-dir=auto",
+            "npm:vite",
+            "build",
             cwd=self._views,
             stdin=DEVNULL,
             stdout=PIPE,
@@ -162,7 +168,8 @@ class ShipContext:
         self._runtime_origin = f"http://{self._host}:{self._port}"
 
         if dev:
-            command = self._deno_command(
+            command = (
+                find_deno_bin(),
                 "run",
                 "-A",
                 "--node-modules-dir=auto",
@@ -181,7 +188,7 @@ class ShipContext:
                 msg = f"Expected a production server entry at {server_path}"
                 raise RuntimeError(msg)
 
-            command = self._deno_command("run", "-A", "--node-modules-dir=auto", str(server_path))
+            command = (find_deno_bin(), "run", "-A", "--node-modules-dir=auto", str(server_path))
 
         try:
             self._frontend = await create_subprocess_exec(
@@ -252,9 +259,6 @@ class ShipContext:
             f'gdansk({{ host: "{self._host}", port: {self._port} }}).'
         )
         raise RuntimeError(msg)
-
-    def _deno_command(self, *args: str) -> tuple[str, ...]:
-        return ("uv", "run", "deno", *args)
 
 
 class Ship:
