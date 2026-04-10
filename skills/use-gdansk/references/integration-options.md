@@ -26,14 +26,16 @@ you combine sources in application code.
 
 ## Widget resource metadata
 
-`Ship` also accepts optional `resource_meta` for widget resource `_meta`, separate from HTML head `metadata` and tool
+`Ship` also accepts optional `widget_meta` for widget resource `_meta`, separate from HTML head `metadata` and tool
 `meta`.
 
 ```python
-from gdansk import ResourceMeta, Ship
+from gdansk import Ship, WidgetMeta
 
-resource_meta: ResourceMeta = {
-    "openai/widgetDescription": "Shows an interactive widget.",
+widget_meta: WidgetMeta = {
+    "openai": {
+        "widgetDescription": "Shows an interactive widget.",
+    },
     "ui": {
         "csp": {
             "connectDomains": ["https://api.example.com"],
@@ -45,7 +47,7 @@ resource_meta: ResourceMeta = {
 ship = Ship(
     views=views_path,
     base_url="https://example.com/app",
-    resource_meta=resource_meta,
+    widget_meta=widget_meta,
 )
 ```
 
@@ -56,7 +58,7 @@ resource:
 - `ui.csp.connectDomains` includes that origin
 - `ui.csp.resourceDomains` includes that origin
 
-Per-widget `@ship.widget(..., resource_meta=...)` overrides the domain and appends additional CSP domains with
+Per-widget `@ship.widget(..., widget_meta=...)` overrides the domain and appends additional CSP domains with
 ordered de-duplication.
 
 ## Widget decorator surface
@@ -70,7 +72,7 @@ ordered de-duplication.
 - `icons`
 - `meta`
 - `metadata`
-- `resource_meta`
+- `widget_meta`
 - `structured_output`
 
 Prefer these public arguments over custom wrapper logic when the request only needs tool metadata or typed output.

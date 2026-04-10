@@ -20,8 +20,8 @@ from starlette.staticfiles import StaticFiles
 
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import render_template
-from gdansk.resource_meta import ResourceMeta, merge_resource_meta, resource_meta_from_base_url, resource_meta_to_dict
 from gdansk.utils import join_url, join_url_path
+from gdansk.widget_meta import WidgetMeta, merge_widget_meta, widget_meta_from_base_url, widget_meta_to_dict
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable
@@ -311,7 +311,7 @@ class Ship:
         host: str = "127.0.0.1",
         port: int = 13714,
         metadata: Metadata | None = None,
-        resource_meta: ResourceMeta | None = None,
+        widget_meta: WidgetMeta | None = None,
         client: AsyncClient | None = None,
     ) -> None:
         if not (views := Path(views)).exists():
@@ -343,9 +343,9 @@ class Ship:
         self._views: Final[Path] = views.absolute().resolve()
         self._widgets_root: Final[Path] = self._views / "widgets"
         self._metadata: Final[Metadata] = metadata or Metadata()
-        self._resource_meta: Final[ResourceMeta | None] = merge_resource_meta(
-            resource_meta_from_base_url(base_url),
-            resource_meta,
+        self._widget_meta: Final[WidgetMeta | None] = merge_widget_meta(
+            widget_meta_from_base_url(base_url),
+            widget_meta,
         )
         self._widget_manager: dict[Path, WidgetSpec] = {}
         self._context: Final[ShipContext] = ShipContext(
@@ -400,7 +400,7 @@ class Ship:
         icons: list[Icon] | None = None,
         meta: dict[str, Any] | None = None,
         metadata: Metadata | None = None,
-        resource_meta: ResourceMeta | None = None,
+        widget_meta: WidgetMeta | None = None,
         structured_output: bool | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         relative_path = Path(path)
@@ -417,7 +417,7 @@ class Ship:
         uri = f"ui://{key}"
         tool_meta = {**(meta or {}), "ui": {"resourceUri": uri}}
         merged_metadata = merge_metadata(self._metadata, metadata)
-        merged_resource_meta = merge_resource_meta(self._resource_meta, resource_meta)
+        merged_widget_meta = merge_widget_meta(self._widget_meta, widget_meta)
 
         def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
             if relative_path in self._widget_manager:
@@ -441,7 +441,7 @@ class Ship:
                 title=title,
                 description=description,
                 mime_type="text/html;profile=mcp-app",
-                meta=resource_meta_to_dict(merged_resource_meta),
+                meta=widget_meta_to_dict(merged_widget_meta),
             )
 
             self._widget_manager[relative_path] = WidgetSpec(

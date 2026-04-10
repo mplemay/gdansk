@@ -199,16 +199,18 @@ When `base_url` is set, gdansk also derives widget resource `_meta.ui.domain` pl
 `_meta.ui.csp.connectDomains` and `_meta.ui.csp.resourceDomains` for the `ui://...` template resource. This satisfies
 the Apps SDK submission warnings for missing widget domain/CSP in the common same-origin case.
 
-If a widget needs extra domains or a custom widget domain, use `resource_meta`. This is separate from:
+If a widget needs extra domains or a custom widget domain, use `widget_meta`. This is separate from:
 
 - `metadata`, which controls rendered HTML head tags like `<title>` and `<meta name="description">`
 - `meta`, which still applies only to the MCP tool descriptor
 
 ```python
-from gdansk import ResourceMeta, Ship
+from gdansk import Ship, WidgetMeta
 
-resource_meta: ResourceMeta = {
-    "openai/widgetDescription": "Shows an interactive company search result list.",
+widget_meta: WidgetMeta = {
+    "openai": {
+        "widgetDescription": "Shows an interactive company search result list.",
+    },
     "ui": {
         "csp": {
             "connectDomains": ["https://api.example.com"],
@@ -220,7 +222,7 @@ resource_meta: ResourceMeta = {
 ship = Ship(
     views=Path(__file__).parent / "frontend",
     base_url="https://example.com/app",
-    resource_meta=resource_meta,
+    widget_meta=widget_meta,
 )
 ```
 
@@ -230,7 +232,7 @@ Per-widget overrides follow the same shape:
 @ship.widget(
     path=Path("hello/widget.tsx"),
     name="greet",
-    resource_meta={
+    widget_meta={
         "ui": {
             "domain": "https://widgets.example.com",
             "csp": {"connectDomains": ["https://api.partner.example.com"]},

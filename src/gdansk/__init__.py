@@ -1,5 +1,5 @@
 from .core import Ship
 from .metadata import Metadata
-from .resource_meta import ResourceMeta
+from .widget_meta import WidgetMeta
 
-__all__: tuple[str, ...] = ("Metadata", "ResourceMeta", "Ship")
+__all__: tuple[str, ...] = ("Metadata", "Ship", "WidgetMeta")
