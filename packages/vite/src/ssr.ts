@@ -135,9 +135,10 @@ export async function processSSRRequest({
   try {
     const rendered = await Promise.resolve(render(widget.key));
     const response = validateRenderResponse(rendered);
+    const assetBaseUrl = payload.assetBaseUrl;
     const head = viteServer
       ? [...collectCSSFromModuleGraph(viteServer, widget.entry), ...response.head]
-      : [...createProductionCssHead(assetOrigin, manifest, widget.key), ...response.head];
+      : [...createProductionCssHead(assetBaseUrl, assetOrigin, manifest, widget.key), ...response.head];
 
     return {
       payload: {
@@ -186,11 +187,12 @@ function validateRenderResponse(result: unknown): GdanskRenderResponse {
 }
 
 function createProductionCssHead(
+  assetBaseUrl: string | undefined,
   assetOrigin: string | undefined,
   manifest: GdanskManifest | undefined,
   widgetKey: string,
 ): string[] {
-  if (!assetOrigin || !manifest) {
+  if ((!assetBaseUrl && !assetOrigin) || !manifest) {
     return [];
   }
 
@@ -200,7 +202,20 @@ function createProductionCssHead(
     throw new Error(`Widget "${widgetKey}" is not present in the production manifest`);
   }
 
-  return widget.css.map((href) => `<link rel="stylesheet" href="${assetOrigin}/${href.replace(/^\/+/, "")}">`);
+  return widget.css.map((href) => {
+    if (assetBaseUrl) {
+      return `<link rel="stylesheet" href="${assetBaseUrl}/${stripOutDirPrefix(manifest.outDir, href)}">`;
+    }
+
+    return `<link rel="stylesheet" href="${assetOrigin}/${href.replace(/^\/+/, "")}">`;
+  });
+}
+
+function stripOutDirPrefix(outDir: string, href: string): string {
+  const normalized = href.replace(/^\/+/, "");
+  const prefix = `${outDir.replace(/^\/+|\/+$/g, "")}/`;
+
+  return normalized.startsWith(prefix) ? normalized.slice(prefix.length) : normalized;
 }
 
 function createErrorResponse(error: unknown, type: GdanskErrorResponse["error"]["type"]): GdanskErrorResponse {

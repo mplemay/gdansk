@@ -30,6 +30,12 @@ describe("@gdansk/vite", () => {
     expect(options.port).toBe(13_714);
   });
 
+  it("supports overriding the production assets directory", () => {
+    const options = resolveOptions({ assets: "public", root: process.cwd() });
+
+    expect(options.outDir).toBe("public");
+  });
+
   it("builds widget outputs and serves production SSR", async () => {
     const root = await createFixture({ withLocalPlugin: true });
     const runtime = await createGdanskRuntime({ root, port: 0 });
@@ -37,26 +43,27 @@ describe("@gdansk/vite", () => {
     const manifest = await runtime.build();
 
     expect(Object.keys(manifest.widgets)).toEqual(["hello", "nested/page"]);
-    await expect(pathExists(`${root}/dist/hello/client.js`)).resolves.toBe(true);
-    await expect(pathExists(`${root}/dist/hello/client.css`)).resolves.toBe(true);
-    await expect(pathExists(`${root}/dist/nested/page/client.js`)).resolves.toBe(true);
-    await expect(pathExists(`${root}/dist/ssr.js`)).resolves.toBe(true);
-    await expect(pathExists(`${root}/dist/server.js`)).resolves.toBe(true);
-    expect(manifest.server).toBe("dist/ssr.js");
+    await expect(pathExists(`${root}/assets/hello/client.js`)).resolves.toBe(true);
+    await expect(pathExists(`${root}/assets/hello/client.css`)).resolves.toBe(true);
+    await expect(pathExists(`${root}/assets/nested/page/client.js`)).resolves.toBe(true);
+    await expect(pathExists(`${root}/assets/ssr.js`)).resolves.toBe(true);
+    await expect(pathExists(`${root}/assets/server.js`)).resolves.toBe(true);
+    expect(manifest.server).toBe("assets/ssr.js");
 
     const metadata = await runtime.startProductionServer();
-    const response = await renderWidget(metadata, { widget: "hello" });
+    const response = await renderWidget(metadata, { assetBaseUrl: "https://example.com/assets", widget: "hello" });
 
     expect(response.body).toContain("Hello SSR");
     expect(response.body).toContain("from plugin");
-    expect(response.head.join("")).toContain(`${metadata.ssrOrigin}/dist/hello/client.css`);
+    expect(response.head.join("")).toContain("https://example.com/assets/hello/client.css");
 
     const health = await fetchHealth(metadata.ssrOrigin);
     expect(health).toEqual({ status: "OK" });
     expect(metadata.ssrEndpoint).toBe("/ssr");
 
-    const assetResponse = await fetch(`${metadata.ssrOrigin}/dist/hello/client.js`);
+    const assetResponse = await fetch(`${metadata.ssrOrigin}/assets/hello/client.js`);
     expect(assetResponse.status).toBe(200);
+    expect(assetResponse.headers.get("access-control-allow-origin")).toBe("*");
 
     await runtime.close();
   }, 15_000);

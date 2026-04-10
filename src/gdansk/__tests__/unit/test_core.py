@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 from httpx import Request, RequestError
+from starlette.staticfiles import StaticFiles
 
 from gdansk.core import Ship
 from gdansk.metadata import Metadata
@@ -98,6 +99,9 @@ def test_ship_uses_default_runtime_host_and_port(views_path: Path):
 
     assert ship._host == "127.0.0.1"
     assert ship._port == 13714
+    assert isinstance(ship.assets, StaticFiles)
+    assert ship.assets is ship.assets
+    assert Path(str(ship.assets.directory)) == views_path / "assets"
 
 
 def test_ship_rejects_invalid_runtime_port(views_path: Path):
@@ -164,8 +168,30 @@ async def test_widget_resource_renders_production_scripts(views_path: Path):
     assert client.calls == [("http://ssr.test/ssr", {"widget": "hello"})]
     assert "@react-refresh" not in html
     assert "__vite_plugin_react_preamble_installed__" not in html
-    assert '<script type="module" src="http://ssr.test/dist/hello/client.js"></script>' in html
+    assert '<script type="module" src="http://ssr.test/assets/hello/client.js"></script>' in html
     assert "/@vite/client" not in html
+
+
+async def test_widget_resource_prefers_server_url_for_production_assets(views_path: Path):
+    client = FakeClient()
+    ship = Ship(
+        views=views_path,
+        assets="public",
+        client=cast("AsyncClient", client),
+        server_url="https://example.com/source/mcp",
+    )
+
+    @ship.widget(path=Path("hello/widget.tsx"), name="hello")
+    def hello() -> None:
+        return None
+
+    ship._context._runtime_origin = "http://ssr.test"
+
+    html = await ship._widget_manager[Path("hello/widget.tsx")].resource.read()
+    assert isinstance(html, str)
+
+    assert client.calls == [("http://ssr.test/ssr", {"assetBaseUrl": "https://example.com/public", "widget": "hello"})]
+    assert '<script type="module" src="https://example.com/public/hello/client.js"></script>' in html
 
 
 async def test_widget_resource_raises_on_invalid_ssr_payload(views_path: Path):
