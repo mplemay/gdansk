@@ -67,6 +67,7 @@ class ShipContext:
         client: AsyncClient | None = None,
     ) -> None:
         self._client: Final[AsyncClient] = client or AsyncClient()
+        self._deno: Final[str] = find_deno_bin()
         self._host: Final[str] = host
         self._port: Final[int] = port
         self._views: Final[Path] = views
@@ -135,7 +136,7 @@ class ShipContext:
 
     async def _run_build(self) -> None:
         proc = await create_subprocess_exec(
-            find_deno_bin(),
+            self._deno,
             "run",
             "-A",
             "--node-modules-dir=auto",
@@ -169,7 +170,7 @@ class ShipContext:
 
         if dev:
             command = (
-                find_deno_bin(),
+                self._deno,
                 "run",
                 "-A",
                 "--node-modules-dir=auto",
@@ -188,7 +189,7 @@ class ShipContext:
                 msg = f"Expected a production server entry at {server_path}"
                 raise RuntimeError(msg)
 
-            command = (find_deno_bin(), "run", "-A", "--node-modules-dir=auto", str(server_path))
+            command = (self._deno, "run", "-A", "--node-modules-dir=auto", str(server_path))
 
         try:
             self._frontend = await create_subprocess_exec(
