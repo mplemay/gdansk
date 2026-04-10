@@ -51,11 +51,11 @@ describe("@gdansk/vite", () => {
     expect(manifest.server).toBe("assets/ssr.js");
 
     const metadata = await runtime.startProductionServer();
-    const response = await renderWidget(metadata, { assetBaseUrl: "https://example.com/assets", widget: "hello" });
+    const response = await renderWidget(metadata, { widget: "hello" });
 
     expect(response.body).toContain("Hello SSR");
     expect(response.body).toContain("from plugin");
-    expect(response.head.join("")).toContain("https://example.com/assets/hello/client.css");
+    expect(response.head.join("")).toContain("/assets/hello/client.css");
 
     const health = await fetchHealth(metadata.ssrOrigin);
     expect(health).toEqual({ status: "OK" });

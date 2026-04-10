@@ -99,6 +99,7 @@ def main() -> None:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.mount(path="/assets", app=ship.assets)
     uvicorn.run(app, port=3000)
 
 
@@ -183,6 +184,9 @@ export default defineConfig({
   plugins: [gdansk(), react()],
 });
 ```
+
+Production widgets load their hydration assets from `/<assets_dir>/...`. Mount `ship.assets` at that path on the
+public app; with the default settings this is `/assets`.
 
 If you want a different SSR host or port, configure both sides explicitly:
 

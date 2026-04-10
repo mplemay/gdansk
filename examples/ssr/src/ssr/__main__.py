@@ -38,6 +38,7 @@ def main() -> None:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.mount(path="/assets", app=ship.assets)
     uvicorn.run(app, port=3001)
 
 

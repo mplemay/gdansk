@@ -168,17 +168,16 @@ async def test_widget_resource_renders_production_scripts(views_path: Path):
     assert client.calls == [("http://ssr.test/ssr", {"widget": "hello"})]
     assert "@react-refresh" not in html
     assert "__vite_plugin_react_preamble_installed__" not in html
-    assert '<script type="module" src="http://ssr.test/assets/hello/client.js"></script>' in html
+    assert '<script type="module" src="/assets/hello/client.js"></script>' in html
     assert "/@vite/client" not in html
 
 
-async def test_widget_resource_prefers_server_url_for_production_assets(views_path: Path):
+async def test_widget_resource_uses_custom_assets_dir_for_production_scripts(views_path: Path):
     client = FakeClient()
     ship = Ship(
         views=views_path,
         assets="public",
         client=cast("AsyncClient", client),
-        server_url="https://example.com/source/mcp",
     )
 
     @ship.widget(path=Path("hello/widget.tsx"), name="hello")
@@ -190,8 +189,8 @@ async def test_widget_resource_prefers_server_url_for_production_assets(views_pa
     html = await ship._widget_manager[Path("hello/widget.tsx")].resource.read()
     assert isinstance(html, str)
 
-    assert client.calls == [("http://ssr.test/ssr", {"assetBaseUrl": "https://example.com/public", "widget": "hello"})]
-    assert '<script type="module" src="https://example.com/public/hello/client.js"></script>' in html
+    assert client.calls == [("http://ssr.test/ssr", {"widget": "hello"})]
+    assert '<script type="module" src="/public/hello/client.js"></script>' in html
 
 
 async def test_widget_resource_raises_on_invalid_ssr_payload(views_path: Path):

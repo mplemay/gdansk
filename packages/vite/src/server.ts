@@ -14,7 +14,6 @@ export async function startGdanskServer(options: GdanskServerOptions): Promise<G
   app.post(options.options.ssrEndpoint, async (c) => {
     const requestBody = await c.req.text();
     const result = await processSSRRequest({
-      assetOrigin: new URL(c.req.url).origin,
       manifest: options.manifest,
       render: options.render,
       requestBody,

@@ -24,7 +24,6 @@ type GdanskErrorResponse = {
 type GdanskResponsePayload = GdanskErrorResponse | GdanskRenderResponse;
 
 type ProcessSSRRequestOptions = {
-  assetOrigin?: string;
   manifest?: GdanskManifest;
   render: GdanskRenderFunction;
   requestBody: string;
@@ -96,7 +95,6 @@ export async function importRenderFunction(path: string): Promise<GdanskRenderFu
 }
 
 export async function processSSRRequest({
-  assetOrigin,
   manifest,
   render,
   requestBody,
@@ -135,10 +133,9 @@ export async function processSSRRequest({
   try {
     const rendered = await Promise.resolve(render(widget.key));
     const response = validateRenderResponse(rendered);
-    const assetBaseUrl = payload.assetBaseUrl;
     const head = viteServer
       ? [...collectCSSFromModuleGraph(viteServer, widget.entry), ...response.head]
-      : [...createProductionCssHead(assetBaseUrl, assetOrigin, manifest, widget.key), ...response.head];
+      : [...createProductionCssHead(manifest, widget.key), ...response.head];
 
     return {
       payload: {
@@ -186,13 +183,8 @@ function validateRenderResponse(result: unknown): GdanskRenderResponse {
   };
 }
 
-function createProductionCssHead(
-  assetBaseUrl: string | undefined,
-  assetOrigin: string | undefined,
-  manifest: GdanskManifest | undefined,
-  widgetKey: string,
-): string[] {
-  if ((!assetBaseUrl && !assetOrigin) || !manifest) {
+function createProductionCssHead(manifest: GdanskManifest | undefined, widgetKey: string): string[] {
+  if (!manifest) {
     return [];
   }
 
@@ -203,12 +195,14 @@ function createProductionCssHead(
   }
 
   return widget.css.map((href) => {
-    if (assetBaseUrl) {
-      return `<link rel="stylesheet" href="${assetBaseUrl}/${stripOutDirPrefix(manifest.outDir, href)}">`;
-    }
-
-    return `<link rel="stylesheet" href="${assetOrigin}/${href.replace(/^\/+/, "")}">`;
+    return `<link rel="stylesheet" href="${toRootRelativeAssetPath(manifest.outDir, href)}">`;
   });
+}
+
+function toRootRelativeAssetPath(outDir: string, href: string): string {
+  const normalizedOutDir = outDir.replace(/^\/+|\/+$/g, "");
+  const normalizedPath = stripOutDirPrefix(outDir, href);
+  return `/${[normalizedOutDir, normalizedPath].filter(Boolean).join("/")}`;
 }
 
 function stripOutDirPrefix(outDir: string, href: string): string {
