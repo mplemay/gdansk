@@ -109,6 +109,11 @@ def test_ship_rejects_invalid_runtime_port(views_path: Path):
         Ship(views=views_path, port=0)
 
 
+def test_ship_rejects_invalid_base_url(views_path: Path):
+    with pytest.raises(ValueError, match="base URL"):
+        Ship(views=views_path, base_url="/relative")
+
+
 async def test_wait_for_health_reads_endpoint(views_path: Path):
     client = FakeClient()
     ship = Ship(views=views_path, client=cast("AsyncClient", client))
@@ -191,6 +196,33 @@ async def test_widget_resource_uses_custom_assets_dir_for_production_scripts(vie
 
     assert client.calls == [("http://ssr.test/ssr", {"widget": "hello"})]
     assert '<script type="module" src="/public/hello/client.js"></script>' in html
+
+
+async def test_widget_resource_uses_base_url_for_production_assets(views_path: Path):
+    client = FakeClient()
+    ship = Ship(
+        views=views_path,
+        assets="public",
+        base_url="https://example.com/app",
+        client=cast("AsyncClient", client),
+    )
+
+    @ship.widget(path=Path("hello/widget.tsx"), name="hello")
+    def hello() -> None:
+        return None
+
+    ship._context._runtime_origin = "http://ssr.test"
+
+    html = await ship._widget_manager[Path("hello/widget.tsx")].resource.read()
+    assert isinstance(html, str)
+
+    assert client.calls == [
+        (
+            "http://ssr.test/ssr",
+            {"assetBaseUrl": "https://example.com/app/public", "widget": "hello"},
+        ),
+    ]
+    assert '<script type="module" src="https://example.com/app/public/hello/client.js"></script>' in html
 
 
 async def test_widget_resource_raises_on_invalid_ssr_payload(views_path: Path):

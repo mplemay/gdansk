@@ -57,6 +57,12 @@ describe("@gdansk/vite", () => {
     expect(response.body).toContain("from plugin");
     expect(response.head.join("")).toContain("/assets/hello/client.css");
 
+    const assetBaseResponse = await renderWidget(metadata, {
+      assetBaseUrl: "https://example.com/app/assets",
+      widget: "hello",
+    });
+    expect(assetBaseResponse.head.join("")).toContain("https://example.com/app/assets/hello/client.css");
+
     const health = await fetchHealth(metadata.ssrOrigin);
     expect(health).toEqual({ status: "OK" });
     expect(metadata.ssrEndpoint).toBe("/ssr");

@@ -58,6 +58,7 @@ export interface GdanskRuntimeWidget {
 }
 
 export interface GdanskRenderRequest {
+  assetBaseUrl?: string;
   component?: string;
   widget?: string;
 }
