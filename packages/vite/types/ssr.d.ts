@@ -16,7 +16,6 @@ type GdanskErrorResponse = {
 };
 type GdanskResponsePayload = GdanskErrorResponse | GdanskRenderResponse;
 type ProcessSSRRequestOptions = {
-  assetOrigin?: string;
   manifest?: GdanskManifest;
   render: GdanskRenderFunction;
   requestBody: string;
@@ -41,7 +40,6 @@ export declare function installDevSSRMiddleware({
 }: InstallDevSSRMiddlewareOptions): void;
 export declare function importRenderFunction(path: string): Promise<GdanskRenderFunction>;
 export declare function processSSRRequest({
-  assetOrigin,
   manifest,
   render,
   requestBody,

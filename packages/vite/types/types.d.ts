@@ -1,5 +1,6 @@
 import type { InlineConfig, UserConfig } from "vite";
 export interface GdanskPluginOptions {
+  assets?: string;
   root?: string;
   widgetsRoot?: string;
   host?: string;

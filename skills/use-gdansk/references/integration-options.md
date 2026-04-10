@@ -114,8 +114,12 @@ async def lifespan(_: object) -> AsyncIterator[None]:
 
 
 app = FastAPI(lifespan=lifespan)
+app.mount(path="/assets", app=ship.assets)
 app.mount(path="/mcp", app=mcp_app)
 ```
+
+`gdansk` production widgets expect hydration assets at `/<assets_dir>/...`. With the default `assets="assets"`, mount
+`ship.assets` at `/assets`.
 
 ## Styling and Tailwind
 

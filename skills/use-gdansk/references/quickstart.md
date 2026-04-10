@@ -59,8 +59,12 @@ if __name__ == "__main__":
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.mount(path="/assets", app=ship.assets)
     uvicorn.run(app, port=3001)
 ```
+
+Production widgets load hydration assets from `/<assets_dir>/...`, so mount `ship.assets` at that path on the public
+app. With the default settings, mount it at `/assets`.
 
 ## Minimal React widget
 
@@ -204,6 +208,7 @@ async def lifespan(_: object) -> AsyncIterator[None]:
 
 
 app = FastAPI(lifespan=lifespan)
+app.mount(path="/assets", app=ship.assets)
 app.mount(path="/mcp", app=mcp_app)
 ```
 

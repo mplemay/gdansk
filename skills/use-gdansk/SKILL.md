@@ -80,8 +80,8 @@ Choose the smallest integration needed:
 - Plain MCP tools (no React UI):
   - After `mcp = MCPServer(...)`, use `@mcp.tool(...)` or `mcp.add_tool(...)`.
 - FastAPI:
-  - Build `mcp_app = mcp.streamable_http_app(streamable_http_path="/")`, run its lifespan from FastAPI, mount at `/mcp`
-    (or your chosen prefix).
+  - Build `mcp_app = mcp.streamable_http_app(streamable_http_path="/")`, run its lifespan from FastAPI, mount it at
+    `/mcp` (or your chosen prefix), and mount `ship.assets` at `/<assets_dir>` on the same public app.
 
 Use [integration-options.md](references/integration-options.md) for exact implementation shapes.
 
