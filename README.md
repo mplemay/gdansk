@@ -188,6 +188,13 @@ export default defineConfig({
 Production widgets load their hydration assets from `/<assets_dir>/...`. Mount `ship.assets` at that path on the
 public app; with the default settings this is `/assets`.
 
+If your MCP client renders widget HTML on a different origin, pass `base_url` to `Ship` so production asset URLs point
+back to your public app instead of the client host:
+
+```python
+ship = Ship(views=Path(__file__).parent / "frontend", base_url="https://example.com")
+```
+
 If you want a different SSR host or port, configure both sides explicitly:
 
 ```python

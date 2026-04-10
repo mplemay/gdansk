@@ -9,6 +9,7 @@ from http import HTTPStatus
 from os import PathLike, stat_result
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Final, Literal
+from urllib.parse import urlparse
 
 from deno import find_deno_bin
 from httpx import AsyncClient, RequestError
@@ -19,7 +20,7 @@ from starlette.staticfiles import StaticFiles
 
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import render_template
-from gdansk.utils import join_url
+from gdansk.utils import join_url, join_url_path
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable
@@ -74,16 +75,18 @@ class AssetFiles(StaticFiles):
 
 
 class ShipContext:
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         views: Path,
         *,
         assets: str,
+        base_url: str | None = None,
         host: str,
         port: int,
         client: AsyncClient | None = None,
     ) -> None:
         self._assets_dir: Final[str] = assets
+        self._base_url: Final[str | None] = base_url
         self._client: Final[AsyncClient] = client or AsyncClient()
         self._deno: Final[str] = find_deno_bin()
         self._host: Final[str] = host
@@ -114,6 +117,8 @@ class ShipContext:
     async def render_widget_page(self, *, metadata: Metadata | None, widget_key: str) -> str:
         runtime_origin = self._require_runtime_origin()
         payload = {"widget": widget_key}
+        if (asset_base_url := self._asset_base_url()) is not None:
+            payload["assetBaseUrl"] = asset_base_url
 
         response = await self._client.post(
             join_url(runtime_origin, SSR_ENDPOINT),
@@ -155,7 +160,16 @@ class ShipContext:
 
         return self._runtime_origin
 
+    def _asset_base_url(self) -> str | None:
+        if self._base_url is None:
+            return None
+
+        return join_url_path(self._base_url, self._assets_dir)
+
     def _production_asset_url(self, *, widget_key: str) -> str:
+        if (asset_base_url := self._asset_base_url()) is not None:
+            return join_url_path(asset_base_url, f"{widget_key}/client.js")
+
         return PurePosixPath("/", self._assets_dir, widget_key, "client.js").as_posix()
 
     async def _run_build(self) -> None:
@@ -292,6 +306,7 @@ class Ship:
         views: PathType,
         *,
         assets: str = DEFAULT_ASSETS_DIR,
+        base_url: str | None = None,
         host: str = "127.0.0.1",
         port: int = 13714,
         metadata: Metadata | None = None,
@@ -315,7 +330,12 @@ class Ship:
             msg = f"The runtime port must be an integer between 1 and {MAX_RUNTIME_PORT}"
             raise ValueError(msg)
 
+        if base_url is not None and urlparse(base_url).hostname is None:
+            msg = "The base URL must be an absolute URL with a hostname"
+            raise ValueError(msg)
+
         self._assets_dir: Final[str] = assets
+        self._base_url: Final[str | None] = base_url
         self._host: Final[str] = host
         self._port: Final[int] = port
         self._views: Final[Path] = views.absolute().resolve()
@@ -325,6 +345,7 @@ class Ship:
         self._context: Final[ShipContext] = ShipContext(
             self._views,
             assets=self._assets_dir,
+            base_url=self._base_url,
             host=self._host,
             port=self._port,
             client=client,

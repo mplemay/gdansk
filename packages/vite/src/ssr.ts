@@ -133,9 +133,10 @@ export async function processSSRRequest({
   try {
     const rendered = await Promise.resolve(render(widget.key));
     const response = validateRenderResponse(rendered);
+    const assetBaseUrl = payload.assetBaseUrl;
     const head = viteServer
       ? [...collectCSSFromModuleGraph(viteServer, widget.entry), ...response.head]
-      : [...createProductionCssHead(manifest, widget.key), ...response.head];
+      : [...createProductionCssHead(assetBaseUrl, manifest, widget.key), ...response.head];
 
     return {
       payload: {
@@ -183,7 +184,11 @@ function validateRenderResponse(result: unknown): GdanskRenderResponse {
   };
 }
 
-function createProductionCssHead(manifest: GdanskManifest | undefined, widgetKey: string): string[] {
+function createProductionCssHead(
+  assetBaseUrl: string | undefined,
+  manifest: GdanskManifest | undefined,
+  widgetKey: string,
+): string[] {
   if (!manifest) {
     return [];
   }
@@ -195,8 +200,16 @@ function createProductionCssHead(manifest: GdanskManifest | undefined, widgetKey
   }
 
   return widget.css.map((href) => {
+    if (assetBaseUrl) {
+      return `<link rel="stylesheet" href="${toAbsoluteAssetPath(assetBaseUrl, manifest.outDir, href)}">`;
+    }
+
     return `<link rel="stylesheet" href="${toRootRelativeAssetPath(manifest.outDir, href)}">`;
   });
+}
+
+function toAbsoluteAssetPath(assetBaseUrl: string, outDir: string, href: string): string {
+  return new URL(stripOutDirPrefix(outDir, href), `${assetBaseUrl.replace(/\/+$/g, "")}/`).toString();
 }
 
 function toRootRelativeAssetPath(outDir: string, href: string): string {
