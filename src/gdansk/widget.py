@@ -1,13 +1,12 @@
 import re
 from collections.abc import Mapping, Sequence
-from typing import Any, Literal, TypedDict
-
-_SNAKE_TO_CAMEL = re.compile(r"_([a-zA-Z0-9])")
+from typing import Any, Final, Literal, TypedDict
 
 type Meta = Mapping[str, Any]
-
 type App = Literal["app"]
 type Model = Literal["model"]
+
+SNAKE_TO_CAMEL: Final[re.Pattern[str]] = re.compile(r"_([a-zA-Z0-9])")
 
 
 class WidgetCSPMeta(TypedDict, total=False):
@@ -43,7 +42,7 @@ class WidgetMeta(TypedDict, total=False):
 def transform(meta: WidgetMeta) -> dict[str, Any]:
     def renamed(value: Meta) -> Meta:
         return {
-            _SNAKE_TO_CAMEL.sub(lambda m: m.group(1).upper(), key): (
+            SNAKE_TO_CAMEL.sub(lambda m: m.group(1).upper(), key): (
                 renamed(item) if isinstance(item, Mapping) else item
             )
             for key, item in value.items()
