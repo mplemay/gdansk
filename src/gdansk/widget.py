@@ -1,12 +1,18 @@
 import re
-from collections.abc import Mapping, Sequence
-from typing import Any, Final, Literal, TypedDict
+from collections.abc import Sequence
+from typing import Final, Literal, TypedDict
 
-type Meta = Mapping[str, Any]
 type App = Literal["app"]
 type Model = Literal["model"]
+type Visibility = tuple[App, Model] | tuple[Model, App] | tuple[App] | tuple[Model]
 
 SNAKE_TO_CAMEL: Final[re.Pattern[str]] = re.compile(r"_([a-zA-Z0-9])")
+
+
+class WidgetExtra(TypedDict):
+    uri: str
+    base_url: str | None
+    description: str | None
 
 
 class WidgetCSPMeta(TypedDict, total=False):
@@ -16,10 +22,10 @@ class WidgetCSPMeta(TypedDict, total=False):
 
 
 class WidgetUIMeta(TypedDict, total=False):
-    prefers_border: bool
-    visibility: tuple[App, Model] | tuple[Model, App] | tuple[App] | tuple[Model]
-    domain: str
     resource_uri: str
+    prefers_border: bool
+    visibility: Visibility
+    domain: str
     csp: WidgetCSPMeta
 
 
@@ -28,7 +34,7 @@ class OpenAIToolInvocationMeta(TypedDict, total=False):
     invoked: str
 
 
-class OpenAIWidgetMeta(TypedDict, total=False):
+class WidgetOpenAIMeta(TypedDict, total=False):
     widget_description: str
     tool_invocation: OpenAIToolInvocationMeta
     file_params: Sequence[str]
@@ -36,33 +42,71 @@ class OpenAIWidgetMeta(TypedDict, total=False):
 
 class WidgetMeta(TypedDict, total=False):
     ui: WidgetUIMeta
-    openai: OpenAIWidgetMeta
+    openai: WidgetOpenAIMeta
 
 
-def transform(meta: WidgetMeta) -> dict[str, Any]:
-    def renamed(value: Meta) -> Meta:
-        return {
-            SNAKE_TO_CAMEL.sub(lambda m: m.group(1).upper(), key): (
-                renamed(item) if isinstance(item, Mapping) else item
-            )
-            for key, item in value.items()
-        }
+class ToolUIMeta(TypedDict, total=False):
+    visibility: Visibility
+    resourceUri: str
 
-    def flatten(value: Meta, *, root: str) -> Meta:
-        def fn(prefix: str, value: object) -> Meta:
-            if not isinstance(value, Mapping):
-                return {prefix: value}
 
-            flattened = {}
-            for key, item in value.items():
-                flattened.update(fn(prefix=f"{prefix}/{key}", value=item))
+ToolMeta = TypedDict(
+    "ToolMeta",
+    {
+        "ui": ToolUIMeta,
+        "openai/toolInvocation/invoking": str,
+        "openai/toolInvocation/invoked": str,
+        "openai/fileParams": Sequence[str],
+    },
+    total=False,
+)
 
-            return flattened
 
-        return fn(prefix=root, value=value)
+class ResourceCSPMeta(TypedDict, total=False):
+    connectDomains: Sequence[str]
+    resourceDomains: Sequence[str]
+    frameDomains: Sequence[str]
 
-    res = dict(renamed(value=meta))
-    if openai := res.pop("openai", None):
-        res.update(flatten(openai, root="openai"))
 
-    return res
+class ResourceUIMeta(TypedDict, total=False):
+    prefersBorder: bool
+    domain: str
+    csp: WidgetCSPMeta
+
+
+ResourceMeta = TypedDict(
+    "ResourceMeta",
+    {
+        "ui": ResourceUIMeta,
+        "openai/widgetDescription": str,
+    },
+    total=False,
+)
+
+
+def transform(widget: WidgetMeta, extra: WidgetExtra) -> tuple[ToolMeta, ResourceMeta]:  # noqa: C901
+    tool, resource = ToolMeta(), ResourceMeta()
+    if ui := widget.get("ui", None):
+        if (resource_uri := ui.get("resource_uri")) and (tm := tool.setdefault("ui", ToolUIMeta())):
+            tm["resourceUri"] = resource_uri
+
+        if (prefers_border := ui.get("prefers_border")) and (rm := resource.setdefault("ui", ResourceUIMeta())):
+            rm["prefersBorder"] = prefers_border
+
+        if (visibility := ui.get("visibility")) and (tm := tool.setdefault("ui", ToolUIMeta())):
+            tm["visibility"] = visibility
+
+    if openai := widget.get("openai", None):
+        if tool_invocation := openai.get("tool_invocation"):
+            if invoking := tool_invocation.get("invoking"):
+                tool["openai/toolInvocation/invoking"] = invoking
+            if invoked := tool_invocation.get("invoked"):
+                tool["openai/toolInvocation/invoked"] = invoked
+
+        if file_params := openai.get("file_params"):
+            tool["openai/fileParams"] = file_params
+
+        if widget_description := openai.get("widget_description"):
+            resource["openai/widgetDescription"] = widget_description
+
+    return tool, resource
