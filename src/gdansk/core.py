@@ -21,6 +21,7 @@ from starlette.staticfiles import StaticFiles
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import render_template
 from gdansk.utils import join_url, join_url_path
+from gdansk.widget import WidgetMeta, transform
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
     from mcp.types import Icon, ToolAnnotations
     from starlette.responses import Response
     from starlette.types import Scope
+
 
 type PathType = str | PathLike[str]
 
@@ -392,7 +394,7 @@ class Ship:
         description: str | None = None,
         annotations: ToolAnnotations | None = None,
         icons: list[Icon] | None = None,
-        meta: dict[str, Any] | None = None,
+        meta: WidgetMeta | None = None,
         metadata: Metadata | None = None,
         structured_output: bool | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
@@ -408,7 +410,15 @@ class Ship:
             raise FileNotFoundError(msg)
 
         uri = f"ui://{key}"
-        tool_meta = {**(meta or {}), "ui": {"resourceUri": uri}}
+        tm, rm = transform(
+            widget=meta or WidgetMeta(),
+            extra={
+                "uri": uri,
+                "base_url": self._base_url,
+                "description": description,
+            },
+        )
+
         merged_metadata = merge_metadata(self._metadata, metadata)
 
         def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
@@ -423,7 +433,7 @@ class Ship:
                 description=description,
                 annotations=annotations,
                 icons=icons,
-                meta=tool_meta,
+                meta=dict(tm.items()),
                 structured_output=structured_output,
             )
             resource = FunctionResource.from_function(
@@ -433,6 +443,7 @@ class Ship:
                 title=title,
                 description=description,
                 mime_type="text/html;profile=mcp-app",
+                meta=dict(rm.items()),
             )
 
             self._widget_manager[relative_path] = WidgetSpec(
