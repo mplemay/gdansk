@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import react from "@vitejs/plugin-react";
@@ -27,6 +27,7 @@ describe("@gdansk/vite", () => {
     const options = resolveOptions({ root: process.cwd() });
 
     expect(options.host).toBe("127.0.0.1");
+    expect(options.outDir).toBe("dist");
     expect(options.port).toBe(13_714);
   });
 
@@ -39,16 +40,20 @@ describe("@gdansk/vite", () => {
   it("builds widget outputs and serves production SSR", async () => {
     const root = await createFixture({ withLocalPlugin: true });
     const runtime = await createGdanskRuntime({ root, port: 0 });
+    expect(runtime.manifestPath).toBe(`${root}/dist/gdansk-manifest.json`);
 
     const manifest = await runtime.build();
 
     expect(Object.keys(manifest.widgets)).toEqual(["hello", "nested/page"]);
-    await expect(pathExists(`${root}/assets/hello/client.js`)).resolves.toBe(true);
-    await expect(pathExists(`${root}/assets/hello/client.css`)).resolves.toBe(true);
-    await expect(pathExists(`${root}/assets/nested/page/client.js`)).resolves.toBe(true);
-    await expect(pathExists(`${root}/assets/ssr.js`)).resolves.toBe(true);
-    await expect(pathExists(`${root}/assets/server.js`)).resolves.toBe(true);
-    expect(manifest.server).toBe("assets/ssr.js");
+    await expect(pathExists(`${root}/dist/manifest.json`)).resolves.toBe(true);
+    await expect(pathExists(`${root}/dist/gdansk-manifest.json`)).resolves.toBe(true);
+    await expect(pathExists(`${root}/dist/hello/client.js`)).resolves.toBe(true);
+    await expect(pathExists(`${root}/dist/hello/client.css`)).resolves.toBe(true);
+    await expect(pathExists(`${root}/dist/nested/page/client.js`)).resolves.toBe(true);
+    await expect(pathExists(`${root}/dist/ssr.js`)).resolves.toBe(true);
+    await expect(pathExists(`${root}/dist/server.js`)).resolves.toBe(true);
+    expect(await findMatchingFiles(`${root}/dist/assets`, /\.js$/)).not.toHaveLength(0);
+    expect(manifest.server).toBe("dist/ssr.js");
     await expect(pathExists(`${root}/dist-src`)).resolves.toBe(false);
     await expect(pathExists(`${root}/__gdansk_virtual__`)).resolves.toBe(false);
 
@@ -57,19 +62,19 @@ describe("@gdansk/vite", () => {
 
     expect(response.body).toContain("Hello SSR");
     expect(response.body).toContain("from plugin");
-    expect(response.head.join("")).toContain("/assets/hello/client.css");
+    expect(response.head.join("")).toContain("/dist/hello/client.css");
 
     const assetBaseResponse = await renderWidget(metadata, {
-      assetBaseUrl: "https://example.com/app/assets",
+      assetBaseUrl: "https://example.com/app/dist",
       widget: "hello",
     });
-    expect(assetBaseResponse.head.join("")).toContain("https://example.com/app/assets/hello/client.css");
+    expect(assetBaseResponse.head.join("")).toContain("https://example.com/app/dist/hello/client.css");
 
     const health = await fetchHealth(metadata.ssrOrigin);
     expect(health).toEqual({ status: "OK" });
     expect(metadata.ssrEndpoint).toBe("/ssr");
 
-    const assetResponse = await fetch(`${metadata.ssrOrigin}/assets/hello/client.js`);
+    const assetResponse = await fetch(`${metadata.ssrOrigin}/dist/hello/client.js`);
     expect(assetResponse.status).toBe(200);
     expect(assetResponse.headers.get("access-control-allow-origin")).toBe("*");
 
@@ -221,6 +226,27 @@ async function pathExists(path: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+async function findMatchingFiles(root: string, pattern: RegExp): Promise<string[]> {
+  if (!(await pathExists(root))) {
+    return [];
+  }
+
+  const entries = await readdir(root, { withFileTypes: true });
+  const matches = await Promise.all(
+    entries.map(async (entry) => {
+      const path = `${root}/${entry.name}`;
+
+      if (entry.isDirectory()) {
+        return findMatchingFiles(path, pattern);
+      }
+
+      return pattern.test(entry.name) ? [path] : [];
+    }),
+  );
+
+  return matches.flat();
 }
 
 async function renderWidget(

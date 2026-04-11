@@ -16,7 +16,7 @@ import { createClientDevEntry, createClientModuleId, GDANSK_SSR_ENTRY_ID } from 
 export function resolveOptions(options: GdanskPluginOptions = {}, configRoot?: string): ResolvedGdanskOptions {
   const root = resolve(configRoot ?? options.root ?? process.cwd());
   const widgetsRoot = options.widgetsRoot ?? "widgets";
-  const outDir = options.assets ?? "assets";
+  const outDir = options.assets ?? "dist";
   const host = options.host ?? "127.0.0.1";
   const ssrEndpoint = "/ssr";
 

@@ -14,7 +14,8 @@ import type {
 } from "./types";
 import { createGdanskVirtualModulesPlugin, createResolvedClientModuleId } from "./virtual";
 
-const CLIENT_MANIFEST_FILE = ".gdansk-client-manifest.json";
+const CLIENT_MANIFEST_FILE = "manifest.json";
+const GDANSK_MANIFEST_FILE = "gdansk-manifest.json";
 const SERVER_BUNDLE = "ssr.js";
 
 type ViteManifestEntry = {
@@ -111,7 +112,7 @@ function createClientBuildOptions(
       output: {
         assetFileNames: (assetInfo: { names?: string[]; originalFileNames?: string[] }) =>
           resolveClientAssetPath(options, prepared.widgets, assetInfo),
-        chunkFileNames: "chunks/[name]-[hash].js",
+        chunkFileNames: "assets/[name]-[hash].js",
         entryFileNames: ({ name }) => `${name}/client.js`,
       },
     },
@@ -127,7 +128,7 @@ function createSSRBuildOptions(options: ResolvedGdanskOptions, prepared: GdanskP
     rollupOptions: {
       input: prepared.ssrEntryId,
       output: {
-        chunkFileNames: "chunks/[name]-[hash].js",
+        chunkFileNames: "assets/[name]-[hash].js",
         entryFileNames: SERVER_BUNDLE,
       },
     },
@@ -168,8 +169,7 @@ async function finalizeBuildOutputs(
     ),
   };
 
-  await rm(resolve(options.outDirPath, CLIENT_MANIFEST_FILE), { force: true });
-  await writeJson(resolve(options.outDirPath, "manifest.json"), manifest);
+  await writeJson(resolve(options.outDirPath, GDANSK_MANIFEST_FILE), manifest);
   await writeProductionServer(options);
 
   return manifest;

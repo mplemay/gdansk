@@ -106,7 +106,7 @@ def test_ship_uses_default_runtime_host_and_port(views_path: Path):
     assert ship._port == 13714
     assert isinstance(ship.assets, StaticFiles)
     assert ship.assets is ship.assets
-    assert Path(str(ship.assets.directory)) == views_path / "assets"
+    assert Path(str(ship.assets.directory)) == views_path / "dist"
 
 
 def test_ship_rejects_invalid_runtime_port(views_path: Path):
@@ -178,7 +178,7 @@ async def test_widget_resource_renders_production_scripts(views_path: Path):
     assert client.calls == [("http://ssr.test/ssr", {"widget": "hello"})]
     assert "@react-refresh" not in html
     assert "__vite_plugin_react_preamble_installed__" not in html
-    assert '<script type="module" src="/assets/hello/client.js"></script>' in html
+    assert '<script type="module" src="/dist/hello/client.js"></script>' in html
     assert "/@vite/client" not in html
 
 
@@ -207,7 +207,6 @@ async def test_widget_resource_uses_base_url_for_production_assets(views_path: P
     client = FakeClient()
     ship = Ship(
         views=views_path,
-        assets="public",
         base_url="https://example.com/app",
         client=cast("AsyncClient", client),
     )
@@ -224,10 +223,10 @@ async def test_widget_resource_uses_base_url_for_production_assets(views_path: P
     assert client.calls == [
         (
             "http://ssr.test/ssr",
-            {"assetBaseUrl": "https://example.com/app/public", "widget": "hello"},
+            {"assetBaseUrl": "https://example.com/app/dist", "widget": "hello"},
         ),
     ]
-    assert '<script type="module" src="https://example.com/app/public/hello/client.js"></script>' in html
+    assert '<script type="module" src="https://example.com/app/dist/hello/client.js"></script>' in html
 
 
 async def test_widget_resource_raises_on_invalid_ssr_payload(views_path: Path):
