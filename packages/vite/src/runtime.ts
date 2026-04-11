@@ -39,7 +39,7 @@ class GdanskRuntimeImpl implements GdanskRuntime {
   #viteServer?: Awaited<ReturnType<typeof createServer>>;
 
   constructor(options: ResolvedGdanskOptions) {
-    this.manifestPath = `${options.outDirPath}/manifest.json`;
+    this.manifestPath = `${options.outDirPath}/gdansk-manifest.json`;
     this.options = options;
   }
 

@@ -99,7 +99,7 @@ def main() -> None:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.mount(path="/assets", app=ship.assets)
+    app.mount(path="/dist", app=ship.assets)
     uvicorn.run(app, port=3000)
 
 
@@ -186,7 +186,15 @@ export default defineConfig({
 ```
 
 Production widgets load their hydration assets from `/<assets_dir>/...`. Mount `ship.assets` at that path on the
-public app; with the default settings this is `/assets`.
+public app; with the default settings this is `/dist`.
+
+The default production output now mirrors Vite/Laravel conventions more closely:
+
+- standard Vite manifest: `dist/manifest.json`
+- gdansk runtime manifest: `dist/gdansk-manifest.json`
+- stable widget entries: `dist/<widget>/client.js` and `dist/<widget>/client.css`
+- shared hashed assets and chunks: `dist/assets/*`
+- SSR bundles: `dist/ssr.js` and `dist/server.js`
 
 If your MCP client renders widget HTML on a different origin, pass `base_url` to `Ship` so production asset URLs point
 back to your public app instead of the client host:

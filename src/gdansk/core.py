@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 type PathType = str | PathLike[str]
 
 DEV_CLIENT_PREFIX: Final[str] = "/@gdansk/client"
-DEFAULT_ASSETS_DIR: Final[str] = "assets"
+DEFAULT_ASSETS_DIR: Final[str] = "dist"
 HEALTH_ENDPOINT: Final[str] = "/health"
 MAX_RUNTIME_PORT: Final[int] = 65535
 SSR_ENDPOINT: Final[str] = "/ssr"

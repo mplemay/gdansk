@@ -114,12 +114,20 @@ async def lifespan(_: object) -> AsyncIterator[None]:
 
 
 app = FastAPI(lifespan=lifespan)
-app.mount(path="/assets", app=ship.assets)
+app.mount(path="/dist", app=ship.assets)
 app.mount(path="/mcp", app=mcp_app)
 ```
 
-`gdansk` production widgets expect hydration assets at `/<assets_dir>/...`. With the default `assets="assets"`, mount
-`ship.assets` at `/assets`.
+`gdansk` production widgets expect hydration assets at `/<assets_dir>/...`. With the default `assets="dist"`, mount
+`ship.assets` at `/dist`.
+
+The default production output is:
+
+- `dist/manifest.json` for the standard Vite manifest
+- `dist/gdansk-manifest.json` for gdansk's runtime manifest
+- `dist/<widget>/client.js` and `dist/<widget>/client.css` for stable widget entry assets
+- `dist/assets/*` for shared hashed assets and chunks
+- `dist/ssr.js` and `dist/server.js` for SSR
 
 ## Styling and Tailwind
 
