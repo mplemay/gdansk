@@ -3,7 +3,7 @@
   "specifiers": {
     "npm:@hono/node-server@1.19.13": "1.19.13_hono@4.12.12",
     "npm:@modelcontextprotocol/ext-apps@^1.5.0": "1.5.0_@modelcontextprotocol+sdk@1.29.0__zod@4.3.6_react@19.2.5_react-dom@19.2.5__react@19.2.5_zod@4.3.6",
-    "npm:@modelcontextprotocol/sdk@^1.5.0": "1.29.0_zod@4.3.6",
+    "npm:@modelcontextprotocol/sdk@^1.29.0": "1.29.0_zod@4.3.6",
     "npm:@types/react-dom@^19.2.3": "19.2.3_@types+react@19.2.14",
     "npm:@types/react@^19.2.14": "19.2.14",
     "npm:@vitejs/plugin-react@6.0.1": "6.0.1_vite@8.0.8",
@@ -867,7 +867,7 @@
     "packageJson": {
       "dependencies": [
         "npm:@modelcontextprotocol/ext-apps@^1.5.0",
-        "npm:@modelcontextprotocol/sdk@^1.5.0",
+        "npm:@modelcontextprotocol/sdk@^1.29.0",
         "npm:@types/react-dom@^19.2.3",
         "npm:@types/react@^19.2.14",
         "npm:@vitejs/plugin-react@6.0.1",
