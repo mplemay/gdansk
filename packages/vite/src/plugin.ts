@@ -5,6 +5,7 @@ import { prepareProject, resolveOptions } from "./context";
 import { resolveViteOrigin } from "./css";
 import { installDevSSRMiddleware } from "./ssr";
 import type { GdanskPluginOptions, GdanskPreparedProject, ResolvedGdanskOptions } from "./types";
+import { loadVirtualModule, resolveVirtualModuleId } from "./virtual";
 
 type GdanskDevServerMetadata = {
   ssrEndpoint: string;
@@ -46,7 +47,17 @@ export function gdansk(options: GdanskPluginOptions = {}): Plugin {
     async configResolved(config) {
       await ensurePrepared(config.root);
     },
+    async load(id) {
+      const project = prepared ?? (await ensurePrepared(resolved?.root));
+      const resolvedOptions = resolved ?? resolveOptions(options);
+      return loadVirtualModule(resolvedOptions, project, id);
+    },
     name: "@gdansk/vite",
+    async resolveId(id, importer) {
+      const project = prepared ?? (await ensurePrepared(resolved?.root));
+      const resolvedOptions = resolved ?? resolveOptions(options);
+      return resolveVirtualModuleId(resolvedOptions, project, id, importer);
+    },
     async configureServer(server) {
       const project = prepared ?? (await ensurePrepared(server.config.root));
       const resolvedOptions = resolved ?? resolveOptions(options, server.config.root);
@@ -54,7 +65,7 @@ export function gdansk(options: GdanskPluginOptions = {}): Plugin {
       installDevSSRMiddleware({
         options: resolvedOptions,
         server,
-        ssrEntry: project.ssrEntry,
+        ssrEntry: project.ssrEntryId,
         widgets: project.widgets,
       });
 

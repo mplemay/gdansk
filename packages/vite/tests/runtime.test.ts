@@ -49,6 +49,8 @@ describe("@gdansk/vite", () => {
     await expect(pathExists(`${root}/assets/ssr.js`)).resolves.toBe(true);
     await expect(pathExists(`${root}/assets/server.js`)).resolves.toBe(true);
     expect(manifest.server).toBe("assets/ssr.js");
+    await expect(pathExists(`${root}/dist-src`)).resolves.toBe(false);
+    await expect(pathExists(`${root}/__gdansk_virtual__`)).resolves.toBe(false);
 
     const metadata = await runtime.startProductionServer();
     const response = await renderWidget(metadata, { widget: "hello" });
@@ -91,7 +93,9 @@ describe("@gdansk/vite", () => {
     expect(metadata.viteOrigin).toBe(metadata.ssrOrigin);
     expect(metadata.assetOrigin).toBe(metadata.ssrOrigin);
     expect(Object.keys(metadata.widgets)).toEqual(["hello", "nested/page"]);
-    expect(metadata.widgets.hello.clientPath).toBe("/dist-src/hello/client.tsx");
+    expect(metadata.widgets.hello.clientPath).toBe("/@gdansk/client/hello.tsx");
+    await expect(pathExists(`${root}/dist-src`)).resolves.toBe(false);
+    await expect(pathExists(`${root}/__gdansk_virtual__`)).resolves.toBe(false);
 
     await runtime.close();
   });
