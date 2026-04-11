@@ -1,5 +1,5 @@
 from .core import Ship
 from .metadata import Metadata
-from .widget import WidgetMeta
+from .widget import FileParam, WidgetMeta
 
-__all__: tuple[str, ...] = ("Metadata", "Ship", "WidgetMeta")
+__all__: tuple[str, ...] = ("FileParam", "Metadata", "Ship", "WidgetMeta")
