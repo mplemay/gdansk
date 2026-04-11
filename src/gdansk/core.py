@@ -64,6 +64,31 @@ class WidgetSpec:
     uri: str
 
 
+def _widget_tool_descriptor_meta(ui: dict[str, Any], flat: dict[str, Any]) -> dict[str, Any]:
+    tool_ui: dict[str, Any] = {"resourceUri": ui["resourceUri"]}
+    if "visibility" in ui:
+        tool_ui["visibility"] = ui["visibility"]
+    out: dict[str, Any] = {"ui": tool_ui}
+    for k in (
+        "openai/toolInvocation/invoking",
+        "openai/toolInvocation/invoked",
+        "openai/fileParams",
+    ):
+        if k in flat:
+            out[k] = flat[k]
+    return out
+
+
+def _widget_resource_descriptor_meta(ui: dict[str, Any], flat: dict[str, Any]) -> dict[str, Any]:
+    resource_ui = {k: ui[k] for k in ("domain", "csp", "prefersBorder") if k in ui}
+    out: dict[str, Any] = {}
+    if resource_ui:
+        out["ui"] = resource_ui
+    if "openai/widgetDescription" in flat:
+        out["openai/widgetDescription"] = flat["openai/widgetDescription"]
+    return out
+
+
 class AssetFiles(StaticFiles):
     def file_response(
         self,
@@ -415,6 +440,12 @@ class Ship:
         uri = ui.setdefault("resourceUri", f"ui://{key}")
         ui.setdefault("domain", self._base_url)
 
+        if "openai/widgetDescription" not in res and description:
+            res["openai/widgetDescription"] = description
+
+        tool_meta = _widget_tool_descriptor_meta(ui, res)
+        resource_meta = _widget_resource_descriptor_meta(ui, res)
+
         merged_metadata = merge_metadata(self._metadata, metadata)
 
         def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
@@ -429,7 +460,7 @@ class Ship:
                 description=description,
                 annotations=annotations,
                 icons=icons,
-                meta=res,
+                meta=tool_meta,
                 structured_output=structured_output,
             )
             resource = FunctionResource.from_function(
@@ -439,7 +470,7 @@ class Ship:
                 title=title,
                 description=description,
                 mime_type="text/html;profile=mcp-app",
-                meta=res,
+                meta=resource_meta,
             )
 
             self._widget_manager[relative_path] = WidgetSpec(

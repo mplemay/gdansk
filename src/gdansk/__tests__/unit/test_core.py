@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 import json
+from copy import deepcopy
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -11,6 +14,8 @@ from gdansk.metadata import Metadata
 
 if TYPE_CHECKING:
     from httpx import AsyncClient
+
+    from gdansk.widget import WidgetMeta
 
 
 class FakeResponse:
@@ -416,3 +421,161 @@ async def test_ship_context_open_rejects_reentry(views_path: Path, monkeypatch: 
 
     assert calls == [("start", True), "stop"]
     assert ship._context._active is False
+
+
+def test_ship_widget_default_tool_and_resource_metadata(views_path: Path):
+    ship = Ship(
+        views=views_path,
+        base_url="https://example.com/app",
+    )
+
+    @ship.widget(path=Path("hello/widget.tsx"), name="hello", description="Widget description")
+    def hello() -> None:
+        return None
+
+    spec = ship._widget_manager[Path("hello/widget.tsx")]
+
+    assert spec.tool.meta == {
+        "ui": {
+            "resourceUri": "ui://hello",
+        },
+    }
+    assert spec.resource.meta == {
+        "ui": {
+            "domain": "https://example.com/app",
+        },
+        "openai/widgetDescription": "Widget description",
+    }
+
+
+def test_ship_widget_preserves_explicit_metadata_split(views_path: Path):
+    ship = Ship(
+        views=views_path,
+        base_url="https://example.com/app",
+    )
+    meta: WidgetMeta = {
+        "ui": {
+            "resource_uri": "ui://custom",
+            "prefers_border": True,
+            "domain": "https://widgets.example.com",
+            "csp": {
+                "connect_domains": ["https://api.example.com"],
+            },
+        },
+        "openai": {
+            "widget_description": "Explicit widget description",
+            "tool_invocation": {
+                "invoking": "Calling tool",
+                "invoked": "Tool complete",
+            },
+            "file_params": ["photo"],
+        },
+    }
+
+    @ship.widget(path=Path("hello/widget.tsx"), name="hello", description="Fallback description", meta=meta)
+    def hello() -> None:
+        return None
+
+    spec = ship._widget_manager[Path("hello/widget.tsx")]
+
+    assert spec.tool.meta == {
+        "ui": {
+            "resourceUri": "ui://custom",
+        },
+        "openai/toolInvocation/invoking": "Calling tool",
+        "openai/toolInvocation/invoked": "Tool complete",
+        "openai/fileParams": ["photo"],
+    }
+    assert spec.resource.meta == {
+        "ui": {
+            "prefersBorder": True,
+            "domain": "https://widgets.example.com",
+            "csp": {
+                "connectDomains": ["https://api.example.com"],
+            },
+        },
+        "openai/widgetDescription": "Explicit widget description",
+    }
+
+
+def test_ship_widget_description_fallback_for_resource_meta(views_path: Path):
+    ship = Ship(
+        views=views_path,
+        base_url="https://example.com/app",
+    )
+    meta: WidgetMeta = {
+        "ui": {
+            "csp": {
+                "connect_domains": ["https://api.example.com"],
+            },
+        },
+    }
+
+    @ship.widget(
+        path=Path("hello/widget.tsx"),
+        name="hello",
+        description="From decorator",
+        meta=meta,
+    )
+    def hello() -> None:
+        return None
+
+    spec = ship._widget_manager[Path("hello/widget.tsx")]
+
+    resource_meta = spec.resource.meta
+    assert resource_meta is not None
+    assert resource_meta["openai/widgetDescription"] == "From decorator"
+
+
+def test_ship_widget_explicit_widget_description_overrides_decorator(views_path: Path):
+    ship = Ship(
+        views=views_path,
+        base_url="https://example.com/app",
+    )
+    meta: WidgetMeta = {
+        "openai": {
+            "widget_description": "From meta",
+        },
+    }
+
+    @ship.widget(
+        path=Path("hello/widget.tsx"),
+        name="hello",
+        description="From decorator",
+        meta=meta,
+    )
+    def hello() -> None:
+        return None
+
+    spec = ship._widget_manager[Path("hello/widget.tsx")]
+
+    resource_meta = spec.resource.meta
+    assert resource_meta is not None
+    assert resource_meta["openai/widgetDescription"] == "From meta"
+
+
+def test_ship_widget_does_not_mutate_meta_input(views_path: Path):
+    ship = Ship(
+        views=views_path,
+        base_url="https://example.com/app",
+    )
+    meta: WidgetMeta = {
+        "ui": {
+            "csp": {
+                "connect_domains": ["https://api.example.com"],
+            },
+        },
+        "openai": {
+            "tool_invocation": {
+                "invoking": "Calling tool",
+                "invoked": "Tool complete",
+            },
+        },
+    }
+    original = deepcopy(meta)
+
+    @ship.widget(path=Path("hello/widget.tsx"), name="hello", description="Widget description", meta=meta)
+    def hello() -> None:
+        return None
+
+    assert meta == original

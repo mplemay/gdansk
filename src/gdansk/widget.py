@@ -1,5 +1,8 @@
+import re
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal, TypedDict
+
+_SNAKE_TO_CAMEL = re.compile(r"_([a-zA-Z0-9])")
 
 type Meta = Mapping[str, Any]
 
@@ -39,13 +42,14 @@ class WidgetMeta(TypedDict, total=False):
 
 def transform(meta: WidgetMeta) -> dict[str, Any]:
     def renamed(value: Meta) -> Meta:
-        def fn(key: str) -> str:
-            head, *tail = key.split("_")
-            return head + "".join(part[:1].upper() + part[1:] for part in tail)
+        return {
+            _SNAKE_TO_CAMEL.sub(lambda m: m.group(1).upper(), key): (
+                renamed(item) if isinstance(item, Mapping) else item
+            )
+            for key, item in value.items()
+        }
 
-        return {fn(key): (renamed(item) if isinstance(Mapping, item) else item) for key, item in value.items()}
-
-    def flatten(value: Meta) -> Meta:
+    def flatten(value: Meta, *, root: str) -> Meta:
         def fn(prefix: str, value: object) -> Meta:
             if not isinstance(value, Mapping):
                 return {prefix: value}
@@ -56,10 +60,10 @@ def transform(meta: WidgetMeta) -> dict[str, Any]:
 
             return flattened
 
-        return fn(prefix="", value=value)
+        return fn(prefix=root, value=value)
 
     res = dict(renamed(value=meta))
-    if openai := res.pop("openai"):
-        res.update(flatten(openai))
+    if openai := res.pop("openai", None):
+        res.update(flatten(openai, root="openai"))
 
     return res
