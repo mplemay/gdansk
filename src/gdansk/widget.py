@@ -1,7 +1,7 @@
 from collections.abc import Mapping, Sequence
-from typing import Literal, TypedDict, cast
+from typing import Any, Literal, TypedDict
 
-type TransformedMeta = dict[str, object]
+type Meta = Mapping[str, Any]
 
 type App = Literal["app"]
 type Model = Literal["model"]
@@ -37,49 +37,29 @@ class WidgetMeta(TypedDict, total=False):
     openai: OpenAIWidgetMeta
 
 
-def _camelize(key: str) -> str:
-    head, *tail = key.split("_")
-    return head + "".join(part[:1].upper() + part[1:] for part in tail)
+def transform(meta: WidgetMeta) -> dict[str, Any]:
+    def renamed(value: Meta) -> Meta:
+        def fn(key: str) -> str:
+            head, *tail = key.split("_")
+            return head + "".join(part[:1].upper() + part[1:] for part in tail)
 
+        return {fn(key): (renamed(item) if isinstance(Mapping, item) else item) for key, item in value.items()}
 
-def _renamed_impl(value: object) -> object:
-    if isinstance(value, Mapping):
-        return {_camelize(str(key)): _renamed_impl(item) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_renamed_impl(item) for item in value]
-    if isinstance(value, tuple):
-        return tuple(_renamed_impl(item) for item in value)
-    return value
+    def flatten(value: Meta) -> Meta:
+        def fn(prefix: str, value: object) -> Meta:
+            if not isinstance(value, Mapping):
+                return {prefix: value}
 
+            flattened = {}
+            for key, item in value.items():
+                flattened.update(fn(prefix=f"{prefix}/{key}", value=item))
 
-def _flatten_impl(prefix: str, value: object) -> TransformedMeta:
-    if isinstance(value, Mapping):
-        flattened: TransformedMeta = {}
-        for key, item in value.items():
-            flattened.update(_flatten_impl(f"{prefix}/{key}", item))
-        return flattened
+            return flattened
 
-    return {prefix: value}
+        return fn(prefix="", value=value)
 
+    res = dict(renamed(value=meta))
+    if openai := res.pop("openai"):
+        res.update(flatten(openai))
 
-def transform(meta: WidgetMeta | Mapping[str, object] | None) -> TransformedMeta:
-    def renamed(value: object) -> object:
-        return _renamed_impl(value)
-
-    def flatten(prefix: str, value: object) -> TransformedMeta:
-        return _flatten_impl(prefix, value)
-
-    if meta is None:
-        return {}
-
-    renamed_meta = cast("TransformedMeta", renamed(dict(meta)))
-    transformed: TransformedMeta = {}
-
-    for key, value in renamed_meta.items():
-        if key == "openai":
-            transformed.update(flatten(key, value))
-            continue
-
-        transformed[key] = value
-
-    return transformed
+    return res

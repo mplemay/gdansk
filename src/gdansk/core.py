@@ -3,13 +3,12 @@ from __future__ import annotations
 from asyncio import sleep
 from asyncio.subprocess import DEVNULL, PIPE, Process, create_subprocess_exec
 from contextlib import asynccontextmanager
-from copy import deepcopy
 from dataclasses import dataclass
 from functools import cached_property, partial
 from http import HTTPStatus
 from os import PathLike, stat_result
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Any, Final, Literal, cast
+from typing import TYPE_CHECKING, Any, Final, Literal
 from urllib.parse import urlparse
 
 from deno import find_deno_bin
@@ -387,31 +386,6 @@ class Ship:
 
         return posix.as_posix()
 
-    @staticmethod
-    def _select_widget_meta(
-        meta: WidgetMeta | None,
-        *,
-        ui_keys: tuple[str, ...] = (),
-        openai_keys: tuple[str, ...] = (),
-    ) -> dict[str, object]:
-        if meta is None:
-            return {}
-
-        copied_meta = deepcopy(meta)
-        selected: dict[str, object] = {}
-
-        if isinstance(ui_meta := copied_meta.get("ui"), dict) and (
-            selected_ui := {key: dict(ui_meta)[key] for key in ui_keys if key in ui_meta}
-        ):
-            selected["ui"] = selected_ui
-
-        if isinstance(openai_meta := copied_meta.get("openai"), dict) and (
-            selected_openai := {key: dict(openai_meta)[key] for key in openai_keys if key in openai_meta}
-        ):
-            selected["openai"] = selected_openai
-
-        return selected
-
     def widget(  # noqa: PLR0913
         self,
         path: PathType,
@@ -436,28 +410,11 @@ class Ship:
             msg = f"The widget path (i.e. {relative_path}) is not a file"
             raise FileNotFoundError(msg)
 
-        uri = f"ui://{key}"
-        tool_meta_input = self._select_widget_meta(
-            meta,
-            ui_keys=("visibility", "resource_uri"),
-            openai_keys=("tool_invocation", "file_params"),
-        )
-        resource_meta_input = self._select_widget_meta(
-            meta,
-            ui_keys=("prefers_border", "domain", "csp"),
-            openai_keys=("widget_description",),
-        )
-        tool_ui = cast("dict[str, object]", tool_meta_input.setdefault("ui", {}))
-        tool_ui.setdefault("resource_uri", uri)
-        if self._base_url is not None:
-            resource_ui = cast("dict[str, object]", resource_meta_input.setdefault("ui", {}))
-            resource_ui.setdefault("domain", self._base_url)
-        if description is not None:
-            resource_openai = cast("dict[str, object]", resource_meta_input.setdefault("openai", {}))
-            resource_openai.setdefault("widget_description", description)
+        res = transform(meta=meta) if meta else {}
+        ui = res.setdefault("ui", {})
+        uri = ui.setdefault("resourceUri", f"ui://{key}")
+        ui.setdefault("domain", self._base_url)
 
-        tool_meta = transform(tool_meta_input)
-        resource_meta = transform(resource_meta_input)
         merged_metadata = merge_metadata(self._metadata, metadata)
 
         def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
@@ -472,7 +429,7 @@ class Ship:
                 description=description,
                 annotations=annotations,
                 icons=icons,
-                meta=tool_meta,
+                meta=res,
                 structured_output=structured_output,
             )
             resource = FunctionResource.from_function(
@@ -482,7 +439,7 @@ class Ship:
                 title=title,
                 description=description,
                 mime_type="text/html;profile=mcp-app",
-                meta=resource_meta,
+                meta=res,
             )
 
             self._widget_manager[relative_path] = WidgetSpec(
