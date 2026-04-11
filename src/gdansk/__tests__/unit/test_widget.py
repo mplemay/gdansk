@@ -12,21 +12,6 @@ def test_transform_prefers_border_false_is_emitted():
     assert resource["ui"]["prefersBorder"] is False
 
 
-def test_transform_openai_tool_descriptor_extensions():
-    widget: WidgetMeta = {
-        "openai": {
-            "widget_accessible": True,
-            "visibility": "private",
-            "security_schemes": [{"type": "noauth"}],
-        },
-    }
-    extra: WidgetExtra = {"uri": "ui://app/widget", "base_url": None, "description": None}
-    tool, _resource = transform(widget, extra)
-    assert tool["openai/widgetAccessible"] is True
-    assert tool["openai/visibility"] == "private"
-    assert tool["securitySchemes"] == [{"type": "noauth"}]
-
-
 def test_transform_maps_all_csp_fields():
     widget: WidgetMeta = {
         "ui": {

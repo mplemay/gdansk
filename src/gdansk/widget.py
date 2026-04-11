@@ -86,7 +86,10 @@ ResourceMeta = TypedDict(
 )
 
 
-def _widget_csp_to_resource(csp: WidgetCSPMeta) -> ResourceCSPMeta | None:
+def _transform_resource_csp(widget: WidgetMeta, _: WidgetExtra) -> ResourceCSPMeta | None:
+    ui = widget.get("ui")
+    if not ui or (csp := ui.get("csp")) is None:
+        return None
     out: ResourceCSPMeta = {}
     if connect := csp.get("connect_domains"):
         out["connectDomains"] = connect
@@ -97,55 +100,63 @@ def _widget_csp_to_resource(csp: WidgetCSPMeta) -> ResourceCSPMeta | None:
     return out or None
 
 
-def _apply_tool_ui(tool: ToolMeta, ui: WidgetUIMeta | None, extra: WidgetExtra) -> None:
-    resource_uri = ui["resource_uri"] if ui and "resource_uri" in ui else extra["uri"]
-    if resource_uri:
-        tool.setdefault("ui", ToolUIMeta())["resourceUri"] = resource_uri
-    if ui and "visibility" in ui and (visibility := ui.get("visibility")):
-        tool.setdefault("ui", ToolUIMeta())["visibility"] = visibility
-
-
-def _apply_resource_ui(resource: ResourceMeta, ui: WidgetUIMeta | None, extra: WidgetExtra) -> None:
+def _transform_resource_ui(widget: WidgetMeta, extra: WidgetExtra) -> ResourceUIMeta | None:
+    ui = widget.get("ui")
+    out: ResourceUIMeta = {}
     domain: str | None = ui["domain"] if ui and "domain" in ui else None
     if domain is None and extra.get("base_url"):
         domain = extra["base_url"]
     if domain:
-        resource.setdefault("ui", ResourceUIMeta())["domain"] = domain
+        out["domain"] = domain
     if ui and "prefers_border" in ui:
-        resource.setdefault("ui", ResourceUIMeta())["prefersBorder"] = ui["prefers_border"]
-    if ui and (csp := ui.get("csp")) and (mapped := _widget_csp_to_resource(csp)):
-        resource.setdefault("ui", ResourceUIMeta())["csp"] = mapped
+        out["prefersBorder"] = ui["prefers_border"]
+    if csp := _transform_resource_csp(widget, extra):
+        out["csp"] = csp
+    return out or None
 
 
-def _apply_widget_description(
-    resource: ResourceMeta,
-    openai: WidgetOpenAIMeta | None,
-    extra: WidgetExtra,
-) -> None:
-    widget_description = openai.get("widget_description") if openai and "widget_description" in openai else None
+def _transform_resource(widget: WidgetMeta, extra: WidgetExtra) -> ResourceMeta:
+    out: ResourceMeta = {}
+    if ui := _transform_resource_ui(widget, extra):
+        out["ui"] = ui
+    openai = widget.get("openai")
+    widget_description: str | None = None
+    if openai and "widget_description" in openai:
+        wd = openai["widget_description"]
+        if wd is not None:
+            widget_description = wd
+    if widget_description is None and (desc := extra.get("description")):
+        widget_description = desc
     if widget_description is not None:
-        resource["openai/widgetDescription"] = widget_description
-    elif desc := extra.get("description"):
-        resource["openai/widgetDescription"] = desc
+        out["openai/widgetDescription"] = widget_description
+    return out
 
 
-def _apply_openai_tool(tool: ToolMeta, openai: WidgetOpenAIMeta) -> None:
-    if tool_invocation := openai.get("tool_invocation"):
-        if invoking := tool_invocation.get("invoking"):
-            tool["openai/toolInvocation/invoking"] = invoking
-        if invoked := tool_invocation.get("invoked"):
-            tool["openai/toolInvocation/invoked"] = invoked
-    if file_params := openai.get("file_params"):
-        tool["openai/fileParams"] = file_params
+def _transform_tool_ui(widget: WidgetMeta, extra: WidgetExtra) -> ToolUIMeta | None:
+    ui = widget.get("ui")
+    out: ToolUIMeta = {}
+    resource_uri = ui["resource_uri"] if ui and "resource_uri" in ui else extra["uri"]
+    if resource_uri:
+        out["resourceUri"] = resource_uri
+    if ui and "visibility" in ui and (visibility := ui.get("visibility")):
+        out["visibility"] = visibility
+    return out or None
+
+
+def _transform_tool(widget: WidgetMeta, extra: WidgetExtra) -> ToolMeta:
+    out: ToolMeta = {}
+    if ui := _transform_tool_ui(widget, extra):
+        out["ui"] = ui
+    if openai := widget.get("openai"):
+        if tool_invocation := openai.get("tool_invocation"):
+            if invoking := tool_invocation.get("invoking"):
+                out["openai/toolInvocation/invoking"] = invoking
+            if invoked := tool_invocation.get("invoked"):
+                out["openai/toolInvocation/invoked"] = invoked
+        if file_params := openai.get("file_params"):
+            out["openai/fileParams"] = file_params
+    return out
 
 
 def transform(widget: WidgetMeta, extra: WidgetExtra) -> tuple[ToolMeta, ResourceMeta]:
-    tool, resource = ToolMeta(), ResourceMeta()
-    ui = widget.get("ui")
-    openai = widget.get("openai")
-    _apply_tool_ui(tool, ui, extra)
-    _apply_resource_ui(resource, ui, extra)
-    _apply_widget_description(resource, openai, extra)
-    if openai:
-        _apply_openai_tool(tool, openai)
-    return tool, resource
+    return _transform_tool(widget, extra), _transform_resource(widget, extra)
