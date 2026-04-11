@@ -7,8 +7,6 @@ export interface GdanskPluginOptions {
   port?: number;
 }
 export interface ResolvedGdanskOptions {
-  generatedDir: string;
-  generatedDirPath: string;
   host: string;
   outDir: string;
   outDirPath: string;
@@ -22,7 +20,7 @@ export interface WidgetDefinition {
   clientCss: string;
   clientDevEntry: string;
   clientEntry: string;
-  clientSource: string;
+  clientModuleId: string;
   entry: string;
   key: string;
   widgetPath: string;
@@ -60,7 +58,7 @@ export interface GdanskRenderResponse {
 }
 export type GdanskRenderFunction = (widgetKey: string) => Promise<GdanskRenderResponse> | GdanskRenderResponse;
 export interface GdanskPreparedProject {
-  ssrEntry: string;
+  ssrEntryId: string;
   widgets: WidgetDefinition[];
 }
 export interface GdanskServerOptions {

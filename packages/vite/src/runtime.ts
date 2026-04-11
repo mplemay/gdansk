@@ -19,6 +19,7 @@ import type {
   ResolvedGdanskOptions,
   WidgetDefinition,
 } from "./types";
+import { createGdanskVirtualModulesPlugin } from "./virtual";
 
 export async function createGdanskRuntime(options: GdanskPluginOptions = {}): Promise<GdanskRuntime> {
   const resolved = resolveOptions(options);
@@ -73,6 +74,7 @@ class GdanskRuntimeImpl implements GdanskRuntime {
       mergeConfig(config, {
         appType: "custom",
         configFile: false,
+        plugins: [createGdanskVirtualModulesPlugin(this.options, prepared)],
         root: this.options.root,
         server: {
           host: this.options.host,
@@ -85,7 +87,7 @@ class GdanskRuntimeImpl implements GdanskRuntime {
     installDevSSRMiddleware({
       options: this.options,
       server: this.#viteServer,
-      ssrEntry: prepared.ssrEntry,
+      ssrEntry: prepared.ssrEntryId,
       widgets: prepared.widgets,
     });
 

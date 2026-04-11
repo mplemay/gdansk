@@ -156,7 +156,7 @@ async def test_widget_resource_renders_complete_document(views_path: Path):
     assert "window.__vite_plugin_react_preamble_installed__ = true" in html
     assert '<div id="root"><main>Hello from SSR</main></div>' in html
     assert '<script type="module" src="http://ssr.test/@vite/client"></script>' in html
-    assert '<script type="module" src="http://ssr.test/dist-src/hello/client.tsx"></script>' in html
+    assert '<script type="module" src="http://ssr.test/@gdansk/client/hello.tsx"></script>' in html
 
 
 async def test_widget_resource_renders_production_scripts(views_path: Path):

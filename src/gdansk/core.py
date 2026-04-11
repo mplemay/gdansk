@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 
 type PathType = str | PathLike[str]
 
-DEV_GENERATED_DIR: Final[str] = "dist-src"
+DEV_CLIENT_PREFIX: Final[str] = "/@gdansk/client"
 DEFAULT_ASSETS_DIR: Final[str] = "assets"
 HEALTH_ENDPOINT: Final[str] = "/health"
 MAX_RUNTIME_PORT: Final[int] = 65535
@@ -140,7 +140,7 @@ class ShipContext:
         if self._dev:
             scripts = [
                 join_url(runtime_origin, "/@vite/client"),
-                join_url(runtime_origin, f"/{DEV_GENERATED_DIR}/{widget_key}/client.tsx"),
+                join_url(runtime_origin, self._development_asset_path(widget_key=widget_key)),
             ]
         else:
             scripts = [self._production_asset_url(widget_key=widget_key)]
@@ -173,6 +173,10 @@ class ShipContext:
             return join_url_path(asset_base_url, f"{widget_key}/client.js")
 
         return PurePosixPath("/", self._assets_dir, widget_key, "client.js").as_posix()
+
+    @staticmethod
+    def _development_asset_path(*, widget_key: str) -> str:
+        return PurePosixPath(DEV_CLIENT_PREFIX, f"{widget_key}.tsx").as_posix()
 
     async def _run_build(self) -> None:
         proc = await create_subprocess_exec(

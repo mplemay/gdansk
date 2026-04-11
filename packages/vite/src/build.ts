@@ -1,5 +1,5 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, relative, resolve } from "node:path";
+import { dirname, posix, resolve } from "node:path";
 
 import { build, mergeConfig } from "vite";
 import type { UserConfig } from "vite";
@@ -12,6 +12,7 @@ import type {
   ResolvedGdanskOptions,
   WidgetDefinition,
 } from "./types";
+import { createGdanskVirtualModulesPlugin, createResolvedClientModuleId } from "./virtual";
 
 const CLIENT_MANIFEST_FILE = ".gdansk-client-manifest.json";
 const SERVER_BUNDLE = "ssr.js";
@@ -67,6 +68,7 @@ export async function buildWidgets(
         appType: "custom",
         build: createClientBuildOptions(options, prepared),
         configFile: false,
+        plugins: [createGdanskVirtualModulesPlugin(options, prepared)],
         root: options.root,
       }),
     );
@@ -77,6 +79,7 @@ export async function buildWidgets(
       appType: "custom",
       build: createSSRBuildOptions(options, prepared),
       configFile: false,
+      plugins: [createGdanskVirtualModulesPlugin(options, prepared)],
       root: options.root,
     }),
   );
@@ -94,8 +97,8 @@ function createClientBuildOptions(
 ): UserConfig["build"] {
   const inputs =
     prepared.widgets.length > 0
-      ? Object.fromEntries(prepared.widgets.map((widget) => [widget.key, widget.clientSource]))
-      : { __gdansk_empty__: prepared.ssrEntry };
+      ? Object.fromEntries(prepared.widgets.map((widget) => [widget.key, widget.clientModuleId]))
+      : { __gdansk_empty__: prepared.ssrEntryId };
 
   return {
     copyPublicDir: false,
@@ -122,14 +125,14 @@ function createSSRBuildOptions(options: ResolvedGdanskOptions, prepared: GdanskP
     emptyOutDir: false,
     outDir: options.outDir,
     rollupOptions: {
-      input: prepared.ssrEntry,
+      input: prepared.ssrEntryId,
       output: {
         chunkFileNames: "chunks/[name]-[hash].js",
         entryFileNames: SERVER_BUNDLE,
       },
     },
     sourcemap: true,
-    ssr: prepared.ssrEntry,
+    ssr: true,
   };
 }
 
@@ -146,14 +149,17 @@ async function finalizeBuildOutputs(
     widgets: Object.fromEntries(
       await Promise.all(
         widgets.map(async (widget) => {
-          const manifestEntry = getClientManifestEntry(options, widget, clientManifest);
+          const manifestEntry = getClientManifestEntry(widget, clientManifest);
           const fallbackCss = (await pathExists(resolve(options.root, widget.clientCss))) ? [widget.clientCss] : [];
+          const css = manifestEntry
+            ? await normalizeWidgetCssOutputs(options, widget, manifestEntry.css ?? [])
+            : fallbackCss;
 
           return [
             widget.key,
             {
               client: manifestEntry ? toBuildPath(options, manifestEntry.file) : widget.clientEntry,
-              css: manifestEntry?.css?.map((href) => toBuildPath(options, href)) ?? fallbackCss,
+              css,
               entry: widget.widgetPath,
             },
           ];
@@ -170,12 +176,10 @@ async function finalizeBuildOutputs(
 }
 
 function getClientManifestEntry(
-  options: ResolvedGdanskOptions,
   widget: WidgetDefinition,
   manifest: Record<string, ViteManifestEntry>,
 ): ViteManifestEntry | undefined {
-  const key = toPosixPath(relative(options.root, widget.clientSource));
-  return manifest[key];
+  return Object.values(manifest).find((entry) => entry.file === `${widget.key}/client.js`);
 }
 
 async function readClientManifest(path: string): Promise<Record<string, ViteManifestEntry>> {
@@ -189,16 +193,16 @@ async function readClientManifest(path: string): Promise<Record<string, ViteMani
 function resolveClientAssetPath(
   options: ResolvedGdanskOptions,
   widgets: WidgetDefinition[],
-  assetInfo: { names?: string[]; originalFileNames?: string[] },
+  assetInfo?: { names?: string[]; originalFileNames?: string[] },
 ): string {
-  const fileName = assetInfo.names?.[0] ?? assetInfo.originalFileNames?.[0] ?? "";
+  const fileName = assetInfo?.names?.[0] ?? assetInfo?.originalFileNames?.[0] ?? "";
 
   if (!fileName.endsWith(".css")) {
     return "assets/[name]-[hash][extname]";
   }
 
-  const originalFileName = assetInfo.originalFileNames?.[0];
-  const widget = originalFileName ? findWidgetForAsset(options, widgets, originalFileName) : undefined;
+  const candidates = [...(assetInfo?.originalFileNames ?? []), ...(assetInfo?.names ?? [])];
+  const widget = findWidgetForAsset(widgets, candidates);
 
   if (!widget) {
     return "assets/[name]-[hash][extname]";
@@ -207,17 +211,86 @@ function resolveClientAssetPath(
   return toOutputPath(options, widget.clientCss);
 }
 
-function findWidgetForAsset(
-  options: ResolvedGdanskOptions,
-  widgets: WidgetDefinition[],
-  originalFileName: string,
-): WidgetDefinition | undefined {
-  const normalized = toPosixPath(originalFileName);
-
+function findWidgetForAsset(widgets: WidgetDefinition[], assetCandidates: string[]): WidgetDefinition | undefined {
   return widgets.find((widget) => {
-    const relativeClientSource = toPosixPath(relative(options.root, widget.clientSource));
-    return normalized === widget.clientSource || normalized === relativeClientSource;
+    const normalizedModuleId = toPosixPath(widget.clientModuleId);
+    const cssName = `assets/${widget.key}`;
+    const cssNameWithExt = `${cssName}.css`;
+
+    return assetCandidates.map(toPosixPath).some((normalized) => {
+      return (
+        normalized === normalizedModuleId ||
+        normalized === createResolvedClientModuleId(widget.key) ||
+        normalized === cssName ||
+        normalized === cssNameWithExt ||
+        normalized.endsWith(`/${normalizedModuleId}`) ||
+        normalized.endsWith(`/${cssName}`) ||
+        normalized.endsWith(`/${cssNameWithExt}`) ||
+        normalized.endsWith(`/${widget.key}/client.js`)
+      );
+    });
   });
+}
+
+async function normalizeWidgetCssOutputs(
+  options: ResolvedGdanskOptions,
+  widget: WidgetDefinition,
+  hrefs: string[],
+): Promise<string[]> {
+  if (hrefs.length !== 1) {
+    return hrefs.map((href) => toBuildPath(options, href));
+  }
+
+  const [href] = hrefs;
+  const target = toOutputPath(options, widget.clientCss);
+
+  if (href === target || href === widget.clientCss) {
+    return [toBuildPath(options, target)];
+  }
+
+  const sourcePath = resolve(options.outDirPath, href);
+  if (!(await pathExists(sourcePath))) {
+    return hrefs.map((entry) => toBuildPath(options, entry));
+  }
+
+  const targetPath = resolve(options.outDirPath, target);
+  const css = await readFile(sourcePath, "utf8");
+  const rewrittenCss = rewriteRelativeCssUrls(css, posix.dirname(href), posix.dirname(target));
+
+  await mkdir(dirname(targetPath), { recursive: true });
+  await writeFile(targetPath, rewrittenCss);
+  await rm(sourcePath, { force: true });
+
+  return [toBuildPath(options, target)];
+}
+
+function rewriteRelativeCssUrls(css: string, fromDir: string, toDir: string): string {
+  if (fromDir === toDir) {
+    return css;
+  }
+
+  return css.replace(/url\((['"]?)([^'")]+)\1\)/g, (_match, quote: string, value: string) => {
+    if (value.startsWith("/") || value.startsWith("#") || value.startsWith("data:") || /^[a-z]+:/i.test(value)) {
+      return `url(${quote}${value}${quote})`;
+    }
+
+    const [pathPart, suffix = ""] = splitCssUrl(value);
+    const fromPath = posix.join("/", fromDir, pathPart);
+    let relativePath = posix.relative(posix.join("/", toDir), fromPath);
+
+    if (!relativePath) {
+      relativePath = ".";
+    } else if (!relativePath.startsWith(".")) {
+      relativePath = `./${relativePath}`;
+    }
+
+    return `url(${quote}${relativePath}${suffix}${quote})`;
+  });
+}
+
+function splitCssUrl(value: string): [string, string] {
+  const match = /^([^?#]+)(.*)$/.exec(value);
+  return match ? [match[1], match[2]] : [value, ""];
 }
 
 async function writeJson(path: string, value: unknown): Promise<void> {
