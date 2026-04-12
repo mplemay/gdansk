@@ -36,6 +36,7 @@ type PathType = str | PathLike[str]
 
 DEV_CLIENT_PREFIX: Final[str] = "/@gdansk/client"
 DEFAULT_ASSETS_DIR: Final[str] = "dist"
+DEFAULT_WIDGETS_DIR: Final[str] = "widgets"
 HEALTH_ENDPOINT: Final[str] = "/health"
 MAX_RUNTIME_PORT: Final[int] = 65535
 SSR_ENDPOINT: Final[str] = "/ssr"
@@ -312,6 +313,7 @@ class Ship:
         views: PathType,
         *,
         assets: str = DEFAULT_ASSETS_DIR,
+        widgets_directory: str = DEFAULT_WIDGETS_DIR,
         base_url: str | None = None,
         host: str = "127.0.0.1",
         port: int = 13714,
@@ -331,7 +333,8 @@ class Ship:
             msg = "The runtime host must not be empty"
             raise ValueError(msg)
 
-        assets = self._normalize_assets(assets)
+        assets = self._normalize_relative_directory(assets, name="assets")
+        widgets_directory = self._normalize_relative_directory(widgets_directory, name="widgets")
         if port <= 0 or port > MAX_RUNTIME_PORT:
             msg = f"The runtime port must be an integer between 1 and {MAX_RUNTIME_PORT}"
             raise ValueError(msg)
@@ -345,7 +348,7 @@ class Ship:
         self._host: Final[str] = host
         self._port: Final[int] = port
         self._views: Final[Path] = views.absolute().resolve()
-        self._widgets_root: Final[Path] = self._views / "widgets"
+        self._widgets_root: Final[Path] = self._views / widgets_directory
         self._metadata: Final[Metadata] = metadata or Metadata()
         self._widget_manager: dict[Path, WidgetSpec] = {}
         self._context: Final[ShipContext] = ShipContext(
@@ -376,15 +379,15 @@ class Ship:
             yield None
 
     @staticmethod
-    def _normalize_assets(assets: str) -> str:
-        cleaned = assets.strip().strip("/")
+    def _normalize_relative_directory(directory: str, *, name: str) -> str:
+        cleaned = directory.strip().strip("/")
         if not cleaned:
-            msg = "The assets directory must not be empty"
+            msg = f"The {name} directory must not be empty"
             raise ValueError(msg)
 
         posix = PurePosixPath(cleaned)
         if posix.is_absolute() or any(part in {"", ".", ".."} for part in posix.parts):
-            msg = f"The assets directory (i.e. {assets}) must be a relative path without traversal segments"
+            msg = f"The {name} directory (i.e. {directory}) must be a relative path without traversal segments"
             raise ValueError(msg)
 
         return posix.as_posix()

@@ -1,20 +1,24 @@
 import type { InlineConfig, UserConfig } from "vite";
+export interface RefreshConfig {
+  paths: string | string[];
+}
 export interface GdanskPluginOptions {
-  assets?: string;
+  buildDirectory?: string;
+  refresh?: boolean | string | string[] | RefreshConfig | RefreshConfig[];
   root?: string;
-  widgetsRoot?: string;
+  widgetsDirectory?: string;
   host?: string;
   port?: number;
 }
 export interface ResolvedGdanskOptions {
+  buildDirectory: string;
+  buildDirectoryPath: string;
   host: string;
-  outDir: string;
-  outDirPath: string;
   root: string;
   ssrEndpoint: string;
   port: number;
-  widgetsRoot: string;
-  widgetsRootPath: string;
+  widgetsDirectory: string;
+  widgetsDirectoryPath: string;
 }
 export interface WidgetDefinition {
   clientCss: string;

@@ -1,4 +1,4 @@
-import type { Plugin } from "vite";
+import { type PluginOption } from "vite";
 
 import type { GdanskPluginOptions } from "./types";
-export declare function gdansk(options?: GdanskPluginOptions): Plugin;
+export declare function gdansk(options?: GdanskPluginOptions): PluginOption;

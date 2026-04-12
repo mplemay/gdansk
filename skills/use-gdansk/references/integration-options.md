@@ -59,7 +59,39 @@ ship = Ship(views=views_path, host="127.0.0.1", port=14000)
 
 ```ts
 export default defineConfig({
-  plugins: [gdansk({ host: "127.0.0.1", port: 14000 }), react()],
+  plugins: [gdansk({ host: "127.0.0.1", port: 14000, refresh: true }), react()],
+});
+```
+
+## Vite plugin options
+
+`@gdansk/vite` stays convention-first, but the main frontend directory knobs are now explicit:
+
+- `refresh: true` watches nearby Python and Jinja files and triggers a full browser reload during development.
+- `buildDirectory` changes the frontend output directory and should match `Ship(assets=...)`.
+- `widgetsDirectory` changes widget discovery and should match `Ship(widgets_directory=...)`.
+- The plugin provides a default `@` alias to the frontend package root.
+
+Example:
+
+```python
+ship = Ship(
+    views=views_path,
+    assets="public/ui",
+    widgets_directory="ui/widgets",
+)
+```
+
+```ts
+export default defineConfig({
+  plugins: [
+    gdansk({
+      buildDirectory: "public/ui",
+      widgetsDirectory: "ui/widgets",
+      refresh: true,
+    }),
+    react(),
+  ],
 });
 ```
 
