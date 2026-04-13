@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+
 import type { GdanskSSRErrorDiagnostic, GdanskSSRErrorPayload } from "./types";
 
 const BROWSER_APIS: Record<string, string> = {
@@ -146,7 +148,7 @@ function extractSourceLocation(stack?: string): string | undefined {
     }
 
     const [, file, lineNumber, columnNumber] = match;
-    return `${file.replace(/^file:\/\//, "")}:${lineNumber}:${columnNumber}`;
+    return `${normalizeSourcePath(file)}:${lineNumber}:${columnNumber}`;
   }
 
   return undefined;
@@ -193,10 +195,69 @@ function isComponentResolutionError(error: Error): boolean {
 }
 
 function makeRelative(location: string, root?: string): string {
-  const base = root ?? process.cwd();
-  return location.startsWith(`${base}/`) ? location.slice(base.length + 1) : location;
+  const parsed = splitSourceLocation(location);
+  if (!parsed) {
+    return location;
+  }
+
+  const base = normalizeSourcePath(root ?? process.cwd()).replace(/\/+$/, "");
+  const normalizedLocation = normalizeSourcePath(parsed.path);
+  const prefix = `${base}/`;
+  const relativePath =
+    normalizedLocation === base
+      ? normalizedLocation
+      : normalizedLocation.startsWith(prefix)
+        ? normalizedLocation.slice(prefix.length)
+        : normalizedLocation;
+
+  return `${relativePath}:${parsed.line}:${parsed.column}`;
 }
 
 function toError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
+}
+
+function normalizeSourcePath(pathLike: string): string {
+  let normalized = pathLike;
+
+  if (normalized.startsWith("file:")) {
+    try {
+      normalized = fileURLToPath(normalized);
+    } catch {
+      // Leave malformed file URLs untouched so diagnostics still include the original value.
+    }
+  }
+
+  normalized = normalized.replaceAll("\\", "/");
+
+  if (/^\/[A-Za-z]:\//.test(normalized)) {
+    normalized = normalized.slice(1);
+  }
+
+  return normalized;
+}
+
+function splitSourceLocation(location: string): { column: string; path: string; line: string } | null {
+  const lastColon = location.lastIndexOf(":");
+  if (lastColon === -1) {
+    return null;
+  }
+
+  const secondLastColon = location.lastIndexOf(":", lastColon - 1);
+  if (secondLastColon === -1) {
+    return null;
+  }
+
+  const line = location.slice(secondLastColon + 1, lastColon);
+  const column = location.slice(lastColon + 1);
+
+  if (!line || !column) {
+    return null;
+  }
+
+  return {
+    column,
+    line,
+    path: location.slice(0, secondLastColon),
+  };
 }

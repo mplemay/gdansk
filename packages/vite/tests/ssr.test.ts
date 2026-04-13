@@ -52,6 +52,49 @@ describe("SSR diagnostics", () => {
         widget: "hello",
       }),
     );
+    expect(formatSSRError(logError.mock.calls[0][0] as Parameters<typeof formatSSRError>[0], "/repo")).toContain(
+      "Source: widgets/hello/widget.tsx:4:7",
+    );
+  });
+
+  it("normalizes windows file URLs in browser API render errors", async () => {
+    const logError = vi.fn();
+
+    const result = await processSSRRequest({
+      logError,
+      render: () => {
+        const error = new Error("document is not defined");
+        error.stack = [
+          "Error: document is not defined",
+          "    at renderWidget (file:///C:/repo/widgets/hello/widget.tsx:4:7)",
+          "    at eval (node:internal/modules/esm/module_job:194:25)",
+        ].join("\n");
+        throw error;
+      },
+      requestBody: JSON.stringify({ widget: "hello" }),
+      widgets,
+    });
+
+    expect(result.status).toBe(500);
+    expect(result.payload).toEqual({
+      error: {
+        hint: expect.stringContaining("useEffect"),
+        message: "document is not defined",
+        source: "C:/repo/widgets/hello/widget.tsx:4:7",
+        type: "browser_api",
+        widget: "hello",
+      },
+    });
+    expect(logError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "C:/repo/widgets/hello/widget.tsx:4:7",
+        type: "browser_api",
+        widget: "hello",
+      }),
+    );
+    expect(formatSSRError(logError.mock.calls[0][0] as Parameters<typeof formatSSRError>[0], "C:/repo")).toContain(
+      "Source: widgets/hello/widget.tsx:4:7",
+    );
   });
 
   it("classifies resolution failures separately from generic render errors", async () => {

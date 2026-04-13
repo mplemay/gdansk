@@ -3,7 +3,15 @@ import { resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import react from "@vitejs/plugin-react";
-import { createServer, normalizePath, type Plugin, type PluginOption, type UserConfig, type ViteDevServer } from "vite";
+import {
+  build,
+  createServer,
+  normalizePath,
+  type Plugin,
+  type PluginOption,
+  type UserConfig,
+  type ViteDevServer,
+} from "vite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const viteMocks = vi.hoisted(() => ({
@@ -33,6 +41,7 @@ const fixtureRoots: string[] = [];
 const SSR_DEPENDENCY_NAME = "__gdansk_ssr_cjs_dep__";
 const PACKAGE_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const PACKAGE_NODE_MODULES = resolve(PACKAGE_ROOT, "node_modules");
+let packageArtifactsPromise: Promise<void> | undefined;
 
 type GdanskDevServer = ViteDevServer & {
   __gdansk?: {
@@ -664,6 +673,8 @@ async function createFixture(options: {
 }
 
 async function installFixtureDependencies(root: string): Promise<void> {
+  await ensurePackageArtifacts();
+
   const nodeModules = resolve(root, "node_modules");
   await mkdir(resolve(nodeModules, "@gdansk", "vite"), { recursive: true });
   await mkdir(resolve(nodeModules, "@vitejs"), { recursive: true });
@@ -707,6 +718,16 @@ async function installFixtureDependencies(root: string): Promise<void> {
     resolve(gdanskPackageRoot, "runtime.js"),
     [`export * from ${JSON.stringify(packageRuntimeUrl)};`, ""].join("\n"),
   );
+}
+
+async function ensurePackageArtifacts(): Promise<void> {
+  packageArtifactsPromise ??= build({
+    configFile: resolve(PACKAGE_ROOT, "vite.config.ts"),
+    logLevel: "error",
+    root: PACKAGE_ROOT,
+  }).then(() => undefined);
+
+  await packageArtifactsPromise;
 }
 
 async function pathExists(path: string): Promise<boolean> {
