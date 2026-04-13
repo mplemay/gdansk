@@ -159,6 +159,9 @@ The default production output is:
 - `dist/gdansk-manifest.json` for gdansk's runtime manifest
 - `dist/<widget>/client.js` and `dist/<widget>/client.css` for stable widget entry assets
 - `dist/assets/*` for shared hashed assets and chunks
+
+When production SSR is enabled with `Ship(ssr=True)` and `gdansk({ ssr: true })`, the build also includes:
+
 - `dist/ssr.js` and `dist/server.js` for SSR
 
 ## Styling and Tailwind

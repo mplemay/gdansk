@@ -112,7 +112,15 @@ class GdanskRuntimeImpl implements GdanskRuntime {
     await this.close();
     const prepared = await this.prepare();
 
+    if (!this.options.ssr) {
+      throw new Error("Production SSR is disabled. Enable gdansk({ ssr: true }) before starting the SSR server.");
+    }
+
     this.#manifest = this.#manifest ?? (await this.loadOrBuildManifest());
+    if (!this.#manifest.server) {
+      throw new Error("Production SSR is enabled, but the build manifest has no server entry.");
+    }
+
     this.#server = await startGdanskServer({
       manifest: this.#manifest,
       options: this.options,
@@ -134,7 +142,12 @@ class GdanskRuntimeImpl implements GdanskRuntime {
 
   async loadOrBuildManifest(): Promise<GdanskManifest> {
     try {
-      return await readManifest(this.manifestPath);
+      const manifest = await readManifest(this.manifestPath);
+      if (this.options.ssr && !manifest.server) {
+        return this.build();
+      }
+
+      return manifest;
     } catch {
       return this.build();
     }

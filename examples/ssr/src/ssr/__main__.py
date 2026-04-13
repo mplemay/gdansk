@@ -11,7 +11,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 from gdansk import Ship
 
-ship = Ship(views=Path(__file__).parent / "views")
+ship = Ship(views=Path(__file__).parent / "views", ssr=True)
 
 
 @ship.widget(name="hello-ssr", path=Path("hello-ssr/widget.tsx"))
