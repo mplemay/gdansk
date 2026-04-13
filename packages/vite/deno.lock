@@ -1,7 +1,7 @@
 {
   "version": "5",
   "specifiers": {
-    "npm:@hono/node-server@1.19.13": "1.19.13_hono@4.12.12",
+    "npm:@hono/node-server@1.19.14": "1.19.14_hono@4.12.12",
     "npm:@types/node@25.6.0": "25.6.0",
     "npm:@types/react-dom@19.2.3": "19.2.3_@types+react@19.2.14",
     "npm:@types/react@19.2.14": "19.2.14",
@@ -36,8 +36,8 @@
         "tslib"
       ]
     },
-    "@hono/node-server@1.19.13_hono@4.12.12": {
-      "integrity": "sha512-TsQLe4i2gvoTtrHje625ngThGBySOgSK3Xo2XRYOdqGN1teR8+I7vchQC46uLJi8OF62YTYA3AhSpumtkhsaKQ==",
+    "@hono/node-server@1.19.14_hono@4.12.12": {
+      "integrity": "sha512-GwtvgtXxnWsucXvbQXkRgqksiH2Qed37H9xHZocE5sA3N8O8O8/8FA3uclQXxXVzc9XBZuEOMK7+r02FmSpHtw==",
       "dependencies": [
         "hono"
       ]
@@ -1305,7 +1305,7 @@
   },
   "workspace": {
     "dependencies": [
-      "npm:@hono/node-server@1.19.13",
+      "npm:@hono/node-server@1.19.14",
       "npm:@vitejs/plugin-react@6.0.1",
       "npm:hono@4.12.12",
       "npm:react-dom@19.2.5",
@@ -1314,7 +1314,7 @@
     ],
     "packageJson": {
       "dependencies": [
-        "npm:@hono/node-server@1.19.13",
+        "npm:@hono/node-server@1.19.14",
         "npm:@types/node@25.6.0",
         "npm:@types/react-dom@19.2.3",
         "npm:@types/react@19.2.14",
