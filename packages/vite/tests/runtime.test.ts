@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import react from "@vitejs/plugin-react";
@@ -29,6 +29,7 @@ import { createGdanskRuntime } from "../src/runtime";
 import type { GdanskManifest, GdanskRuntime } from "../src/types";
 
 const fixtureRoots: string[] = [];
+const SSR_DEPENDENCY_NAME = "__gdansk_ssr_cjs_dep__";
 
 type GdanskDevServer = ViteDevServer & {
   __gdansk?: {
@@ -370,6 +371,24 @@ describe("@gdansk/vite", () => {
     await runtime.close();
   }, 15_000);
 
+  it("bundles SSR dependencies into the production server output", async () => {
+    const root = await createFixture({ withLocalCommonjsDependency: true, withLocalPlugin: false });
+    const runtime = await createGdanskRuntime({ root, port: 0, ssr: true });
+
+    await runtime.build();
+
+    const ssrOutput = await readFile(`${root}/dist/ssr.js`, "utf8");
+    expect(ssrOutput).not.toContain(`"${SSR_DEPENDENCY_NAME}"`);
+    expect(ssrOutput).not.toContain(`'${SSR_DEPENDENCY_NAME}'`);
+
+    const metadata = await runtime.startProductionServer();
+    const response = await renderWidget(metadata, { widget: "hello" });
+
+    expect(response.body).toContain("from cjs dependency");
+
+    await runtime.close();
+  }, 15_000);
+
   it("starts a dev runtime on a single Vite origin", async () => {
     const root = await createFixture({ withLocalPlugin: true });
     const runtime = await createGdanskRuntime({ root, port: 0 });
@@ -433,7 +452,10 @@ describe("@gdansk/vite", () => {
   }, 15_000);
 });
 
-async function createFixture(options: { withLocalPlugin: boolean }): Promise<string> {
+async function createFixture(options: {
+  withLocalCommonjsDependency?: boolean;
+  withLocalPlugin: boolean;
+}): Promise<string> {
   const root = await mkdtemp(resolve(process.cwd(), ".tmp-vitest-"));
   fixtureRoots.push(root);
 
@@ -471,11 +493,29 @@ async function createFixture(options: { withLocalPlugin: boolean }): Promise<str
 
   await writeFile(`${root}/vite.config.ts`, viteConfigLines.join("\n"));
   await writeFile(`${root}/widgets/hello/global.css`, ".hello { color: red; }\n");
+  if (options.withLocalCommonjsDependency) {
+    const dependencyRoot = `${root}/node_modules/${SSR_DEPENDENCY_NAME}`;
+    await mkdir(dependencyRoot, { recursive: true });
+    await writeFile(
+      `${dependencyRoot}/package.json`,
+      JSON.stringify(
+        {
+          main: "index.js",
+          name: SSR_DEPENDENCY_NAME,
+          private: true,
+          type: "commonjs",
+        },
+        null,
+        2,
+      ),
+    );
+    await writeFile(`${dependencyRoot}/index.js`, 'module.exports = "from cjs dependency";\n');
+  }
   await writeFile(
     `${root}/widgets/hello/widget.tsx`,
-    options.withLocalPlugin
+    options.withLocalCommonjsDependency
       ? [
-          'import message from "virtual:message";',
+          `import message from "${SSR_DEPENDENCY_NAME}";`,
           'import "./global.css";',
           "",
           "export default function App() {",
@@ -483,14 +523,24 @@ async function createFixture(options: { withLocalPlugin: boolean }): Promise<str
           "}",
           "",
         ].join("\n")
-      : [
-          'import "./global.css";',
-          "",
-          "export default function App() {",
-          '  return <main className="hello"><h1>Hello SSR</h1><p>plain widget</p></main>;',
-          "}",
-          "",
-        ].join("\n"),
+      : options.withLocalPlugin
+        ? [
+            'import message from "virtual:message";',
+            'import "./global.css";',
+            "",
+            "export default function App() {",
+            '  return <main className="hello"><h1>Hello SSR</h1><p>{message}</p></main>;',
+            "}",
+            "",
+          ].join("\n")
+        : [
+            'import "./global.css";',
+            "",
+            "export default function App() {",
+            '  return <main className="hello"><h1>Hello SSR</h1><p>plain widget</p></main>;',
+            "}",
+            "",
+          ].join("\n"),
   );
   await writeFile(
     `${root}/widgets/nested/page/widget.tsx`,
