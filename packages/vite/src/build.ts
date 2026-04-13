@@ -33,7 +33,10 @@ export function createBuildConfig(options: ResolvedGdanskOptions, prepared: Gdan
           await builder.build(builder.environments.client);
         }
 
-        await builder.build(builder.environments.ssr);
+        if (options.ssr) {
+          await builder.build(builder.environments.ssr);
+        }
+
         await finalizeBuildOutputs(options, prepared.widgets);
       },
     },
@@ -47,10 +50,14 @@ export function createBuildConfig(options: ResolvedGdanskOptions, prepared: Gdan
       client: {
         build: createClientBuildOptions(options, prepared),
       },
-      ssr: {
-        consumer: "server",
-        build: createSSRBuildOptions(options, prepared),
-      },
+      ...(options.ssr
+        ? {
+            ssr: {
+              consumer: "server" as const,
+              build: createSSRBuildOptions(options, prepared),
+            },
+          }
+        : {}),
     },
   };
 }
@@ -75,15 +82,17 @@ export async function buildWidgets(
     );
   }
 
-  await build(
-    mergeConfig(config, {
-      appType: "custom",
-      build: createSSRBuildOptions(options, prepared),
-      configFile: false,
-      plugins: [createGdanskVirtualModulesPlugin(options, prepared)],
-      root: options.root,
-    }),
-  );
+  if (options.ssr) {
+    await build(
+      mergeConfig(config, {
+        appType: "custom",
+        build: createSSRBuildOptions(options, prepared),
+        configFile: false,
+        plugins: [createGdanskVirtualModulesPlugin(options, prepared)],
+        root: options.root,
+      }),
+    );
+  }
 
   return finalizeBuildOutputs(options, prepared.widgets);
 }
@@ -146,7 +155,7 @@ async function finalizeBuildOutputs(
   const manifest: GdanskManifest = {
     outDir: options.buildDirectory,
     root: options.root,
-    server: toPosixPath(`${options.buildDirectory}/${SERVER_BUNDLE}`),
+    ...(options.ssr ? { server: toPosixPath(`${options.buildDirectory}/${SERVER_BUNDLE}`) } : {}),
     widgets: Object.fromEntries(
       await Promise.all(
         widgets.map(async (widget) => {
@@ -170,7 +179,9 @@ async function finalizeBuildOutputs(
   };
 
   await writeJson(resolve(options.buildDirectoryPath, GDANSK_MANIFEST_FILE), manifest);
-  await writeProductionServer(options);
+  if (options.ssr) {
+    await writeProductionServer(options);
+  }
 
   return manifest;
 }
@@ -319,6 +330,7 @@ async function writeProductionServer(options: ResolvedGdanskOptions): Promise<vo
     buildDirectory: options.buildDirectory,
     host: options.host,
     port: options.port,
+    ssr: options.ssr,
     widgetsDirectory: options.widgetsDirectory,
   };
 

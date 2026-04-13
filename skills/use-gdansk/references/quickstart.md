@@ -73,6 +73,9 @@ Default production output:
 - `frontend/dist/hello/client.js`
 - optional `frontend/dist/hello/client.css`
 - `frontend/dist/assets/*`
+
+When production SSR is enabled with `Ship(ssr=True)` and `gdansk({ ssr: true })`, the build also includes:
+
 - `frontend/dist/server.js`
 
 ## Minimal React widget
@@ -266,5 +269,8 @@ find frontend/dist -maxdepth 3 -type f
 Expected for a basic hello widget:
 
 - `frontend/dist/hello/client.js`
-- `frontend/dist/server.js`
 - optional `frontend/dist/hello/client.css`
+
+If production SSR is enabled with `Ship(ssr=True)` and `gdansk({ ssr: true })`, also expect:
+
+- `frontend/dist/server.js`

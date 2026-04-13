@@ -189,6 +189,18 @@ export default defineConfig({
 alias when you want `@` to resolve somewhere else. Use `refresh: true` to trigger full browser reloads when nearby
 Python or Jinja files change during development.
 
+Production rendering defaults to client-side rendering. To enable production SSR, opt in on both sides:
+
+```python
+ship = Ship(views=frontend_path, ssr=True)
+```
+
+```ts
+export default defineConfig({
+  plugins: [gdansk({ ssr: true, refresh: true }), react()],
+});
+```
+
 If you need non-default frontend directories, keep the Vite plugin and Python runtime aligned:
 
 ```python
@@ -221,6 +233,9 @@ The default production output now mirrors Vite/Laravel conventions more closely:
 - gdansk runtime manifest: `dist/gdansk-manifest.json`
 - stable widget entries: `dist/<widget>/client.js` and `dist/<widget>/client.css`
 - shared hashed assets and chunks: `dist/assets/*`
+
+When production SSR is enabled with `Ship(ssr=True)` and `gdansk({ ssr: true })`, the build also includes:
+
 - SSR bundles: `dist/ssr.js` and `dist/server.js`
 
 If your MCP client renders widget HTML on a different origin, pass `base_url` to `Ship` so production asset URLs point
@@ -230,7 +245,7 @@ back to your public app instead of the client host:
 ship = Ship(views=Path(__file__).parent / "frontend", base_url="https://example.com")
 ```
 
-If you want a different SSR host or port, configure both sides explicitly:
+If you enable production SSR or want a different dev runtime host or port, configure both sides explicitly:
 
 ```python
 ship = Ship(views=Path(__file__).parent / "frontend", host="127.0.0.1", port=14000)
