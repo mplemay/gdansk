@@ -5,6 +5,23 @@ import react from "@vitejs/plugin-react";
 import { createServer, normalizePath, type Plugin, type PluginOption, type UserConfig, type ViteDevServer } from "vite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const viteMocks = vi.hoisted(() => ({
+  createServer: vi.fn(),
+  createServerImpl: undefined as unknown as (typeof import("vite"))["createServer"],
+}));
+
+vi.mock("vite", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("vite")>();
+
+  viteMocks.createServerImpl = actual.createServer;
+  viteMocks.createServer.mockImplementation(actual.createServer);
+
+  return {
+    ...actual,
+    createServer: viteMocks.createServer,
+  };
+});
+
 import gdansk from "../src";
 import { resolveOptions } from "../src/context";
 import { normalizeRefreshConfig, resolveRefreshPaths } from "../src/development";
@@ -20,6 +37,8 @@ type GdanskDevServer = ViteDevServer & {
 };
 
 afterEach(async () => {
+  viteMocks.createServer.mockReset();
+  viteMocks.createServer.mockImplementation(viteMocks.createServerImpl);
   await Promise.all(fixtureRoots.splice(0).map((root) => rm(root, { force: true, recursive: true })));
 });
 
@@ -159,6 +178,47 @@ describe("@gdansk/vite", () => {
     changeHandler?.(resolve(root, "../server.py"));
 
     expect(ws.send).toHaveBeenCalledWith({ path: "*", type: "full-reload" });
+  });
+
+  it("passes the refresh plugin into runtime startDev when refresh is enabled", async () => {
+    const root = await createFixture({ withLocalPlugin: false });
+    const server = {
+      close: vi.fn().mockResolvedValue(undefined),
+      config: {
+        logger: {
+          info: vi.fn(),
+          warn: vi.fn(),
+        },
+        root,
+        server: {
+          host: "127.0.0.1",
+          port: 5173,
+        },
+      },
+      httpServer: {
+        listening: false,
+        once: vi.fn(),
+      },
+      listen: vi.fn().mockResolvedValue(undefined),
+      middlewares: {
+        use: vi.fn(),
+      },
+      resolvedUrls: {
+        local: ["http://127.0.0.1:5173/"],
+      },
+    } as unknown as ViteDevServer;
+    viteMocks.createServer.mockResolvedValueOnce(server);
+    const runtime = await createGdanskRuntime({ refresh: true, root });
+
+    await runtime.startDev();
+
+    const [config] = viteMocks.createServer.mock.calls[0] ?? [];
+    const pluginNames = flattenPluginOptions(config?.plugins ?? []).map((plugin) => plugin.name);
+
+    expect(pluginNames).toContain("@gdansk/vite:refresh");
+    expect(pluginNames).toContain("@gdansk/vite:virtual-modules");
+
+    await runtime.close();
   });
 
   it("warms widget entry modules during dev server setup", async () => {
