@@ -21,6 +21,7 @@ const SERVER_BUNDLE = "ssr.js";
 type ViteManifestEntry = {
   css?: string[];
   file: string;
+  imports?: string[];
 };
 
 export function createBuildConfig(options: ResolvedGdanskOptions, prepared: GdanskPreparedProject): UserConfig {
@@ -157,6 +158,19 @@ async function finalizeBuildOutputs(
   widgets: WidgetDefinition[],
 ): Promise<GdanskManifest> {
   const clientManifest = await readClientManifest(resolve(options.buildDirectoryPath, CLIENT_MANIFEST_FILE));
+  const widgetBuildData = await Promise.all(
+    widgets.map(async (widget) => {
+      const manifestEntry = getClientManifestEntry(widget, clientManifest);
+      const fallbackCss = (await pathExists(resolve(options.root, widget.clientCss))) ? [widget.clientCss] : [];
+
+      return {
+        collectedCss: manifestEntry ? collectTransitiveCssHrefs(manifestEntry, clientManifest) : fallbackCss,
+        manifestEntry,
+        widget,
+      };
+    }),
+  );
+  const cssReferenceCounts = countCssReferences(widgetBuildData.map(({ collectedCss }) => collectedCss));
 
   const manifest: GdanskManifest = {
     outDir: options.buildDirectory,
@@ -164,12 +178,8 @@ async function finalizeBuildOutputs(
     ...(options.ssr ? { server: toPosixPath(`${options.buildDirectory}/${SERVER_BUNDLE}`) } : {}),
     widgets: Object.fromEntries(
       await Promise.all(
-        widgets.map(async (widget) => {
-          const manifestEntry = getClientManifestEntry(widget, clientManifest);
-          const fallbackCss = (await pathExists(resolve(options.root, widget.clientCss))) ? [widget.clientCss] : [];
-          const css = manifestEntry
-            ? await normalizeWidgetCssOutputs(options, widget, manifestEntry.css ?? [])
-            : fallbackCss;
+        widgetBuildData.map(async ({ collectedCss, manifestEntry, widget }) => {
+          const css = await normalizeWidgetCssOutputs(options, widget, collectedCss, cssReferenceCounts);
 
           return [
             widget.key,
@@ -197,6 +207,62 @@ function getClientManifestEntry(
   manifest: Record<string, ViteManifestEntry>,
 ): ViteManifestEntry | undefined {
   return Object.values(manifest).find((entry) => entry.file === `${widget.key}/client.js`);
+}
+
+function collectTransitiveCssHrefs(
+  manifestEntry: ViteManifestEntry,
+  manifest: Record<string, ViteManifestEntry>,
+): string[] {
+  const css: string[] = [];
+  const seenCss = new Set<string>();
+  const visitedEntries = new Set<string>();
+
+  const visit = (entry: ViteManifestEntry): void => {
+    if (visitedEntries.has(entry.file)) {
+      return;
+    }
+
+    visitedEntries.add(entry.file);
+
+    for (const imported of entry.imports ?? []) {
+      const importedEntry = resolveImportedManifestEntry(imported, manifest);
+      if (importedEntry) {
+        visit(importedEntry);
+      }
+    }
+
+    for (const href of entry.css ?? []) {
+      if (seenCss.has(href)) {
+        continue;
+      }
+
+      seenCss.add(href);
+      css.push(href);
+    }
+  };
+
+  visit(manifestEntry);
+
+  return css;
+}
+
+function resolveImportedManifestEntry(
+  imported: string,
+  manifest: Record<string, ViteManifestEntry>,
+): ViteManifestEntry | undefined {
+  return manifest[imported] ?? Object.values(manifest).find((entry) => entry.file === imported);
+}
+
+function countCssReferences(hrefLists: string[][]): Map<string, number> {
+  const counts = new Map<string, number>();
+
+  for (const hrefs of hrefLists) {
+    for (const href of hrefs) {
+      counts.set(href, (counts.get(href) ?? 0) + 1);
+    }
+  }
+
+  return counts;
 }
 
 async function readClientManifest(path: string): Promise<Record<string, ViteManifestEntry>> {
@@ -253,6 +319,7 @@ async function normalizeWidgetCssOutputs(
   options: ResolvedGdanskOptions,
   widget: WidgetDefinition,
   hrefs: string[],
+  cssReferenceCounts: ReadonlyMap<string, number>,
 ): Promise<string[]> {
   if (hrefs.length !== 1) {
     return hrefs.map((href) => toBuildPath(options, href));
@@ -276,7 +343,9 @@ async function normalizeWidgetCssOutputs(
 
   await mkdir(dirname(targetPath), { recursive: true });
   await writeFile(targetPath, rewrittenCss);
-  await rm(sourcePath, { force: true });
+  if ((cssReferenceCounts.get(href) ?? 0) <= 1) {
+    await rm(sourcePath, { force: true });
+  }
 
   return [toBuildPath(options, target)];
 }
