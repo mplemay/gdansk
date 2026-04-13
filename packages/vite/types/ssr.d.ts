@@ -2,20 +2,15 @@ import type { ViteDevServer } from "vite";
 
 import type {
   GdanskManifest,
+  GdanskSSRErrorDiagnostic,
   GdanskRenderFunction,
-  GdanskRenderResponse,
+  GdanskSSRResponsePayload,
   ResolvedGdanskOptions,
   WidgetDefinition,
 } from "./types";
 export declare const HEALTH_ENDPOINT = "/health";
-type GdanskErrorResponse = {
-  error: {
-    message: string;
-    type: "invalid_json" | "invalid_request" | "render_error" | "unknown_widget";
-  };
-};
-type GdanskResponsePayload = GdanskErrorResponse | GdanskRenderResponse;
 type ProcessSSRRequestOptions = {
+  logError?: (diagnostic: GdanskSSRErrorDiagnostic) => void;
   manifest?: GdanskManifest;
   render: GdanskRenderFunction;
   requestBody: string;
@@ -23,7 +18,7 @@ type ProcessSSRRequestOptions = {
   widgets: WidgetDefinition[];
 };
 type ProcessSSRRequestResult = {
-  payload: GdanskResponsePayload;
+  payload: GdanskSSRResponsePayload;
   status: 200 | 400 | 404 | 500;
 };
 type InstallDevSSRMiddlewareOptions = {
@@ -40,6 +35,7 @@ export declare function installDevSSRMiddleware({
 }: InstallDevSSRMiddlewareOptions): void;
 export declare function importRenderFunction(path: string): Promise<GdanskRenderFunction>;
 export declare function processSSRRequest({
+  logError,
   manifest,
   render,
   requestBody,

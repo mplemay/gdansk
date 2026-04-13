@@ -3,6 +3,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 
 import { HEALTH_ENDPOINT, processSSRRequest } from "./ssr";
+import { formatSSRError } from "./ssr-errors";
 import type { GdanskServerHandle, GdanskServerOptions } from "./types";
 
 export async function startGdanskServer(options: GdanskServerOptions): Promise<GdanskServerHandle> {
@@ -14,6 +15,9 @@ export async function startGdanskServer(options: GdanskServerOptions): Promise<G
   app.post(options.options.ssrEndpoint, async (c) => {
     const requestBody = await c.req.text();
     const result = await processSSRRequest({
+      logError: (diagnostic) => {
+        console.error(formatSSRError(diagnostic, options.options.root));
+      },
       manifest: options.manifest,
       render: options.render,
       requestBody,

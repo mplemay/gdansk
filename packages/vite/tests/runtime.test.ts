@@ -1,5 +1,6 @@
-import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import react from "@vitejs/plugin-react";
 import { createServer, normalizePath, type Plugin, type PluginOption, type UserConfig, type ViteDevServer } from "vite";
@@ -30,6 +31,8 @@ import type { GdanskManifest, GdanskRuntime } from "../src/types";
 
 const fixtureRoots: string[] = [];
 const SSR_DEPENDENCY_NAME = "__gdansk_ssr_cjs_dep__";
+const PACKAGE_ROOT = fileURLToPath(new URL("..", import.meta.url));
+const PACKAGE_NODE_MODULES = resolve(PACKAGE_ROOT, "node_modules");
 
 type GdanskDevServer = ViteDevServer & {
   __gdansk?: {
@@ -274,6 +277,49 @@ describe("@gdansk/vite", () => {
     );
   });
 
+  it("treats an explicit plugin root as authoritative during server setup", async () => {
+    const frontendRoot = await createFixture({ withLocalPlugin: false });
+    const configRoot = await mkdtemp(resolve(process.cwd(), ".tmp-config-root-"));
+    fixtureRoots.push(configRoot);
+
+    const logger = { info: vi.fn(), warn: vi.fn() };
+    const warmupRequest = vi.fn().mockResolvedValue(undefined);
+    const plugin = resolvePluginByName(gdansk({ root: frontendRoot }), "@gdansk/vite");
+
+    await callHook(plugin.configResolved, {
+      root: configRoot,
+    } as unknown as Parameters<ConfigResolvedHook>[0]);
+    await callHook(plugin.configureServer, {
+      config: {
+        logger,
+        root: configRoot,
+        server: {
+          host: "127.0.0.1",
+          port: 5173,
+        },
+      } as unknown as ViteDevServer["config"],
+      httpServer: {
+        listening: true,
+        once: vi.fn(),
+      },
+      middlewares: {
+        use: vi.fn(),
+      },
+      warmupRequest,
+    } as unknown as ViteDevServer);
+
+    await waitFor(async () => warmupRequest.mock.calls.length === 4);
+
+    expect(new Set(warmupRequest.mock.calls.map(([entry]) => entry))).toEqual(
+      new Set([
+        `${frontendRoot}/widgets/hello/widget.tsx`,
+        `${frontendRoot}/widgets/nested/page/widget.tsx`,
+        "/@gdansk/client/hello.tsx",
+        "/@gdansk/client/nested/page.tsx",
+      ]),
+    );
+  });
+
   it("omits production SSR artifacts by default", async () => {
     const root = await createFixture({ withLocalPlugin: true });
     const runtime = await createGdanskRuntime({ root, port: 0 });
@@ -491,6 +537,13 @@ async function createFixture(options: {
     `${root}/package.json`,
     JSON.stringify(
       {
+        dependencies: {
+          "@gdansk/vite": "workspace:*",
+          "@vitejs/plugin-react": "workspace:*",
+          react: "workspace:*",
+          "react-dom": "workspace:*",
+          vite: "workspace:*",
+        },
         name: "fixture-views",
         private: true,
         type: "module",
@@ -499,8 +552,9 @@ async function createFixture(options: {
       2,
     ),
   );
+  await installFixtureDependencies(root);
   const viteConfigLines = [
-    'import gdansk from "../src/index.ts";',
+    'import gdansk from "@gdansk/vite";',
     'import react from "@vitejs/plugin-react";',
     'import { defineConfig } from "vite";',
   ];
@@ -607,6 +661,52 @@ async function createFixture(options: {
   }
 
   return root;
+}
+
+async function installFixtureDependencies(root: string): Promise<void> {
+  const nodeModules = resolve(root, "node_modules");
+  await mkdir(resolve(nodeModules, "@gdansk", "vite"), { recursive: true });
+  await mkdir(resolve(nodeModules, "@vitejs"), { recursive: true });
+
+  await Promise.all([
+    symlink(resolve(PACKAGE_NODE_MODULES, "@vitejs", "plugin-react"), resolve(nodeModules, "@vitejs", "plugin-react")),
+    symlink(resolve(PACKAGE_NODE_MODULES, "react"), resolve(nodeModules, "react")),
+    symlink(resolve(PACKAGE_NODE_MODULES, "react-dom"), resolve(nodeModules, "react-dom")),
+    symlink(resolve(PACKAGE_NODE_MODULES, "vite"), resolve(nodeModules, "vite")),
+  ]);
+
+  const gdanskPackageRoot = resolve(nodeModules, "@gdansk", "vite");
+  const packageIndexUrl = pathToFileURL(resolve(PACKAGE_ROOT, "dist", "index.js")).href;
+  const packageRuntimeUrl = pathToFileURL(resolve(PACKAGE_ROOT, "dist", "runtime.js")).href;
+
+  await writeFile(
+    resolve(gdanskPackageRoot, "package.json"),
+    JSON.stringify(
+      {
+        exports: {
+          ".": "./index.js",
+          "./runtime": "./runtime.js",
+        },
+        name: "@gdansk/vite",
+        private: true,
+        type: "module",
+      },
+      null,
+      2,
+    ),
+  );
+  await writeFile(
+    resolve(gdanskPackageRoot, "index.js"),
+    [
+      `export { default } from ${JSON.stringify(packageIndexUrl)};`,
+      `export * from ${JSON.stringify(packageIndexUrl)};`,
+      "",
+    ].join("\n"),
+  );
+  await writeFile(
+    resolve(gdanskPackageRoot, "runtime.js"),
+    [`export * from ${JSON.stringify(packageRuntimeUrl)};`, ""].join("\n"),
+  );
 }
 
 async function pathExists(path: string): Promise<boolean> {

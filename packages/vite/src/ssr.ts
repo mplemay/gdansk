@@ -3,27 +3,23 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ViteDevServer } from "vite";
 
 import { collectCSSFromModuleGraph } from "./css";
+import { classifyRenderError, createSSRErrorPayload, formatSSRError } from "./ssr-errors";
 import type {
   GdanskManifest,
+  GdanskSSRErrorDiagnostic,
+  GdanskSSRErrorPayload,
   GdanskRenderFunction,
   GdanskRenderRequest,
   GdanskRenderResponse,
+  GdanskSSRResponsePayload,
   ResolvedGdanskOptions,
   WidgetDefinition,
 } from "./types";
 
 export const HEALTH_ENDPOINT = "/health";
 
-type GdanskErrorResponse = {
-  error: {
-    message: string;
-    type: "invalid_json" | "invalid_request" | "render_error" | "unknown_widget";
-  };
-};
-
-type GdanskResponsePayload = GdanskErrorResponse | GdanskRenderResponse;
-
 type ProcessSSRRequestOptions = {
+  logError?: (diagnostic: GdanskSSRErrorDiagnostic) => void;
   manifest?: GdanskManifest;
   render: GdanskRenderFunction;
   requestBody: string;
@@ -32,7 +28,7 @@ type ProcessSSRRequestOptions = {
 };
 
 type ProcessSSRRequestResult = {
-  payload: GdanskResponsePayload;
+  payload: GdanskSSRResponsePayload;
   status: 200 | 400 | 404 | 500;
 };
 
@@ -63,6 +59,9 @@ export function installDevSSRMiddleware({ options, server, ssrEntry, widgets }: 
       const requestBody = await readRequestBody(req);
       const render = await loadRenderFunction(server, ssrEntry);
       const result = await processSSRRequest({
+        logError: (diagnostic) => {
+          server.config.logger.error(formatSSRError(diagnostic, server.config.root));
+        },
         render,
         requestBody,
         viteServer: server,
@@ -71,7 +70,9 @@ export function installDevSSRMiddleware({ options, server, ssrEntry, widgets }: 
 
       writeJson(res, result.status, result.payload);
     } catch (error) {
-      writeJson(res, 500, createErrorResponse(error, "render_error"));
+      const diagnostic = classifyRenderError(error);
+      server.config.logger.error(formatSSRError(diagnostic, server.config.root));
+      writeJson(res, 500, createSSRErrorPayload(toPublicSSRError(diagnostic)));
     }
   });
 
@@ -95,6 +96,7 @@ export async function importRenderFunction(path: string): Promise<GdanskRenderFu
 }
 
 export async function processSSRRequest({
+  logError,
   manifest,
   render,
   requestBody,
@@ -107,7 +109,11 @@ export async function processSSRRequest({
     payload = JSON.parse(requestBody) as GdanskRenderRequest;
   } catch (error) {
     return {
-      payload: createErrorResponse(error, "invalid_json"),
+      payload: createSSRErrorPayload({
+        hint: 'Send a JSON body like {"widget":"hello"} or {"component":"hello"}.',
+        message: getErrorMessage(error),
+        type: "invalid_json",
+      }),
       status: 400,
     };
   }
@@ -116,7 +122,11 @@ export async function processSSRRequest({
 
   if (!widgetKey) {
     return {
-      payload: createErrorResponse('Request body must include "widget" or "component"', "invalid_request"),
+      payload: createSSRErrorPayload({
+        hint: 'Include either "widget" or "component" in the SSR request body.',
+        message: 'Request body must include "widget" or "component"',
+        type: "invalid_request",
+      }),
       status: 400,
     };
   }
@@ -125,7 +135,12 @@ export async function processSSRRequest({
 
   if (!widget) {
     return {
-      payload: createErrorResponse(`Unknown widget: ${widgetKey}`, "unknown_widget"),
+      payload: createSSRErrorPayload({
+        hint: "Ensure the widget key matches a registered Ship.widget(...) path and the frontend manifest contains that widget.",
+        message: `Unknown widget: ${widgetKey}`,
+        type: "unknown_widget",
+        widget: widgetKey,
+      }),
       status: 404,
     };
   }
@@ -146,8 +161,11 @@ export async function processSSRRequest({
       status: 200,
     };
   } catch (error) {
+    const diagnostic = classifyRenderError(error, widget.key);
+    logError?.(diagnostic);
+
     return {
-      payload: createErrorResponse(error, "render_error"),
+      payload: createSSRErrorPayload(toPublicSSRError(diagnostic)),
       status: 500,
     };
   }
@@ -225,17 +243,13 @@ function stripOutDirPrefix(outDir: string, href: string): string {
   return normalized.startsWith(prefix) ? normalized.slice(prefix.length) : normalized;
 }
 
-function createErrorResponse(error: unknown, type: GdanskErrorResponse["error"]["type"]): GdanskErrorResponse {
-  return {
-    error: {
-      message: getErrorMessage(error),
-      type,
-    },
-  };
-}
-
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function toPublicSSRError(diagnostic: GdanskSSRErrorDiagnostic): GdanskSSRErrorPayload {
+  const { hint, message, source, type, widget } = diagnostic;
+  return { ...(hint ? { hint } : {}), message, ...(source ? { source } : {}), type, ...(widget ? { widget } : {}) };
 }
 
 function readRequestBody(req: IncomingMessage): Promise<string> {

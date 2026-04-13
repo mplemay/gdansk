@@ -14,7 +14,7 @@ import type {
 import { createClientDevEntry, createClientModuleId, GDANSK_SSR_ENTRY_ID } from "./virtual";
 
 export function resolveOptions(options: GdanskPluginOptions = {}, configRoot?: string): ResolvedGdanskOptions {
-  const root = resolve(configRoot ?? options.root ?? process.cwd());
+  const root = resolve(options.root ?? configRoot ?? process.cwd());
   const widgetsDirectory = options.widgetsDirectory ?? "widgets";
   const buildDirectory = options.buildDirectory ?? "dist";
   const host = options.host ?? "127.0.0.1";

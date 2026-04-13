@@ -55,6 +55,22 @@ class GdanskRenderResponse(BaseModel):
     head: list[str]
 
 
+class GdanskRenderError(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    message: str
+    type: str
+    hint: str | None = None
+    source: str | None = None
+    widget: str | None = None
+
+
+class GdanskErrorResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    error: GdanskRenderError
+
+
 class GdanskManifestWidget(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -255,14 +271,32 @@ class ShipContext:
         )
 
         if response.status_code != HTTPStatus.OK:
-            msg = f'Failed to render widget "{widget_key}": {response.status_code} {response.text}'
-            raise RuntimeError(msg)
+            error_response = self._parse_ssr_error_response(response.text)
+            if error_response is None:
+                msg = f'Failed to render widget "{widget_key}": {response.status_code} {response.text}'
+                raise RuntimeError(msg)
+
+            error = error_response.error
+            rendered_widget = error.widget or widget_key
+            lines = [f'Failed to render widget "{rendered_widget}" via SSR ({error.type}): {error.message}']
+            if error.hint:
+                lines.append(f"Hint: {error.hint}")
+            if error.source:
+                lines.append(f"Source: {error.source}")
+            raise RuntimeError("\n".join(lines))
 
         try:
             return GdanskRenderResponse.model_validate_json(response.text)
         except ValidationError as e:
             msg = f'Failed to render widget "{widget_key}": invalid SSR payload'
             raise TypeError(msg) from e
+
+    @staticmethod
+    def _parse_ssr_error_response(payload: str) -> GdanskErrorResponse | None:
+        try:
+            return GdanskErrorResponse.model_validate_json(payload)
+        except ValidationError:
+            return None
 
     @staticmethod
     def _raise_runtime_error(message: str) -> Never:

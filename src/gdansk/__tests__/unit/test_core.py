@@ -42,6 +42,8 @@ class FakeClient:
         self.get_calls: list[tuple[str, float | None]] = []
         self.health_payload: dict[str, Any] = {"status": "OK"}
         self.ssr_payload: dict[str, Any] | None = None
+        self.ssr_raw_text: str | None = None
+        self.ssr_status_code: int = 200
 
     async def get(self, url: str, **kwargs: float | None) -> FakeResponse:
         timeout = kwargs.get("timeout")
@@ -51,10 +53,11 @@ class FakeClient:
     async def post(self, url: str, *, json: dict[str, str]) -> FakeResponse:
         self.calls.append((url, json))
         if self.ssr_payload is not None:
-            return FakeResponse(payload=self.ssr_payload)
+            return FakeResponse(payload=self.ssr_payload, raw_text=self.ssr_raw_text, status_code=self.ssr_status_code)
         return FakeResponse(
             body="<main>Hello from SSR</main>",
             head=['<meta name="robots" content="noindex" />'],
+            status_code=self.ssr_status_code,
         )
 
 
@@ -298,6 +301,37 @@ async def test_widget_resource_raises_on_invalid_ssr_payload(views_path: Path):
 
     with pytest.raises(TypeError, match="invalid SSR payload"):
         await ship._context.render_widget_page(metadata=None, widget_key="hello")
+
+
+async def test_widget_resource_raises_structured_ssr_error(views_path: Path):
+    client = FakeClient()
+    client.ssr_payload = {
+        "error": {
+            "hint": "Move document access into useEffect.",
+            "message": "document is not defined",
+            "source": "widgets/hello/widget.tsx:4:7",
+            "type": "browser_api",
+            "widget": "hello",
+        },
+    }
+    client.ssr_status_code = 500
+    ship = Ship(
+        views=views_path,
+        ssr=True,
+        client=cast("AsyncClient", client),
+    )
+
+    @ship.widget(path=Path("hello/widget.tsx"), name="hello")
+    def hello() -> None:
+        return None
+
+    ship._context._runtime_origin = "http://ssr.test"
+
+    with pytest.raises(RuntimeError, match=r'widget "hello" via SSR \(browser_api\): document is not defined') as exc:
+        await ship._context.render_widget_page(metadata=None, widget_key="hello")
+
+    assert "Hint: Move document access into useEffect." in str(exc.value)
+    assert "Source: widgets/hello/widget.tsx:4:7" in str(exc.value)
 
 
 async def test_widget_resource_renders_client_only_production_shell(views_path: Path):

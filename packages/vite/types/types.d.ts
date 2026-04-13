@@ -62,6 +62,27 @@ export interface GdanskRenderResponse {
   body: string;
   head: string[];
 }
+export type GdanskSSRErrorType =
+  | "browser_api"
+  | "component_resolution"
+  | "invalid_json"
+  | "invalid_request"
+  | "render_error"
+  | "unknown_widget";
+export interface GdanskSSRErrorPayload {
+  hint?: string;
+  message: string;
+  source?: string;
+  type: GdanskSSRErrorType;
+  widget?: string;
+}
+export interface GdanskSSRErrorDiagnostic extends GdanskSSRErrorPayload {
+  stack?: string;
+}
+export interface GdanskSSRErrorResponse {
+  error: GdanskSSRErrorPayload;
+}
+export type GdanskSSRResponsePayload = GdanskSSRErrorResponse | GdanskRenderResponse;
 export type GdanskRenderFunction = (widgetKey: string) => Promise<GdanskRenderResponse> | GdanskRenderResponse;
 export interface GdanskPreparedProject {
   ssrEntryId: string;

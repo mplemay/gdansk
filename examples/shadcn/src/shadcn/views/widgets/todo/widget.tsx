@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 
-import styles from "../../global.css";
+import "../../global.css";
 
 type Todo = {
   id: string;
@@ -108,15 +108,17 @@ export default function App() {
 
   if (error) {
     return (
-      <div className={styles.notice}>
+      <div className="border-destructive/40 bg-destructive/10 text-destructive rounded-lg border px-3 py-2 text-sm">
         <strong>ERROR:</strong> {error.message}
       </div>
     );
   }
-  if (!app) return <div className={styles.notice}>Connecting...</div>;
+  if (!app) {
+    return <div className="text-muted-foreground rounded-lg border border-dashed px-3 py-4 text-sm">Connecting...</div>;
+  }
 
   return (
-    <main className={styles.main}>
+    <main className="mx-auto w-full max-w-xl p-4">
       <Card className="mx-auto w-full max-w-xl">
         <CardHeader>
           <CardTitle>Todo List</CardTitle>
