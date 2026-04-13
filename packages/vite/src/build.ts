@@ -55,6 +55,9 @@ export function createBuildConfig(options: ResolvedGdanskOptions, prepared: Gdan
             ssr: {
               consumer: "server" as const,
               build: createSSRBuildOptions(options, prepared),
+              resolve: {
+                noExternal: true,
+              },
             },
           }
         : {}),
@@ -90,6 +93,9 @@ export async function buildWidgets(
         configFile: false,
         plugins: [createGdanskVirtualModulesPlugin(options, prepared)],
         root: options.root,
+        ssr: {
+          noExternal: true,
+        },
       }),
     );
   }

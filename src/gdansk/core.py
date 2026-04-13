@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from asyncio import sleep
 from asyncio.subprocess import DEVNULL, PIPE, Process, create_subprocess_exec
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from functools import cached_property, partial
 from http import HTTPStatus
@@ -359,20 +359,25 @@ class ShipContext:
         self._manifest = None
         self._runtime_origin = None
 
-        if self._frontend is None:
+        frontend = self._frontend
+        self._frontend = None
+
+        if frontend is None:
             return
 
-        self._frontend.terminate()
-        for _ in range(20):
-            if self._frontend.returncode is not None:
-                break
-            await sleep(0.05)
+        if frontend.returncode is None:
+            with suppress(ProcessLookupError):
+                frontend.terminate()
 
-        if self._frontend.returncode is None:
-            self._frontend.kill()
-            await self._frontend.wait()
+            for _ in range(20):
+                if frontend.returncode is not None:
+                    break
+                await sleep(0.05)
 
-        self._frontend = None
+            if frontend.returncode is None:
+                with suppress(ProcessLookupError):
+                    frontend.kill()
+                await frontend.wait()
 
     async def _wait_for_health(self) -> None:
         if self._frontend is None or self._runtime_origin is None:

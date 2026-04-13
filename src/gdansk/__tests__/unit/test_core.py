@@ -467,6 +467,59 @@ async def test_ship_context_open_cleans_up_runtime_on_start_failure(views_path: 
     assert ship._context._runtime_origin is None
 
 
+async def test_ship_context_open_preserves_startup_error_when_runtime_exits_during_cleanup(
+    views_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    class VanishedProcess:
+        def __init__(self) -> None:
+            self.kill_calls = 0
+            self.returncode: int | None = None
+            self.terminate_calls = 0
+            self.wait_calls = 0
+
+        def terminate(self) -> None:
+            self.terminate_calls += 1
+            raise ProcessLookupError
+
+        def kill(self) -> None:
+            self.kill_calls += 1
+            raise ProcessLookupError
+
+        async def wait(self) -> int:
+            self.wait_calls += 1
+            self.returncode = 1
+            return self.returncode
+
+    async def fake_create_subprocess_exec(*_args: str, **_kwargs: object) -> VanishedProcess:
+        return process
+
+    async def fake_sleep(_: float) -> None:
+        return None
+
+    async def fake_wait_for_health() -> None:
+        msg = "boom"
+        raise RuntimeError(msg)
+
+    process = VanishedProcess()
+    ship = Ship(views=views_path)
+    monkeypatch.setattr("gdansk.core.create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr("gdansk.core.sleep", fake_sleep)
+    monkeypatch.setattr(ship._context, "_wait_for_health", fake_wait_for_health)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        async with ship._context.open(dev=True):
+            pytest.fail("ShipContext.open() should not yield after startup failure")
+
+    assert process.terminate_calls == 1
+    assert process.kill_calls == 1
+    assert process.wait_calls == 1
+    assert ship._context._active is False
+    assert ship._context._dev is False
+    assert ship._context._frontend is None
+    assert ship._context._runtime_origin is None
+
+
 async def test_start_dev_uses_runtime_port(views_path: Path, monkeypatch: pytest.MonkeyPatch):
     captured_args: tuple[str, ...] | None = None
 
