@@ -142,7 +142,12 @@ class GdanskRuntimeImpl implements GdanskRuntime {
 
   async loadOrBuildManifest(): Promise<GdanskManifest> {
     try {
-      return await readManifest(this.manifestPath);
+      const manifest = await readManifest(this.manifestPath);
+      if (this.options.ssr && !manifest.server) {
+        return this.build();
+      }
+
+      return manifest;
     } catch {
       return this.build();
     }

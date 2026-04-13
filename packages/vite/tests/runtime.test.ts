@@ -26,6 +26,7 @@ import gdansk from "../src";
 import { resolveOptions } from "../src/context";
 import { normalizeRefreshConfig, resolveRefreshPaths } from "../src/development";
 import { createGdanskRuntime } from "../src/runtime";
+import type { GdanskManifest, GdanskRuntime } from "../src/types";
 
 const fixtureRoots: string[] = [];
 
@@ -34,6 +35,10 @@ type GdanskDevServer = ViteDevServer & {
     ssrEndpoint: string;
     ssrOrigin: string;
   };
+};
+
+type RuntimeWithManifestLoader = {
+  loadOrBuildManifest(): Promise<GdanskManifest>;
 };
 
 afterEach(async () => {
@@ -301,6 +306,25 @@ describe("@gdansk/vite", () => {
 
     await runtime.close();
   });
+
+  it("rebuilds a stale client-only manifest when production SSR is later enabled", async () => {
+    const root = await createFixture({ withLocalPlugin: true });
+    const clientRuntime = await createGdanskRuntime({ root, port: 0 });
+    const clientManifest = await clientRuntime.build();
+
+    expect(clientManifest.server).toBeUndefined();
+    await expect(pathExists(`${root}/dist/ssr.js`)).resolves.toBe(false);
+    await expect(pathExists(`${root}/dist/server.js`)).resolves.toBe(false);
+    await clientRuntime.close();
+
+    const ssrRuntime = await createGdanskRuntime({ root, port: 0, ssr: true });
+    const manifest = await (ssrRuntime as GdanskRuntime & RuntimeWithManifestLoader).loadOrBuildManifest();
+
+    expect(manifest.server).toBe("dist/ssr.js");
+    await expect(pathExists(`${root}/dist/ssr.js`)).resolves.toBe(true);
+    await expect(pathExists(`${root}/dist/server.js`)).resolves.toBe(true);
+    await ssrRuntime.close();
+  }, 15_000);
 
   it("builds widget outputs and serves production SSR when explicitly enabled", async () => {
     const root = await createFixture({ withLocalPlugin: true });
