@@ -371,6 +371,28 @@ describe("@gdansk/vite", () => {
     await runtime.close();
   }, 15_000);
 
+  it("copies shared transitive CSS into each widget manifest entry", async () => {
+    const root = await createFixture({ withLocalPlugin: false, withSharedCss: true });
+    const runtime = await createGdanskRuntime({ root, port: 0, ssr: true });
+
+    const manifest = await runtime.build();
+
+    expect(manifest.widgets.hello.css).toEqual(["dist/hello/client.css"]);
+    expect(manifest.widgets["nested/page"].css).toEqual(["dist/nested/page/client.css"]);
+    await expect(pathExists(`${root}/dist/hello/client.css`)).resolves.toBe(true);
+    await expect(pathExists(`${root}/dist/nested/page/client.css`)).resolves.toBe(true);
+    expect(await findMatchingFiles(`${root}/dist/assets`, /\.css$/)).not.toHaveLength(0);
+
+    const metadata = await runtime.startProductionServer();
+    const helloResponse = await renderWidget(metadata, { widget: "hello" });
+    const nestedResponse = await renderWidget(metadata, { widget: "nested/page" });
+
+    expect(helloResponse.head.join("")).toContain("/dist/hello/client.css");
+    expect(nestedResponse.head.join("")).toContain("/dist/nested/page/client.css");
+
+    await runtime.close();
+  }, 15_000);
+
   it("bundles SSR dependencies into the production server output", async () => {
     const root = await createFixture({ withLocalCommonjsDependency: true, withLocalPlugin: false });
     const runtime = await createGdanskRuntime({ root, port: 0, ssr: true });
@@ -455,12 +477,16 @@ describe("@gdansk/vite", () => {
 async function createFixture(options: {
   withLocalCommonjsDependency?: boolean;
   withLocalPlugin: boolean;
+  withSharedCss?: boolean;
 }): Promise<string> {
   const root = await mkdtemp(resolve(process.cwd(), ".tmp-vitest-"));
   fixtureRoots.push(root);
 
   await mkdir(`${root}/widgets/hello`, { recursive: true });
   await mkdir(`${root}/widgets/nested/page`, { recursive: true });
+  if (options.withSharedCss) {
+    await mkdir(`${root}/widgets/shared`, { recursive: true });
+  }
   await writeFile(
     `${root}/package.json`,
     JSON.stringify(
@@ -492,7 +518,11 @@ async function createFixture(options: {
   );
 
   await writeFile(`${root}/vite.config.ts`, viteConfigLines.join("\n"));
-  await writeFile(`${root}/widgets/hello/global.css`, ".hello { color: red; }\n");
+  if (options.withSharedCss) {
+    await writeFile(`${root}/widgets/shared/global.css`, ".shared { color: blue; }\n");
+  } else {
+    await writeFile(`${root}/widgets/hello/global.css`, ".hello { color: red; }\n");
+  }
   if (options.withLocalCommonjsDependency) {
     const dependencyRoot = `${root}/node_modules/${SSR_DEPENDENCY_NAME}`;
     await mkdir(dependencyRoot, { recursive: true });
@@ -511,40 +541,51 @@ async function createFixture(options: {
     );
     await writeFile(`${dependencyRoot}/index.js`, 'module.exports = "from cjs dependency";\n');
   }
+  const helloCssImport = options.withSharedCss ? 'import "../shared/global.css";' : 'import "./global.css";';
+  const helloClassName = options.withSharedCss ? "shared" : "hello";
   await writeFile(
     `${root}/widgets/hello/widget.tsx`,
     options.withLocalCommonjsDependency
       ? [
           `import message from "${SSR_DEPENDENCY_NAME}";`,
-          'import "./global.css";',
+          helloCssImport,
           "",
           "export default function App() {",
-          '  return <main className="hello"><h1>Hello SSR</h1><p>{message}</p></main>;',
+          `  return <main className="${helloClassName}"><h1>Hello SSR</h1><p>{message}</p></main>;`,
           "}",
           "",
         ].join("\n")
       : options.withLocalPlugin
         ? [
             'import message from "virtual:message";',
-            'import "./global.css";',
+            helloCssImport,
             "",
             "export default function App() {",
-            '  return <main className="hello"><h1>Hello SSR</h1><p>{message}</p></main>;',
+            `  return <main className="${helloClassName}"><h1>Hello SSR</h1><p>{message}</p></main>;`,
             "}",
             "",
           ].join("\n")
         : [
-            'import "./global.css";',
+            helloCssImport,
             "",
             "export default function App() {",
-            '  return <main className="hello"><h1>Hello SSR</h1><p>plain widget</p></main>;',
+            `  return <main className="${helloClassName}"><h1>Hello SSR</h1><p>plain widget</p></main>;`,
             "}",
             "",
           ].join("\n"),
   );
   await writeFile(
     `${root}/widgets/nested/page/widget.tsx`,
-    ["export default function App() {", "  return <section><h2>Nested widget</h2></section>;", "}", ""].join("\n"),
+    options.withSharedCss
+      ? [
+          'import "../../shared/global.css";',
+          "",
+          "export default function App() {",
+          '  return <section className="shared"><h2>Nested widget</h2></section>;',
+          "}",
+          "",
+        ].join("\n")
+      : ["export default function App() {", "  return <section><h2>Nested widget</h2></section>;", "}", ""].join("\n"),
   );
 
   if (options.withLocalPlugin) {
