@@ -2,7 +2,7 @@ import { access, glob as globIterate } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 
 import { loadConfigFromFile, mergeConfig } from "vite";
-import type { InlineConfig, Plugin, PluginOption } from "vite";
+import type { Alias, InlineConfig, Plugin, PluginOption } from "vite";
 
 import type {
   GdanskPreparedProject,
@@ -15,20 +15,20 @@ import { createClientDevEntry, createClientModuleId, GDANSK_SSR_ENTRY_ID } from 
 
 export function resolveOptions(options: GdanskPluginOptions = {}, configRoot?: string): ResolvedGdanskOptions {
   const root = resolve(configRoot ?? options.root ?? process.cwd());
-  const widgetsRoot = options.widgetsRoot ?? "widgets";
-  const outDir = options.assets ?? "dist";
+  const widgetsDirectory = options.widgetsDirectory ?? "widgets";
+  const buildDirectory = options.buildDirectory ?? "dist";
   const host = options.host ?? "127.0.0.1";
   const ssrEndpoint = "/ssr";
 
   return {
+    buildDirectory,
+    buildDirectoryPath: resolve(root, buildDirectory),
     host,
-    outDir,
-    outDirPath: resolve(root, outDir),
     root,
     ssrEndpoint,
     port: options.port ?? 13714,
-    widgetsRoot,
-    widgetsRootPath: resolve(root, widgetsRoot),
+    widgetsDirectory,
+    widgetsDirectoryPath: resolve(root, widgetsDirectory),
   };
 }
 
@@ -43,7 +43,7 @@ async function globPaths(pattern: string, options: { absolute?: boolean; cwd: st
 
 export async function discoverWidgets(options: ResolvedGdanskOptions): Promise<WidgetDefinition[]> {
   const entries = await globPaths("**/widget.{tsx,jsx}", {
-    cwd: options.widgetsRootPath,
+    cwd: options.widgetsDirectoryPath,
   });
 
   return entries.sort().map((entry) => {
@@ -51,11 +51,11 @@ export async function discoverWidgets(options: ResolvedGdanskOptions): Promise<W
     const key = toPosixPath(dirname(widgetPath));
 
     return {
-      clientCss: toPosixPath(join(options.outDir, key, "client.css")),
+      clientCss: toPosixPath(join(options.buildDirectory, key, "client.css")),
       clientDevEntry: createClientDevEntry(key),
-      clientEntry: toPosixPath(join(options.outDir, key, "client.js")),
+      clientEntry: toPosixPath(join(options.buildDirectory, key, "client.js")),
       clientModuleId: createClientModuleId(key),
-      entry: resolve(options.widgetsRootPath, entry),
+      entry: resolve(options.widgetsDirectoryPath, entry),
       key,
       widgetPath,
     };
@@ -82,6 +82,10 @@ export async function loadUserViteConfig(
   return mergeConfig(configWithoutPlugins, {
     plugins,
     root: options.root,
+    resolve: {
+      ...(loadedConfig.resolve ?? {}),
+      alias: mergeDefaultAlias(loadedConfig.resolve?.alias, options.root),
+    },
   } satisfies InlineConfig);
 }
 
@@ -131,4 +135,25 @@ async function normalizePlugins(plugins: PluginOption | PluginOption[] | undefin
   }
 
   return normalized;
+}
+
+type AliasOption = NonNullable<NonNullable<InlineConfig["resolve"]>["alias"]>;
+
+function mergeDefaultAlias(alias: AliasOption | undefined, root: string): AliasOption {
+  if (Array.isArray(alias)) {
+    return hasNamedAlias(alias, "@") ? alias : [...alias, { find: "@", replacement: root }];
+  }
+
+  if (typeof alias === "object" && alias !== null && "@" in alias) {
+    return alias;
+  }
+
+  return {
+    ...(alias ?? {}),
+    "@": root,
+  };
+}
+
+function hasNamedAlias(aliases: Alias[], name: string): boolean {
+  return aliases.some((alias) => alias.find === name);
 }

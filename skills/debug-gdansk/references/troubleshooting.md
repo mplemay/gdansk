@@ -15,6 +15,7 @@ Use exact error text to choose the fastest fix.
 | `has already been registered` for a widget | Same widget path registered twice | Remove the duplicate decorator or registration branch | Search for repeated registrations of the same path |
 | `A tool with the name ... has already been registered` | Another tool on the same `MCPServer` already owns that name | Rename one of the tools or unify the registration site | Search for duplicated MCP tool names |
 | `The frontend runtime did not start in time` | Vite did not boot, or Python and Vite disagree on host or port | Fix the Vite startup issue and keep `Ship(host, port)` and `gdansk({ host, port })` aligned | Check `vite.config.ts`, package dependencies, and the configured host/port on both sides |
+| Backend or template edits do not trigger a browser reload | Full-reload watching is disabled | Enable `gdansk({ refresh: true })` or point `refresh` at explicit backend paths | Check `vite.config.ts` for the plugin `refresh` option |
 | `Expected a production server entry at .../dist/server.js` | Production build did not complete | Run the app once in development first or fix upstream build failures | Confirm `dist/server.js` exists |
 | `Failed to render widget ... invalid SSR payload` | SSR endpoint returned malformed JSON | Fix the SSR server implementation or the widget rendering path | Inspect the SSR response payload shape |
 | `Execution error: ...` during SSR | Server-side render threw at runtime | Fix SSR-unsafe imports or rendering logic in the widget | Reduce the widget to a minimal default export and reintroduce imports incrementally |
@@ -26,10 +27,11 @@ Use exact error text to choose the fastest fix.
 2. Validate `@ship.widget(path=...)` against the path contract.
 3. Confirm the widget file exists and default-exports the component.
 4. Confirm `vite.config.ts` imports `@gdansk/vite` and the framework plugins you expect.
-5. Confirm the frontend package has the required dependencies.
-6. Confirm bundle outputs exist under `dist/`.
-7. For SSR failures, isolate runtime-safe imports and the default export first.
-8. For CSS failures, confirm the stylesheet is imported somewhere in the widget tree.
+5. If the repo customizes asset or widget directories, confirm `Ship(...)` and `gdansk(...)` use matching values.
+6. Confirm the frontend package has the required dependencies.
+7. Confirm bundle outputs exist under `dist/`.
+8. For SSR failures, isolate runtime-safe imports and the default export first.
+9. For CSS failures, confirm the stylesheet is imported somewhere in the widget tree.
 
 ## Minimal command set
 
@@ -44,4 +46,5 @@ rg -n "export default" frontend/widgets
 find frontend/dist -type f | sort
 ```
 
-Replace `frontend/` with the actual frontend package directory name when the repo uses a different path.
+Replace `frontend/` and `frontend/widgets` with the actual frontend package and widgets directory when the repo uses
+different paths.

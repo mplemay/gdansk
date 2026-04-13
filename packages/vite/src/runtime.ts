@@ -7,6 +7,7 @@ import { createServer, mergeConfig } from "vite";
 import { buildWidgets, readManifest } from "./build";
 import { loadUserViteConfig, prepareProject, resolveOptions } from "./context";
 import { resolveViteOrigin } from "./css";
+import { createRefreshPlugin } from "./development";
 import { startGdanskServer } from "./server";
 import { installDevSSRMiddleware, importRenderFunction } from "./ssr";
 import type {
@@ -39,7 +40,7 @@ class GdanskRuntimeImpl implements GdanskRuntime {
   #viteServer?: Awaited<ReturnType<typeof createServer>>;
 
   constructor(options: ResolvedGdanskOptions) {
-    this.manifestPath = `${options.outDirPath}/gdansk-manifest.json`;
+    this.manifestPath = `${options.buildDirectoryPath}/gdansk-manifest.json`;
     this.options = options;
   }
 
@@ -74,7 +75,7 @@ class GdanskRuntimeImpl implements GdanskRuntime {
       mergeConfig(config, {
         appType: "custom",
         configFile: false,
-        plugins: [createGdanskVirtualModulesPlugin(this.options, prepared)],
+        plugins: [createGdanskVirtualModulesPlugin(this.options, prepared), createRefreshPlugin(this.options)],
         root: this.options.root,
         server: {
           host: this.options.host,

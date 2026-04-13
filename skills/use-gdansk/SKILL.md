@@ -62,7 +62,12 @@ Use the public integration points directly:
 - Use an `MCPServer` lifespan that enters `async with ship.mcp(app=app, dev=...)`.
 - In the frontend package, import `@gdansk/vite` in `vite.config.ts` and compose it with the framework plugins you
   need.
+- The Vite plugin now provides a default `@` alias to the frontend package root; only add a manual `@` alias when you
+  need a different target.
+- Prefer `gdansk({ refresh: true })` in real app repos so nearby Python or Jinja edits trigger a full browser reload.
 - If you customize the runtime host or port, configure the same values in both `Ship(...)` and `gdansk(...)`.
+- If you customize frontend directories, keep `Ship(assets=..., widgets_directory=...)` aligned with
+  `gdansk({ buildDirectory: ..., widgetsDirectory: ... })`.
 - Ensure the widget file default-exports the React component.
 
 Do not use filesystem-absolute paths for widget registration. Do not assume the frontend package directory must be

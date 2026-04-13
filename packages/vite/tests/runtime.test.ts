@@ -2,11 +2,29 @@ import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import react from "@vitejs/plugin-react";
-import { createServer, type ViteDevServer } from "vite";
-import { afterEach, describe, expect, it } from "vitest";
+import { createServer, normalizePath, type Plugin, type PluginOption, type UserConfig, type ViteDevServer } from "vite";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const viteMocks = vi.hoisted(() => ({
+  createServer: vi.fn(),
+  createServerImpl: undefined as unknown as (typeof import("vite"))["createServer"],
+}));
+
+vi.mock("vite", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("vite")>();
+
+  viteMocks.createServerImpl = actual.createServer;
+  viteMocks.createServer.mockImplementation(actual.createServer);
+
+  return {
+    ...actual,
+    createServer: viteMocks.createServer,
+  };
+});
 
 import gdansk from "../src";
 import { resolveOptions } from "../src/context";
+import { normalizeRefreshConfig, resolveRefreshPaths } from "../src/development";
 import { createGdanskRuntime } from "../src/runtime";
 
 const fixtureRoots: string[] = [];
@@ -19,6 +37,8 @@ type GdanskDevServer = ViteDevServer & {
 };
 
 afterEach(async () => {
+  viteMocks.createServer.mockReset();
+  viteMocks.createServer.mockImplementation(viteMocks.createServerImpl);
   await Promise.all(fixtureRoots.splice(0).map((root) => rm(root, { force: true, recursive: true })));
 });
 
@@ -26,15 +46,219 @@ describe("@gdansk/vite", () => {
   it("defaults the frontend runtime to localhost on port 13714", () => {
     const options = resolveOptions({ root: process.cwd() });
 
+    expect(options.buildDirectory).toBe("dist");
     expect(options.host).toBe("127.0.0.1");
-    expect(options.outDir).toBe("dist");
     expect(options.port).toBe(13_714);
+    expect(options.widgetsDirectory).toBe("widgets");
   });
 
-  it("supports overriding the production assets directory", () => {
-    const options = resolveOptions({ assets: "public", root: process.cwd() });
+  it("supports overriding the build directory", () => {
+    const options = resolveOptions({ buildDirectory: "public", root: process.cwd() });
 
-    expect(options.outDir).toBe("public");
+    expect(options.buildDirectory).toBe("public");
+  });
+
+  it("supports overriding the widgets directory", () => {
+    const options = resolveOptions({ root: process.cwd(), widgetsDirectory: "frontend/widgets" });
+
+    expect(options.widgetsDirectory).toBe("frontend/widgets");
+  });
+
+  it("injects a default @ alias for the frontend package root", async () => {
+    const root = await createFixture({ withLocalPlugin: false });
+    const config = await resolvePluginConfig(gdansk({}), { root }, "serve");
+
+    expect(config.resolve?.alias).toEqual({
+      "@": root,
+    });
+  });
+
+  it("preserves a user-defined @ alias", async () => {
+    const root = await createFixture({ withLocalPlugin: false });
+    const config = await resolvePluginConfig(
+      gdansk({}),
+      {
+        resolve: {
+          alias: {
+            "@": "/custom/root",
+          },
+        },
+        root,
+      },
+      "serve",
+    );
+
+    expect(config.resolve?.alias).toEqual({
+      "@": "/custom/root",
+    });
+  });
+
+  it("appends the default @ alias when alias config uses an array", async () => {
+    const root = await createFixture({ withLocalPlugin: false });
+    const config = await resolvePluginConfig(
+      gdansk({}),
+      {
+        resolve: {
+          alias: [{ find: "~", replacement: "/tmp/shared" }],
+        },
+        root,
+      },
+      "serve",
+    );
+
+    expect(config.resolve?.alias).toEqual([
+      { find: "~", replacement: "/tmp/shared" },
+      { find: "@", replacement: root },
+    ]);
+  });
+
+  it("applies explicit host or port options to the Vite dev server config", async () => {
+    const root = await createFixture({ withLocalPlugin: false });
+    const config = await resolvePluginConfig(gdansk({ port: 14_000 }), { root }, "serve");
+
+    expect(config.server).toEqual({
+      host: "127.0.0.1",
+      port: 14_000,
+      strictPort: true,
+    });
+  });
+
+  it("normalizes refresh config for all supported shapes", () => {
+    expect(normalizeRefreshConfig(true)).toEqual([
+      {
+        paths: ["../**/*.py", "../**/*.j2", "../**/*.jinja", "../**/*.jinja2"],
+      },
+    ]);
+    expect(normalizeRefreshConfig("backend/**/*.py")).toEqual([{ paths: ["backend/**/*.py"] }]);
+    expect(normalizeRefreshConfig(["a.py", "b.py"])).toEqual([{ paths: ["a.py", "b.py"] }]);
+    expect(normalizeRefreshConfig({ paths: "backend/**/*.jinja2" })).toEqual([{ paths: ["backend/**/*.jinja2"] }]);
+    expect(normalizeRefreshConfig([{ paths: ["backend/**/*.py"] }, { paths: "templates/**/*.j2" }])).toEqual([
+      { paths: ["backend/**/*.py"] },
+      { paths: ["templates/**/*.j2"] },
+    ]);
+  });
+
+  it("resolves refresh globs relative to the frontend package root", async () => {
+    const root = await createFixture({ withLocalPlugin: false });
+
+    expect(resolveRefreshPaths(true, root)).toEqual([
+      normalizePath(resolve(root, "../**/*.py")),
+      normalizePath(resolve(root, "../**/*.j2")),
+      normalizePath(resolve(root, "../**/*.jinja")),
+      normalizePath(resolve(root, "../**/*.jinja2")),
+    ]);
+  });
+
+  it("wires full-reload watchers when refresh is enabled", async () => {
+    const root = await createFixture({ withLocalPlugin: false });
+    const watcher = {
+      add: vi.fn(),
+      on: vi.fn(),
+    };
+    const ws = { send: vi.fn() };
+    const logger = { info: vi.fn() };
+    const refreshPlugin = resolvePluginByName(gdansk({ refresh: true }), "@gdansk/vite:refresh");
+
+    callHook(refreshPlugin.configureServer, {
+      config: { logger, root } as unknown as ViteDevServer["config"],
+      watcher,
+      ws,
+    } as unknown as ViteDevServer);
+
+    expect(watcher.add).toHaveBeenCalledWith(resolveRefreshPaths(true, root));
+    expect(watcher.on).toHaveBeenCalledTimes(4);
+
+    const changeHandler = watcher.on.mock.calls.find(([event]) => event === "change")?.[1] as
+      | ((file: string) => void)
+      | undefined;
+    const readyHandler = watcher.on.mock.calls.find(([event]) => event === "ready")?.[1] as (() => void) | undefined;
+
+    expect(changeHandler).toBeDefined();
+    readyHandler?.();
+    changeHandler?.(resolve(root, "../server.py"));
+
+    expect(ws.send).toHaveBeenCalledWith({ path: "*", type: "full-reload" });
+  });
+
+  it("passes the refresh plugin into runtime startDev when refresh is enabled", async () => {
+    const root = await createFixture({ withLocalPlugin: false });
+    const server = {
+      close: vi.fn().mockResolvedValue(undefined),
+      config: {
+        logger: {
+          info: vi.fn(),
+          warn: vi.fn(),
+        },
+        root,
+        server: {
+          host: "127.0.0.1",
+          port: 5173,
+        },
+      },
+      httpServer: {
+        listening: false,
+        once: vi.fn(),
+      },
+      listen: vi.fn().mockResolvedValue(undefined),
+      middlewares: {
+        use: vi.fn(),
+      },
+      resolvedUrls: {
+        local: ["http://127.0.0.1:5173/"],
+      },
+    } as unknown as ViteDevServer;
+    viteMocks.createServer.mockResolvedValueOnce(server);
+    const runtime = await createGdanskRuntime({ refresh: true, root });
+
+    await runtime.startDev();
+
+    const [config] = viteMocks.createServer.mock.calls[0] ?? [];
+    const pluginNames = flattenPluginOptions(config?.plugins ?? []).map((plugin) => plugin.name);
+
+    expect(pluginNames).toContain("@gdansk/vite:refresh");
+    expect(pluginNames).toContain("@gdansk/vite:virtual-modules");
+
+    await runtime.close();
+  });
+
+  it("warms widget entry modules during dev server setup", async () => {
+    const root = await createFixture({ withLocalPlugin: false });
+    const logger = { info: vi.fn(), warn: vi.fn() };
+    const warmupRequest = vi.fn().mockResolvedValue(undefined);
+    const plugin = resolvePluginByName(gdansk({}), "@gdansk/vite");
+
+    await callHook(plugin.configResolved, {
+      root,
+    } as unknown as Parameters<ConfigResolvedHook>[0]);
+    await callHook(plugin.configureServer, {
+      config: {
+        logger,
+        root,
+        server: {
+          host: "127.0.0.1",
+          port: 5173,
+        },
+      } as unknown as ViteDevServer["config"],
+      httpServer: {
+        listening: true,
+        once: vi.fn(),
+      },
+      middlewares: {
+        use: vi.fn(),
+      },
+      warmupRequest,
+    } as unknown as ViteDevServer);
+
+    await waitFor(async () => warmupRequest.mock.calls.length === 4);
+
+    expect(new Set(warmupRequest.mock.calls.map(([entry]) => entry))).toEqual(
+      new Set([
+        `${root}/widgets/hello/widget.tsx`,
+        `${root}/widgets/nested/page/widget.tsx`,
+        "/@gdansk/client/hello.tsx",
+        "/@gdansk/client/nested/page.tsx",
+      ]),
+    );
   });
 
   it("builds widget outputs and serves production SSR", async () => {
@@ -129,9 +353,19 @@ describe("@gdansk/vite", () => {
 
     expect(response.body).toContain("Hello SSR");
 
-    await server.close();
+    await server.waitForRequestsIdle();
+    const httpServer = server.httpServer as
+      | (typeof server.httpServer & {
+          closeAllConnections?: () => void;
+          closeIdleConnections?: () => void;
+        })
+      | undefined;
+    const closeServer = server.close();
+    httpServer?.closeIdleConnections?.();
+    httpServer?.closeAllConnections?.();
+    await closeServer;
     await waitFor(async () => (server as GdanskDevServer).__gdansk === undefined);
-  });
+  }, 15_000);
 });
 
 async function createFixture(options: { withLocalPlugin: boolean }): Promise<string> {
@@ -270,6 +504,41 @@ async function fetchHealth(origin: string): Promise<{ status: string }> {
   return (await response.json()) as { status: string };
 }
 
+function flattenPluginOptions(option: PluginOption): Plugin[] {
+  if (!option) {
+    return [];
+  }
+
+  if (Array.isArray(option)) {
+    return option.flatMap((entry) => flattenPluginOptions(entry));
+  }
+
+  return [option as Plugin];
+}
+
+function resolvePluginByName(option: PluginOption, name: string): Plugin {
+  const plugin = flattenPluginOptions(option).find((entry) => entry.name === name);
+
+  if (!plugin) {
+    throw new Error(`Expected plugin "${name}" to be present`);
+  }
+
+  return plugin;
+}
+
+async function resolvePluginConfig(
+  option: PluginOption,
+  config: UserConfig,
+  command: "build" | "serve",
+): Promise<UserConfig> {
+  const plugin = resolvePluginByName(option, "@gdansk/vite");
+
+  return ((await callHook(plugin.config, config, {
+    command,
+    mode: command === "build" ? "production" : "development",
+  })) ?? {}) as UserConfig;
+}
+
 async function waitFor(check: () => Promise<boolean>, attempts: number = 20): Promise<void> {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     if (await check()) {
@@ -280,4 +549,35 @@ async function waitFor(check: () => Promise<boolean>, attempts: number = 20): Pr
   }
 
   throw new Error("Condition was not met in time");
+}
+
+type HookHandler<T> = T extends { handler: infer Handler extends (...args: any[]) => any }
+  ? Handler
+  : T extends (...args: any[]) => any
+    ? T
+    : never;
+
+type ConfigResolvedHook = HookHandler<NonNullable<Plugin["configResolved"]>>;
+type HookThis<T> = T extends (this: infer This, ...args: any[]) => any ? This : void;
+
+function resolveHook<T>(hook: T): HookHandler<T> | undefined {
+  if (typeof hook === "function") {
+    return hook as HookHandler<T>;
+  }
+
+  if (hook && typeof hook === "object" && "handler" in hook) {
+    return (hook as { handler: HookHandler<T> }).handler;
+  }
+
+  return undefined;
+}
+
+function callHook<T>(hook: T, ...args: Parameters<HookHandler<T>>): ReturnType<HookHandler<T>> | undefined {
+  const handler = resolveHook(hook);
+
+  if (!handler) {
+    return undefined;
+  }
+
+  return handler.call({} as HookThis<HookHandler<T>>, ...args);
 }

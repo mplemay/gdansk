@@ -143,7 +143,34 @@ import { defineConfig } from "vite";
 import gdansk from "@gdansk/vite";
 
 export default defineConfig({
-  plugins: [gdansk(), react()],
+  plugins: [gdansk({ refresh: true }), react()],
+});
+```
+
+`@gdansk/vite` provides a default `@` alias to the frontend package root, so you only need a manual `@` alias if the
+repo wants `@` to resolve somewhere else. `refresh: true` adds Laravel-style full reloads for nearby Python and Jinja
+files during `vite dev`.
+
+If you need non-default frontend directories, keep Python and Vite aligned:
+
+```python
+ship = Ship(
+    views=Path(__file__).parent / "frontend",
+    assets="public/ui",
+    widgets_directory="ui/widgets",
+)
+```
+
+```ts
+export default defineConfig({
+  plugins: [
+    gdansk({
+      buildDirectory: "public/ui",
+      widgetsDirectory: "ui/widgets",
+      refresh: true,
+    }),
+    react(),
+  ],
 });
 ```
 
@@ -155,7 +182,7 @@ ship = Ship(views=Path(__file__).parent / "frontend", host="127.0.0.1", port=140
 
 ```ts
 export default defineConfig({
-  plugins: [gdansk({ host: "127.0.0.1", port: 14000 }), react()],
+  plugins: [gdansk({ host: "127.0.0.1", port: 14000, refresh: true }), react()],
 });
 ```
 

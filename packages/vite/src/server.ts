@@ -7,7 +7,7 @@ import type { GdanskServerHandle, GdanskServerOptions } from "./types";
 
 export async function startGdanskServer(options: GdanskServerOptions): Promise<GdanskServerHandle> {
   const app = new Hono();
-  const outDirPrefix = `/${options.options.outDir.replace(/^\/+/, "")}`;
+  const outDirPrefix = `/${options.options.buildDirectory.replace(/^\/+/, "")}`;
 
   app.get(HEALTH_ENDPOINT, (c) => c.json({ status: "OK" }));
 

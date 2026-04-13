@@ -40,7 +40,7 @@ export function createBuildConfig(options: ResolvedGdanskOptions, prepared: Gdan
     build: {
       copyPublicDir: false,
       emptyOutDir: true,
-      outDir: options.outDir,
+      outDir: options.buildDirectory,
       sourcemap: true,
     },
     environments: {
@@ -60,8 +60,8 @@ export async function buildWidgets(
   prepared: GdanskPreparedProject,
   config: LoadedProjectConfig = {},
 ): Promise<GdanskManifest> {
-  await rm(options.outDirPath, { force: true, recursive: true });
-  await mkdir(options.outDirPath, { recursive: true });
+  await rm(options.buildDirectoryPath, { force: true, recursive: true });
+  await mkdir(options.buildDirectoryPath, { recursive: true });
 
   if (prepared.widgets.length > 0) {
     await build(
@@ -106,7 +106,7 @@ function createClientBuildOptions(
     cssCodeSplit: true,
     emptyOutDir: true,
     manifest: CLIENT_MANIFEST_FILE,
-    outDir: options.outDir,
+    outDir: options.buildDirectory,
     rollupOptions: {
       input: inputs,
       output: {
@@ -124,7 +124,7 @@ function createSSRBuildOptions(options: ResolvedGdanskOptions, prepared: GdanskP
   return {
     copyPublicDir: false,
     emptyOutDir: false,
-    outDir: options.outDir,
+    outDir: options.buildDirectory,
     rollupOptions: {
       input: prepared.ssrEntryId,
       output: {
@@ -141,12 +141,12 @@ async function finalizeBuildOutputs(
   options: ResolvedGdanskOptions,
   widgets: WidgetDefinition[],
 ): Promise<GdanskManifest> {
-  const clientManifest = await readClientManifest(resolve(options.outDirPath, CLIENT_MANIFEST_FILE));
+  const clientManifest = await readClientManifest(resolve(options.buildDirectoryPath, CLIENT_MANIFEST_FILE));
 
   const manifest: GdanskManifest = {
-    outDir: options.outDir,
+    outDir: options.buildDirectory,
     root: options.root,
-    server: toPosixPath(`${options.outDir}/${SERVER_BUNDLE}`),
+    server: toPosixPath(`${options.buildDirectory}/${SERVER_BUNDLE}`),
     widgets: Object.fromEntries(
       await Promise.all(
         widgets.map(async (widget) => {
@@ -169,7 +169,7 @@ async function finalizeBuildOutputs(
     ),
   };
 
-  await writeJson(resolve(options.outDirPath, GDANSK_MANIFEST_FILE), manifest);
+  await writeJson(resolve(options.buildDirectoryPath, GDANSK_MANIFEST_FILE), manifest);
   await writeProductionServer(options);
 
   return manifest;
@@ -248,12 +248,12 @@ async function normalizeWidgetCssOutputs(
     return [toBuildPath(options, target)];
   }
 
-  const sourcePath = resolve(options.outDirPath, href);
+  const sourcePath = resolve(options.buildDirectoryPath, href);
   if (!(await pathExists(sourcePath))) {
     return hrefs.map((entry) => toBuildPath(options, entry));
   }
 
-  const targetPath = resolve(options.outDirPath, target);
+  const targetPath = resolve(options.buildDirectoryPath, target);
   const css = await readFile(sourcePath, "utf8");
   const rewrittenCss = rewriteRelativeCssUrls(css, posix.dirname(href), posix.dirname(target));
 
@@ -299,7 +299,7 @@ async function writeJson(path: string, value: unknown): Promise<void> {
 }
 
 function toOutputPath(options: ResolvedGdanskOptions, path: string): string {
-  const prefix = `${options.outDir}/`;
+  const prefix = `${options.buildDirectory}/`;
 
   if (path.startsWith(prefix)) {
     return path.slice(prefix.length);
@@ -309,16 +309,17 @@ function toOutputPath(options: ResolvedGdanskOptions, path: string): string {
 }
 
 function toBuildPath(options: ResolvedGdanskOptions, path: string): string {
-  return path.startsWith(`${options.outDir}/`) ? path : `${options.outDir}/${path.replace(/^\/+/, "")}`;
+  return path.startsWith(`${options.buildDirectory}/`) ? path : `${options.buildDirectory}/${path.replace(/^\/+/, "")}`;
 }
 
 async function writeProductionServer(options: ResolvedGdanskOptions): Promise<void> {
-  const path = resolve(options.outDirPath, "server.js");
+  const path = resolve(options.buildDirectoryPath, "server.js");
   const runtimeModuleUrl = new URL("../runtime.js", import.meta.url).href;
   const runtimeOptions = {
+    buildDirectory: options.buildDirectory,
     host: options.host,
     port: options.port,
-    widgetsRoot: options.widgetsRoot,
+    widgetsDirectory: options.widgetsDirectory,
   };
 
   await writeFile(
