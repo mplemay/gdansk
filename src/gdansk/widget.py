@@ -86,23 +86,24 @@ ResourceMeta = TypedDict(
 )
 
 
-def _resource_domains_with_base_url(
-    resource_domains: Sequence[str] | None,
+def _domains_with_base_url(
+    domains: Sequence[str] | None,
     base_url: str | None,
 ) -> list[str] | None:
-    merged = list(resource_domains or [])
+    merged = list(domains or [])
     if base_url is not None and base_url not in merged:
         merged.append(base_url)
     return merged or None
 
 
-def _transform_resource_csp(widget: WidgetMeta, extra: WidgetExtra) -> ResourceCSPMeta | None:
-    ui = widget.get("ui")
-    csp = ui.get("csp") if ui else None
+def _transform_resource_csp(csp: WidgetCSPMeta | None, extra: WidgetExtra) -> ResourceCSPMeta | None:
     out: ResourceCSPMeta = {}
-    if csp and (connect := csp.get("connect_domains")):
-        out["connectDomains"] = connect
-    if resource_domains := _resource_domains_with_base_url(
+    if connect_domains := _domains_with_base_url(
+        csp.get("connect_domains") if csp else None,
+        extra.get("base_url"),
+    ):
+        out["connectDomains"] = connect_domains
+    if resource_domains := _domains_with_base_url(
         csp.get("resource_domains") if csp else None,
         extra.get("base_url"),
     ):
@@ -112,8 +113,7 @@ def _transform_resource_csp(widget: WidgetMeta, extra: WidgetExtra) -> ResourceC
     return out or None
 
 
-def _transform_resource_ui(widget: WidgetMeta, extra: WidgetExtra) -> ResourceUIMeta | None:
-    ui = widget.get("ui")
+def _transform_resource_ui(ui: WidgetUIMeta | None, extra: WidgetExtra) -> ResourceUIMeta | None:
     out: ResourceUIMeta = {}
     domain: str | None = ui["domain"] if ui and "domain" in ui else None
     if domain is None and extra.get("base_url"):
@@ -122,15 +122,16 @@ def _transform_resource_ui(widget: WidgetMeta, extra: WidgetExtra) -> ResourceUI
         out["domain"] = domain
     if ui and "prefers_border" in ui:
         out["prefersBorder"] = ui["prefers_border"]
-    if csp := _transform_resource_csp(widget, extra):
+    if csp := _transform_resource_csp(ui.get("csp") if ui else None, extra):
         out["csp"] = csp
     return out or None
 
 
 def _transform_resource(widget: WidgetMeta, extra: WidgetExtra) -> ResourceMeta:
     out: ResourceMeta = {}
-    if ui := _transform_resource_ui(widget, extra):
-        out["ui"] = ui
+    ui = widget.get("ui")
+    if resource_ui := _transform_resource_ui(ui, extra):
+        out["ui"] = resource_ui
     openai = widget.get("openai")
     widget_description: str | None = None
     if openai and "widget_description" in openai:
@@ -144,8 +145,7 @@ def _transform_resource(widget: WidgetMeta, extra: WidgetExtra) -> ResourceMeta:
     return out
 
 
-def _transform_tool_ui(widget: WidgetMeta, extra: WidgetExtra) -> ToolUIMeta | None:
-    ui = widget.get("ui")
+def _transform_tool_ui(ui: WidgetUIMeta | None, extra: WidgetExtra) -> ToolUIMeta | None:
     out: ToolUIMeta = {}
     resource_uri = ui["resource_uri"] if ui and "resource_uri" in ui else extra["uri"]
     if resource_uri:
@@ -157,8 +157,9 @@ def _transform_tool_ui(widget: WidgetMeta, extra: WidgetExtra) -> ToolUIMeta | N
 
 def _transform_tool(widget: WidgetMeta, extra: WidgetExtra) -> ToolMeta:
     out: ToolMeta = {}
-    if ui := _transform_tool_ui(widget, extra):
-        out["ui"] = ui
+    ui = widget.get("ui")
+    if tool_ui := _transform_tool_ui(ui, extra):
+        out["ui"] = tool_ui
     if openai := widget.get("openai"):
         if tool_invocation := openai.get("tool_invocation"):
             if invoking := tool_invocation.get("invoking"):
