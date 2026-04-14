@@ -86,16 +86,28 @@ ResourceMeta = TypedDict(
 )
 
 
-def _transform_resource_csp(widget: WidgetMeta, _: WidgetExtra) -> ResourceCSPMeta | None:
+def _resource_domains_with_base_url(
+    resource_domains: Sequence[str] | None,
+    base_url: str | None,
+) -> list[str] | None:
+    merged = list(resource_domains or [])
+    if base_url is not None and base_url not in merged:
+        merged.append(base_url)
+    return merged or None
+
+
+def _transform_resource_csp(widget: WidgetMeta, extra: WidgetExtra) -> ResourceCSPMeta | None:
     ui = widget.get("ui")
-    if not ui or (csp := ui.get("csp")) is None:
-        return None
+    csp = ui.get("csp") if ui else None
     out: ResourceCSPMeta = {}
-    if connect := csp.get("connect_domains"):
+    if csp and (connect := csp.get("connect_domains")):
         out["connectDomains"] = connect
-    if resource_domains := csp.get("resource_domains"):
+    if resource_domains := _resource_domains_with_base_url(
+        csp.get("resource_domains") if csp else None,
+        extra.get("base_url"),
+    ):
         out["resourceDomains"] = resource_domains
-    if frame_domains := csp.get("frame_domains"):
+    if csp and (frame_domains := csp.get("frame_domains")):
         out["frameDomains"] = frame_domains
     return out or None
 
