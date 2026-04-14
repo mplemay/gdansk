@@ -681,6 +681,9 @@ def test_ship_widget_default_tool_and_resource_metadata(views_path: Path):
     assert spec.resource.meta == {
         "ui": {
             "domain": "https://example.com/app",
+            "csp": {
+                "resourceDomains": ["https://example.com/app"],
+            },
         },
         "openai/widgetDescription": "Widget description",
     }
@@ -698,6 +701,7 @@ def test_ship_widget_preserves_explicit_metadata_split(views_path: Path):
             "domain": "https://widgets.example.com",
             "csp": {
                 "connect_domains": ["https://api.example.com"],
+                "resource_domains": ["https://cdn.example.com"],
             },
         },
         "openai": {
@@ -730,6 +734,10 @@ def test_ship_widget_preserves_explicit_metadata_split(views_path: Path):
             "domain": "https://widgets.example.com",
             "csp": {
                 "connectDomains": ["https://api.example.com"],
+                "resourceDomains": [
+                    "https://cdn.example.com",
+                    "https://example.com/app",
+                ],
             },
         },
         "openai/widgetDescription": "Explicit widget description",
@@ -801,6 +809,7 @@ def test_ship_widget_does_not_mutate_meta_input(views_path: Path):
         "ui": {
             "csp": {
                 "connect_domains": ["https://api.example.com"],
+                "resource_domains": ["https://cdn.example.com"],
             },
         },
         "openai": {
