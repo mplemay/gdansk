@@ -682,6 +682,7 @@ def test_ship_widget_default_tool_and_resource_metadata(views_path: Path):
         "ui": {
             "domain": "https://example.com/app",
             "csp": {
+                "connectDomains": ["https://example.com/app"],
                 "resourceDomains": ["https://example.com/app"],
             },
         },
@@ -733,7 +734,10 @@ def test_ship_widget_preserves_explicit_metadata_split(views_path: Path):
             "prefersBorder": True,
             "domain": "https://widgets.example.com",
             "csp": {
-                "connectDomains": ["https://api.example.com"],
+                "connectDomains": [
+                    "https://api.example.com",
+                    "https://example.com/app",
+                ],
                 "resourceDomains": [
                     "https://cdn.example.com",
                     "https://example.com/app",
