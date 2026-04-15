@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 from typing import Literal, TypedDict
+from urllib.parse import urlparse, urlunparse
 
 type App = Literal["app"]
 type Model = Literal["model"]
@@ -70,6 +71,12 @@ class ResourceCSPMeta(TypedDict, total=False):
     frameDomains: Sequence[str]
 
 
+class OpenAIResourceCSPMeta(TypedDict, total=False):
+    connect_domains: Sequence[str]
+    resource_domains: Sequence[str]
+    frame_domains: Sequence[str]
+
+
 class ResourceUIMeta(TypedDict, total=False):
     prefersBorder: bool
     domain: str
@@ -81,29 +88,43 @@ ResourceMeta = TypedDict(
     {
         "ui": ResourceUIMeta,
         "openai/widgetDescription": str,
+        "openai/widgetPrefersBorder": bool,
+        "openai/widgetCSP": OpenAIResourceCSPMeta,
+        "openai/widgetDomain": str,
     },
     total=False,
 )
 
 
-def _domains_with_base_url(
+def _url_origin(url: str | None) -> str | None:
+    if not url:
+        return None
+
+    parsed = urlparse(url)
+    if not parsed.scheme or not parsed.netloc:
+        return None
+
+    return urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
+
+
+def _domains_with_base_origin(
     domains: Sequence[str] | None,
     base_url: str | None,
 ) -> list[str] | None:
     merged = list(domains or [])
-    if base_url is not None and base_url not in merged:
-        merged.append(base_url)
+    if (base_origin := _url_origin(base_url)) is not None and base_origin not in merged:
+        merged.append(base_origin)
     return merged or None
 
 
 def _transform_resource_csp(csp: WidgetCSPMeta | None, extra: WidgetExtra) -> ResourceCSPMeta | None:
     out: ResourceCSPMeta = {}
-    if connect_domains := _domains_with_base_url(
+    if connect_domains := _domains_with_base_origin(
         csp.get("connect_domains") if csp else None,
         extra.get("base_url"),
     ):
         out["connectDomains"] = connect_domains
-    if resource_domains := _domains_with_base_url(
+    if resource_domains := _domains_with_base_origin(
         csp.get("resource_domains") if csp else None,
         extra.get("base_url"),
     ):
@@ -115,9 +136,9 @@ def _transform_resource_csp(csp: WidgetCSPMeta | None, extra: WidgetExtra) -> Re
 
 def _transform_resource_ui(ui: WidgetUIMeta | None, extra: WidgetExtra) -> ResourceUIMeta | None:
     out: ResourceUIMeta = {}
-    domain: str | None = ui["domain"] if ui and "domain" in ui else None
+    domain: str | None = _url_origin(ui["domain"]) if ui and "domain" in ui else None
     if domain is None and extra.get("base_url"):
-        domain = extra["base_url"]
+        domain = _url_origin(extra["base_url"])
     if domain:
         out["domain"] = domain
     if ui and "prefers_border" in ui:
@@ -127,11 +148,31 @@ def _transform_resource_ui(ui: WidgetUIMeta | None, extra: WidgetExtra) -> Resou
     return out or None
 
 
+def _transform_openai_resource_csp(csp: ResourceCSPMeta | None) -> OpenAIResourceCSPMeta | None:
+    if csp is None:
+        return None
+
+    out: OpenAIResourceCSPMeta = {}
+    if "connectDomains" in csp:
+        out["connect_domains"] = csp["connectDomains"]
+    if "resourceDomains" in csp:
+        out["resource_domains"] = csp["resourceDomains"]
+    if "frameDomains" in csp:
+        out["frame_domains"] = csp["frameDomains"]
+    return out or None
+
+
 def _transform_resource(widget: WidgetMeta, extra: WidgetExtra) -> ResourceMeta:
     out: ResourceMeta = {}
     ui = widget.get("ui")
     if resource_ui := _transform_resource_ui(ui, extra):
         out["ui"] = resource_ui
+        if "prefersBorder" in resource_ui:
+            out["openai/widgetPrefersBorder"] = resource_ui["prefersBorder"]
+        if domain := resource_ui.get("domain"):
+            out["openai/widgetDomain"] = domain
+        if openai_csp := _transform_openai_resource_csp(resource_ui.get("csp")):
+            out["openai/widgetCSP"] = openai_csp
     openai = widget.get("openai")
     widget_description: str | None = None
     if openai and "widget_description" in openai:
