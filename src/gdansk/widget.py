@@ -71,12 +71,6 @@ class ResourceCSPMeta(TypedDict, total=False):
     frameDomains: Sequence[str]
 
 
-class OpenAIResourceCSPMeta(TypedDict, total=False):
-    connect_domains: Sequence[str]
-    resource_domains: Sequence[str]
-    frame_domains: Sequence[str]
-
-
 class ResourceUIMeta(TypedDict, total=False):
     prefersBorder: bool
     domain: str
@@ -89,7 +83,6 @@ ResourceMeta = TypedDict(
         "ui": ResourceUIMeta,
         "openai/widgetDescription": str,
         "openai/widgetPrefersBorder": bool,
-        "openai/widgetCSP": OpenAIResourceCSPMeta,
         "openai/widgetDomain": str,
     },
     total=False,
@@ -148,20 +141,6 @@ def _transform_resource_ui(ui: WidgetUIMeta | None, extra: WidgetExtra) -> Resou
     return out or None
 
 
-def _transform_openai_resource_csp(csp: ResourceCSPMeta | None) -> OpenAIResourceCSPMeta | None:
-    if csp is None:
-        return None
-
-    out: OpenAIResourceCSPMeta = {}
-    if "connectDomains" in csp:
-        out["connect_domains"] = csp["connectDomains"]
-    if "resourceDomains" in csp:
-        out["resource_domains"] = csp["resourceDomains"]
-    if "frameDomains" in csp:
-        out["frame_domains"] = csp["frameDomains"]
-    return out or None
-
-
 def _transform_resource(widget: WidgetMeta, extra: WidgetExtra) -> ResourceMeta:
     out: ResourceMeta = {}
     ui = widget.get("ui")
@@ -171,8 +150,6 @@ def _transform_resource(widget: WidgetMeta, extra: WidgetExtra) -> ResourceMeta:
             out["openai/widgetPrefersBorder"] = resource_ui["prefersBorder"]
         if domain := resource_ui.get("domain"):
             out["openai/widgetDomain"] = domain
-        if openai_csp := _transform_openai_resource_csp(resource_ui.get("csp")):
-            out["openai/widgetCSP"] = openai_csp
     openai = widget.get("openai")
     widget_description: str | None = None
     if openai and "widget_description" in openai:

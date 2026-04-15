@@ -688,10 +688,6 @@ def test_ship_widget_default_tool_and_resource_metadata(views_path: Path):
         },
         "openai/widgetDescription": "Widget description",
         "openai/widgetDomain": "https://example.com",
-        "openai/widgetCSP": {
-            "connect_domains": ["https://example.com"],
-            "resource_domains": ["https://example.com"],
-        },
     }
 
 
@@ -752,16 +748,6 @@ def test_ship_widget_preserves_explicit_metadata_split(views_path: Path):
         "openai/widgetDescription": "Explicit widget description",
         "openai/widgetPrefersBorder": True,
         "openai/widgetDomain": "https://widgets.example.com",
-        "openai/widgetCSP": {
-            "connect_domains": [
-                "https://api.example.com",
-                "https://example.com",
-            ],
-            "resource_domains": [
-                "https://cdn.example.com",
-                "https://example.com",
-            ],
-        },
     }
 
 
