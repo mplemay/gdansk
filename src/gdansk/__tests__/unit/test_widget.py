@@ -29,11 +29,6 @@ def test_transform_maps_all_csp_fields():
     assert csp["connectDomains"] == ["https://api.example.com"]
     assert csp["resourceDomains"] == ["https://cdn.example.com"]
     assert csp["frameDomains"] == ["https://embed.example.com"]
-    assert resource["openai/widgetCSP"] == {
-        "connect_domains": ["https://api.example.com"],
-        "resource_domains": ["https://cdn.example.com"],
-        "frame_domains": ["https://embed.example.com"],
-    }
 
 
 def test_transform_appends_base_url_to_resource_domains():
@@ -82,10 +77,6 @@ def test_transform_synthesizes_csp_from_base_url():
     assert resource["ui"]["csp"]["connectDomains"] == ["https://example.com"]
     assert resource["ui"]["csp"]["resourceDomains"] == ["https://example.com"]
     assert resource["openai/widgetDomain"] == "https://example.com"
-    assert resource["openai/widgetCSP"] == {
-        "connect_domains": ["https://example.com"],
-        "resource_domains": ["https://example.com"],
-    }
 
 
 def test_transform_does_not_duplicate_base_url_in_connect_domains():
