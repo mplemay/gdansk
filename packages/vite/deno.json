@@ -2,7 +2,7 @@
   "imports": {
     "@hono/node-server": "npm:@hono/node-server@1.19.14",
     "@vitejs/plugin-react": "npm:@vitejs/plugin-react@6.0.1",
-    "hono": "npm:hono@4.12.12",
+    "hono": "npm:hono@4.12.14",
     "react": "npm:react@19.2.5",
     "react-dom": "npm:react-dom@19.2.5",
     "react-dom/client": "npm:react-dom@19.2.5/client",
