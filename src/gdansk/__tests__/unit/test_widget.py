@@ -10,6 +10,7 @@ def test_transform_prefers_border_false_is_emitted():
     extra: WidgetExtra = {"uri": "ui://x", "base_url": None, "description": None}
     _tool, resource = transform(widget, extra)
     assert resource["ui"]["prefersBorder"] is False
+    assert resource["openai/widgetPrefersBorder"] is False
 
 
 def test_transform_maps_all_csp_fields():
@@ -28,6 +29,11 @@ def test_transform_maps_all_csp_fields():
     assert csp["connectDomains"] == ["https://api.example.com"]
     assert csp["resourceDomains"] == ["https://cdn.example.com"]
     assert csp["frameDomains"] == ["https://embed.example.com"]
+    assert resource["openai/widgetCSP"] == {
+        "connect_domains": ["https://api.example.com"],
+        "resource_domains": ["https://cdn.example.com"],
+        "frame_domains": ["https://embed.example.com"],
+    }
 
 
 def test_transform_appends_base_url_to_resource_domains():
@@ -44,7 +50,7 @@ def test_transform_appends_base_url_to_resource_domains():
 
     assert resource["ui"]["csp"]["resourceDomains"] == [
         "https://cdn.example.com",
-        "https://example.com/app",
+        "https://example.com",
     ]
 
 
@@ -62,7 +68,7 @@ def test_transform_appends_base_url_to_connect_domains():
 
     assert resource["ui"]["csp"]["connectDomains"] == [
         "https://api.example.com",
-        "https://example.com/app",
+        "https://example.com",
     ]
 
 
@@ -72,15 +78,21 @@ def test_transform_synthesizes_csp_from_base_url():
 
     _tool, resource = transform(widget, extra)
 
-    assert resource["ui"]["csp"]["connectDomains"] == ["https://example.com/app"]
-    assert resource["ui"]["csp"]["resourceDomains"] == ["https://example.com/app"]
+    assert resource["ui"]["domain"] == "https://example.com"
+    assert resource["ui"]["csp"]["connectDomains"] == ["https://example.com"]
+    assert resource["ui"]["csp"]["resourceDomains"] == ["https://example.com"]
+    assert resource["openai/widgetDomain"] == "https://example.com"
+    assert resource["openai/widgetCSP"] == {
+        "connect_domains": ["https://example.com"],
+        "resource_domains": ["https://example.com"],
+    }
 
 
 def test_transform_does_not_duplicate_base_url_in_connect_domains():
     widget: WidgetMeta = {
         "ui": {
             "csp": {
-                "connect_domains": ["https://api.example.com", "https://example.com/app"],
+                "connect_domains": ["https://api.example.com", "https://example.com"],
             },
         },
     }
@@ -90,7 +102,7 @@ def test_transform_does_not_duplicate_base_url_in_connect_domains():
 
     assert resource["ui"]["csp"]["connectDomains"] == [
         "https://api.example.com",
-        "https://example.com/app",
+        "https://example.com",
     ]
 
 
@@ -98,7 +110,7 @@ def test_transform_does_not_duplicate_base_url_in_resource_domains():
     widget: WidgetMeta = {
         "ui": {
             "csp": {
-                "resource_domains": ["https://cdn.example.com", "https://example.com/app"],
+                "resource_domains": ["https://cdn.example.com", "https://example.com"],
             },
         },
     }
@@ -108,5 +120,5 @@ def test_transform_does_not_duplicate_base_url_in_resource_domains():
 
     assert resource["ui"]["csp"]["resourceDomains"] == [
         "https://cdn.example.com",
-        "https://example.com/app",
+        "https://example.com",
     ]

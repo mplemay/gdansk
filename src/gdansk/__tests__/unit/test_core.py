@@ -680,13 +680,18 @@ def test_ship_widget_default_tool_and_resource_metadata(views_path: Path):
     }
     assert spec.resource.meta == {
         "ui": {
-            "domain": "https://example.com/app",
+            "domain": "https://example.com",
             "csp": {
-                "connectDomains": ["https://example.com/app"],
-                "resourceDomains": ["https://example.com/app"],
+                "connectDomains": ["https://example.com"],
+                "resourceDomains": ["https://example.com"],
             },
         },
         "openai/widgetDescription": "Widget description",
+        "openai/widgetDomain": "https://example.com",
+        "openai/widgetCSP": {
+            "connect_domains": ["https://example.com"],
+            "resource_domains": ["https://example.com"],
+        },
     }
 
 
@@ -736,15 +741,27 @@ def test_ship_widget_preserves_explicit_metadata_split(views_path: Path):
             "csp": {
                 "connectDomains": [
                     "https://api.example.com",
-                    "https://example.com/app",
+                    "https://example.com",
                 ],
                 "resourceDomains": [
                     "https://cdn.example.com",
-                    "https://example.com/app",
+                    "https://example.com",
                 ],
             },
         },
         "openai/widgetDescription": "Explicit widget description",
+        "openai/widgetPrefersBorder": True,
+        "openai/widgetDomain": "https://widgets.example.com",
+        "openai/widgetCSP": {
+            "connect_domains": [
+                "https://api.example.com",
+                "https://example.com",
+            ],
+            "resource_domains": [
+                "https://cdn.example.com",
+                "https://example.com",
+            ],
+        },
     }
 
 

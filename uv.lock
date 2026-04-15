@@ -7,7 +7,7 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-04-06T14:26:01.213536Z"
+exclude-newer = "2026-04-07T15:33:08.296125Z"
 exclude-newer-span = "P7D"
 
 [options.exclude-newer-package]
@@ -345,8 +345,8 @@ wheels = [
 
 [[package]]
 name = "mcp"
-version = "1.25.1.dev152+941089e"
-source = { git = "https://github.com/modelcontextprotocol/python-sdk.git?rev=main#941089e06aa4f7ea09c58f8cae42e28059bb9c9b" }
+version = "1.25.1.dev155+437d15a"
+source = { git = "https://github.com/modelcontextprotocol/python-sdk.git?rev=main#437d15aa7126b86ffecfa6fd8c0158851a340ced" }
 dependencies = [
     { name = "anyio" },
     { name = "httpx" },
