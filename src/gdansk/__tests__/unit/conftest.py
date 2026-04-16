@@ -9,22 +9,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-class FakeResponse:
-    def __init__(self, *, status_code: int = 200) -> None:
-        self.status_code = status_code
-
-
-class FakeClient:
-    def __init__(self) -> None:
-        self.get_calls: list[tuple[str, float | None]] = []
-        self.status_code = 200
-
-    async def get(self, url: str, **kwargs: float | None) -> FakeResponse:
-        timeout = kwargs.get("timeout")
-        self.get_calls.append((url, timeout))
-        return FakeResponse(status_code=self.status_code)
-
-
 class FakeProcess:
     returncode: int | None = None
 

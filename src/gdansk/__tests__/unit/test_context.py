@@ -1,29 +1,35 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
+import httpx
 import pytest
-from httpx import Request, RequestError
 
-from gdansk.__tests__.unit.conftest import FakeClient, FakeManagedProcess, FakeProcess, FakeResponse, write_manifest
+from gdansk.__tests__.unit.conftest import FakeManagedProcess, FakeProcess, write_manifest
 from gdansk.core import Ship
 from gdansk.manifest import GdanskManifest
 from gdansk.metadata import Metadata
 
-if TYPE_CHECKING:
-    from httpx import AsyncClient
-
 
 async def test_wait_for_vite_reads_vite_client_endpoint(views_path: Path):
-    client = FakeClient()
-    ship = Ship(views=views_path, client=cast("AsyncClient", client))
-    ship._context._frontend = cast("Any", FakeProcess())
-    ship._context._vite_origin = "http://runtime.test"
+    requests_seen: list[httpx.Request] = []
 
-    await ship._context._wait_for_vite()
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests_seen.append(request)
+        return httpx.Response(200)
 
-    assert client.get_calls == [("http://runtime.test/@vite/client", 0.2)]
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        ship = Ship(views=views_path, client=client)
+        ship._context._frontend = cast("Any", FakeProcess())
+        ship._context._vite_origin = "http://runtime.test"
+
+        await ship._context._wait_for_vite()
+
+    assert len(requests_seen) == 1
+    assert str(requests_seen[0].url) == "http://runtime.test/@vite/client"
+    assert requests_seen[0].extensions.get("timeout") == {"connect": 0.2, "read": 0.2, "write": 0.2, "pool": 0.2}
 
 
 async def test_widget_resource_renders_complete_document(views_path: Path):
@@ -157,26 +163,28 @@ async def test_wait_for_vite_timeout_mentions_matching_ship_and_plugin_config(
     views_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    class UnreachableClient:
-        async def get(self, url: str, **_kwargs: float | None) -> FakeResponse:
-            msg = "connection failed"
-            raise RequestError(msg, request=Request("GET", url))
+    def handler(request: httpx.Request) -> httpx.Response:
+        msg = "connection failed"
+        raise httpx.RequestError(msg, request=request)
+
+    transport = httpx.MockTransport(handler)
 
     async def fake_sleep(_: float) -> None:
         return None
 
-    ship = Ship(
-        views=views_path,
-        host="localhost",
-        port=43123,
-        client=cast("AsyncClient", UnreachableClient()),
-    )
-    ship._context._frontend = cast("Any", FakeProcess())
-    ship._context._vite_origin = "http://localhost:43123"
-    monkeypatch.setattr("gdansk.context.sleep", fake_sleep)
+    async with httpx.AsyncClient(transport=transport) as client:
+        ship = Ship(
+            views=views_path,
+            host="localhost",
+            port=43123,
+            client=client,
+        )
+        ship._context._frontend = cast("Any", FakeProcess())
+        ship._context._vite_origin = "http://localhost:43123"
+        monkeypatch.setattr("gdansk.context.sleep", fake_sleep)
 
-    with pytest.raises(RuntimeError) as exc_info:
-        await ship._context._wait_for_vite()
+        with pytest.raises(RuntimeError) as exc_info:
+            await ship._context._wait_for_vite()
 
     error = str(exc_info.value)
     assert 'Ensure Ship(host="localhost", port=43123)' in error
