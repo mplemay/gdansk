@@ -6,11 +6,12 @@ from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from functools import cached_property, partial
 from http import HTTPStatus
-from os import PathLike, stat_result
+from os import PathLike
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Final, Never
 from urllib.parse import urlparse
 
+from deno import find_deno_bin
 from httpx import AsyncClient, RequestError
 from mcp.server.mcpserver.resources import FunctionResource
 from mcp.server.mcpserver.tools.base import Tool
@@ -27,8 +28,6 @@ if TYPE_CHECKING:
 
     from mcp.server import MCPServer
     from mcp.types import Icon, ToolAnnotations
-    from starlette.responses import Response
-    from starlette.types import Scope
 
 
 type PathType = str | PathLike[str]
@@ -64,19 +63,6 @@ class WidgetSpec:
     resource: FunctionResource
     tool: Tool
     uri: str
-
-
-class AssetFiles(StaticFiles):
-    def file_response(
-        self,
-        full_path: PathType,
-        stat_result: stat_result,
-        scope: Scope,
-        status_code: int = HTTPStatus.OK,
-    ) -> Response:
-        response = super().file_response(full_path, stat_result, scope, status_code)
-        response.headers["Access-Control-Allow-Origin"] = "*"
-        return response
 
 
 class ShipContext:
@@ -221,10 +207,9 @@ class ShipContext:
         return manifest
 
     async def _run_build(self) -> None:
+        deno = find_deno_bin()
         proc = await create_subprocess_exec(
-            UV_EXECUTABLE,
-            "run",
-            "deno",
+            deno,
             "run",
             "-A",
             "--node-modules-dir=auto",
@@ -404,7 +389,7 @@ class Ship:
 
     @cached_property
     def assets(self) -> StaticFiles:
-        return AssetFiles(directory=self._views / self._assets_dir, check_dir=False)
+        return StaticFiles(directory=self._views / self._assets_dir, check_dir=False)
 
     @asynccontextmanager
     async def mcp(self, app: MCPServer, *, watch: bool | None = False) -> AsyncIterator[None]:
