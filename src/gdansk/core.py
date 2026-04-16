@@ -134,15 +134,25 @@ class Ship:
         metadata: Metadata | None = None,
         structured_output: bool | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-        relative_path = Path(path)
-        self._validate_widget_path(relative_path)
+        if (path := Path(path)).is_absolute():
+            msg = f"The widget path (i.e. {path}) must be a relative path"
+            raise ValueError(msg)
 
-        posix_path = PurePosixPath(relative_path.as_posix())
+        posix = PurePosixPath(path.as_posix())
+        if any(part in {"", ".", ".."} for part in posix.parts):
+            msg = f"The widget path (i.e. {path}) must not contain traversal segments"
+            raise ValueError(msg)
+
+        if posix.name not in {"widget.tsx", "widget.jsx"}:
+            msg = f"The widget path (i.e. {path}) must point to a widget.tsx or widget.jsx file"
+            raise ValueError(msg)
+
+        posix_path = PurePosixPath(path.as_posix())
         key = PurePosixPath(*posix_path.parts[:-1]).as_posix()
-        resolved_path = (self._widgets_root / relative_path).resolve()
+        resolved_path = (self._widgets_root / path).resolve()
 
         if not resolved_path.is_file():
-            msg = f"The widget path (i.e. {relative_path}) is not a file"
+            msg = f"The widget path (i.e. {path}) is not a file"
             raise FileNotFoundError(msg)
 
         uri = f"ui://{key}"
@@ -158,8 +168,8 @@ class Ship:
         merged_metadata = merge_metadata(self._metadata, metadata)
 
         def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
-            if relative_path in self._widget_manager:
-                msg = f"The widget {relative_path} has already been registered"
+            if path in self._widget_manager:
+                msg = f"The widget {path} has already been registered"
                 raise RuntimeError(msg)
 
             tool = Tool.from_function(
@@ -182,7 +192,7 @@ class Ship:
                 meta=dict(rm.items()),
             )
 
-            self._widget_manager[relative_path] = WidgetSpec(
+            self._widget_manager[path] = WidgetSpec(
                 key=key,
                 metadata=merged_metadata,
                 resource=resource,
@@ -193,18 +203,3 @@ class Ship:
             return fn
 
         return decorator
-
-    @staticmethod
-    def _validate_widget_path(path: Path) -> None:
-        if path.is_absolute():
-            msg = f"The widget path (i.e. {path}) must be a relative path"
-            raise ValueError(msg)
-
-        posix = PurePosixPath(path.as_posix())
-        if any(part in {"", ".", ".."} for part in posix.parts):
-            msg = f"The widget path (i.e. {path}) must not contain traversal segments"
-            raise ValueError(msg)
-
-        if posix.name not in {"widget.tsx", "widget.jsx"}:
-            msg = f"The widget path (i.e. {path}) must point to a widget.tsx or widget.jsx file"
-            raise ValueError(msg)
