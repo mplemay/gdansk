@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Final
 
@@ -13,8 +13,6 @@ from gdansk.render import render_template
 from gdansk.utils import join_url, join_url_path
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
-
     from gdansk.vite import Vite
 
 
@@ -34,25 +32,37 @@ class ShipContext:
         self._vite: Final[Vite] = vite
         self._views: Final[Path] = views
 
+        self._vite.bind_runtime(cwd=views, client=self._client)
+
         self._active = False
         self._dev = False
         self._manifest: GdanskManifest | None = None
 
-    @asynccontextmanager
-    async def open(self, *, watch: bool | None) -> AsyncIterator[None]:
+    def __call__(self, *, watch: bool | None) -> _ShipContextSession:
+        return _ShipContextSession(_ctx=self, _watch=watch)
+
+    def _session_begin(self, *, watch: bool | None) -> None:
         if self._active:
             msg = "The frontend runtime context is already active"
             raise RuntimeError(msg)
-
         self._active = True
         try:
-            await self._start(watch=watch)
-            try:
-                yield None
-            finally:
-                await self._stop()
-        finally:
+            self._dev = watch is True
+            match watch:
+                case False | None:
+                    self._manifest = self._load_manifest()
+                case True:
+                    pass
+        except Exception:
             self._active = False
+            self._dev = False
+            self._manifest = None
+            raise
+
+    def _session_end(self) -> None:
+        self._manifest = None
+        self._dev = False
+        self._active = False
 
     async def render_widget_page(self, *, metadata: Metadata | None, widget_key: str) -> str:
         body = ""
@@ -144,28 +154,14 @@ class ShipContext:
 
         return manifest
 
-    async def _start(self, *, watch: bool | None) -> None:
-        if self._vite.has_runtime() or self._manifest is not None:
-            msg = "The frontend runtime context is already active"
-            raise RuntimeError(msg)
 
-        self._dev = watch is True
+@dataclass(slots=True, kw_only=True)
+class _ShipContextSession:
+    _ctx: ShipContext
+    _watch: bool | None
 
-        try:
-            match watch:
-                case True:
-                    await self._vite.start_dev(self._views)
-                    await self._vite.wait_for_client(self._client)
-                case False:
-                    await self._vite.run_build(self._views)
-                    self._manifest = self._load_manifest()
-                case None:
-                    self._manifest = self._load_manifest()
-        except Exception:
-            await self._stop()
-            raise
+    async def __aenter__(self) -> None:
+        self._ctx._session_begin(watch=self._watch)  # noqa: SLF001
 
-    async def _stop(self) -> None:
-        await self._vite.stop()
-        self._dev = False
-        self._manifest = None
+    async def __aexit__(self, _exc_type: object, _exc: BaseException | None, _tb: object) -> None:
+        self._ctx._session_end()  # noqa: SLF001

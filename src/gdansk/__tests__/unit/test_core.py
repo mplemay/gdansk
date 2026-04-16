@@ -23,6 +23,7 @@ def test_widget_rejects_missing_widget_file(views_path: Path):
 def test_ship_uses_default_runtime_host_and_port(views_path: Path):
     ship = Ship(views=views_path)
 
+    assert ship._vite is ship._context._vite
     assert ship._context._vite._host == "127.0.0.1"
     assert ship._context._vite._port == 13714
     assert isinstance(ship.assets, StaticFiles)

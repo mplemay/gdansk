@@ -204,7 +204,7 @@ async def test_ship_context_open_cleans_up_runtime_on_exit(views_path: Path, mon
     monkeypatch.setattr("gdansk.vite.create_subprocess_exec", fake_create_subprocess_exec)
     monkeypatch.setattr(ship._context._vite, "wait_for_client", fake_wait_for_client)
 
-    async with ship._context.open(watch=True):
+    async with ship._vite(watch=True), ship._context(watch=True):
         assert ship._context._active is True
         assert ship._context._dev is True
         assert ship._context._vite._frontend is process
@@ -235,8 +235,8 @@ async def test_ship_context_open_cleans_up_runtime_on_start_failure(views_path: 
     monkeypatch.setattr(ship._context._vite, "wait_for_client", fake_wait_for_client)
 
     with pytest.raises(RuntimeError, match="boom"):
-        async with ship._context.open(watch=True):
-            pytest.fail("ShipContext.open() should not yield after startup failure")
+        async with ship._vite(watch=True), ship._context(watch=True):
+            pytest.fail("ShipContext session should not yield after startup failure")
 
     assert process.terminated is True
     assert process.killed is False
@@ -289,8 +289,8 @@ async def test_ship_context_open_preserves_startup_error_when_runtime_exits_duri
     monkeypatch.setattr(ship._context._vite, "wait_for_client", fake_wait_for_client)
 
     with pytest.raises(RuntimeError, match="boom"):
-        async with ship._context.open(watch=True):
-            pytest.fail("ShipContext.open() should not yield after startup failure")
+        async with ship._vite(watch=True), ship._context(watch=True):
+            pytest.fail("ShipContext session should not yield after startup failure")
 
     assert process.terminate_calls == 1
     assert process.kill_calls == 1
@@ -317,8 +317,8 @@ async def test_start_dev_uses_runtime_port(views_path: Path, monkeypatch: pytest
     monkeypatch.setattr("gdansk.vite.create_subprocess_exec", fake_create_subprocess_exec)
     monkeypatch.setattr(ship._context._vite, "wait_for_client", fake_wait_for_client)
 
-    await ship._context._start(watch=True)
-    await ship._context._stop()
+    async with ship._vite(watch=True), ship._context(watch=True):
+        pass
 
     assert captured_args == (
         ship._context._vite._deno,
@@ -343,14 +343,13 @@ async def test_start_production_builds_and_loads_manifest(views_path: Path, monk
 
     monkeypatch.setattr(ship._context._vite, "run_build", fake_run_build)
 
-    await ship._context._start(watch=False)
+    async with ship._vite(watch=False), ship._context(watch=False):
+        assert ship._context._vite._frontend is None
+        assert ship._context._manifest is not None
+        assert ship._context._manifest.widgets["hello"].client == "dist/hello/client.js"
+        assert ship._context._vite._origin is None
 
-    assert ship._context._vite._frontend is None
-    assert ship._context._manifest is not None
-    assert ship._context._manifest.widgets["hello"].client == "dist/hello/client.js"
-    assert ship._context._vite._origin is None
-
-    await ship._context._stop()
+    assert ship._context._manifest is None
 
 
 async def test_start_production_requires_manifest(views_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -362,7 +361,8 @@ async def test_start_production_requires_manifest(views_path: Path, monkeypatch:
     monkeypatch.setattr(ship._context._vite, "run_build", fake_run_build)
 
     with pytest.raises(RuntimeError, match="did not produce a manifest"):
-        await ship._context._start(watch=False)
+        async with ship._vite(watch=False), ship._context(watch=False):
+            pytest.fail("manifest load should fail before yield")
 
 
 async def test_start_prebuilt_loads_manifest_without_build(views_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -374,22 +374,22 @@ async def test_start_prebuilt_loads_manifest_without_build(views_path: Path, mon
 
     monkeypatch.setattr(ship._context._vite, "run_build", fail_run_build)
 
-    await ship._context._start(watch=None)
+    async with ship._vite(watch=None), ship._context(watch=None):
+        assert ship._context._vite._frontend is None
+        assert ship._context._manifest is not None
+        assert ship._context._manifest.widgets["hello"].client == "dist/hello/client.js"
+        assert ship._context._vite._origin is None
+        assert ship._context._dev is False
 
-    assert ship._context._vite._frontend is None
-    assert ship._context._manifest is not None
-    assert ship._context._manifest.widgets["hello"].client == "dist/hello/client.js"
-    assert ship._context._vite._origin is None
-    assert ship._context._dev is False
-
-    await ship._context._stop()
+    assert ship._context._manifest is None
 
 
 async def test_start_prebuilt_requires_manifest(views_path: Path):
     ship = Ship(views=views_path)
 
     with pytest.raises(RuntimeError, match="did not produce a manifest"):
-        await ship._context._start(watch=None)
+        async with ship._vite(watch=None), ship._context(watch=None):
+            pytest.fail("manifest load should fail before yield")
 
 
 async def test_ship_context_open_prebuilt_skips_subprocess(views_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -401,7 +401,7 @@ async def test_ship_context_open_prebuilt_skips_subprocess(views_path: Path, mon
 
     monkeypatch.setattr("gdansk.vite.create_subprocess_exec", fail_create_subprocess_exec)
 
-    async with ship._context.open(watch=None):
+    async with ship._vite(watch=None), ship._context(watch=None):
         assert ship._context._active is True
         assert ship._context._dev is False
         assert ship._context._vite._frontend is None
@@ -420,23 +420,13 @@ def test_load_manifest_requires_matching_assets_directory(views_path: Path):
         ship._context._load_manifest()
 
 
-async def test_ship_context_open_rejects_reentry(views_path: Path, monkeypatch: pytest.MonkeyPatch):
+async def test_ship_context_open_rejects_reentry(views_path: Path):
+    write_manifest(views_path)
     ship = Ship(views=views_path)
-    calls: list[tuple[str, bool | None] | str] = []
 
-    async def fake_start(*, watch: bool | None) -> None:
-        calls.append(("start", watch))
-
-    async def fake_stop() -> None:
-        calls.append("stop")
-
-    monkeypatch.setattr(ship._context, "_start", fake_start)
-    monkeypatch.setattr(ship._context, "_stop", fake_stop)
-
-    async with ship._context.open(watch=True):
+    async with ship._vite(watch=None), ship._context(watch=None):
         with pytest.raises(RuntimeError, match="already active"):
-            async with ship._context.open(watch=False):
-                pytest.fail("Nested ShipContext.open() should not yield")
+            async with ship._vite(watch=None), ship._context(watch=None):
+                pytest.fail("Nested ShipContext session should not yield")
 
-    assert calls == [("start", True), "stop"]
     assert ship._context._active is False

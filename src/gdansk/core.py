@@ -70,6 +70,7 @@ class Ship:
         self._metadata: Final[Metadata] = metadata or Metadata()
         self._widget_manager: dict[Path, WidgetSpec] = {}
         resolved_vite = vite if vite is not None else Vite()
+        self._vite: Final[Vite] = resolved_vite
         self._context: Final[ShipContext] = ShipContext(
             self._views,
             assets=self._assets_dir,
@@ -93,7 +94,7 @@ class Ship:
             app._tool_manager._tools.setdefault(spec.tool.name, spec.tool)  # noqa: SLF001
             app.add_resource(resource=spec.resource)
 
-        async with self._context.open(watch=watch):
+        async with self._vite(watch=watch), self._context(watch=watch):
             yield None
 
     @staticmethod

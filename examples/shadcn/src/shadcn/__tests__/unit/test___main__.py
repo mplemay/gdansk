@@ -1,5 +1,4 @@
 import sys
-from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, cast
 
@@ -8,6 +7,9 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 import shadcn.__main__ as todo_main
+
+from gdansk.context import ShipContext
+from gdansk.vite import Vite
 
 
 @pytest.fixture(autouse=True)
@@ -66,12 +68,30 @@ def test_delete_todo_errors_when_todo_not_found():
 
 
 async def test_mcp_list_tools_schemas_and_structured_calls(monkeypatch: pytest.MonkeyPatch):
-    @asynccontextmanager
-    async def fake_open(*, watch: bool | None):
-        assert watch is True
-        yield None
+    class NoopCM:
+        async def __aenter__(self) -> None:
+            return None
 
-    monkeypatch.setattr(todo_main.ship._context, "open", fake_open)
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+    vite_call_orig = Vite.__call__
+    ctx_call_orig = ShipContext.__call__
+
+    def vite_call(self: Vite, *, watch: bool | None) -> object:
+        if self is todo_main.ship._vite:
+            assert watch is True
+            return NoopCM()
+        return vite_call_orig(self, watch=watch)
+
+    def ctx_call(self: ShipContext, *, watch: bool | None) -> object:
+        if self is todo_main.ship._context:
+            assert watch is True
+            return NoopCM()
+        return ctx_call_orig(self, watch=watch)
+
+    monkeypatch.setattr(Vite, "__call__", vite_call)
+    monkeypatch.setattr(ShipContext, "__call__", ctx_call)
 
     async with todo_main.ship.mcp(app=todo_main.mcp, watch=True):
         tools = await todo_main.mcp.list_tools()
