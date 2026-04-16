@@ -8,7 +8,7 @@ from functools import cached_property, partial
 from http import HTTPStatus
 from os import PathLike
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Any, Final, Never
+from typing import TYPE_CHECKING, Any, Final
 from urllib.parse import urlparse
 
 from deno import find_deno_bin
@@ -171,10 +171,6 @@ class ShipContext:
     def _development_asset_path(*, widget_key: str) -> str:
         return PurePosixPath("/@gdansk/client", f"{widget_key}.tsx").as_posix()
 
-    @staticmethod
-    def _raise_runtime_error(message: str) -> Never:
-        raise RuntimeError(message)
-
     def _manifest_path(self) -> Path:
         return self._views / self._assets_dir / "gdansk-manifest.json"
 
@@ -182,7 +178,7 @@ class ShipContext:
         path = self._manifest_path()
         if not path.is_file():
             msg = f"The frontend build did not produce a manifest at {path}"
-            self._raise_runtime_error(msg)
+            raise RuntimeError(msg)
 
         try:
             manifest = GdanskManifest.model_validate_json(path.read_text(encoding="utf-8"))
@@ -196,7 +192,7 @@ class ShipContext:
                 f'Ensure Ship(assets="{self._assets_dir}") matches '
                 f'gdansk({{ buildDirectory: "{self._assets_dir}" }}).'
             )
-            self._raise_runtime_error(msg)
+            raise RuntimeError(msg)
 
         return manifest
 
