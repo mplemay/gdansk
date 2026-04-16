@@ -91,7 +91,7 @@ class Ship:
 
     @cached_property
     def assets(self) -> StaticFiles:
-        return StaticFiles(directory=self._views / self._assets_dir, check_dir=False)
+        return StaticFiles(directory=self._views / self._assets_dir, check_dir=True)
 
     @asynccontextmanager
     async def mcp(self, app: MCPServer, *, watch: bool | None = False) -> AsyncIterator[None]:
