@@ -3,7 +3,7 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class GdanskManifestWidget(BaseModel):
+class WidgetManifest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     client: str
@@ -16,4 +16,4 @@ class GdanskManifest(BaseModel):
 
     out_dir: str = Field(alias="outDir")
     root: str
-    widgets: dict[str, GdanskManifestWidget]
+    widgets: dict[str, WidgetManifest]

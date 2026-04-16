@@ -11,7 +11,7 @@ from deno import find_deno_bin
 from httpx import AsyncClient, RequestError
 from pydantic import ValidationError
 
-from gdansk.manifest import GdanskManifest, GdanskManifestWidget
+from gdansk.manifest import GdanskManifest, WidgetManifest
 from gdansk.metadata import Metadata  # noqa: TC001 (MCP validate_call evaluates render_widget_page annotations)
 from gdansk.render import render_template
 from gdansk.utils import join_url, join_url_path
@@ -94,7 +94,7 @@ class ShipContext:
 
         return self._manifest
 
-    def _require_manifest_widget(self, widget_key: str) -> GdanskManifestWidget:
+    def _require_manifest_widget(self, widget_key: str) -> WidgetManifest:
         manifest = self._require_manifest()
         if widget_key not in manifest.widgets:
             msg = f'The production asset manifest does not contain the widget "{widget_key}"'
