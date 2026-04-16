@@ -334,7 +334,7 @@ class Ship:
         widgets_directory: str = "widgets",
         base_url: str | None = None,
         host: str = "127.0.0.1",
-        port: int = 13714,
+        port: int = 13_714,
         metadata: Metadata | None = None,
         client: AsyncClient | None = None,
     ) -> None:
@@ -483,7 +483,8 @@ class Ship:
 
         return decorator
 
-    def _validate_widget_path(self, path: Path) -> None:
+    @staticmethod
+    def _validate_widget_path(path: Path) -> None:
         if path.is_absolute():
             msg = f"The widget path (i.e. {path}) must be a relative path"
             raise ValueError(msg)
