@@ -65,7 +65,8 @@ Use the public integration points directly:
 - The Vite plugin now provides a default `@` alias to the frontend package root; only add a manual `@` alias when you
   need a different target.
 - Prefer `gdansk({ refresh: true })` in real app repos so nearby Python or Jinja edits trigger a full browser reload.
-- If you customize the runtime host or port, configure the same values in both `Ship(...)` and `gdansk(...)`.
+- If you customize the runtime host or port, pass `vite=Vite(host=..., port=...)` to `Ship` and use the same values in
+  `gdansk(...)`.
 - If you customize the build output directory, keep `Ship(assets=...)` aligned with `gdansk({ buildDirectory: ... })`.
   Widget sources always use `widgets/` under the frontend package root.
 - Ensure the widget file default-exports the React component.

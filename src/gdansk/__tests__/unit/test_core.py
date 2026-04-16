@@ -23,16 +23,11 @@ def test_widget_rejects_missing_widget_file(views_path: Path):
 def test_ship_uses_default_runtime_host_and_port(views_path: Path):
     ship = Ship(views=views_path)
 
-    assert ship._host == "127.0.0.1"
-    assert ship._port == 13714
+    assert ship._context._vite._host == "127.0.0.1"
+    assert ship._context._vite._port == 13714
     assert isinstance(ship.assets, StaticFiles)
     assert ship.assets is ship.assets
     assert Path(str(ship.assets.directory)) == views_path / "dist"
-
-
-def test_ship_rejects_invalid_runtime_port(views_path: Path):
-    with pytest.raises(ValueError, match="runtime port"):
-        Ship(views=views_path, port=0)
 
 
 def test_ship_rejects_invalid_base_url(views_path: Path):

@@ -239,7 +239,9 @@ ship = Ship(views=Path(__file__).parent / "frontend", base_url="https://example.
 If you want a different dev runtime host or port, configure both sides explicitly:
 
 ```python
-ship = Ship(views=Path(__file__).parent / "frontend", host="127.0.0.1", port=14000)
+from gdansk import Ship, Vite
+
+ship = Ship(views=Path(__file__).parent / "frontend", vite=Vite(host="127.0.0.1", port=14000))
 ```
 
 ```ts

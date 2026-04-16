@@ -44,10 +44,9 @@ class Ship:
         *,
         assets: str = "dist",
         base_url: str | None = None,
-        host: str = "127.0.0.1",
-        port: int = 13_714,
         metadata: Metadata | None = None,
         client: AsyncClient | None = None,
+        vite: Vite | None = None,
     ) -> None:
         if not (views := Path(views)).exists():
             msg = f"The views directory (i.e. {views}) does not exist"
@@ -57,22 +56,12 @@ class Ship:
             msg = f"The views directory (i.e. {views}) is not a directory"
             raise ValueError(msg)
 
-        if not (host := host.strip()):
-            msg = "The runtime host must not be empty"
-            raise ValueError(msg)
-
-        if port <= 0 or port > 65_535:  # noqa: PLR2004
-            msg = "The runtime port must be an integer between 1 and 65,535"
-            raise ValueError(msg)
-
         if base_url is not None and urlparse(base_url).hostname is None:
             msg = "The base URL must be an absolute URL with a hostname"
             raise ValueError(msg)
 
         self._assets_dir: Final[str] = self._normalize_relative_directory(assets, name="assets")
         self._base_url: Final[str | None] = base_url
-        self._host: Final[str] = host
-        self._port: Final[int] = port
         self._views: Final[Path] = views.absolute().resolve()
         self._widgets_root: Final[Path] = self._views / self._normalize_relative_directory(
             "widgets",
@@ -80,11 +69,12 @@ class Ship:
         )
         self._metadata: Final[Metadata] = metadata or Metadata()
         self._widget_manager: dict[Path, WidgetSpec] = {}
+        resolved_vite = vite if vite is not None else Vite()
         self._context: Final[ShipContext] = ShipContext(
             self._views,
             assets=self._assets_dir,
             base_url=self._base_url,
-            vite=Vite(host=self._host, port=self._port),
+            vite=resolved_vite,
             client=client,
         )
 

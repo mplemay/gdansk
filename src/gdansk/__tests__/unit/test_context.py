@@ -10,6 +10,7 @@ from gdansk.__tests__.unit.conftest import FakeManagedProcess, FakeProcess, writ
 from gdansk.core import Ship
 from gdansk.manifest import GdanskManifest
 from gdansk.metadata import Metadata
+from gdansk.vite import Vite
 
 
 async def test_wait_for_vite_reads_vite_client_endpoint(views_path: Path):
@@ -159,7 +160,7 @@ async def test_run_build_uses_the_views_vite_entrypoint(views_path: Path, monkey
     assert "env" not in captured_kwargs
 
 
-async def test_wait_for_vite_timeout_mentions_matching_ship_and_plugin_config(
+async def test_wait_for_vite_timeout_mentions_matching_vite_and_plugin_config(
     views_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -175,9 +176,8 @@ async def test_wait_for_vite_timeout_mentions_matching_ship_and_plugin_config(
     async with httpx.AsyncClient(transport=transport) as client:
         ship = Ship(
             views=views_path,
-            host="localhost",
-            port=43123,
             client=client,
+            vite=Vite(host="localhost", port=43123),
         )
         ship._context._vite._frontend = cast("Any", FakeProcess())
         ship._context._vite._origin = "http://localhost:43123"
@@ -187,7 +187,7 @@ async def test_wait_for_vite_timeout_mentions_matching_ship_and_plugin_config(
             await ship._context._vite.wait_for_client(client)
 
     error = str(exc_info.value)
-    assert 'Ensure Ship(host="localhost", port=43123)' in error
+    assert 'Ensure Vite(host="localhost", port=43123)' in error
     assert 'gdansk({ host: "localhost", port: 43123 })' in error
 
 
@@ -313,7 +313,7 @@ async def test_start_dev_uses_runtime_port(views_path: Path, monkeypatch: pytest
     async def fake_wait_for_client(_client: httpx.AsyncClient) -> None:
         return None
 
-    ship = Ship(views=views_path, port=43123)
+    ship = Ship(views=views_path, vite=Vite(port=43123))
     monkeypatch.setattr("gdansk.vite.create_subprocess_exec", fake_create_subprocess_exec)
     monkeypatch.setattr(ship._context._vite, "wait_for_client", fake_wait_for_client)
 

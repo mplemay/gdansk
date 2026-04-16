@@ -16,7 +16,15 @@ from gdansk.utils import join_url
 
 
 class Vite:
-    def __init__(self, *, host: str, port: int) -> None:
+    def __init__(self, *, host: str = "127.0.0.1", port: int = 13_714) -> None:
+        if not (host := host.strip()):
+            msg = "The runtime host must not be empty"
+            raise ValueError(msg)
+
+        if port <= 0 or port > 65_535:  # noqa: PLR2004
+            msg = "The runtime port must be an integer between 1 and 65,535"
+            raise ValueError(msg)
+
         self._deno: Final[str] = find_deno_bin()
         self._host: Final[str] = host
         self._port: Final[int] = port
@@ -109,7 +117,7 @@ class Vite:
 
         msg = (
             f"The frontend dev server did not start in time ({client_url}). "
-            f'Ensure Ship(host="{self._host}", port={self._port}) matches '
+            f'Ensure Vite(host="{self._host}", port={self._port}) matches '
             f'gdansk({{ host: "{self._host}", port: {self._port} }}).'
         )
         raise RuntimeError(msg)

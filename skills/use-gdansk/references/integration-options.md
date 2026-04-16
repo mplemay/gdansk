@@ -54,7 +54,9 @@ def list_todos() -> list[Todo]:
 The default frontend runtime address is `127.0.0.1:13714`. If you change it, keep Python and Vite in sync:
 
 ```python
-ship = Ship(views=views_path, host="127.0.0.1", port=14000)
+from gdansk import Ship, Vite
+
+ship = Ship(views=views_path, vite=Vite(host="127.0.0.1", port=14000))
 ```
 
 ```ts
