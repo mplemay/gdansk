@@ -69,7 +69,7 @@ export default defineConfig({
 
 - `refresh: true` watches nearby Python and Jinja files and triggers a full browser reload during development.
 - `buildDirectory` changes the frontend output directory and should match `Ship(assets=...)`.
-- `widgetsDirectory` changes widget discovery and should match `Ship(widgets_directory=...)`.
+- Widget entry files are discovered under `widgets/` relative to the frontend package root.
 - The plugin provides a default `@` alias to the frontend package root.
 
 Example:
@@ -78,7 +78,6 @@ Example:
 ship = Ship(
     views=views_path,
     assets="public/ui",
-    widgets_directory="ui/widgets",
 )
 ```
 
@@ -87,7 +86,6 @@ export default defineConfig({
   plugins: [
     gdansk({
       buildDirectory: "public/ui",
-      widgetsDirectory: "ui/widgets",
       refresh: true,
     }),
     react(),

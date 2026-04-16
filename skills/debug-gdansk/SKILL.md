@@ -46,8 +46,7 @@ Use [path-contract.md](references/path-contract.md) for accepted and rejected wi
 - For validation errors, fix the path or duplicate registration directly.
 - For build and startup failures, inspect `vite.config.ts`, package dependencies, and bundle outputs under `dist/`.
 - For runtime host or port issues, keep `Ship(host=..., port=...)` and `gdansk({ host, port })` aligned.
-- For custom directory issues, keep `Ship(assets=..., widgets_directory=...)` and
-  `gdansk({ buildDirectory, widgetsDirectory })` aligned.
+- For build output directory mismatches, keep `Ship(assets=...)` and `gdansk({ buildDirectory })` aligned.
 - For render errors, isolate the widget's default export and runtime-safe imports first.
 - For CSS issues, confirm the styles are imported from the widget tree and emitted into the bundle.
 

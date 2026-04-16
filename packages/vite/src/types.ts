@@ -8,7 +8,6 @@ export interface GdanskPluginOptions {
   buildDirectory?: string;
   refresh?: boolean | string | string[] | RefreshConfig | RefreshConfig[];
   root?: string;
-  widgetsDirectory?: string;
   host?: string;
   port?: number;
 }

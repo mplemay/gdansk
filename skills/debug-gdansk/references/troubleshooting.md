@@ -26,7 +26,7 @@ Use exact error text to choose the fastest fix.
 2. Validate `@ship.widget(path=...)` against the path contract.
 3. Confirm the widget file exists and default-exports the component.
 4. Confirm `vite.config.ts` imports `@gdansk/vite` and the framework plugins you expect.
-5. If the repo customizes asset or widget directories, confirm `Ship(...)` and `gdansk(...)` use matching values.
+5. If the repo customizes the build output directory, confirm `Ship(assets=...)` and `gdansk({ buildDirectory })` match.
 6. Confirm the frontend package has the required dependencies.
 7. Confirm bundle outputs exist under `dist/`.
 8. For render failures, isolate runtime-safe imports and the default export first.
@@ -45,5 +45,4 @@ rg -n "export default" frontend/widgets
 find frontend/dist -type f | sort
 ```
 
-Replace `frontend/` and `frontend/widgets` with the actual frontend package and widgets directory when the repo uses
-different paths.
+Replace `frontend/` with the path to your frontend package; widget entry files always live under `<package>/widgets/`.

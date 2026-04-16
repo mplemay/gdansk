@@ -58,12 +58,6 @@ describe("@gdansk/vite", () => {
     expect(options.buildDirectory).toBe("public");
   });
 
-  it("supports overriding the widgets directory", () => {
-    const options = resolveOptions({ root: process.cwd(), widgetsDirectory: "frontend/widgets" });
-
-    expect(options.widgetsDirectory).toBe("frontend/widgets");
-  });
-
   it("injects a default @ alias for the frontend package root", async () => {
     const root = await createFixture({ withLocalPlugin: false });
     const config = await resolvePluginConfig(gdansk({}), { root }, "serve");

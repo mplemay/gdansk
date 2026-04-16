@@ -80,8 +80,7 @@ If the repo tracks `deno.lock`, keep it in sync with the edited dependencies.
 - Import `@gdansk/vite` inside the frontend package's `vite.config.ts`.
 - Rely on the plugin's default `@` alias before adding a manual one.
 - Prefer `gdansk({ refresh: true })` when backend file changes should reload the browser during development.
-- If you customize asset or widget directories, keep `Ship(assets=..., widgets_directory=...)` aligned with
-  `gdansk({ buildDirectory: ..., widgetsDirectory: ... })`.
+- If you customize the build output directory, keep `Ship(assets=...)` aligned with `gdansk({ buildDirectory: ... })`.
 
 ## Before finishing
 

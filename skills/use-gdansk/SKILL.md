@@ -66,8 +66,8 @@ Use the public integration points directly:
   need a different target.
 - Prefer `gdansk({ refresh: true })` in real app repos so nearby Python or Jinja edits trigger a full browser reload.
 - If you customize the runtime host or port, configure the same values in both `Ship(...)` and `gdansk(...)`.
-- If you customize frontend directories, keep `Ship(assets=..., widgets_directory=...)` aligned with
-  `gdansk({ buildDirectory: ..., widgetsDirectory: ... })`.
+- If you customize the build output directory, keep `Ship(assets=...)` aligned with `gdansk({ buildDirectory: ... })`.
+  Widget sources always use `widgets/` under the frontend package root.
 - Ensure the widget file default-exports the React component.
 
 Do not use filesystem-absolute paths for widget registration. Do not assume the frontend package directory must be

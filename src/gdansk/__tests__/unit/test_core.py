@@ -40,24 +40,9 @@ def test_ship_rejects_invalid_base_url(views_path: Path):
         Ship(views=views_path, base_url="/relative")
 
 
-def test_ship_supports_custom_widgets_directory(tmp_path: Path):
-    views = tmp_path / "views"
-    (views / "ui" / "widgets" / "hello").mkdir(parents=True)
-    (views / "ui" / "widgets" / "hello" / "widget.tsx").write_text("export default function App() { return null; }\n")
-
-    ship = Ship(views=views, widgets_directory="ui/widgets")
-
-    @ship.widget(path=Path("hello/widget.tsx"), name="hello")
-    def hello() -> None:
-        return None
-
-    assert ship._widgets_root == views / "ui" / "widgets"
-    assert Path("hello/widget.tsx") in ship._widget_manager
-
-
-def test_ship_rejects_invalid_widgets_directory(views_path: Path):
-    with pytest.raises(ValueError, match="widgets directory"):
-        Ship(views=views_path, widgets_directory="../widgets")
+def test_ship_widgets_root_is_views_join_widgets(views_path: Path):
+    ship = Ship(views=views_path)
+    assert ship._widgets_root == views_path / "widgets"
 
 
 def test_ship_widget_default_tool_and_resource_metadata(views_path: Path):

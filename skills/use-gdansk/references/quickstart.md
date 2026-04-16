@@ -150,13 +150,13 @@ export default defineConfig({
 repo wants `@` to resolve somewhere else. `refresh: true` adds Laravel-style full reloads for nearby Python and Jinja
 files during `vite dev`.
 
-If you need non-default frontend directories, keep Python and Vite aligned:
+If you need a non-default build output directory, keep Python and Vite aligned. Put widget sources in `widgets/` at
+the frontend package root.
 
 ```python
 ship = Ship(
     views=Path(__file__).parent / "frontend",
     assets="public/ui",
-    widgets_directory="ui/widgets",
 )
 ```
 
@@ -165,7 +165,6 @@ export default defineConfig({
   plugins: [
     gdansk({
       buildDirectory: "public/ui",
-      widgetsDirectory: "ui/widgets",
       refresh: true,
     }),
     react(),

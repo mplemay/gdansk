@@ -197,13 +197,13 @@ Python or Jinja files change during development.
 - **`watch=None`** — skips Vite/Deno entirely and loads an existing `gdansk-manifest.json` under the assets directory.
   Use this when assets are prebuilt (for example in CI) to avoid cold-start build cost.
 
-If you need non-default frontend directories, keep the Vite plugin and Python runtime aligned:
+If you need a non-default build output directory, keep the Vite plugin and Python runtime aligned. Widget sources
+always live under `widgets/` at the frontend package root (`views=` / Vite `root`).
 
 ```python
 ship = Ship(
     views=Path(__file__).parent / "frontend",
     assets="public/ui",
-    widgets_directory="ui/widgets",
 )
 ```
 
@@ -212,7 +212,6 @@ export default defineConfig({
   plugins: [
     gdansk({
       buildDirectory: "public/ui",
-      widgetsDirectory: "ui/widgets",
       refresh: true,
     }),
     react(),

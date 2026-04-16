@@ -42,7 +42,6 @@ class Ship:
         views: PathType,
         *,
         assets: str = "dist",
-        widgets_directory: str = "widgets",
         base_url: str | None = None,
         host: str = "127.0.0.1",
         port: int = 13_714,
@@ -75,7 +74,7 @@ class Ship:
         self._port: Final[int] = port
         self._views: Final[Path] = views.absolute().resolve()
         self._widgets_root: Final[Path] = self._views / self._normalize_relative_directory(
-            widgets_directory,
+            "widgets",
             name="widgets",
         )
         self._metadata: Final[Metadata] = metadata or Metadata()
