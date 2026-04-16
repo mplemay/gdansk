@@ -353,9 +353,8 @@ class Ship:
 
         assets = self._normalize_relative_directory(assets, name="assets")
         widgets_directory = self._normalize_relative_directory(widgets_directory, name="widgets")
-        max_port = 65_535
-        if port <= 0 or port > max_port:
-            msg = f"The runtime port must be an integer between 1 and {max_port}"
+        if port <= 0 or port > 65_535:  # noqa: PLR2004
+            msg = "The runtime port must be an integer between 1 and 65,535"
             raise ValueError(msg)
 
         if base_url is not None and urlparse(base_url).hostname is None:
