@@ -16,9 +16,9 @@ Use exact error text to choose the fastest fix.
 | `A tool with the name ... has already been registered` | Another tool on the same `MCPServer` already owns that name | Rename one of the tools or unify the registration site | Search for duplicated MCP tool names |
 | `The frontend runtime did not start in time` | Vite did not boot, or Python and Vite disagree on host or port | Fix the Vite startup issue and keep `Ship(host, port)` and `gdansk({ host, port })` aligned | Check `vite.config.ts`, package dependencies, and the configured host/port on both sides |
 | Backend or template edits do not trigger a browser reload | Full-reload watching is disabled | Enable `gdansk({ refresh: true })` or point `refresh` at explicit backend paths | Check `vite.config.ts` for the plugin `refresh` option |
-| `Production SSR is enabled, but the frontend build does not include .../dist/server.js` | Python enabled SSR but the frontend build stayed client-only | Enable `gdansk({ ssr: true })` to match `Ship(ssr=True)` and rebuild | Confirm both sides opt into SSR and `dist/server.js` exists |
-| `Failed to render widget ... invalid SSR payload` | SSR endpoint returned malformed JSON | Fix the SSR server implementation or the widget rendering path | Inspect the SSR response payload shape |
-| `Execution error: ...` during SSR | Server-side render threw at runtime | Fix SSR-unsafe imports or rendering logic in the widget | Reduce the widget to a minimal default export and reintroduce imports incrementally |
+| `The frontend build did not produce a production server entry .../dist/server.js` | Production build did not finish or stale output was reused | Rebuild the frontend and confirm `dist/server.js` and `dist/render.js` exist | Check `dist/` after a fresh build |
+| `Failed to render widget ... invalid render payload` | Render endpoint returned malformed JSON | Fix the render server implementation or the widget rendering path | Inspect the render response payload shape |
+| `Execution error: ...` during render | HTML rendering threw at runtime | Fix render-unsafe imports or rendering logic in the widget | Reduce the widget to a minimal default export and reintroduce imports incrementally |
 | Widget loads but CSS is missing | CSS import or asset emission issue | Ensure styles are imported from the widget tree and that CSS is emitted into `dist/` | Check for `dist/**/client.css` and whether the widget imports its styles |
 
 ## Structured diagnosis flow
@@ -30,7 +30,7 @@ Use exact error text to choose the fastest fix.
 5. If the repo customizes asset or widget directories, confirm `Ship(...)` and `gdansk(...)` use matching values.
 6. Confirm the frontend package has the required dependencies.
 7. Confirm bundle outputs exist under `dist/`.
-8. For SSR failures, isolate runtime-safe imports and the default export first.
+8. For render failures, isolate runtime-safe imports and the default export first.
 9. For CSS failures, confirm the stylesheet is imported somewhere in the widget tree.
 
 ## Minimal command set

@@ -14,8 +14,8 @@ export interface ResolvedGdanskOptions {
   buildDirectory: string;
   buildDirectoryPath: string;
   host: string;
+  renderEndpoint: string;
   root: string;
-  ssrEndpoint: string;
   port: number;
   widgetsDirectory: string;
   widgetsDirectoryPath: string;
@@ -43,8 +43,8 @@ export interface GdanskManifest {
 export interface GdanskRuntimeMetadata {
   assetOrigin: string;
   mode: "development" | "production";
-  ssrEndpoint: string;
-  ssrOrigin: string;
+  renderEndpoint: string;
+  renderOrigin: string;
   viteOrigin: string | null;
   widgets: Record<string, GdanskRuntimeWidget>;
 }
@@ -62,7 +62,7 @@ export interface GdanskRenderResponse {
 }
 export type GdanskRenderFunction = (widgetKey: string) => Promise<GdanskRenderResponse> | GdanskRenderResponse;
 export interface GdanskPreparedProject {
-  ssrEntryId: string;
+  renderEntryId: string;
   widgets: WidgetDefinition[];
 }
 export interface GdanskServerOptions {
@@ -82,7 +82,7 @@ export interface GdanskRuntime {
   manifestPath: string;
   options: ResolvedGdanskOptions;
   startDev(): Promise<GdanskRuntimeMetadata>;
-  startProductionServer(): Promise<GdanskRuntimeMetadata>;
+  startProduction(): Promise<GdanskRuntimeMetadata>;
   widgets: WidgetDefinition[];
 }
 export type LoadedProjectConfig = InlineConfig | UserConfig;

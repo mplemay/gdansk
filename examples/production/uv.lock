@@ -644,7 +644,7 @@ wheels = [
 ]
 
 [[package]]
-name = "ssr"
+name = "production"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

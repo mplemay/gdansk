@@ -101,7 +101,7 @@ After implementation:
 5. For metadata work, confirm the expected title or meta tags appear in the rendered page.
 6. For CSS changes, confirm the generated CSS file is present and referenced.
 
-If startup, bundling, or SSR fails, switch to `$debug-gdansk`.
+If startup, bundling, or rendering fails, switch to `$debug-gdansk`.
 
 ## Guardrails
 
@@ -109,7 +109,7 @@ If startup, bundling, or SSR fails, switch to `$debug-gdansk`.
   covers the task.
 - Do not invent alternative widget entry conventions such as `app.tsx`; gdansk expects `widget.tsx` or `widget.jsx`.
 - Do not use `widgets/...` as the `path` prefix in `@ship.widget(...)`.
-- Ensure each widget default-exports the app component and that its imports are SSR-compatible.
+- Ensure each widget default-exports the app component and that its imports are render-compatible.
 
 ## Reference map
 

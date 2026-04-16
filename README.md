@@ -21,7 +21,7 @@ npx skills add mplemay/gdansk
 Then use:
 
 - `$use-gdansk` to bootstrap gdansk in a new repo or add another widget to an existing integration.
-- `$debug-gdansk` to diagnose widget path, bundling, SSR, and runtime failures in an existing gdansk setup.
+- `$debug-gdansk` to diagnose widget path, bundling, render, and runtime failures in an existing gdansk setup.
 
 ## Compatibility
 
@@ -35,7 +35,7 @@ Then use:
 
 - **[FastAPI](examples/fastapi):** Mounting the MCP app inside an existing FastAPI service.
 - **[get-time](examples/get-time):** Small copyable widget example for first-time adoption in another repo.
-- **[ssr](examples/ssr):** Minimal production-rendered and hydrated widget example with a single tool.
+- **[production](examples/production):** Minimal production-rendered and hydrated widget example with a single tool.
 - **[shadcn](examples/shadcn):** Multi-tool todo app with `structured_output=True` and `shadcn/ui`.
 
 ## Quick Start
@@ -189,7 +189,7 @@ export default defineConfig({
 alias when you want `@` to resolve somewhere else. Use `refresh: true` to trigger full browser reloads when nearby
 Python or Jinja files change during development.
 
-Development mode runs the Vite dev server in the background with React refresh and the live SSR endpoint. Production
+Development mode runs the Vite dev server in the background with React refresh and the live render endpoint. Production
 mode always builds the server-rendered bundle, writes the hydration assets, and starts the runtime server from
 `dist/server.js`.
 
@@ -228,7 +228,7 @@ The default production output now mirrors Vite/Laravel conventions more closely:
 
 Production builds also include:
 
-- SSR bundles: `dist/ssr.js` and `dist/server.js`
+- render bundles: `dist/render.js` and `dist/server.js`
 
 If your MCP client renders widget HTML on a different origin, pass `base_url` to `Ship` so production asset URLs point
 back to your public app instead of the client host:

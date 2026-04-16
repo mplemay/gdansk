@@ -5,7 +5,7 @@ import type { Plugin } from "vite";
 import type { GdanskPreparedProject, ResolvedGdanskOptions, WidgetDefinition } from "./types";
 
 export const GDANSK_DEV_CLIENT_PREFIX = "/@gdansk/client";
-export const GDANSK_SSR_ENTRY_ID = "virtual:gdansk/ssr-entry";
+export const GDANSK_RENDER_ENTRY_ID = "virtual:gdansk/render-entry";
 
 const CLIENT_MODULE_PREFIX = "virtual:gdansk/client/";
 const RESOLVED_VIRTUAL_PREFIX = "\0";
@@ -54,8 +54,8 @@ export function resolveVirtualModuleId(
     return createResolvedClientModuleId(widgetByModuleId.key);
   }
 
-  if (id === GDANSK_SSR_ENTRY_ID) {
-    return resolveSSRModuleId();
+  if (id === GDANSK_RENDER_ENTRY_ID) {
+    return resolveRenderModuleId();
   }
 
   if (!importer || !id.startsWith(".")) {
@@ -80,8 +80,8 @@ export function loadVirtualModule(
     return createClientModuleSource(options, widget);
   }
 
-  if (id === resolveSSRModuleId()) {
-    return createSSRModuleSource(options, prepared.widgets);
+  if (id === resolveRenderModuleId()) {
+    return createRenderModuleSource(options, prepared.widgets);
   }
 
   return null;
@@ -113,8 +113,8 @@ function createClientModuleSource(options: ResolvedGdanskOptions, widget: Widget
   ].join("\n");
 }
 
-function createSSRModuleSource(options: ResolvedGdanskOptions, widgets: WidgetDefinition[]): string {
-  const syntheticPath = getSyntheticSSRPath(options);
+function createRenderModuleSource(options: ResolvedGdanskOptions, widgets: WidgetDefinition[]): string {
+  const syntheticPath = getSyntheticRenderPath(options);
   const imports = widgets.map((widget, index) => {
     const specifier = createImportPath(syntheticPath, widget.entry);
     return `import Widget${index} from ${JSON.stringify(specifier)};`;
@@ -172,20 +172,20 @@ function getSyntheticImporterPath(
   prepared: GdanskPreparedProject,
   importer: string,
 ): string | null {
-  if (importer === resolveSSRModuleId()) {
-    return getSyntheticSSRPath(options);
+  if (importer === resolveRenderModuleId()) {
+    return getSyntheticRenderPath(options);
   }
 
   const widget = findWidgetByResolvedId(prepared.widgets, importer);
   return widget ? getSyntheticClientPath(options, widget.key) : null;
 }
 
-function getSyntheticSSRPath(options: ResolvedGdanskOptions): string {
-  return resolve(options.root, SYNTHETIC_ROOT, "ssr-entry.ts");
+function getSyntheticRenderPath(options: ResolvedGdanskOptions): string {
+  return resolve(options.root, SYNTHETIC_ROOT, "render-entry.ts");
 }
 
-function resolveSSRModuleId(): string {
-  return `${RESOLVED_VIRTUAL_PREFIX}${GDANSK_SSR_ENTRY_ID}`;
+function resolveRenderModuleId(): string {
+  return `${RESOLVED_VIRTUAL_PREFIX}${GDANSK_RENDER_ENTRY_ID}`;
 }
 
 function toPosixPath(path: string): string {

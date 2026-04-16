@@ -23,7 +23,7 @@ type GdanskErrorResponse = {
 
 type GdanskResponsePayload = GdanskErrorResponse | GdanskRenderResponse;
 
-type ProcessSSRRequestOptions = {
+type ProcessRenderRequestOptions = {
   manifest?: GdanskManifest;
   render: GdanskRenderFunction;
   requestBody: string;
@@ -31,19 +31,24 @@ type ProcessSSRRequestOptions = {
   widgets: WidgetDefinition[];
 };
 
-type ProcessSSRRequestResult = {
+type ProcessRenderRequestResult = {
   payload: GdanskResponsePayload;
   status: 200 | 400 | 404 | 500;
 };
 
-type InstallDevSSRMiddlewareOptions = {
+type InstallDevRenderMiddlewareOptions = {
   options: ResolvedGdanskOptions;
   server: ViteDevServer;
-  ssrEntry: string;
+  renderEntry: string;
   widgets: WidgetDefinition[];
 };
 
-export function installDevSSRMiddleware({ options, server, ssrEntry, widgets }: InstallDevSSRMiddlewareOptions): void {
+export function installDevRenderMiddleware({
+  options,
+  server,
+  renderEntry,
+  widgets,
+}: InstallDevRenderMiddlewareOptions): void {
   server.middlewares.use(HEALTH_ENDPOINT, (req, res, next) => {
     if (req.method !== "GET") {
       next();
@@ -53,7 +58,7 @@ export function installDevSSRMiddleware({ options, server, ssrEntry, widgets }: 
     writeJson(res, 200, { status: "OK" });
   });
 
-  server.middlewares.use(options.ssrEndpoint, async (req, res, next) => {
+  server.middlewares.use(options.renderEndpoint, async (req, res, next) => {
     if (req.method !== "POST") {
       next();
       return;
@@ -61,8 +66,8 @@ export function installDevSSRMiddleware({ options, server, ssrEntry, widgets }: 
 
     try {
       const requestBody = await readRequestBody(req);
-      const render = await loadRenderFunction(server, ssrEntry);
-      const result = await processSSRRequest({
+      const render = await loadRenderFunction(server, renderEntry);
+      const result = await processRenderRequest({
         render,
         requestBody,
         viteServer: server,
@@ -75,16 +80,16 @@ export function installDevSSRMiddleware({ options, server, ssrEntry, widgets }: 
     }
   });
 
-  server.config.logger.info(`Gdansk SSR dev endpoint: ${options.ssrEndpoint}`);
+  server.config.logger.info(`Gdansk render dev endpoint: ${options.renderEndpoint}`);
 
   server.httpServer?.once("listening", () => {
-    server.config.logger.info("Warming up Gdansk SSR module graph...");
+    server.config.logger.info("Warming up Gdansk render module graph...");
 
     server
-      .ssrLoadModule(ssrEntry)
-      .then(() => server.config.logger.info("Gdansk SSR module graph warmed up"))
+      .ssrLoadModule(renderEntry)
+      .then(() => server.config.logger.info("Gdansk render module graph warmed up"))
       .catch((error) => {
-        server.config.logger.warn(`Failed to warm up Gdansk SSR module graph: ${getErrorMessage(error)}`);
+        server.config.logger.warn(`Failed to warm up Gdansk render module graph: ${getErrorMessage(error)}`);
       });
   });
 }
@@ -94,13 +99,13 @@ export async function importRenderFunction(path: string): Promise<GdanskRenderFu
   return resolveRenderFunction(module.default, path);
 }
 
-export async function processSSRRequest({
+export async function processRenderRequest({
   manifest,
   render,
   requestBody,
   viteServer,
   widgets,
-}: ProcessSSRRequestOptions): Promise<ProcessSSRRequestResult> {
+}: ProcessRenderRequestOptions): Promise<ProcessRenderRequestResult> {
   let payload: GdanskRenderRequest;
 
   try {
@@ -160,7 +165,7 @@ async function loadRenderFunction(server: ViteDevServer, entry: string): Promise
 
 function resolveRenderFunction(candidate: unknown, entry: string): GdanskRenderFunction {
   if (typeof candidate !== "function") {
-    throw new Error(`SSR entry "${entry}" must export a render function`);
+    throw new Error(`Render entry "${entry}" must export a render function`);
   }
 
   return candidate as GdanskRenderFunction;
@@ -168,14 +173,14 @@ function resolveRenderFunction(candidate: unknown, entry: string): GdanskRenderF
 
 function validateRenderResponse(result: unknown): GdanskRenderResponse {
   if (!result || typeof result !== "object") {
-    throw new Error("SSR render must return { head: string[], body: string }");
+    throw new Error("Render output must return { head: string[], body: string }");
   }
 
   const body = Reflect.get(result, "body");
   const head = Reflect.get(result, "head");
 
   if (typeof body !== "string" || !Array.isArray(head) || !head.every((value) => typeof value === "string")) {
-    throw new Error("SSR render must return { head: string[], body: string }");
+    throw new Error("Render output must return { head: string[], body: string }");
   }
 
   return {

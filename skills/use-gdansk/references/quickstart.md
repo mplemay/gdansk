@@ -74,8 +74,9 @@ Default production output:
 - optional `frontend/dist/hello/client.css`
 - `frontend/dist/assets/*`
 
-When production SSR is enabled with `Ship(ssr=True)` and `gdansk({ ssr: true })`, the build also includes:
+Production builds also include:
 
+- `frontend/dist/render.js`
 - `frontend/dist/server.js`
 
 ## Minimal React widget
@@ -177,7 +178,7 @@ export default defineConfig({
 });
 ```
 
-If you need a non-default SSR address, set it on both sides:
+If you need a non-default frontend runtime address, set it on both sides:
 
 ```python
 ship = Ship(views=Path(__file__).parent / "frontend", host="127.0.0.1", port=14000)
@@ -271,6 +272,7 @@ Expected for a basic hello widget:
 - `frontend/dist/hello/client.js`
 - optional `frontend/dist/hello/client.css`
 
-If production SSR is enabled with `Ship(ssr=True)` and `gdansk({ ssr: true })`, also expect:
+In production, also expect:
 
+- `frontend/dist/render.js`
 - `frontend/dist/server.js`

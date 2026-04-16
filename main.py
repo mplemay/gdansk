@@ -12,10 +12,10 @@ from gdansk import Ship
 ship = Ship(views=Path(__file__).parent / "views")
 
 
-@ship.widget(name="hello-ssr", path=Path("hello-ssr/widget.tsx"))
-def hello_ssr() -> list[TextContent]:
-    """Return a static greeting rendered from the SSR example."""
-    return [TextContent(type="text", text="Hello from the SSR example")]
+@ship.widget(name="hello", path=Path("hello/widget.tsx"))
+def hello() -> list[TextContent]:
+    """Return a static greeting rendered from the production example."""
+    return [TextContent(type="text", text="Hello from the production example")]
 
 
 @asynccontextmanager
@@ -28,7 +28,7 @@ mcp = MCPServer(name="example", lifespan=lifespan)
 
 
 def main() -> None:
-    """Run the development server for the SSR example."""
+    """Run the development server for the production example."""
     app = mcp.streamable_http_app()
     app.add_middleware(
         CORSMiddleware,

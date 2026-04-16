@@ -8,8 +8,8 @@ import { buildWidgets, readManifest } from "./build";
 import { loadUserViteConfig, prepareProject, resolveOptions } from "./context";
 import { resolveViteOrigin } from "./css";
 import { createRefreshPlugin } from "./development";
+import { installDevRenderMiddleware, importRenderFunction } from "./render";
 import { startGdanskServer } from "./server";
-import { installDevSSRMiddleware, importRenderFunction } from "./ssr";
 import type {
   GdanskManifest,
   GdanskPluginOptions,
@@ -85,10 +85,10 @@ class GdanskRuntimeImpl implements GdanskRuntime {
       }),
     );
 
-    installDevSSRMiddleware({
+    installDevRenderMiddleware({
       options: this.options,
       server: this.#viteServer,
-      ssrEntry: prepared.ssrEntryId,
+      renderEntry: prepared.renderEntryId,
       widgets: prepared.widgets,
     });
 
@@ -99,8 +99,8 @@ class GdanskRuntimeImpl implements GdanskRuntime {
     return {
       assetOrigin: origin,
       mode: "development",
-      ssrEndpoint: this.options.ssrEndpoint,
-      ssrOrigin: origin,
+      renderEndpoint: this.options.renderEndpoint,
+      renderOrigin: origin,
       viteOrigin: origin,
       widgets: Object.fromEntries(
         prepared.widgets.map((widget) => [widget.key, { clientPath: widget.clientDevEntry }]),
@@ -108,7 +108,7 @@ class GdanskRuntimeImpl implements GdanskRuntime {
     };
   }
 
-  async startProductionServer(): Promise<GdanskRuntimeMetadata> {
+  async startProduction(): Promise<GdanskRuntimeMetadata> {
     await this.close();
     const prepared = await this.prepare();
 
@@ -127,8 +127,8 @@ class GdanskRuntimeImpl implements GdanskRuntime {
     return {
       assetOrigin: this.#server.origin,
       mode: "production",
-      ssrEndpoint: this.options.ssrEndpoint,
-      ssrOrigin: this.#server.origin,
+      renderEndpoint: this.options.renderEndpoint,
+      renderOrigin: this.#server.origin,
       viteOrigin: null,
       widgets: Object.fromEntries(
         Object.entries(this.#manifest.widgets).map(([key, widget]) => [key, { clientPath: `/${widget.client}` }]),

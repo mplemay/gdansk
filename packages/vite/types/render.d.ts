@@ -15,35 +15,35 @@ type GdanskErrorResponse = {
   };
 };
 type GdanskResponsePayload = GdanskErrorResponse | GdanskRenderResponse;
-type ProcessSSRRequestOptions = {
+type ProcessRenderRequestOptions = {
   manifest?: GdanskManifest;
   render: GdanskRenderFunction;
   requestBody: string;
   viteServer?: ViteDevServer;
   widgets: WidgetDefinition[];
 };
-type ProcessSSRRequestResult = {
+type ProcessRenderRequestResult = {
   payload: GdanskResponsePayload;
   status: 200 | 400 | 404 | 500;
 };
-type InstallDevSSRMiddlewareOptions = {
+type InstallDevRenderMiddlewareOptions = {
   options: ResolvedGdanskOptions;
   server: ViteDevServer;
-  ssrEntry: string;
+  renderEntry: string;
   widgets: WidgetDefinition[];
 };
-export declare function installDevSSRMiddleware({
+export declare function installDevRenderMiddleware({
   options,
   server,
-  ssrEntry,
+  renderEntry,
   widgets,
-}: InstallDevSSRMiddlewareOptions): void;
+}: InstallDevRenderMiddlewareOptions): void;
 export declare function importRenderFunction(path: string): Promise<GdanskRenderFunction>;
-export declare function processSSRRequest({
+export declare function processRenderRequest({
   manifest,
   render,
   requestBody,
   viteServer,
   widgets,
-}: ProcessSSRRequestOptions): Promise<ProcessSSRRequestResult>;
+}: ProcessRenderRequestOptions): Promise<ProcessRenderRequestResult>;
 export {};

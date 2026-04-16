@@ -11,21 +11,21 @@ import type {
   ResolvedGdanskOptions,
   WidgetDefinition,
 } from "./types";
-import { createClientDevEntry, createClientModuleId, GDANSK_SSR_ENTRY_ID } from "./virtual";
+import { createClientDevEntry, createClientModuleId, GDANSK_RENDER_ENTRY_ID } from "./virtual";
 
 export function resolveOptions(options: GdanskPluginOptions = {}, configRoot?: string): ResolvedGdanskOptions {
   const root = resolve(configRoot ?? options.root ?? process.cwd());
   const widgetsDirectory = options.widgetsDirectory ?? "widgets";
   const buildDirectory = options.buildDirectory ?? "dist";
   const host = options.host ?? "127.0.0.1";
-  const ssrEndpoint = "/ssr";
+  const renderEndpoint = "/render";
 
   return {
     buildDirectory,
     buildDirectoryPath: resolve(root, buildDirectory),
     host,
+    renderEndpoint,
     root,
-    ssrEndpoint,
     port: options.port ?? 13714,
     widgetsDirectory,
     widgetsDirectoryPath: resolve(root, widgetsDirectory),
@@ -93,7 +93,7 @@ export async function prepareProject(options: ResolvedGdanskOptions): Promise<Gd
   const widgets = await discoverWidgets(options);
 
   return {
-    ssrEntryId: GDANSK_SSR_ENTRY_ID,
+    renderEntryId: GDANSK_RENDER_ENTRY_ID,
     widgets,
   };
 }

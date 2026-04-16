@@ -1,6 +1,6 @@
 ---
 name: debug-gdansk
-description: Debugging guide for broken gdansk integrations. Use when a gdansk widget fails to register, the frontend bundle or SSR runtime does not start, a `Ship` views path is wrong, widget output or CSS is missing, host and port configuration disagree, or an existing gdansk MCP app needs error-driven diagnosis.
+description: Debugging guide for broken gdansk integrations. Use when a gdansk widget fails to register, the frontend bundle or render runtime does not start, a `Ship` views path is wrong, widget output or CSS is missing, host and port configuration disagree, or an existing gdansk MCP app needs error-driven diagnosis.
 ---
 
 # Debug Gdansk
@@ -20,8 +20,8 @@ Classify the issue before editing:
    - Vite runtime never becomes healthy.
    - Production server bundle is missing.
    - Client bundle output is missing.
-3. SSR or browser runtime failure:
-   - SSR request returns an execution error.
+3. Render or browser runtime failure:
+   - Render request returns an execution error.
    - Rendered HTML is invalid or missing scripts.
    - CSS is not emitted or not loaded.
 
@@ -48,7 +48,7 @@ Use [path-contract.md](references/path-contract.md) for accepted and rejected wi
 - For runtime host or port issues, keep `Ship(host=..., port=...)` and `gdansk({ host, port })` aligned.
 - For custom directory issues, keep `Ship(assets=..., widgets_directory=...)` and
   `gdansk({ buildDirectory, widgetsDirectory })` aligned.
-- For SSR errors, isolate the widget's default export and runtime-safe imports first.
+- For render errors, isolate the widget's default export and runtime-safe imports first.
 - For CSS issues, confirm the styles are imported from the widget tree and emitted into the bundle.
 
 Use [troubleshooting.md](references/troubleshooting.md) for error-to-fix mapping.

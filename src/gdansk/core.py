@@ -39,7 +39,7 @@ DEFAULT_ASSETS_DIR: Final[str] = "dist"
 DEFAULT_WIDGETS_DIR: Final[str] = "widgets"
 HEALTH_ENDPOINT: Final[str] = "/health"
 MAX_RUNTIME_PORT: Final[int] = 65535
-SSR_ENDPOINT: Final[str] = "/ssr"
+RENDER_ENDPOINT: Final[str] = "/render"
 
 
 class HealthCheck(BaseModel):
@@ -120,7 +120,7 @@ class ShipContext:
     async def render_widget_page(self, *, metadata: Metadata | None, widget_key: str) -> str:
         if self._dev:
             runtime_origin = self._require_runtime_origin()
-            rendered = await self._render_with_ssr_server(runtime_origin=runtime_origin, widget_key=widget_key)
+            rendered = await self._render_with_render_server(runtime_origin=runtime_origin, widget_key=widget_key)
             scripts = [
                 join_url(runtime_origin, "/@vite/client"),
                 join_url(runtime_origin, self._development_asset_path(widget_key=widget_key)),
@@ -128,7 +128,7 @@ class ShipContext:
             body = rendered.body
             head = rendered.head
         else:
-            rendered = await self._render_with_ssr_server(
+            rendered = await self._render_with_render_server(
                 runtime_origin=self._require_runtime_origin(),
                 widget_key=widget_key,
             )
@@ -174,13 +174,13 @@ class ShipContext:
     def _development_asset_path(*, widget_key: str) -> str:
         return PurePosixPath(DEV_CLIENT_PREFIX, f"{widget_key}.tsx").as_posix()
 
-    async def _render_with_ssr_server(self, *, runtime_origin: str, widget_key: str) -> GdanskRenderResponse:
+    async def _render_with_render_server(self, *, runtime_origin: str, widget_key: str) -> GdanskRenderResponse:
         payload = {"widget": widget_key}
         if (asset_base_url := self._asset_base_url()) is not None:
             payload["assetBaseUrl"] = asset_base_url
 
         response = await self._client.post(
-            join_url(runtime_origin, SSR_ENDPOINT),
+            join_url(runtime_origin, RENDER_ENDPOINT),
             json=payload,
         )
 
@@ -191,7 +191,7 @@ class ShipContext:
         try:
             return GdanskRenderResponse.model_validate_json(response.text)
         except ValidationError as e:
-            msg = f'Failed to render widget "{widget_key}": invalid SSR payload'
+            msg = f'Failed to render widget "{widget_key}": invalid render payload'
             raise TypeError(msg) from e
 
     @staticmethod

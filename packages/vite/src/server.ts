@@ -2,7 +2,7 @@ import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 
-import { HEALTH_ENDPOINT, processSSRRequest } from "./ssr";
+import { HEALTH_ENDPOINT, processRenderRequest } from "./render";
 import type { GdanskServerHandle, GdanskServerOptions } from "./types";
 
 export async function startGdanskServer(options: GdanskServerOptions): Promise<GdanskServerHandle> {
@@ -11,9 +11,9 @@ export async function startGdanskServer(options: GdanskServerOptions): Promise<G
 
   app.get(HEALTH_ENDPOINT, (c) => c.json({ status: "OK" }));
 
-  app.post(options.options.ssrEndpoint, async (c) => {
+  app.post(options.options.renderEndpoint, async (c) => {
     const requestBody = await c.req.text();
-    const result = await processSSRRequest({
+    const result = await processRenderRequest({
       manifest: options.manifest,
       render: options.render,
       requestBody,

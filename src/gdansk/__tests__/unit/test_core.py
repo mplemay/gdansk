@@ -41,7 +41,7 @@ class FakeClient:
         self.calls: list[tuple[str, dict[str, str]]] = []
         self.get_calls: list[tuple[str, float | None]] = []
         self.health_payload: dict[str, Any] = {"status": "OK"}
-        self.ssr_payload: dict[str, Any] | None = None
+        self.render_payload: dict[str, Any] | None = None
 
     async def get(self, url: str, **kwargs: float | None) -> FakeResponse:
         timeout = kwargs.get("timeout")
@@ -50,10 +50,10 @@ class FakeClient:
 
     async def post(self, url: str, *, json: dict[str, str]) -> FakeResponse:
         self.calls.append((url, json))
-        if self.ssr_payload is not None:
-            return FakeResponse(payload=self.ssr_payload)
+        if self.render_payload is not None:
+            return FakeResponse(payload=self.render_payload)
         return FakeResponse(
-            body="<main>Hello from SSR</main>",
+            body="<main>Hello from production</main>",
             head=['<meta name="robots" content="noindex" />'],
         )
 
@@ -104,7 +104,7 @@ def write_manifest(views: Path, *, assets_dir: str = "dist") -> None:
             },
         },
     }
-    manifest["server"] = f"{assets_dir}/ssr.js"
+    manifest["server"] = f"{assets_dir}/render.js"
 
     path = views / assets_dir / "gdansk-manifest.json"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -182,20 +182,20 @@ async def test_widget_resource_renders_complete_document(views_path: Path):
         return None
 
     ship._context._dev = True
-    ship._context._runtime_origin = "http://ssr.test"
+    ship._context._runtime_origin = "http://render.test"
 
     html = await ship._widget_manager[Path("hello/widget.tsx")].resource.read()
     assert isinstance(html, str)
 
-    assert client.calls == [("http://ssr.test/ssr", {"widget": "hello"})]
+    assert client.calls == [("http://render.test/render", {"widget": "hello"})]
     assert "<title>Base title</title>" in html
     assert '<meta name="description" content="Widget description" />' in html
     assert '<meta name="robots" content="noindex" />' in html
-    assert 'import RefreshRuntime from "http://ssr.test/@react-refresh"' in html
+    assert 'import RefreshRuntime from "http://render.test/@react-refresh"' in html
     assert "window.__vite_plugin_react_preamble_installed__ = true" in html
-    assert '<div id="root"><main>Hello from SSR</main></div>' in html
-    assert '<script type="module" src="http://ssr.test/@vite/client"></script>' in html
-    assert '<script type="module" src="http://ssr.test/@gdansk/client/hello.tsx"></script>' in html
+    assert '<div id="root"><main>Hello from production</main></div>' in html
+    assert '<script type="module" src="http://render.test/@vite/client"></script>' in html
+    assert '<script type="module" src="http://render.test/@gdansk/client/hello.tsx"></script>' in html
 
 
 async def test_widget_resource_renders_production_scripts(views_path: Path):
@@ -209,12 +209,12 @@ async def test_widget_resource_renders_production_scripts(views_path: Path):
     def hello() -> None:
         return None
 
-    ship._context._runtime_origin = "http://ssr.test"
+    ship._context._runtime_origin = "http://render.test"
 
     html = await ship._widget_manager[Path("hello/widget.tsx")].resource.read()
     assert isinstance(html, str)
 
-    assert client.calls == [("http://ssr.test/ssr", {"widget": "hello"})]
+    assert client.calls == [("http://render.test/render", {"widget": "hello"})]
     assert "@react-refresh" not in html
     assert "__vite_plugin_react_preamble_installed__" not in html
     assert '<script type="module" src="/dist/hello/client.js"></script>' in html
@@ -233,12 +233,12 @@ async def test_widget_resource_uses_custom_assets_dir_for_production_scripts(vie
     def hello() -> None:
         return None
 
-    ship._context._runtime_origin = "http://ssr.test"
+    ship._context._runtime_origin = "http://render.test"
 
     html = await ship._widget_manager[Path("hello/widget.tsx")].resource.read()
     assert isinstance(html, str)
 
-    assert client.calls == [("http://ssr.test/ssr", {"widget": "hello"})]
+    assert client.calls == [("http://render.test/render", {"widget": "hello"})]
     assert '<script type="module" src="/public/hello/client.js"></script>' in html
 
 
@@ -254,23 +254,23 @@ async def test_widget_resource_uses_base_url_for_production_assets(views_path: P
     def hello() -> None:
         return None
 
-    ship._context._runtime_origin = "http://ssr.test"
+    ship._context._runtime_origin = "http://render.test"
 
     html = await ship._widget_manager[Path("hello/widget.tsx")].resource.read()
     assert isinstance(html, str)
 
     assert client.calls == [
         (
-            "http://ssr.test/ssr",
+            "http://render.test/render",
             {"assetBaseUrl": "https://example.com/app/dist", "widget": "hello"},
         ),
     ]
     assert '<script type="module" src="https://example.com/app/dist/hello/client.js"></script>' in html
 
 
-async def test_widget_resource_raises_on_invalid_ssr_payload(views_path: Path):
+async def test_widget_resource_raises_on_invalid_render_payload(views_path: Path):
     client = FakeClient()
-    client.ssr_payload = {"body": "<main>x</main>", "head": "not-a-list"}
+    client.render_payload = {"body": "<main>x</main>", "head": "not-a-list"}
     ship = Ship(
         views=views_path,
         client=cast("AsyncClient", client),
@@ -281,9 +281,9 @@ async def test_widget_resource_raises_on_invalid_ssr_payload(views_path: Path):
         return None
 
     ship._context._dev = True
-    ship._context._runtime_origin = "http://ssr.test"
+    ship._context._runtime_origin = "http://render.test"
 
-    with pytest.raises(TypeError, match="invalid SSR payload"):
+    with pytest.raises(TypeError, match="invalid render payload"):
         await ship._context.render_widget_page(metadata=None, widget_key="hello")
 
 
