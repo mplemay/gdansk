@@ -57,13 +57,10 @@ class Ship:
             msg = f"The views directory (i.e. {views}) is not a directory"
             raise ValueError(msg)
 
-        host = host.strip()
-        if not host:
+        if not (host := host.strip()):
             msg = "The runtime host must not be empty"
             raise ValueError(msg)
 
-        assets = self._normalize_relative_directory(assets, name="assets")
-        widgets_directory = self._normalize_relative_directory(widgets_directory, name="widgets")
         if port <= 0 or port > 65_535:  # noqa: PLR2004
             msg = "The runtime port must be an integer between 1 and 65,535"
             raise ValueError(msg)
@@ -72,12 +69,15 @@ class Ship:
             msg = "The base URL must be an absolute URL with a hostname"
             raise ValueError(msg)
 
-        self._assets_dir: Final[str] = assets
+        self._assets_dir: Final[str] = self._normalize_relative_directory(assets, name="assets")
         self._base_url: Final[str | None] = base_url
         self._host: Final[str] = host
         self._port: Final[int] = port
         self._views: Final[Path] = views.absolute().resolve()
-        self._widgets_root: Final[Path] = self._views / widgets_directory
+        self._widgets_root: Final[Path] = self._views / self._normalize_relative_directory(
+            widgets_directory,
+            name="widgets",
+        )
         self._metadata: Final[Metadata] = metadata or Metadata()
         self._widget_manager: dict[Path, WidgetSpec] = {}
         self._context: Final[ShipContext] = ShipContext(
