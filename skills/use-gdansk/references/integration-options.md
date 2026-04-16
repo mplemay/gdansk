@@ -160,10 +160,6 @@ The default production output is:
 - `dist/<widget>/client.js` and `dist/<widget>/client.css` for stable widget entry assets
 - `dist/assets/*` for shared hashed assets and chunks
 
-Production builds also include:
-
-- `dist/render.js` and `dist/server.js`
-
 ## Styling and Tailwind
 
 Style widgets with normal frontend tooling in the frontend package (for example PostCSS, Tailwind, or component

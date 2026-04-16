@@ -74,11 +74,6 @@ Default production output:
 - optional `frontend/dist/hello/client.css`
 - `frontend/dist/assets/*`
 
-Production builds also include:
-
-- `frontend/dist/render.js`
-- `frontend/dist/server.js`
-
 ## Minimal React widget
 
 `frontend/widgets/hello/widget.tsx`
@@ -271,8 +266,3 @@ Expected for a basic hello widget:
 
 - `frontend/dist/hello/client.js`
 - optional `frontend/dist/hello/client.css`
-
-In production, also expect:
-
-- `frontend/dist/render.js`
-- `frontend/dist/server.js`

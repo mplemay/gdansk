@@ -2,7 +2,6 @@ import type { Plugin } from "vite";
 
 import type { GdanskPreparedProject, ResolvedGdanskOptions } from "./types";
 export declare const GDANSK_DEV_CLIENT_PREFIX = "/@gdansk/client";
-export declare const GDANSK_RENDER_ENTRY_ID = "virtual:gdansk/render-entry";
 export declare function createGdanskVirtualModulesPlugin(
   options: ResolvedGdanskOptions,
   prepared: GdanskPreparedProject,

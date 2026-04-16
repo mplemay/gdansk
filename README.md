@@ -189,9 +189,9 @@ export default defineConfig({
 alias when you want `@` to resolve somewhere else. Use `refresh: true` to trigger full browser reloads when nearby
 Python or Jinja files change during development.
 
-Development mode runs the Vite dev server in the background with React refresh and the live render endpoint. Production
-mode always builds the server-rendered bundle, writes the hydration assets, and starts the runtime server from
-`dist/server.js`.
+Development mode runs the Vite dev server in the background with React refresh and serves JS/CSS from the Vite origin.
+Production mode builds static hydration assets plus the gdansk manifest, then lets your Python app serve those files
+from `ship.assets`.
 
 If you need non-default frontend directories, keep the Vite plugin and Python runtime aligned:
 
@@ -225,10 +225,6 @@ The default production output now mirrors Vite/Laravel conventions more closely:
 - gdansk runtime manifest: `dist/gdansk-manifest.json`
 - stable widget entries: `dist/<widget>/client.js` and `dist/<widget>/client.css`
 - shared hashed assets and chunks: `dist/assets/*`
-
-Production builds also include:
-
-- render bundles: `dist/render.js` and `dist/server.js`
 
 If your MCP client renders widget HTML on a different origin, pass `base_url` to `Ship` so production asset URLs point
 back to your public app instead of the client host:

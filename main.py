@@ -20,7 +20,7 @@ def hello() -> list[TextContent]:
 
 @asynccontextmanager
 async def lifespan(app: MCPServer) -> AsyncIterator[None]:
-    async with ship.mcp(app=app, dev=True) as context:
+    async with ship.mcp(app=app, dev=False) as context:
         yield context
 
 
@@ -28,7 +28,7 @@ mcp = MCPServer(name="example", lifespan=lifespan)
 
 
 def main() -> None:
-    """Run the development server for the production example."""
+    """Run the production example server."""
     app = mcp.streamable_http_app()
     app.add_middleware(
         CORSMiddleware,

@@ -9,7 +9,7 @@ import pytest
 from httpx import Request, RequestError
 from starlette.staticfiles import StaticFiles
 
-from gdansk.core import Ship
+from gdansk.core import GdanskManifest, Ship
 from gdansk.metadata import Metadata
 
 if TYPE_CHECKING:
@@ -19,43 +19,19 @@ if TYPE_CHECKING:
 
 
 class FakeResponse:
-    def __init__(
-        self,
-        *,
-        body: str = "",
-        head: list[str] | None = None,
-        payload: dict[str, Any] | None = None,
-        status_code: int = 200,
-        raw_text: str | None = None,
-    ) -> None:
-        self._payload = payload if payload is not None else {"body": body, "head": head or []}
+    def __init__(self, *, status_code: int = 200) -> None:
         self.status_code = status_code
-        self.text = raw_text if raw_text is not None else json.dumps(self._payload)
-
-    def json(self) -> dict[str, Any]:
-        return cast("dict[str, Any]", self._payload)
 
 
 class FakeClient:
     def __init__(self) -> None:
-        self.calls: list[tuple[str, dict[str, str]]] = []
         self.get_calls: list[tuple[str, float | None]] = []
-        self.health_payload: dict[str, Any] = {"status": "OK"}
-        self.render_payload: dict[str, Any] | None = None
+        self.status_code = 200
 
     async def get(self, url: str, **kwargs: float | None) -> FakeResponse:
         timeout = kwargs.get("timeout")
         self.get_calls.append((url, timeout))
-        return FakeResponse(payload=self.health_payload)
-
-    async def post(self, url: str, *, json: dict[str, str]) -> FakeResponse:
-        self.calls.append((url, json))
-        if self.render_payload is not None:
-            return FakeResponse(payload=self.render_payload)
-        return FakeResponse(
-            body="<main>Hello from production</main>",
-            head=['<meta name="robots" content="noindex" />'],
-        )
+        return FakeResponse(status_code=self.status_code)
 
 
 class FakeProcess:
@@ -92,19 +68,19 @@ def views_path(tmp_path: Path) -> Path:
     return views
 
 
-def write_manifest(views: Path, *, assets_dir: str = "dist") -> None:
+def write_manifest(views: Path, *, assets_dir: str = "dist", manifest_out_dir: str | None = None) -> None:
+    out_dir = manifest_out_dir or assets_dir
     manifest: dict[str, Any] = {
-        "outDir": assets_dir,
+        "outDir": out_dir,
         "root": str(views),
         "widgets": {
             "hello": {
-                "client": f"{assets_dir}/hello/client.js",
-                "css": [f"{assets_dir}/hello/client.css"],
+                "client": f"{out_dir}/hello/client.js",
+                "css": [f"{out_dir}/hello/client.css"],
                 "entry": "hello/widget.tsx",
             },
         },
     }
-    manifest["server"] = f"{assets_dir}/render.js"
 
     path = views / assets_dir / "gdansk-manifest.json"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -158,22 +134,20 @@ def test_ship_rejects_invalid_widgets_directory(views_path: Path):
         Ship(views=views_path, widgets_directory="../widgets")
 
 
-async def test_wait_for_health_reads_endpoint(views_path: Path):
+async def test_wait_for_vite_reads_vite_client_endpoint(views_path: Path):
     client = FakeClient()
     ship = Ship(views=views_path, client=cast("AsyncClient", client))
     ship._context._frontend = cast("Any", FakeProcess())
-    ship._context._runtime_origin = "http://runtime.test"
+    ship._context._vite_origin = "http://runtime.test"
 
-    await ship._context._wait_for_health()
+    await ship._context._wait_for_vite()
 
-    assert client.get_calls == [("http://runtime.test/health", 0.2)]
+    assert client.get_calls == [("http://runtime.test/@vite/client", 0.2)]
 
 
 async def test_widget_resource_renders_complete_document(views_path: Path):
-    client = FakeClient()
     ship = Ship(
         views=views_path,
-        client=cast("AsyncClient", client),
         metadata=Metadata(title="Base title"),
     )
 
@@ -182,108 +156,85 @@ async def test_widget_resource_renders_complete_document(views_path: Path):
         return None
 
     ship._context._dev = True
-    ship._context._runtime_origin = "http://render.test"
+    ship._context._vite_origin = "http://render.test"
 
     html = await ship._widget_manager[Path("hello/widget.tsx")].resource.read()
     assert isinstance(html, str)
 
-    assert client.calls == [("http://render.test/render", {"widget": "hello"})]
     assert "<title>Base title</title>" in html
     assert '<meta name="description" content="Widget description" />' in html
-    assert '<meta name="robots" content="noindex" />' in html
     assert 'import RefreshRuntime from "http://render.test/@react-refresh"' in html
     assert "window.__vite_plugin_react_preamble_installed__ = true" in html
-    assert '<div id="root"><main>Hello from production</main></div>' in html
+    assert '<div id="root"></div>' in html
     assert '<script type="module" src="http://render.test/@vite/client"></script>' in html
     assert '<script type="module" src="http://render.test/@gdansk/client/hello.tsx"></script>' in html
 
 
 async def test_widget_resource_renders_production_scripts(views_path: Path):
-    client = FakeClient()
-    ship = Ship(
-        views=views_path,
-        client=cast("AsyncClient", client),
-    )
+    write_manifest(views_path)
+    ship = Ship(views=views_path)
 
     @ship.widget(path=Path("hello/widget.tsx"), name="hello")
     def hello() -> None:
         return None
 
-    ship._context._runtime_origin = "http://render.test"
+    ship._context._manifest = ship._context._load_manifest()
 
     html = await ship._widget_manager[Path("hello/widget.tsx")].resource.read()
     assert isinstance(html, str)
 
-    assert client.calls == [("http://render.test/render", {"widget": "hello"})]
     assert "@react-refresh" not in html
     assert "__vite_plugin_react_preamble_installed__" not in html
+    assert '<div id="root"></div>' in html
+    assert '<link rel="stylesheet" href="/dist/hello/client.css">' in html
     assert '<script type="module" src="/dist/hello/client.js"></script>' in html
     assert "/@vite/client" not in html
 
 
 async def test_widget_resource_uses_custom_assets_dir_for_production_scripts(views_path: Path):
-    client = FakeClient()
-    ship = Ship(
-        views=views_path,
-        assets="public",
-        client=cast("AsyncClient", client),
-    )
+    write_manifest(views_path, assets_dir="public")
+    ship = Ship(views=views_path, assets="public")
 
     @ship.widget(path=Path("hello/widget.tsx"), name="hello")
     def hello() -> None:
         return None
 
-    ship._context._runtime_origin = "http://render.test"
+    ship._context._manifest = ship._context._load_manifest()
 
     html = await ship._widget_manager[Path("hello/widget.tsx")].resource.read()
     assert isinstance(html, str)
 
-    assert client.calls == [("http://render.test/render", {"widget": "hello"})]
+    assert '<link rel="stylesheet" href="/public/hello/client.css">' in html
     assert '<script type="module" src="/public/hello/client.js"></script>' in html
 
 
 async def test_widget_resource_uses_base_url_for_production_assets(views_path: Path):
-    client = FakeClient()
-    ship = Ship(
-        views=views_path,
-        base_url="https://example.com/app",
-        client=cast("AsyncClient", client),
-    )
+    write_manifest(views_path)
+    ship = Ship(views=views_path, base_url="https://example.com/app")
 
     @ship.widget(path=Path("hello/widget.tsx"), name="hello")
     def hello() -> None:
         return None
 
-    ship._context._runtime_origin = "http://render.test"
+    ship._context._manifest = ship._context._load_manifest()
 
     html = await ship._widget_manager[Path("hello/widget.tsx")].resource.read()
     assert isinstance(html, str)
 
-    assert client.calls == [
-        (
-            "http://render.test/render",
-            {"assetBaseUrl": "https://example.com/app/dist", "widget": "hello"},
-        ),
-    ]
+    assert '<link rel="stylesheet" href="https://example.com/app/dist/hello/client.css">' in html
     assert '<script type="module" src="https://example.com/app/dist/hello/client.js"></script>' in html
 
 
-async def test_widget_resource_raises_on_invalid_render_payload(views_path: Path):
-    client = FakeClient()
-    client.render_payload = {"body": "<main>x</main>", "head": "not-a-list"}
-    ship = Ship(
-        views=views_path,
-        client=cast("AsyncClient", client),
-    )
+async def test_widget_resource_raises_when_manifest_is_missing_widget(views_path: Path):
+    ship = Ship(views=views_path)
 
     @ship.widget(path=Path("hello/widget.tsx"), name="hello")
     def hello() -> None:
         return None
 
-    ship._context._dev = True
-    ship._context._runtime_origin = "http://render.test"
+    ship._context._manifest = GdanskManifest(outDir="dist", root=str(views_path), widgets={})
 
-    with pytest.raises(TypeError, match="invalid render payload"):
+    with pytest.raises(RuntimeError, match='does not contain the widget "hello"'):
         await ship._context.render_widget_page(metadata=None, widget_key="hello")
 
 
@@ -309,7 +260,9 @@ async def test_run_build_uses_the_views_vite_entrypoint(views_path: Path, monkey
     await ship._context._run_build()
 
     assert captured_args == (
-        ship._context._deno,
+        "uv",
+        "run",
+        "deno",
         "run",
         "-A",
         "--node-modules-dir=auto",
@@ -321,7 +274,7 @@ async def test_run_build_uses_the_views_vite_entrypoint(views_path: Path, monkey
     assert "env" not in captured_kwargs
 
 
-async def test_wait_for_health_timeout_mentions_matching_ship_and_plugin_config(
+async def test_wait_for_vite_timeout_mentions_matching_ship_and_plugin_config(
     views_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -340,11 +293,11 @@ async def test_wait_for_health_timeout_mentions_matching_ship_and_plugin_config(
         client=cast("AsyncClient", UnreachableClient()),
     )
     ship._context._frontend = cast("Any", FakeProcess())
-    ship._context._runtime_origin = "http://localhost:43123"
+    ship._context._vite_origin = "http://localhost:43123"
     monkeypatch.setattr("gdansk.core.sleep", fake_sleep)
 
     with pytest.raises(RuntimeError) as exc_info:
-        await ship._context._wait_for_health()
+        await ship._context._wait_for_vite()
 
     error = str(exc_info.value)
     assert 'Ensure Ship(host="localhost", port=43123)' in error
@@ -358,17 +311,17 @@ async def test_ship_context_open_cleans_up_runtime_on_exit(views_path: Path, mon
     async def fake_create_subprocess_exec(*_args: str, **_kwargs: object) -> FakeManagedProcess:
         return process
 
-    async def fake_wait_for_health() -> None:
+    async def fake_wait_for_vite() -> None:
         return None
 
     monkeypatch.setattr("gdansk.core.create_subprocess_exec", fake_create_subprocess_exec)
-    monkeypatch.setattr(ship._context, "_wait_for_health", fake_wait_for_health)
+    monkeypatch.setattr(ship._context, "_wait_for_vite", fake_wait_for_vite)
 
     async with ship._context.open(dev=True):
         assert ship._context._active is True
         assert ship._context._dev is True
         assert ship._context._frontend is process
-        assert ship._context._runtime_origin == "http://127.0.0.1:13714"
+        assert ship._context._vite_origin == "http://127.0.0.1:13714"
 
     assert process.terminated is True
     assert process.killed is False
@@ -376,7 +329,8 @@ async def test_ship_context_open_cleans_up_runtime_on_exit(views_path: Path, mon
     assert ship._context._active is False
     assert ship._context._dev is False
     assert ship._context._frontend is None
-    assert ship._context._runtime_origin is None
+    assert ship._context._vite_origin is None
+    assert ship._context._manifest is None
 
 
 async def test_ship_context_open_cleans_up_runtime_on_start_failure(views_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -386,12 +340,12 @@ async def test_ship_context_open_cleans_up_runtime_on_start_failure(views_path: 
     async def fake_create_subprocess_exec(*_args: str, **_kwargs: object) -> FakeManagedProcess:
         return process
 
-    async def fake_wait_for_health() -> None:
+    async def fake_wait_for_vite() -> None:
         msg = "boom"
         raise RuntimeError(msg)
 
     monkeypatch.setattr("gdansk.core.create_subprocess_exec", fake_create_subprocess_exec)
-    monkeypatch.setattr(ship._context, "_wait_for_health", fake_wait_for_health)
+    monkeypatch.setattr(ship._context, "_wait_for_vite", fake_wait_for_vite)
 
     with pytest.raises(RuntimeError, match="boom"):
         async with ship._context.open(dev=True):
@@ -403,7 +357,8 @@ async def test_ship_context_open_cleans_up_runtime_on_start_failure(views_path: 
     assert ship._context._active is False
     assert ship._context._dev is False
     assert ship._context._frontend is None
-    assert ship._context._runtime_origin is None
+    assert ship._context._vite_origin is None
+    assert ship._context._manifest is None
 
 
 async def test_ship_context_open_preserves_startup_error_when_runtime_exits_during_cleanup(
@@ -436,7 +391,7 @@ async def test_ship_context_open_preserves_startup_error_when_runtime_exits_duri
     async def fake_sleep(_: float) -> None:
         return None
 
-    async def fake_wait_for_health() -> None:
+    async def fake_wait_for_vite() -> None:
         msg = "boom"
         raise RuntimeError(msg)
 
@@ -444,7 +399,7 @@ async def test_ship_context_open_preserves_startup_error_when_runtime_exits_duri
     ship = Ship(views=views_path)
     monkeypatch.setattr("gdansk.core.create_subprocess_exec", fake_create_subprocess_exec)
     monkeypatch.setattr("gdansk.core.sleep", fake_sleep)
-    monkeypatch.setattr(ship._context, "_wait_for_health", fake_wait_for_health)
+    monkeypatch.setattr(ship._context, "_wait_for_vite", fake_wait_for_vite)
 
     with pytest.raises(RuntimeError, match="boom"):
         async with ship._context.open(dev=True):
@@ -456,7 +411,8 @@ async def test_ship_context_open_preserves_startup_error_when_runtime_exits_duri
     assert ship._context._active is False
     assert ship._context._dev is False
     assert ship._context._frontend is None
-    assert ship._context._runtime_origin is None
+    assert ship._context._vite_origin is None
+    assert ship._context._manifest is None
 
 
 async def test_start_dev_uses_runtime_port(views_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -467,18 +423,20 @@ async def test_start_dev_uses_runtime_port(views_path: Path, monkeypatch: pytest
         captured_args = args
         return FakeManagedProcess()
 
-    async def fake_wait_for_health() -> None:
+    async def fake_wait_for_vite() -> None:
         return None
 
     ship = Ship(views=views_path, port=43123)
     monkeypatch.setattr("gdansk.core.create_subprocess_exec", fake_create_subprocess_exec)
-    monkeypatch.setattr(ship._context, "_wait_for_health", fake_wait_for_health)
+    monkeypatch.setattr(ship._context, "_wait_for_vite", fake_wait_for_vite)
 
     await ship._context._start(dev=True)
     await ship._context._stop()
 
     assert captured_args == (
-        ship._context._deno,
+        "uv",
+        "run",
+        "deno",
         "run",
         "-A",
         "--node-modules-dir=auto",
@@ -492,55 +450,42 @@ async def test_start_dev_uses_runtime_port(views_path: Path, monkeypatch: pytest
     )
 
 
-async def test_start_production_uses_server_entry(views_path: Path, monkeypatch: pytest.MonkeyPatch):
+async def test_start_production_builds_and_loads_manifest(views_path: Path, monkeypatch: pytest.MonkeyPatch):
     ship = Ship(views=views_path)
-    captured_args: tuple[str, ...] | None = None
-    wait_calls = 0
 
     async def fake_run_build() -> None:
         write_manifest(views_path)
-        server_path = views_path / "dist" / "server.js"
-        server_path.parent.mkdir(parents=True, exist_ok=True)
-        server_path.write_text("console.log('server');\n", encoding="utf-8")
-
-    async def fake_create_subprocess_exec(*args: str, **_kwargs: object) -> FakeManagedProcess:
-        nonlocal captured_args
-        captured_args = args
-        return FakeManagedProcess()
-
-    async def fake_wait_for_health() -> None:
-        nonlocal wait_calls
-        wait_calls += 1
 
     monkeypatch.setattr(ship._context, "_run_build", fake_run_build)
-    monkeypatch.setattr(ship._context, "_wait_for_health", fake_wait_for_health)
-    monkeypatch.setattr("gdansk.core.create_subprocess_exec", fake_create_subprocess_exec)
 
     await ship._context._start(dev=False)
 
-    assert captured_args == (
-        ship._context._deno,
-        "run",
-        "-A",
-        "--node-modules-dir=auto",
-        str(views_path / "dist" / "server.js"),
-    )
-    assert wait_calls == 1
-    assert ship._context._runtime_origin == "http://127.0.0.1:13714"
+    assert ship._context._frontend is None
+    assert ship._context._manifest is not None
+    assert ship._context._manifest.widgets["hello"].client == "dist/hello/client.js"
+    assert ship._context._vite_origin is None
 
     await ship._context._stop()
 
 
-async def test_start_production_requires_server_entry(views_path: Path, monkeypatch: pytest.MonkeyPatch):
+async def test_start_production_requires_manifest(views_path: Path, monkeypatch: pytest.MonkeyPatch):
     ship = Ship(views=views_path)
 
     async def fake_run_build() -> None:
-        write_manifest(views_path)
+        return None
 
     monkeypatch.setattr(ship._context, "_run_build", fake_run_build)
 
-    with pytest.raises(RuntimeError, match="did not produce a production server entry"):
+    with pytest.raises(RuntimeError, match="did not produce a manifest"):
         await ship._context._start(dev=False)
+
+
+def test_load_manifest_requires_matching_assets_directory(views_path: Path):
+    write_manifest(views_path, assets_dir="public", manifest_out_dir="dist")
+    ship = Ship(views=views_path, assets="public")
+
+    with pytest.raises(RuntimeError, match="frontend build directory does not match"):
+        ship._context._load_manifest()
 
 
 async def test_ship_context_open_rejects_reentry(views_path: Path, monkeypatch: pytest.MonkeyPatch):

@@ -58,7 +58,7 @@ Use [troubleshooting.md](references/troubleshooting.md) for error-to-fix mapping
 After each change:
 
 1. Restart the server in development if the runtime configuration changed.
-2. Confirm the frontend health endpoint becomes reachable.
+2. Confirm the Vite dev client becomes reachable at `@vite/client`.
 3. Confirm expected bundle outputs exist under `dist/`.
 4. Fetch or open the widget resource and verify the rendered HTML references the expected assets.
 5. Re-run the failing user flow instead of assuming the previous error was the only problem.
