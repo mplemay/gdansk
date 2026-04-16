@@ -55,14 +55,7 @@ describe("@gdansk/vite", () => {
     expect(options.buildDirectory).toBe("dist");
     expect(options.host).toBe("127.0.0.1");
     expect(options.port).toBe(13_714);
-    expect(options.ssr).toBe(false);
     expect(options.widgetsDirectory).toBe("widgets");
-  });
-
-  it("supports opting into production SSR", () => {
-    const options = resolveOptions({ root: process.cwd(), ssr: true });
-
-    expect(options.ssr).toBe(true);
   });
 
   it("supports overriding the build directory", () => {
@@ -274,7 +267,7 @@ describe("@gdansk/vite", () => {
     );
   });
 
-  it("omits production SSR artifacts by default", async () => {
+  it("builds production server artifacts by default", async () => {
     const root = await createFixture({ withLocalPlugin: true });
     const runtime = await createGdanskRuntime({ root, port: 0 });
     expect(runtime.manifestPath).toBe(`${root}/dist/gdansk-manifest.json`);
@@ -287,49 +280,40 @@ describe("@gdansk/vite", () => {
     await expect(pathExists(`${root}/dist/hello/client.js`)).resolves.toBe(true);
     await expect(pathExists(`${root}/dist/hello/client.css`)).resolves.toBe(true);
     await expect(pathExists(`${root}/dist/nested/page/client.js`)).resolves.toBe(true);
-    await expect(pathExists(`${root}/dist/ssr.js`)).resolves.toBe(false);
-    await expect(pathExists(`${root}/dist/server.js`)).resolves.toBe(false);
+    await expect(pathExists(`${root}/dist/ssr.js`)).resolves.toBe(true);
+    await expect(pathExists(`${root}/dist/server.js`)).resolves.toBe(true);
     expect(await findMatchingFiles(`${root}/dist/assets`, /\.js$/)).not.toHaveLength(0);
-    expect(manifest.server).toBeUndefined();
+    expect(manifest.server).toBe("dist/ssr.js");
     await expect(pathExists(`${root}/dist-src`)).resolves.toBe(false);
     await expect(pathExists(`${root}/__gdansk_virtual__`)).resolves.toBe(false);
 
     await runtime.close();
   }, 15_000);
 
-  it("requires production SSR to be explicitly enabled before starting the runtime server", async () => {
+  it("rebuilds a stale client-only manifest from older builds", async () => {
     const root = await createFixture({ withLocalPlugin: true });
-    const runtime = await createGdanskRuntime({ root, port: 0 });
-
-    await expect(runtime.startProductionServer()).rejects.toThrow(
-      "Production SSR is disabled. Enable gdansk({ ssr: true }) before starting the SSR server.",
+    await mkdir(`${root}/dist`, { recursive: true });
+    await writeFile(
+      `${root}/dist/gdansk-manifest.json`,
+      JSON.stringify({
+        outDir: "dist",
+        root,
+        widgets: {},
+      }),
     );
 
-    await runtime.close();
-  });
-
-  it("rebuilds a stale client-only manifest when production SSR is later enabled", async () => {
-    const root = await createFixture({ withLocalPlugin: true });
-    const clientRuntime = await createGdanskRuntime({ root, port: 0 });
-    const clientManifest = await clientRuntime.build();
-
-    expect(clientManifest.server).toBeUndefined();
-    await expect(pathExists(`${root}/dist/ssr.js`)).resolves.toBe(false);
-    await expect(pathExists(`${root}/dist/server.js`)).resolves.toBe(false);
-    await clientRuntime.close();
-
-    const ssrRuntime = await createGdanskRuntime({ root, port: 0, ssr: true });
-    const manifest = await (ssrRuntime as GdanskRuntime & RuntimeWithManifestLoader).loadOrBuildManifest();
+    const runtime = await createGdanskRuntime({ root, port: 0 });
+    const manifest = await (runtime as GdanskRuntime & RuntimeWithManifestLoader).loadOrBuildManifest();
 
     expect(manifest.server).toBe("dist/ssr.js");
     await expect(pathExists(`${root}/dist/ssr.js`)).resolves.toBe(true);
     await expect(pathExists(`${root}/dist/server.js`)).resolves.toBe(true);
-    await ssrRuntime.close();
+    await runtime.close();
   }, 15_000);
 
-  it("builds widget outputs and serves production SSR when explicitly enabled", async () => {
+  it("builds widget outputs and serves production by default", async () => {
     const root = await createFixture({ withLocalPlugin: true });
-    const runtime = await createGdanskRuntime({ root, port: 0, ssr: true });
+    const runtime = await createGdanskRuntime({ root, port: 0 });
     expect(runtime.manifestPath).toBe(`${root}/dist/gdansk-manifest.json`);
 
     const manifest = await runtime.build();
@@ -373,7 +357,7 @@ describe("@gdansk/vite", () => {
 
   it("copies shared transitive CSS into each widget manifest entry", async () => {
     const root = await createFixture({ withLocalPlugin: false, withSharedCss: true });
-    const runtime = await createGdanskRuntime({ root, port: 0, ssr: true });
+    const runtime = await createGdanskRuntime({ root, port: 0 });
 
     const manifest = await runtime.build();
 
@@ -395,7 +379,7 @@ describe("@gdansk/vite", () => {
 
   it("bundles SSR dependencies into the production server output", async () => {
     const root = await createFixture({ withLocalCommonjsDependency: true, withLocalPlugin: false });
-    const runtime = await createGdanskRuntime({ root, port: 0, ssr: true });
+    const runtime = await createGdanskRuntime({ root, port: 0 });
 
     await runtime.build();
 

@@ -15,7 +15,7 @@ from deno import find_deno_bin
 from httpx import AsyncClient, RequestError
 from mcp.server.mcpserver.resources import FunctionResource
 from mcp.server.mcpserver.tools.base import Tool
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError
 from starlette.staticfiles import StaticFiles
 
 from gdansk.metadata import Metadata, merge_metadata
@@ -55,23 +55,6 @@ class GdanskRenderResponse(BaseModel):
     head: list[str]
 
 
-class GdanskManifestWidget(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    client: str
-    css: list[str]
-    entry: str
-
-
-class GdanskManifest(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    out_dir: str = Field(alias="outDir")
-    root: str
-    server: str | None = None
-    widgets: dict[str, GdanskManifestWidget]
-
-
 @dataclass(slots=True, kw_only=True, frozen=True)
 class WidgetSpec:
     key: str
@@ -103,7 +86,6 @@ class ShipContext:
         base_url: str | None = None,
         host: str,
         port: int,
-        ssr: bool,
         client: AsyncClient | None = None,
     ) -> None:
         self._assets_dir: Final[str] = assets
@@ -112,13 +94,11 @@ class ShipContext:
         self._deno: Final[str] = find_deno_bin()
         self._host: Final[str] = host
         self._port: Final[int] = port
-        self._ssr: Final[bool] = ssr
         self._views: Final[Path] = views
 
         self._active = False
         self._dev = False
         self._frontend: Process | None = None
-        self._manifest: GdanskManifest | None = None
         self._runtime_origin: str | None = None
 
     @asynccontextmanager
@@ -147,7 +127,7 @@ class ShipContext:
             ]
             body = rendered.body
             head = rendered.head
-        elif self._ssr:
+        else:
             rendered = await self._render_with_ssr_server(
                 runtime_origin=self._require_runtime_origin(),
                 widget_key=widget_key,
@@ -155,11 +135,6 @@ class ShipContext:
             scripts = [self._production_asset_url(widget_key=widget_key)]
             body = rendered.body
             head = rendered.head
-            runtime_origin = None
-        else:
-            scripts = [self._production_asset_url(widget_key=widget_key)]
-            body = ""
-            head = self._production_css_links(widget_key=widget_key)
             runtime_origin = None
 
         return render_template(
@@ -192,57 +167,12 @@ class ShipContext:
 
         return PurePosixPath("/", self._assets_dir, normalized).as_posix()
 
-    def _client_css_links(self, widget: GdanskManifestWidget, *, out_dir: str) -> list[str]:
-        return [
-            f'<link rel="stylesheet" href="{self._production_manifest_asset_url(path, out_dir=out_dir)}">'
-            for path in widget.css
-        ]
-
-    def _load_manifest(self) -> GdanskManifest:
-        manifest_path = self._views / self._assets_dir / "gdansk-manifest.json"
-        if not manifest_path.is_file():
-            msg = f"Expected a production manifest at {manifest_path}"
-            raise RuntimeError(msg)
-
-        try:
-            return GdanskManifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
-        except ValidationError as e:
-            msg = f"Failed to load the production manifest at {manifest_path}"
-            raise TypeError(msg) from e
-
-    def _production_css_links(self, *, widget_key: str) -> list[str]:
-        manifest = self._require_manifest()
-        return self._client_css_links(self._production_widget(widget_key=widget_key), out_dir=manifest.out_dir)
-
     def _production_asset_url(self, *, widget_key: str) -> str:
         return self._asset_url(f"{widget_key}/client.js")
-
-    def _production_manifest_asset_path(self, path: str, *, out_dir: str) -> str:
-        normalized_path = path.lstrip("/")
-        prefix = f"{out_dir.strip('/')}/"
-        return normalized_path.removeprefix(prefix)
-
-    def _production_manifest_asset_url(self, path: str, *, out_dir: str) -> str:
-        return self._asset_url(self._production_manifest_asset_path(path, out_dir=out_dir))
-
-    def _production_widget(self, *, widget_key: str) -> GdanskManifestWidget:
-        widget = self._require_manifest().widgets.get(widget_key)
-        if widget is None:
-            msg = f'Widget "{widget_key}" is not present in the production manifest'
-            raise RuntimeError(msg)
-
-        return widget
 
     @staticmethod
     def _development_asset_path(*, widget_key: str) -> str:
         return PurePosixPath(DEV_CLIENT_PREFIX, f"{widget_key}.tsx").as_posix()
-
-    def _require_manifest(self) -> GdanskManifest:
-        if self._manifest is None:
-            msg = "The production manifest has not been loaded"
-            raise RuntimeError(msg)
-
-        return self._manifest
 
     async def _render_with_ssr_server(self, *, runtime_origin: str, widget_key: str) -> GdanskRenderResponse:
         payload = {"widget": widget_key}
@@ -300,8 +230,7 @@ class ShipContext:
             raise RuntimeError(msg)
 
         self._dev = dev
-        self._manifest = None
-        self._runtime_origin = f"http://{self._host}:{self._port}" if dev or self._ssr else None
+        self._runtime_origin = f"http://{self._host}:{self._port}"
 
         try:
             if dev:
@@ -320,24 +249,9 @@ class ShipContext:
                 )
             else:
                 await self._run_build()
-                self._manifest = self._load_manifest()
-
-                if not self._ssr:
-                    return
-
-                if self._manifest.server is None:
-                    msg = (
-                        "Production SSR is enabled, but the frontend build does not include an SSR bundle. "
-                        "Ensure Ship(ssr=True) matches gdansk({ ssr: true })."
-                    )
-                    self._raise_runtime_error(msg)
-
                 server_path = self._views / self._assets_dir / "server.js"
                 if not server_path.is_file():
-                    msg = (
-                        "Production SSR is enabled, but the frontend build does not include a server entry at "
-                        f"{server_path}. Ensure Ship(ssr=True) matches gdansk({{ ssr: true }})."
-                    )
+                    msg = f"The frontend build did not produce a production server entry at {server_path}"
                     self._raise_runtime_error(msg)
 
                 command = (self._deno, "run", "-A", "--node-modules-dir=auto", str(server_path))
@@ -356,7 +270,6 @@ class ShipContext:
 
     async def _stop(self) -> None:
         self._dev = False
-        self._manifest = None
         self._runtime_origin = None
 
         frontend = self._frontend
@@ -428,7 +341,6 @@ class Ship:
         base_url: str | None = None,
         host: str = "127.0.0.1",
         port: int = 13714,
-        ssr: bool = False,
         metadata: Metadata | None = None,
         client: AsyncClient | None = None,
     ) -> None:
@@ -459,7 +371,6 @@ class Ship:
         self._base_url: Final[str | None] = base_url
         self._host: Final[str] = host
         self._port: Final[int] = port
-        self._ssr: Final[bool] = ssr
         self._views: Final[Path] = views.absolute().resolve()
         self._widgets_root: Final[Path] = self._views / widgets_directory
         self._metadata: Final[Metadata] = metadata or Metadata()
@@ -470,7 +381,6 @@ class Ship:
             base_url=self._base_url,
             host=self._host,
             port=self._port,
-            ssr=self._ssr,
             client=client,
         )
 

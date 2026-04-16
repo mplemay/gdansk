@@ -6,7 +6,6 @@ export interface GdanskPluginOptions {
   buildDirectory?: string;
   refresh?: boolean | string | string[] | RefreshConfig | RefreshConfig[];
   root?: string;
-  ssr?: boolean;
   widgetsDirectory?: string;
   host?: string;
   port?: number;
@@ -16,7 +15,6 @@ export interface ResolvedGdanskOptions {
   buildDirectoryPath: string;
   host: string;
   root: string;
-  ssr: boolean;
   ssrEndpoint: string;
   port: number;
   widgetsDirectory: string;
@@ -39,7 +37,7 @@ export interface ManifestWidget {
 export interface GdanskManifest {
   outDir: string;
   root: string;
-  server?: string;
+  server: string;
   widgets: Record<string, ManifestWidget>;
 }
 export interface GdanskRuntimeMetadata {

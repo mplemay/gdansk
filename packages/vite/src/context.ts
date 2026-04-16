@@ -18,7 +18,6 @@ export function resolveOptions(options: GdanskPluginOptions = {}, configRoot?: s
   const widgetsDirectory = options.widgetsDirectory ?? "widgets";
   const buildDirectory = options.buildDirectory ?? "dist";
   const host = options.host ?? "127.0.0.1";
-  const ssr = options.ssr ?? false;
   const ssrEndpoint = "/ssr";
 
   return {
@@ -26,7 +25,6 @@ export function resolveOptions(options: GdanskPluginOptions = {}, configRoot?: s
     buildDirectoryPath: resolve(root, buildDirectory),
     host,
     root,
-    ssr,
     ssrEndpoint,
     port: options.port ?? 13714,
     widgetsDirectory,

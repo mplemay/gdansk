@@ -35,7 +35,7 @@ Then use:
 
 - **[FastAPI](examples/fastapi):** Mounting the MCP app inside an existing FastAPI service.
 - **[get-time](examples/get-time):** Small copyable widget example for first-time adoption in another repo.
-- **[ssr](examples/ssr):** Minimal SSR and hydration example with a single widget tool.
+- **[ssr](examples/ssr):** Minimal production-rendered and hydrated widget example with a single tool.
 - **[shadcn](examples/shadcn):** Multi-tool todo app with `structured_output=True` and `shadcn/ui`.
 
 ## Quick Start
@@ -189,17 +189,9 @@ export default defineConfig({
 alias when you want `@` to resolve somewhere else. Use `refresh: true` to trigger full browser reloads when nearby
 Python or Jinja files change during development.
 
-Production rendering defaults to client-side rendering. To enable production SSR, opt in on both sides:
-
-```python
-ship = Ship(views=frontend_path, ssr=True)
-```
-
-```ts
-export default defineConfig({
-  plugins: [gdansk({ ssr: true, refresh: true }), react()],
-});
-```
+Development mode runs the Vite dev server in the background with React refresh and the live SSR endpoint. Production
+mode always builds the server-rendered bundle, writes the hydration assets, and starts the runtime server from
+`dist/server.js`.
 
 If you need non-default frontend directories, keep the Vite plugin and Python runtime aligned:
 
@@ -234,7 +226,7 @@ The default production output now mirrors Vite/Laravel conventions more closely:
 - stable widget entries: `dist/<widget>/client.js` and `dist/<widget>/client.css`
 - shared hashed assets and chunks: `dist/assets/*`
 
-When production SSR is enabled with `Ship(ssr=True)` and `gdansk({ ssr: true })`, the build also includes:
+Production builds also include:
 
 - SSR bundles: `dist/ssr.js` and `dist/server.js`
 
@@ -245,7 +237,7 @@ back to your public app instead of the client host:
 ship = Ship(views=Path(__file__).parent / "frontend", base_url="https://example.com")
 ```
 
-If you enable production SSR or want a different dev runtime host or port, configure both sides explicitly:
+If you want a different dev runtime host or port, configure both sides explicitly:
 
 ```python
 ship = Ship(views=Path(__file__).parent / "frontend", host="127.0.0.1", port=14000)
