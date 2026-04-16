@@ -109,8 +109,7 @@ class Ship:
 
     @staticmethod
     def _normalize_relative_directory(directory: str, *, name: str) -> str:
-        cleaned = directory.strip().strip("/")
-        if not cleaned:
+        if not (cleaned := directory.strip().strip("/")):
             msg = f"The {name} directory must not be empty"
             raise ValueError(msg)
 
