@@ -59,7 +59,7 @@ Use the public integration points directly:
 - Create `ship = Ship(views=Path(...))` with the frontend package root, not the widget directory.
 - Register the UI tool with `@ship.widget(path=Path("hello/widget.tsx"), name="hello")`.
 - Keep `path=` relative to `widgets/` inside the frontend package root.
-- Use an `MCPServer` lifespan that enters `async with ship.mcp(app=app, dev=...)`.
+- Use an `MCPServer` lifespan that enters `async with ship.mcp(app=app, watch=...)`.
 - In the frontend package, import `@gdansk/vite` in `vite.config.ts` and compose it with the framework plugins you
   need.
 - The Vite plugin now provides a default `@` alias to the frontend package root; only add a manual `@` alias when you
@@ -94,7 +94,8 @@ Use [integration-options.md](references/integration-options.md) for exact implem
 
 After implementation:
 
-1. Start the server in development with `ship.mcp(..., dev=True)`.
+1. Start the server in development with `ship.mcp(..., watch=True)` (or `watch=False` to build on startup,
+   `watch=None` when assets are prebuilt).
 2. Confirm bundle output appears under `<frontend-package>/dist/`.
 3. Open or fetch the UI resource and confirm the rendered HTML includes the client script.
 4. Confirm the widget's `callServerTool(...)` calls use the registered MCP tool names.

@@ -14,7 +14,7 @@ The Python server uses `MCPServer` with a lifespan that enters `ship.mcp(app=...
 are registered on the MCP app.
 
 Production builds only static assets plus `gdansk-manifest.json`; there is no separate JS runtime server. Development
-still uses `ship.mcp(..., dev=True)` so the Vite dev server runs in the background with refresh enabled.
+still uses `ship.mcp(..., watch=True)` so the Vite dev server runs in the background with refresh enabled.
 
 For agent-driven setup, prefer `$use-gdansk`. For render/runtime failures or missing bundle output, prefer
 `$debug-gdansk`.

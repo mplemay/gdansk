@@ -75,7 +75,8 @@ If the repo tracks `deno.lock`, keep it in sync with the edited dependencies.
 - Construct `Ship` with the frontend package root: `Ship(views=Path(...))`.
 - Register widget tools with `@ship.widget(...)`.
 - Use `path=Path("<widget>/widget.tsx")` or `.jsx`, relative to `widgets/`.
-- Enter `async with ship.mcp(app=app, dev=...)` inside the `MCPServer` lifespan.
+- Enter `async with ship.mcp(app=app, watch=...)` inside the `MCPServer` lifespan (`watch=True` for Vite dev,
+  `watch=False` to build on startup, `watch=None` when assets are prebuilt).
 - Import `@gdansk/vite` inside the frontend package's `vite.config.ts`.
 - Rely on the plugin's default `@` alias before adding a manual one.
 - Prefer `gdansk({ refresh: true })` when backend file changes should reload the browser during development.

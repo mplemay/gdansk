@@ -84,7 +84,7 @@ def greet(name: str) -> list[TextContent]:
 
 @asynccontextmanager
 async def lifespan(app: MCPServer) -> AsyncIterator[None]:
-    async with ship.mcp(app=app, dev=True):
+    async with ship.mcp(app=app, watch=True):
         yield
 
 
@@ -189,9 +189,13 @@ export default defineConfig({
 alias when you want `@` to resolve somewhere else. Use `refresh: true` to trigger full browser reloads when nearby
 Python or Jinja files change during development.
 
-Development mode runs the Vite dev server in the background with React refresh and serves JS/CSS from the Vite origin.
-Production mode builds static hydration assets plus the gdansk manifest, then lets your Python app serve those files
-from `ship.assets`.
+`ship.mcp(..., watch=...)` controls how the frontend is prepared:
+
+- **`watch=True`** — runs the Vite dev server in the background with React refresh; JS/CSS load from the Vite origin.
+- **`watch=False`** (default) — runs `vite build` on startup, then serves static hydration assets and the gdansk
+  manifest from `ship.assets`.
+- **`watch=None`** — skips Vite/Deno entirely and loads an existing `gdansk-manifest.json` under the assets directory.
+  Use this when assets are prebuilt (for example in CI) to avoid cold-start build cost.
 
 If you need non-default frontend directories, keep the Vite plugin and Python runtime aligned:
 

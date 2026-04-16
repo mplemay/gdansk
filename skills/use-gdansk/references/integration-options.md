@@ -131,7 +131,7 @@ ship = Ship(views=frontend_path)
 
 @asynccontextmanager
 async def mcp_lifespan(app: MCPServer) -> AsyncIterator[None]:
-    async with ship.mcp(app=app, dev=True):
+    async with ship.mcp(app=app, watch=True):
         yield
 
 

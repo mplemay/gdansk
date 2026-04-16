@@ -104,14 +104,14 @@ class ShipContext:
         self._vite_origin: str | None = None
 
     @asynccontextmanager
-    async def open(self, *, dev: bool) -> AsyncIterator[None]:
+    async def open(self, *, watch: bool | None) -> AsyncIterator[None]:
         if self._active:
             msg = "The frontend runtime context is already active"
             raise RuntimeError(msg)
 
         self._active = True
         try:
-            await self._start(dev=dev)
+            await self._start(watch=watch)
             try:
                 yield None
             finally:
@@ -248,44 +248,45 @@ class ShipContext:
             msg = f"{msg}:\n{output}"
         raise RuntimeError(msg)
 
-    async def _start(self, *, dev: bool) -> None:
+    async def _start(self, *, watch: bool | None) -> None:
         if self._frontend is not None or self._manifest is not None or self._vite_origin is not None:
             msg = "The frontend runtime context is already active"
             raise RuntimeError(msg)
 
-        self._dev = dev
+        self._dev = watch is True
 
         try:
-            if dev:
-                self._vite_origin = f"http://{self._host}:{self._port}"
-                command = (
-                    UV_EXECUTABLE,
-                    "run",
-                    "deno",
-                    "run",
-                    "-A",
-                    "--node-modules-dir=auto",
-                    "npm:vite",
-                    "dev",
-                    "--host",
-                    self._host,
-                    "--port",
-                    str(self._port),
-                    "--strictPort",
-                )
-            else:
-                await self._run_build()
-                self._manifest = self._load_manifest()
-                return
-
-            self._frontend = await create_subprocess_exec(
-                *command,
-                cwd=self._views,
-                stdin=DEVNULL,
-                stdout=DEVNULL,
-                stderr=DEVNULL,
-            )
-            await self._wait_for_vite()
+            match watch:
+                case True:
+                    self._vite_origin = f"http://{self._host}:{self._port}"
+                    command = (
+                        UV_EXECUTABLE,
+                        "run",
+                        "deno",
+                        "run",
+                        "-A",
+                        "--node-modules-dir=auto",
+                        "npm:vite",
+                        "dev",
+                        "--host",
+                        self._host,
+                        "--port",
+                        str(self._port),
+                        "--strictPort",
+                    )
+                    self._frontend = await create_subprocess_exec(
+                        *command,
+                        cwd=self._views,
+                        stdin=DEVNULL,
+                        stdout=DEVNULL,
+                        stderr=DEVNULL,
+                    )
+                    await self._wait_for_vite()
+                case False:
+                    await self._run_build()
+                    self._manifest = self._load_manifest()
+                case None:
+                    self._manifest = self._load_manifest()
         except Exception:
             await self._stop()
             raise
@@ -406,7 +407,7 @@ class Ship:
         return AssetFiles(directory=self._views / self._assets_dir, check_dir=False)
 
     @asynccontextmanager
-    async def mcp(self, app: MCPServer, *, dev: bool = False) -> AsyncIterator[None]:
+    async def mcp(self, app: MCPServer, *, watch: bool | None = False) -> AsyncIterator[None]:
         for spec in self._widget_manager.values():
             existing = app._tool_manager._tools.get(spec.tool.name)  # noqa: SLF001
             if existing is not None and existing is not spec.tool:
@@ -416,7 +417,7 @@ class Ship:
             app._tool_manager._tools.setdefault(spec.tool.name, spec.tool)  # noqa: SLF001
             app.add_resource(resource=spec.resource)
 
-        async with self._context.open(dev=dev):
+        async with self._context.open(watch=watch):
             yield None
 
     @staticmethod
