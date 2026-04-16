@@ -1,14 +1,10 @@
 from __future__ import annotations
 
-from asyncio import sleep
-from asyncio.subprocess import DEVNULL, PIPE, Process, create_subprocess_exec
-from contextlib import asynccontextmanager, suppress
-from http import HTTPStatus
+from contextlib import asynccontextmanager
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Final
 
-from deno import find_deno_bin
-from httpx import AsyncClient, RequestError
+from httpx import AsyncClient
 from pydantic import ValidationError
 
 from gdansk.manifest import GdanskManifest, WidgetManifest
@@ -19,31 +15,28 @@ from gdansk.utils import join_url, join_url_path
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
+    from gdansk.vite import Vite
+
 
 class ShipContext:
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         views: Path,
         *,
         assets: str,
         base_url: str | None = None,
-        host: str,
-        port: int,
+        vite: Vite,
         client: AsyncClient | None = None,
     ) -> None:
         self._assets_dir: Final[str] = assets
         self._base_url: Final[str | None] = base_url
         self._client: Final[AsyncClient] = client or AsyncClient()
-        self._deno: Final[str] = find_deno_bin()
-        self._host: Final[str] = host
-        self._port: Final[int] = port
+        self._vite: Final[Vite] = vite
         self._views: Final[Path] = views
 
         self._active = False
         self._dev = False
-        self._frontend: Process | None = None
         self._manifest: GdanskManifest | None = None
-        self._vite_origin: str | None = None
 
     @asynccontextmanager
     async def open(self, *, watch: bool | None) -> AsyncIterator[None]:
@@ -67,7 +60,7 @@ class ShipContext:
         runtime_origin: str | None = None
 
         if self._dev:
-            runtime_origin = self._require_vite_origin()
+            runtime_origin = self._vite.require_origin()
             scripts = [
                 join_url(runtime_origin, "/@vite/client"),
                 join_url(runtime_origin, self._development_asset_path(widget_key=widget_key)),
@@ -101,13 +94,6 @@ class ShipContext:
             raise RuntimeError(msg)
 
         return manifest.widgets[widget_key]
-
-    def _require_vite_origin(self) -> str:
-        if self._vite_origin is None:
-            msg = "The frontend dev server is not running"
-            raise RuntimeError(msg)
-
-        return self._vite_origin
 
     def _asset_base_url(self) -> str | None:
         if self._base_url is None:
@@ -158,34 +144,8 @@ class ShipContext:
 
         return manifest
 
-    async def _run_build(self) -> None:
-        proc = await create_subprocess_exec(
-            self._deno,
-            "run",
-            "-A",
-            "--node-modules-dir=auto",
-            "npm:vite",
-            "build",
-            cwd=self._views,
-            stdin=DEVNULL,
-            stdout=PIPE,
-            stderr=PIPE,
-        )
-        stdout, stderr = await proc.communicate()
-
-        if proc.returncode == 0:
-            return
-
-        stdout_text = stdout.decode("utf-8", errors="replace").strip()
-        stderr_text = stderr.decode("utf-8", errors="replace").strip()
-        output = "\n".join(part for part in (stdout_text, stderr_text) if part)
-        msg = "Failed to build the frontend"
-        if output:
-            msg = f"{msg}:\n{output}"
-        raise RuntimeError(msg)
-
     async def _start(self, *, watch: bool | None) -> None:
-        if self._frontend is not None or self._manifest is not None or self._vite_origin is not None:
+        if self._vite.has_runtime() or self._manifest is not None:
             msg = "The frontend runtime context is already active"
             raise RuntimeError(msg)
 
@@ -194,30 +154,10 @@ class ShipContext:
         try:
             match watch:
                 case True:
-                    self._vite_origin = f"http://{self._host}:{self._port}"
-                    command = (
-                        self._deno,
-                        "run",
-                        "-A",
-                        "--node-modules-dir=auto",
-                        "npm:vite",
-                        "dev",
-                        "--host",
-                        self._host,
-                        "--port",
-                        str(self._port),
-                        "--strictPort",
-                    )
-                    self._frontend = await create_subprocess_exec(
-                        *command,
-                        cwd=self._views,
-                        stdin=DEVNULL,
-                        stdout=DEVNULL,
-                        stderr=DEVNULL,
-                    )
-                    await self._wait_for_vite()
+                    await self._vite.start_dev(self._views)
+                    await self._vite.wait_for_client(self._client)
                 case False:
-                    await self._run_build()
+                    await self._vite.run_build(self._views)
                     self._manifest = self._load_manifest()
                 case None:
                     self._manifest = self._load_manifest()
@@ -226,58 +166,6 @@ class ShipContext:
             raise
 
     async def _stop(self) -> None:
+        await self._vite.stop()
         self._dev = False
         self._manifest = None
-        self._vite_origin = None
-
-        frontend = self._frontend
-        self._frontend = None
-
-        if frontend is None:
-            return
-
-        if frontend.returncode is None:
-            with suppress(ProcessLookupError):
-                frontend.terminate()
-
-            for _ in range(20):
-                if frontend.returncode is not None:
-                    break
-                await sleep(0.05)
-
-            if frontend.returncode is None:
-                with suppress(ProcessLookupError):
-                    frontend.kill()
-                await frontend.wait()
-
-    async def _wait_for_vite(self) -> None:
-        if self._frontend is None or self._vite_origin is None:
-            msg = "The frontend dev server process has not been started"
-            raise RuntimeError(msg)
-
-        client_url = join_url(self._vite_origin, "/@vite/client")
-
-        for _ in range(1200):
-            if self._frontend.returncode is not None:
-                msg = (
-                    "The frontend dev server exited before the Vite client became available "
-                    f"(exit code {self._frontend.returncode})"
-                )
-                raise RuntimeError(msg)
-
-            try:
-                response = await self._client.get(client_url, timeout=0.2)
-            except RequestError:
-                pass
-            else:
-                if response.status_code == HTTPStatus.OK:
-                    return
-
-            await sleep(0.05)
-
-        msg = (
-            f"The frontend dev server did not start in time ({client_url}). "
-            f'Ensure Ship(host="{self._host}", port={self._port}) matches '
-            f'gdansk({{ host: "{self._host}", port: {self._port} }}).'
-        )
-        raise RuntimeError(msg)

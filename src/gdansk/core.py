@@ -14,6 +14,7 @@ from starlette.staticfiles import StaticFiles
 
 from gdansk.context import ShipContext
 from gdansk.metadata import Metadata, merge_metadata
+from gdansk.vite import Vite
 from gdansk.widget import WidgetMeta, transform
 
 if TYPE_CHECKING:
@@ -83,8 +84,7 @@ class Ship:
             self._views,
             assets=self._assets_dir,
             base_url=self._base_url,
-            host=self._host,
-            port=self._port,
+            vite=Vite(host=self._host, port=self._port),
             client=client,
         )
 
