@@ -6,7 +6,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from http import HTTPStatus
 from pathlib import Path  # noqa: TC003
-from typing import Final
+from typing import Final, Self
 
 from deno import find_deno_bin
 from httpx import AsyncClient, RequestError
@@ -38,8 +38,48 @@ class Vite:
         self._runtime_cwd = cwd
         self._runtime_client = client
 
-    def __call__(self, *, watch: bool | None) -> ViteContext:
-        return self._vite_context(watch=watch)
+    def __call__(self, *, watch: bool | None) -> Self:
+        self._vite_context(watch=watch)
+        return self
+
+    async def __aenter__(self) -> ViteContext:
+        if self._context is not None:
+            msg = "The Vite frontend runtime is already active"
+            raise RuntimeError(msg)
+        self._context = self._vite_context
+        try:
+            match self._vite_context._watch:  # noqa: SLF001
+                case True:
+                    if (cwd := self._runtime_cwd) is None:
+                        msg = "Vite is not bound to a views directory (use Ship / ShipContext)"
+                        raise RuntimeError(msg)  # noqa: TRY301
+                    try:
+                        await self.start_dev(cwd)
+                    except Exception:
+                        await self.stop()
+                        raise
+                case False:
+                    if (cwd := self._runtime_cwd) is None:
+                        msg = "Vite is not bound to a views directory (use Ship / ShipContext)"
+                        raise RuntimeError(msg)  # noqa: TRY301
+                    try:
+                        await self.run_build(cwd)
+                    except Exception:
+                        await self.stop()
+                        raise
+                case None:
+                    pass
+        except Exception:
+            self._context = None
+            raise
+
+        return self._vite_context
+
+    async def __aexit__(self, _exc_type: object, _exc: BaseException | None, _tb: object) -> None:
+        try:
+            await self.stop()
+        finally:
+            self._context = None
 
     @property
     def context(self) -> ViteContext:
@@ -168,40 +208,3 @@ class ViteContext:
     def __call__(self, *, watch: bool | None) -> ViteContext:
         self._watch = watch
         return self
-
-    async def __aenter__(self) -> None:
-        if self._vite._context is not None:  # noqa: SLF001
-            msg = "The Vite frontend runtime is already active"
-            raise RuntimeError(msg)
-        self._vite._context = self  # noqa: SLF001
-        try:
-            match self._watch:
-                case True:
-                    if (cwd := self._vite._runtime_cwd) is None:  # noqa: SLF001
-                        msg = "Vite is not bound to a views directory (use Ship / ShipContext)"
-                        raise RuntimeError(msg)  # noqa: TRY301
-                    try:
-                        await self._vite.start_dev(cwd)
-                    except Exception:
-                        await self._vite.stop()
-                        raise
-                case False:
-                    if (cwd := self._vite._runtime_cwd) is None:  # noqa: SLF001
-                        msg = "Vite is not bound to a views directory (use Ship / ShipContext)"
-                        raise RuntimeError(msg)  # noqa: TRY301
-                    try:
-                        await self._vite.run_build(cwd)
-                    except Exception:
-                        await self._vite.stop()
-                        raise
-                case None:
-                    pass
-        except Exception:
-            self._vite._context = None  # noqa: SLF001
-            raise
-
-    async def __aexit__(self, _exc_type: object, _exc: BaseException | None, _tb: object) -> None:
-        try:
-            await self._vite.stop()
-        finally:
-            self._vite._context = None  # noqa: SLF001
