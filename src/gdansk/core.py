@@ -37,7 +37,6 @@ DEFAULT_ASSETS_DIR: Final[str] = "dist"
 DEFAULT_WIDGETS_DIR: Final[str] = "widgets"
 MAX_RUNTIME_PORT: Final[int] = 65535
 VITE_CLIENT_ENDPOINT: Final[str] = "/@vite/client"
-UV_EXECUTABLE: Final[str] = "uv"
 
 
 class GdanskManifestWidget(BaseModel):
@@ -79,6 +78,7 @@ class ShipContext:
         self._assets_dir: Final[str] = assets
         self._base_url: Final[str | None] = base_url
         self._client: Final[AsyncClient] = client or AsyncClient()
+        self._deno: Final[str] = find_deno_bin()
         self._host: Final[str] = host
         self._port: Final[int] = port
         self._views: Final[Path] = views
@@ -207,9 +207,8 @@ class ShipContext:
         return manifest
 
     async def _run_build(self) -> None:
-        deno = find_deno_bin()
         proc = await create_subprocess_exec(
-            deno,
+            self._deno,
             "run",
             "-A",
             "--node-modules-dir=auto",
@@ -245,9 +244,7 @@ class ShipContext:
                 case True:
                     self._vite_origin = f"http://{self._host}:{self._port}"
                     command = (
-                        UV_EXECUTABLE,
-                        "run",
-                        "deno",
+                        self._deno,
                         "run",
                         "-A",
                         "--node-modules-dir=auto",
