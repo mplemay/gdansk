@@ -76,6 +76,7 @@ class Ship:
             assets=self._assets_dir,
             base_url=self._base_url,
             vite=resolved_vite,
+            vite_context=resolved_vite.context,
             client=client,
         )
 

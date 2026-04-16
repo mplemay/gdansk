@@ -31,13 +31,19 @@ class Vite:
         self._origin: str | None = None
         self._runtime_cwd: Path | None = None
         self._runtime_client: AsyncClient | None = None
+        self._context: ViteContext | None = None
+        self._vite_context: ViteContext = ViteContext(_vite=self)
 
     def bind_runtime(self, *, cwd: Path, client: AsyncClient) -> None:
         self._runtime_cwd = cwd
         self._runtime_client = client
 
-    def __call__(self, *, watch: bool | None) -> _ViteWatchSession:
-        return _ViteWatchSession(_vite=self, _watch=watch)
+    def __call__(self, *, watch: bool | None) -> ViteContext:
+        return self._vite_context(watch=watch)
+
+    @property
+    def context(self) -> ViteContext:
+        return self._vite_context
 
     def has_runtime(self) -> bool:
         return self._frontend is not None or self._origin is not None
@@ -155,41 +161,47 @@ class Vite:
 
 
 @dataclass(slots=True, kw_only=True)
-class _ViteWatchSession:
+class ViteContext:
     _vite: Vite
-    _watch: bool | None
+    _watch: bool | None = None
+
+    def __call__(self, *, watch: bool | None) -> ViteContext:
+        self._watch = watch
+        return self
 
     async def __aenter__(self) -> None:
-        match self._watch:
-            case True:
-                if (cwd := self._vite._runtime_cwd) is None or (  # noqa: SLF001
-                    client := self._vite._runtime_client  # noqa: SLF001
-                ) is None:
-                    msg = "Vite is not bound to a views directory and HTTP client (use Ship / ShipContext)"
-                    raise RuntimeError(msg)
-                if self._vite.has_runtime():
-                    msg = "The Vite frontend runtime is already active"
-                    raise RuntimeError(msg)
-                try:
-                    await self._vite.start_dev(cwd)
-                    await self._vite.wait_for_client(client)
-                except Exception:
-                    await self._vite.stop()
-                    raise
-            case False:
-                if (cwd := self._vite._runtime_cwd) is None:  # noqa: SLF001
-                    msg = "Vite is not bound to a views directory (use Ship / ShipContext)"
-                    raise RuntimeError(msg)
-                if self._vite.has_runtime():
-                    msg = "The Vite frontend runtime is already active"
-                    raise RuntimeError(msg)
-                try:
-                    await self._vite.run_build(cwd)
-                except Exception:
-                    await self._vite.stop()
-                    raise
-            case None:
-                pass
+        if self._vite._context is not None:  # noqa: SLF001
+            msg = "The Vite frontend runtime is already active"
+            raise RuntimeError(msg)
+        self._vite._context = self  # noqa: SLF001
+        try:
+            match self._watch:
+                case True:
+                    if (cwd := self._vite._runtime_cwd) is None:  # noqa: SLF001
+                        msg = "Vite is not bound to a views directory (use Ship / ShipContext)"
+                        raise RuntimeError(msg)  # noqa: TRY301
+                    try:
+                        await self._vite.start_dev(cwd)
+                    except Exception:
+                        await self._vite.stop()
+                        raise
+                case False:
+                    if (cwd := self._vite._runtime_cwd) is None:  # noqa: SLF001
+                        msg = "Vite is not bound to a views directory (use Ship / ShipContext)"
+                        raise RuntimeError(msg)  # noqa: TRY301
+                    try:
+                        await self._vite.run_build(cwd)
+                    except Exception:
+                        await self._vite.stop()
+                        raise
+                case None:
+                    pass
+        except Exception:
+            self._vite._context = None  # noqa: SLF001
+            raise
 
     async def __aexit__(self, _exc_type: object, _exc: BaseException | None, _tb: object) -> None:
-        await self._vite.stop()
+        try:
+            await self._vite.stop()
+        finally:
+            self._vite._context = None  # noqa: SLF001

@@ -13,23 +13,25 @@ from gdansk.render import render_template
 from gdansk.utils import join_url, join_url_path
 
 if TYPE_CHECKING:
-    from gdansk.vite import Vite
+    from gdansk.vite import Vite, ViteContext
 
 
 class ShipContext:
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         views: Path,
         *,
         assets: str,
         base_url: str | None = None,
         vite: Vite,
+        vite_context: ViteContext,
         client: AsyncClient | None = None,
     ) -> None:
         self._assets_dir: Final[str] = assets
         self._base_url: Final[str | None] = base_url
         self._client: Final[AsyncClient] = client or AsyncClient()
         self._vite: Final[Vite] = vite
+        self._vite_context: Final[ViteContext] = vite_context
         self._views: Final[Path] = views
 
         self._vite.bind_runtime(cwd=views, client=self._client)
@@ -161,6 +163,8 @@ class _ShipContextSession:
     _watch: bool | None
 
     async def __aenter__(self) -> None:
+        if self._watch is True:
+            await self._ctx._vite.wait_for_client(self._ctx._client)  # noqa: SLF001
         self._ctx._session_begin(watch=self._watch)  # noqa: SLF001
 
     async def __aexit__(self, _exc_type: object, _exc: BaseException | None, _tb: object) -> None:

@@ -11,7 +11,7 @@ def test_vite_rejects_invalid_runtime_port():
         Vite(port=0)
 
 
-async def test_vite_watch_session_requires_bind_for_dev(tmp_path):
+async def test_vite_context_requires_bind_for_dev(tmp_path):
     (tmp_path / "widgets").mkdir()
     vite = Vite()
     with pytest.raises(RuntimeError, match="not bound"):
@@ -19,7 +19,7 @@ async def test_vite_watch_session_requires_bind_for_dev(tmp_path):
             pytest.fail("unbound Vite should not enter dev mode")
 
 
-async def test_vite_watch_session_noop_for_watch_none(tmp_path):
+async def test_vite_context_noop_for_watch_none(tmp_path):
     (tmp_path / "widgets").mkdir()
     vite = Vite()
     async with httpx.AsyncClient() as client:
