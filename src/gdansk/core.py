@@ -32,12 +32,6 @@ if TYPE_CHECKING:
 
 type PathType = str | PathLike[str]
 
-DEV_CLIENT_PREFIX: Final[str] = "/@gdansk/client"
-DEFAULT_ASSETS_DIR: Final[str] = "dist"
-DEFAULT_WIDGETS_DIR: Final[str] = "widgets"
-MAX_RUNTIME_PORT: Final[int] = 65535
-VITE_CLIENT_ENDPOINT: Final[str] = "/@vite/client"
-
 
 class GdanskManifestWidget(BaseModel):
     model_config = ConfigDict(frozen=True)
@@ -113,7 +107,7 @@ class ShipContext:
         if self._dev:
             runtime_origin = self._require_vite_origin()
             scripts = [
-                join_url(runtime_origin, VITE_CLIENT_ENDPOINT),
+                join_url(runtime_origin, "/@vite/client"),
                 join_url(runtime_origin, self._development_asset_path(widget_key=widget_key)),
             ]
         else:
@@ -175,7 +169,7 @@ class ShipContext:
 
     @staticmethod
     def _development_asset_path(*, widget_key: str) -> str:
-        return PurePosixPath(DEV_CLIENT_PREFIX, f"{widget_key}.tsx").as_posix()
+        return PurePosixPath("/@gdansk/client", f"{widget_key}.tsx").as_posix()
 
     @staticmethod
     def _raise_runtime_error(message: str) -> Never:
@@ -303,7 +297,7 @@ class ShipContext:
             msg = "The frontend dev server process has not been started"
             raise RuntimeError(msg)
 
-        client_url = join_url(self._vite_origin, VITE_CLIENT_ENDPOINT)
+        client_url = join_url(self._vite_origin, "/@vite/client")
 
         for _ in range(1200):
             if self._frontend.returncode is not None:
@@ -336,8 +330,8 @@ class Ship:
         self,
         views: PathType,
         *,
-        assets: str = DEFAULT_ASSETS_DIR,
-        widgets_directory: str = DEFAULT_WIDGETS_DIR,
+        assets: str = "dist",
+        widgets_directory: str = "widgets",
         base_url: str | None = None,
         host: str = "127.0.0.1",
         port: int = 13714,
@@ -359,8 +353,9 @@ class Ship:
 
         assets = self._normalize_relative_directory(assets, name="assets")
         widgets_directory = self._normalize_relative_directory(widgets_directory, name="widgets")
-        if port <= 0 or port > MAX_RUNTIME_PORT:
-            msg = f"The runtime port must be an integer between 1 and {MAX_RUNTIME_PORT}"
+        max_port = 65_535
+        if port <= 0 or port > max_port:
+            msg = f"The runtime port must be an integer between 1 and {max_port}"
             raise ValueError(msg)
 
         if base_url is not None and urlparse(base_url).hostname is None:
