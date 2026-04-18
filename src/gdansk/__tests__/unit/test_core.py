@@ -626,6 +626,36 @@ async def test_ship_mcp_open_prebuilt_skips_subprocess(views_path: Path, monkeyp
     assert ship._vite._manifest is None
 
 
+async def test_ship_mcp_registers_widget_tool_and_resource(
+    views_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    ship = Ship(vite=Vite(views_path))
+    app = _app()
+
+    @ship.widget(path=Path("hello/widget.tsx"), name="hello")
+    def hello() -> None:
+        return None
+
+    async def fake_prepare_frontend(*, watch: bool | None) -> None:
+        assert watch is None
+
+    monkeypatch.setattr(ship, "_prepare_frontend", fake_prepare_frontend)
+
+    async with ship.mcp(app=app, watch=None):
+        resources = await app.list_resources()
+        resource = next((item for item in resources if item.uri == "ui://hello"), None)
+        assert resource is not None
+        assert resource.name == "hello"
+        assert resource.mime_type == "text/html;profile=mcp-app"
+
+        tools = await app.list_tools()
+        tool = next((item for item in tools if item.name == "hello"), None)
+        assert tool is not None
+        assert tool.meta is not None
+        assert tool.meta["ui"]["resourceUri"] == "ui://hello"
+
+
 def test_load_manifest_requires_matching_build_directory(views_path: Path):
     write_manifest(views_path, assets_dir="public", manifest_out_dir="dist")
     ship = Ship(vite=Vite(views_path, build_directory="public"))
