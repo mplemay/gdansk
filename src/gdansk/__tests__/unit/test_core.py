@@ -23,6 +23,20 @@ def _app() -> MCPServer:
     return MCPServer(name="test")
 
 
+def test_ship_defaults_to_vite_under_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    views = tmp_path / "views"
+    (views / "dist").mkdir(parents=True)
+    monkeypatch.chdir(tmp_path)
+
+    ship = Ship()
+
+    assert ship._vite.root == views
+    assert ship._vite.build_directory_path == views / "dist"
+    assert ship.assets_path == "/dist"
+    assert isinstance(ship.assets, StaticFiles)
+    assert Path(str(ship.assets.directory)) == views / "dist"
+
+
 def test_widget_rejects_missing_widget_file(views_path: Path):
     ship = Ship(vite=Vite(views_path))
 

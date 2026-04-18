@@ -40,3 +40,17 @@ def test_vite_has_no_runtime_by_default(views_path: Path):
     vite = Vite(views_path)
 
     assert vite.has_runtime() is False
+
+
+def test_vite_defaults_to_views_under_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    views = tmp_path / "views"
+    views.mkdir()
+    monkeypatch.chdir(tmp_path)
+
+    vite = Vite()
+
+    assert vite.root == views
+    assert vite.assets_path == "/dist"
+    assert vite.build_directory == "dist"
+    assert vite.build_directory_path == views / "dist"
+    assert vite.widgets_root == views / "widgets"

@@ -21,12 +21,15 @@ type PathType = str | PathLike[str]
 class Vite:
     def __init__(
         self,
-        root: PathType,
+        root: PathType | None = None,
         *,
         build_directory: str = "dist",
         host: str = "127.0.0.1",
         port: int = 13_714,
     ) -> None:
+        if root is None:
+            root = Path.cwd() / "views"
+
         if not (root := Path(root)).exists():
             msg = f"The frontend root directory (i.e. {root}) does not exist"
             raise FileNotFoundError(msg)

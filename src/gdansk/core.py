@@ -16,6 +16,7 @@ from starlette.staticfiles import StaticFiles
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import render_template
 from gdansk.utils import join_url, join_url_path
+from gdansk.vite import Vite
 from gdansk.widget import WidgetMeta, transform
 
 if TYPE_CHECKING:
@@ -23,8 +24,6 @@ if TYPE_CHECKING:
 
     from mcp.server import MCPServer
     from mcp.types import Icon, ToolAnnotations
-
-    from gdansk.vite import Vite
 
 
 type PathType = str | PathLike[str]
@@ -43,7 +42,7 @@ class Ship:
     def __init__(
         self,
         *,
-        vite: Vite,
+        vite: Vite | None = None,
         base_url: str | None = None,
         metadata: Metadata | None = None,
         client: AsyncClient | None = None,
@@ -57,7 +56,7 @@ class Ship:
         self._dev = False
         self._metadata: Final[Metadata] = metadata or Metadata()
         self._session_client: AsyncClient | None = None
-        self._vite: Final[Vite] = vite
+        self._vite: Final[Vite] = vite or Vite()
         self._widget_manager: dict[Path, WidgetSpec] = {}
 
         self._active = False
