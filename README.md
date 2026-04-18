@@ -55,7 +55,7 @@ my-mcp-server/
             └── widget.tsx
 ```
 
-The `frontend` folder name is only an example. Pass any frontend package root to `Ship(..., views=...)`.
+The `frontend` folder name is only an example. Pass any frontend package root to `Vite(...)`.
 That frontend package owns its own `vite.config.ts`; import `@gdansk/vite` there alongside any framework plugins.
 
 **server.py:**
@@ -70,10 +70,10 @@ from mcp.server import MCPServer
 from mcp.types import TextContent
 from starlette.middleware.cors import CORSMiddleware
 
-from gdansk import Ship
+from gdansk import Ship, Vite
 
 frontend_path = Path(__file__).parent / "frontend"
-ship = Ship(views=frontend_path)
+ship = Ship(vite=Vite(frontend_path))
 
 
 @ship.widget(path=Path("hello/widget.tsx"), name="greet")
@@ -99,7 +99,7 @@ def main() -> None:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.mount(path="/dist", app=ship.assets)
+    app.mount(path=ship.assets_path, app=ship.assets)
     uvicorn.run(app, port=3000)
 
 
@@ -198,12 +198,14 @@ Python or Jinja files change during development.
   Use this when assets are prebuilt (for example in CI) to avoid cold-start build cost.
 
 If you need a non-default build output directory, keep the Vite plugin and Python runtime aligned. Widget sources
-always live under `widgets/` at the frontend package root (`views=` / Vite `root`).
+always live under `widgets/` at the frontend package root (`Vite(root=...)` / Vite `root`).
 
 ```python
 ship = Ship(
-    views=Path(__file__).parent / "frontend",
-    assets="public/ui",
+    vite=Vite(
+        Path(__file__).parent / "frontend",
+        build_directory="public/ui",
+    ),
 )
 ```
 
@@ -219,7 +221,7 @@ export default defineConfig({
 });
 ```
 
-Production widgets load their hydration assets from `/<assets_dir>/...`. Mount `ship.assets` at that path on the
+Production widgets load their hydration assets from `ship.assets_path`. Mount `ship.assets` at that path on the
 public app; with the default settings this is `/dist`.
 
 The default production output now mirrors Vite/Laravel conventions more closely:
@@ -233,7 +235,7 @@ If your MCP client renders widget HTML on a different origin, pass `base_url` to
 back to your public app instead of the client host:
 
 ```python
-ship = Ship(views=Path(__file__).parent / "frontend", base_url="https://example.com")
+ship = Ship(vite=Vite(Path(__file__).parent / "frontend"), base_url="https://example.com")
 ```
 
 If you want a different dev runtime host or port, configure both sides explicitly:
@@ -241,7 +243,7 @@ If you want a different dev runtime host or port, configure both sides explicitl
 ```python
 from gdansk import Ship, Vite
 
-ship = Ship(views=Path(__file__).parent / "frontend", vite=Vite(host="127.0.0.1", port=14000))
+ship = Ship(vite=Vite(Path(__file__).parent / "frontend", host="127.0.0.1", port=14000))
 ```
 
 ```ts

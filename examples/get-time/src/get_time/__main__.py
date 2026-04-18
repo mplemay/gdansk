@@ -10,9 +10,9 @@ from mcp.server import MCPServer
 from mcp.types import TextContent
 from starlette.middleware.cors import CORSMiddleware
 
-from gdansk import Ship
+from gdansk import Ship, Vite
 
-ship = Ship(views=Path(__file__).parent / "views")
+ship = Ship(vite=Vite(Path(__file__).parent / "views"))
 
 
 @ship.widget(name="get-time", path=Path("get-time/widget.tsx"))
@@ -40,7 +40,7 @@ def main() -> None:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.mount(path="/dist", app=ship.assets)
+    app.mount(path=ship.assets_path, app=ship.assets)
     uvicorn.run(app, port=3001)
 
 

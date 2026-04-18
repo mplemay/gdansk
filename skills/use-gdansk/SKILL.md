@@ -56,7 +56,7 @@ Use [adoption-checklist.md](references/adoption-checklist.md) for compatibility 
 
 Use the public integration points directly:
 
-- Create `ship = Ship(views=Path(...))` with the frontend package root, not the widget directory.
+- Create `ship = Ship(vite=Vite(Path(...)))` with the frontend package root, not the widget directory.
 - Register the UI tool with `@ship.widget(path=Path("hello/widget.tsx"), name="hello")`.
 - Keep `path=` relative to `widgets/` inside the frontend package root.
 - Use an `MCPServer` lifespan that enters `async with ship.mcp(app=app, watch=...)`.
@@ -65,14 +65,14 @@ Use the public integration points directly:
 - The Vite plugin now provides a default `@` alias to the frontend package root; only add a manual `@` alias when you
   need a different target.
 - Prefer `gdansk({ refresh: true })` in real app repos so nearby Python or Jinja edits trigger a full browser reload.
-- If you customize the runtime host or port, pass `vite=Vite(host=..., port=...)` to `Ship` and use the same values in
-  `gdansk(...)`.
-- If you customize the build output directory, keep `Ship(assets=...)` aligned with `gdansk({ buildDirectory: ... })`.
-  Widget sources always use `widgets/` under the frontend package root.
+- If you customize the runtime host or port, pass `Vite(Path(...), host=..., port=...)` to `Ship` and use the same
+  values in `gdansk(...)`.
+- If you customize the build output directory, keep `Vite(Path(...), build_directory=...)` aligned with
+  `gdansk({ buildDirectory: ... })`. Widget sources always use `widgets/` under the frontend package root.
 - Ensure the widget file default-exports the React component.
 
 Do not use filesystem-absolute paths for widget registration. Do not assume the frontend package directory must be
-named `views`; any directory passed to `Ship(..., views=...)` is valid.
+named `views`; any directory passed to `Vite(...)` is valid.
 
 ## 4) Apply optional integrations only when requested
 

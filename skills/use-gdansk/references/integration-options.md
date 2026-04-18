@@ -7,7 +7,7 @@ Use this file when the request goes beyond basic widget wiring.
 `Ship` accepts optional `metadata` using the `Metadata` shape from `gdansk.metadata` (a `TypedDict`).
 
 ```python
-from gdansk import Ship
+from gdansk import Ship, Vite
 from gdansk.metadata import Metadata
 
 meta: Metadata = {
@@ -16,7 +16,7 @@ meta: Metadata = {
     "openGraph": {"title": "Shared OG"},
 }
 
-ship = Ship(views=views_path, metadata=meta)
+ship = Ship(vite=Vite(views_path), metadata=meta)
 ```
 
 Per-widget metadata can be passed directly to `@ship.widget(..., metadata=...)`.
@@ -56,7 +56,7 @@ The default frontend runtime address is `127.0.0.1:13714`. If you change it, kee
 ```python
 from gdansk import Ship, Vite
 
-ship = Ship(views=views_path, vite=Vite(host="127.0.0.1", port=14000))
+ship = Ship(vite=Vite(views_path, host="127.0.0.1", port=14000))
 ```
 
 ```ts
@@ -70,7 +70,7 @@ export default defineConfig({
 `@gdansk/vite` stays convention-first, but the main frontend directory knobs are now explicit:
 
 - `refresh: true` watches nearby Python and Jinja files and triggers a full browser reload during development.
-- `buildDirectory` changes the frontend output directory and should match `Ship(assets=...)`.
+- `buildDirectory` changes the frontend output directory and should match `Vite(..., build_directory=...)`.
 - Widget entry files are discovered under `widgets/` relative to the frontend package root.
 - The plugin provides a default `@` alias to the frontend package root.
 
@@ -78,8 +78,10 @@ Example:
 
 ```python
 ship = Ship(
-    views=views_path,
-    assets="public/ui",
+    vite=Vite(
+        views_path,
+        build_directory="public/ui",
+    ),
 )
 ```
 
@@ -123,10 +125,10 @@ from pathlib import Path
 from fastapi import FastAPI
 from mcp.server import MCPServer
 
-from gdansk import Ship
+from gdansk import Ship, Vite
 
 frontend_path = Path(__file__).parent / "frontend"
-ship = Ship(views=frontend_path)
+ship = Ship(vite=Vite(frontend_path))
 
 
 @asynccontextmanager
@@ -146,11 +148,11 @@ async def lifespan(_: object) -> AsyncIterator[None]:
 
 
 app = FastAPI(lifespan=lifespan)
-app.mount(path="/dist", app=ship.assets)
+app.mount(path=ship.assets_path, app=ship.assets)
 app.mount(path="/mcp", app=mcp_app)
 ```
 
-`gdansk` production widgets expect hydration assets at `/<assets_dir>/...`. With the default `assets="dist"`, mount
+`gdansk` production widgets expect hydration assets at `ship.assets_path`. With the default build directory, mount
 `ship.assets` at `/dist`.
 
 The default production output is:

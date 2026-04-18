@@ -8,21 +8,23 @@ from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Final
 from urllib.parse import urlparse
 
+from httpx import AsyncClient
 from mcp.server.mcpserver.resources import FunctionResource
 from mcp.server.mcpserver.tools.base import Tool
 from starlette.staticfiles import StaticFiles
 
-from gdansk.context import ShipContext
 from gdansk.metadata import Metadata, merge_metadata
-from gdansk.vite import Vite
+from gdansk.render import render_template
+from gdansk.utils import join_url, join_url_path
 from gdansk.widget import WidgetMeta, transform
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable
 
-    from httpx import AsyncClient
     from mcp.server import MCPServer
     from mcp.types import Icon, ToolAnnotations
+
+    from gdansk.vite import Vite
 
 
 type PathType = str | PathLike[str]
@@ -38,51 +40,35 @@ class WidgetSpec:
 
 
 class Ship:
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
-        views: PathType,
         *,
-        assets: str = "dist",
+        vite: Vite,
         base_url: str | None = None,
         metadata: Metadata | None = None,
         client: AsyncClient | None = None,
-        vite: Vite | None = None,
     ) -> None:
-        if not (views := Path(views)).exists():
-            msg = f"The views directory (i.e. {views}) does not exist"
-            raise FileNotFoundError(msg)
-
-        if not views.is_dir():
-            msg = f"The views directory (i.e. {views}) is not a directory"
-            raise ValueError(msg)
-
         if base_url is not None and urlparse(base_url).hostname is None:
             msg = "The base URL must be an absolute URL with a hostname"
             raise ValueError(msg)
 
-        self._assets_dir: Final[str] = self._normalize_relative_directory(assets, name="assets")
         self._base_url: Final[str | None] = base_url
-        self._views: Final[Path] = views.absolute().resolve()
-        self._widgets_root: Final[Path] = self._views / self._normalize_relative_directory(
-            "widgets",
-            name="widgets",
-        )
+        self._client: Final[AsyncClient | None] = client
+        self._dev = False
         self._metadata: Final[Metadata] = metadata or Metadata()
+        self._session_client: AsyncClient | None = None
+        self._vite: Final[Vite] = vite
         self._widget_manager: dict[Path, WidgetSpec] = {}
-        resolved_vite = vite if vite is not None else Vite()
-        self._vite: Final[Vite] = resolved_vite
-        self._context: Final[ShipContext] = ShipContext(
-            self._views,
-            assets=self._assets_dir,
-            base_url=self._base_url,
-            vite=resolved_vite,
-            vite_context=resolved_vite.context,
-            client=client,
-        )
+
+        self._active = False
 
     @cached_property
     def assets(self) -> StaticFiles:
-        return StaticFiles(directory=self._views / self._assets_dir, check_dir=True)
+        return StaticFiles(directory=self._vite.build_directory_path, check_dir=True)
+
+    @property
+    def assets_path(self) -> str:
+        return self._vite.assets_path
 
     @asynccontextmanager
     async def mcp(self, app: MCPServer, *, watch: bool | None = False) -> AsyncIterator[None]:
@@ -95,21 +81,116 @@ class Ship:
             app._tool_manager._tools.setdefault(spec.tool.name, spec.tool)  # noqa: SLF001
             app.add_resource(resource=spec.resource)
 
-        async with self._vite(watch=watch), self._context(watch=watch):
+        self._session_begin()
+        try:
+            await self._prepare_frontend(watch=watch)
             yield None
+        finally:
+            await self._session_end()
+
+    def _session_begin(self) -> None:
+        if self._active:
+            msg = "The frontend runtime context is already active"
+            raise RuntimeError(msg)
+
+        self._active = True
+        self._dev = False
+        self._vite.clear_manifest()
+
+    async def _prepare_frontend(self, *, watch: bool | None) -> None:
+        match watch:
+            case True:
+                await self._vite.start_dev()
+                await self._vite.wait_until_ready(await self._require_client())
+                self._dev = True
+            case False:
+                await self._vite.build()
+                self._vite.load_manifest()
+            case None:
+                self._vite.load_manifest()
+
+    async def _require_client(self) -> AsyncClient:
+        if self._client is not None:
+            return self._client
+
+        if self._session_client is None:
+            self._session_client = AsyncClient()
+
+        return self._session_client
+
+    async def _session_end(self) -> None:
+        try:
+            await self._vite.stop()
+        finally:
+            self._vite.clear_manifest()
+            self._dev = False
+            self._active = False
+            if self._session_client is not None:
+                await self._session_client.aclose()
+                self._session_client = None
+
+    def _asset_base_url(self) -> str | None:
+        if self._base_url is None:
+            return None
+
+        return join_url_path(self._base_url, self._vite.build_directory)
+
+    def _asset_url(self, path: str) -> str:
+        normalized = path.lstrip("/")
+        if (asset_base_url := self._asset_base_url()) is not None:
+            return join_url_path(asset_base_url, normalized)
+
+        return PurePosixPath("/", self._vite.build_directory, normalized).as_posix()
+
+    def _manifest_asset_url(self, path: str) -> str:
+        normalized = path.lstrip("/")
+        out_dir = self._vite.require_manifest().out_dir.strip("/")
+        prefix = f"{out_dir}/"
+        relative_path = normalized.removeprefix(prefix)
+        return self._asset_url(relative_path)
+
+    async def render_widget_page(self, *, metadata: Metadata | None, widget_key: str) -> str:
+        body = ""
+        head: list[str] = []
+        runtime_origin: str | None = None
+
+        if self._dev:
+            runtime_origin = self._vite.require_origin()
+            scripts = [
+                join_url(runtime_origin, "/@vite/client"),
+                join_url(runtime_origin, self._vite.development_asset_path(widget_key=widget_key)),
+            ]
+        else:
+            widget = self._vite.require_manifest_widget(widget_key)
+            scripts = [self._manifest_asset_url(widget.client)]
+            head = [f'<link rel="stylesheet" href="{self._manifest_asset_url(href)}">' for href in widget.css]
+
+        return render_template(
+            "base.html",
+            body=body,
+            dev=self._dev,
+            head=head,
+            metadata=metadata,
+            runtime_origin=runtime_origin,
+            scripts=scripts,
+        )
 
     @staticmethod
-    def _normalize_relative_directory(directory: str, *, name: str) -> str:
-        if not (cleaned := directory.strip().strip("/")):
-            msg = f"The {name} directory must not be empty"
+    def _normalize_widget_path(path: Path) -> PurePosixPath:
+        if path.is_absolute():
+            msg = f"The widget path (i.e. {path}) must be a relative path"
             raise ValueError(msg)
 
-        posix = PurePosixPath(cleaned)
-        if posix.is_absolute() or any(part in {"", ".", ".."} for part in posix.parts):
-            msg = f"The {name} directory (i.e. {directory}) must be a relative path without traversal segments"
+        posix = PurePosixPath(path.as_posix())
+        if any(part in {"", ".", ".."} for part in posix.parts):
+            msg = f"The widget path (i.e. {path}) must not contain traversal segments"
             raise ValueError(msg)
 
-        return posix.as_posix()
+        if posix.name not in {"widget.tsx", "widget.jsx"}:
+            msg = f"The widget path (i.e. {path}) must point to a widget.tsx or widget.jsx file"
+            raise ValueError(msg)
+
+        return posix
 
     def widget(  # noqa: PLR0913
         self,
@@ -124,22 +205,9 @@ class Ship:
         metadata: Metadata | None = None,
         structured_output: bool | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-        if (path := Path(path)).is_absolute():
-            msg = f"The widget path (i.e. {path}) must be a relative path"
-            raise ValueError(msg)
-
-        posix = PurePosixPath(path.as_posix())
-        if any(part in {"", ".", ".."} for part in posix.parts):
-            msg = f"The widget path (i.e. {path}) must not contain traversal segments"
-            raise ValueError(msg)
-
-        if posix.name not in {"widget.tsx", "widget.jsx"}:
-            msg = f"The widget path (i.e. {path}) must point to a widget.tsx or widget.jsx file"
-            raise ValueError(msg)
-
-        posix_path = PurePosixPath(path.as_posix())
+        posix_path = self._normalize_widget_path(Path(path))
         key = PurePosixPath(*posix_path.parts[:-1]).as_posix()
-        resolved_path = (self._widgets_root / path).resolve()
+        resolved_path = (self._vite.widgets_root / Path(posix_path.as_posix())).resolve()
 
         if not resolved_path.is_file():
             msg = f"The widget path (i.e. {path}) is not a file"
@@ -158,8 +226,9 @@ class Ship:
         merged_metadata = merge_metadata(self._metadata, metadata)
 
         def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
-            if path in self._widget_manager:
-                msg = f"The widget {path} has already been registered"
+            relative_path = Path(posix_path.as_posix())
+            if relative_path in self._widget_manager:
+                msg = f"The widget {relative_path} has already been registered"
                 raise RuntimeError(msg)
 
             tool = Tool.from_function(
@@ -173,7 +242,7 @@ class Ship:
                 structured_output=structured_output,
             )
             resource = FunctionResource.from_function(
-                fn=partial(self._context.render_widget_page, metadata=merged_metadata, widget_key=key),
+                fn=partial(self.render_widget_page, metadata=merged_metadata, widget_key=key),
                 uri=uri,
                 name=name,
                 title=title,
@@ -182,7 +251,7 @@ class Ship:
                 meta=dict(rm.items()),
             )
 
-            self._widget_manager[path] = WidgetSpec(
+            self._widget_manager[relative_path] = WidgetSpec(
                 key=key,
                 metadata=merged_metadata,
                 resource=resource,
