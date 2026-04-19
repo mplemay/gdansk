@@ -6,8 +6,6 @@ export interface GdanskPluginOptions {
   buildDirectory?: string;
   refresh?: boolean | string | string[] | RefreshConfig | RefreshConfig[];
   root?: string;
-  ssr?: boolean;
-  widgetsDirectory?: string;
   host?: string;
   port?: number;
 }
@@ -16,8 +14,6 @@ export interface ResolvedGdanskOptions {
   buildDirectoryPath: string;
   host: string;
   root: string;
-  ssr: boolean;
-  ssrEndpoint: string;
   port: number;
   widgetsDirectory: string;
   widgetsDirectoryPath: string;
@@ -39,52 +35,26 @@ export interface ManifestWidget {
 export interface GdanskManifest {
   outDir: string;
   root: string;
-  server?: string;
   widgets: Record<string, ManifestWidget>;
 }
-export interface GdanskRuntimeMetadata {
-  assetOrigin: string;
-  mode: "development" | "production";
-  ssrEndpoint: string;
-  ssrOrigin: string;
-  viteOrigin: string | null;
+export interface GdanskDevRuntimeMetadata {
+  mode: "development";
+  viteOrigin: string;
   widgets: Record<string, GdanskRuntimeWidget>;
 }
 export interface GdanskRuntimeWidget {
   clientPath: string;
 }
-export interface GdanskRenderRequest {
-  assetBaseUrl?: string;
-  component?: string;
-  widget?: string;
-}
-export interface GdanskRenderResponse {
-  body: string;
-  head: string[];
-}
-export type GdanskRenderFunction = (widgetKey: string) => Promise<GdanskRenderResponse> | GdanskRenderResponse;
 export interface GdanskPreparedProject {
-  ssrEntryId: string;
   widgets: WidgetDefinition[];
-}
-export interface GdanskServerOptions {
-  manifest: GdanskManifest;
-  options: ResolvedGdanskOptions;
-  render: GdanskRenderFunction;
-  widgets: WidgetDefinition[];
-}
-export interface GdanskServerHandle {
-  close(): Promise<void>;
-  origin: string;
-  port: number;
 }
 export interface GdanskRuntime {
   build(): Promise<GdanskManifest>;
   close(): Promise<void>;
+  loadOrBuildManifest(): Promise<GdanskManifest>;
   manifestPath: string;
   options: ResolvedGdanskOptions;
-  startDev(): Promise<GdanskRuntimeMetadata>;
-  startProductionServer(): Promise<GdanskRuntimeMetadata>;
+  startDev(): Promise<GdanskDevRuntimeMetadata>;
   widgets: WidgetDefinition[];
 }
 export type LoadedProjectConfig = InlineConfig | UserConfig;

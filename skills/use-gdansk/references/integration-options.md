@@ -7,7 +7,7 @@ Use this file when the request goes beyond basic widget wiring.
 `Ship` accepts optional `metadata` using the `Metadata` shape from `gdansk.metadata` (a `TypedDict`).
 
 ```python
-from gdansk import Ship
+from gdansk import Ship, Vite
 from gdansk.metadata import Metadata
 
 meta: Metadata = {
@@ -16,7 +16,7 @@ meta: Metadata = {
     "openGraph": {"title": "Shared OG"},
 }
 
-ship = Ship(views=views_path, metadata=meta)
+ship = Ship(vite=Vite(views_path), metadata=meta)
 ```
 
 Per-widget metadata can be passed directly to `@ship.widget(..., metadata=...)`.
@@ -54,7 +54,9 @@ def list_todos() -> list[Todo]:
 The default frontend runtime address is `127.0.0.1:13714`. If you change it, keep Python and Vite in sync:
 
 ```python
-ship = Ship(views=views_path, host="127.0.0.1", port=14000)
+from gdansk import Ship, Vite
+
+ship = Ship(vite=Vite(views_path, host="127.0.0.1", port=14000))
 ```
 
 ```ts
@@ -68,17 +70,18 @@ export default defineConfig({
 `@gdansk/vite` stays convention-first, but the main frontend directory knobs are now explicit:
 
 - `refresh: true` watches nearby Python and Jinja files and triggers a full browser reload during development.
-- `buildDirectory` changes the frontend output directory and should match `Ship(assets=...)`.
-- `widgetsDirectory` changes widget discovery and should match `Ship(widgets_directory=...)`.
+- `buildDirectory` changes the frontend output directory and should match `Vite(..., build_directory=...)`.
+- Widget entry files are discovered under `widgets/` relative to the frontend package root.
 - The plugin provides a default `@` alias to the frontend package root.
 
 Example:
 
 ```python
 ship = Ship(
-    views=views_path,
-    assets="public/ui",
-    widgets_directory="ui/widgets",
+    vite=Vite(
+        views_path,
+        build_directory="public/ui",
+    ),
 )
 ```
 
@@ -87,7 +90,6 @@ export default defineConfig({
   plugins: [
     gdansk({
       buildDirectory: "public/ui",
-      widgetsDirectory: "ui/widgets",
       refresh: true,
     }),
     react(),
@@ -123,15 +125,15 @@ from pathlib import Path
 from fastapi import FastAPI
 from mcp.server import MCPServer
 
-from gdansk import Ship
+from gdansk import Ship, Vite
 
 frontend_path = Path(__file__).parent / "frontend"
-ship = Ship(views=frontend_path)
+ship = Ship(vite=Vite(frontend_path))
 
 
 @asynccontextmanager
 async def mcp_lifespan(app: MCPServer) -> AsyncIterator[None]:
-    async with ship.mcp(app=app, dev=True):
+    async with ship.mcp(app=app, watch=True):
         yield
 
 
@@ -146,11 +148,11 @@ async def lifespan(_: object) -> AsyncIterator[None]:
 
 
 app = FastAPI(lifespan=lifespan)
-app.mount(path="/dist", app=ship.assets)
+app.mount(path=ship.assets_path, app=ship.assets)
 app.mount(path="/mcp", app=mcp_app)
 ```
 
-`gdansk` production widgets expect hydration assets at `/<assets_dir>/...`. With the default `assets="dist"`, mount
+`gdansk` production widgets expect hydration assets at `ship.assets_path`. With the default build directory, mount
 `ship.assets` at `/dist`.
 
 The default production output is:
@@ -159,10 +161,6 @@ The default production output is:
 - `dist/gdansk-manifest.json` for gdansk's runtime manifest
 - `dist/<widget>/client.js` and `dist/<widget>/client.css` for stable widget entry assets
 - `dist/assets/*` for shared hashed assets and chunks
-
-When production SSR is enabled with `Ship(ssr=True)` and `gdansk({ ssr: true })`, the build also includes:
-
-- `dist/ssr.js` and `dist/server.js` for SSR
 
 ## Styling and Tailwind
 

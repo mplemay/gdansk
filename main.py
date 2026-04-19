@@ -7,20 +7,20 @@ from mcp.server import MCPServer
 from mcp.types import TextContent
 from starlette.middleware.cors import CORSMiddleware
 
-from gdansk import Ship
+from gdansk import Ship, Vite
 
-ship = Ship(views=Path(__file__).parent / "views", ssr=True)
+ship = Ship(vite=Vite(Path(__file__).parent / "views"))
 
 
-@ship.widget(name="hello-ssr", path=Path("hello-ssr/widget.tsx"))
-def hello_ssr() -> list[TextContent]:
-    """Return a static greeting rendered from the SSR example."""
-    return [TextContent(type="text", text="Hello from the SSR example")]
+@ship.widget(name="hello", path=Path("hello/widget.tsx"))
+def hello() -> list[TextContent]:
+    """Return a static greeting rendered from the production example."""
+    return [TextContent(type="text", text="Hello from the production example")]
 
 
 @asynccontextmanager
 async def lifespan(app: MCPServer) -> AsyncIterator[None]:
-    async with ship.mcp(app=app, dev=True) as context:
+    async with ship.mcp(app=app, watch=False) as context:
         yield context
 
 
@@ -28,7 +28,7 @@ mcp = MCPServer(name="example", lifespan=lifespan)
 
 
 def main() -> None:
-    """Run the development server for the SSR example."""
+    """Run the production example server."""
     app = mcp.streamable_http_app()
     app.add_middleware(
         CORSMiddleware,
@@ -36,7 +36,7 @@ def main() -> None:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.mount(path="/dist", app=ship.assets)
+    app.mount(path=ship.assets_path, app=ship.assets)
     uvicorn.run(app, port=3001)
 
 

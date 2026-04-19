@@ -1,10 +1,8 @@
 export { createGdanskRuntime } from "./runtime";
 export type {
+  GdanskDevRuntimeMetadata,
   GdanskManifest,
-  GdanskRenderRequest,
-  GdanskRenderResponse,
   GdanskRuntime,
-  GdanskRuntimeMetadata,
   GdanskRuntimeWidget,
   ManifestWidget,
   WidgetDefinition,

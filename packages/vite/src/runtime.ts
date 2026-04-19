@@ -1,22 +1,15 @@
-import { stat } from "node:fs/promises";
-import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
-
 import { createServer, mergeConfig } from "vite";
 
 import { buildWidgets, readManifest } from "./build";
 import { loadUserViteConfig, prepareProject, resolveOptions } from "./context";
 import { resolveViteOrigin } from "./css";
 import { createRefreshPlugin } from "./development";
-import { startGdanskServer } from "./server";
-import { installDevSSRMiddleware, importRenderFunction } from "./ssr";
 import type {
+  GdanskDevRuntimeMetadata,
   GdanskManifest,
   GdanskPluginOptions,
   GdanskPreparedProject,
   GdanskRuntime,
-  GdanskRuntimeMetadata,
-  GdanskServerHandle,
   ResolvedGdanskOptions,
   WidgetDefinition,
 } from "./types";
@@ -36,7 +29,6 @@ class GdanskRuntimeImpl implements GdanskRuntime {
 
   #manifest?: GdanskManifest;
   #prepared?: GdanskPreparedProject;
-  #server?: GdanskServerHandle;
   #viteServer?: Awaited<ReturnType<typeof createServer>>;
 
   constructor(options: ResolvedGdanskOptions) {
@@ -54,9 +46,6 @@ class GdanskRuntimeImpl implements GdanskRuntime {
   }
 
   async close(): Promise<void> {
-    await this.#server?.close();
-    this.#server = undefined;
-
     await this.#viteServer?.close();
     this.#viteServer = undefined;
   }
@@ -66,7 +55,7 @@ class GdanskRuntimeImpl implements GdanskRuntime {
     this.widgets = prepared.widgets;
   }
 
-  async startDev(): Promise<GdanskRuntimeMetadata> {
+  async startDev(): Promise<GdanskDevRuntimeMetadata> {
     await this.close();
     const prepared = await this.prepare();
     const config = await loadUserViteConfig(this.options, "serve");
@@ -85,22 +74,12 @@ class GdanskRuntimeImpl implements GdanskRuntime {
       }),
     );
 
-    installDevSSRMiddleware({
-      options: this.options,
-      server: this.#viteServer,
-      ssrEntry: prepared.ssrEntryId,
-      widgets: prepared.widgets,
-    });
-
     await this.#viteServer.listen();
 
     const origin = resolveViteOrigin(this.#viteServer);
 
     return {
-      assetOrigin: origin,
       mode: "development",
-      ssrEndpoint: this.options.ssrEndpoint,
-      ssrOrigin: origin,
       viteOrigin: origin,
       widgets: Object.fromEntries(
         prepared.widgets.map((widget) => [widget.key, { clientPath: widget.clientDevEntry }]),
@@ -108,46 +87,14 @@ class GdanskRuntimeImpl implements GdanskRuntime {
     };
   }
 
-  async startProductionServer(): Promise<GdanskRuntimeMetadata> {
-    await this.close();
-    const prepared = await this.prepare();
-
-    if (!this.options.ssr) {
-      throw new Error("Production SSR is disabled. Enable gdansk({ ssr: true }) before starting the SSR server.");
-    }
-
-    this.#manifest = this.#manifest ?? (await this.loadOrBuildManifest());
-    if (!this.#manifest.server) {
-      throw new Error("Production SSR is enabled, but the build manifest has no server entry.");
-    }
-
-    this.#server = await startGdanskServer({
-      manifest: this.#manifest,
-      options: this.options,
-      render: await loadServerRenderFunction(this.options, this.#manifest.server),
-      widgets: prepared.widgets,
-    });
-
-    return {
-      assetOrigin: this.#server.origin,
-      mode: "production",
-      ssrEndpoint: this.options.ssrEndpoint,
-      ssrOrigin: this.#server.origin,
-      viteOrigin: null,
-      widgets: Object.fromEntries(
-        Object.entries(this.#manifest.widgets).map(([key, widget]) => [key, { clientPath: `/${widget.client}` }]),
-      ),
-    };
-  }
-
   async loadOrBuildManifest(): Promise<GdanskManifest> {
-    try {
-      const manifest = await readManifest(this.manifestPath);
-      if (this.options.ssr && !manifest.server) {
-        return this.build();
-      }
+    if (this.#manifest) {
+      return this.#manifest;
+    }
 
-      return manifest;
+    try {
+      this.#manifest = await readManifest(this.manifestPath);
+      return this.#manifest;
     } catch {
       return this.build();
     }
@@ -158,14 +105,4 @@ class GdanskRuntimeImpl implements GdanskRuntime {
     this.widgets = this.#prepared.widgets;
     return this.#prepared;
   }
-}
-
-async function loadServerRenderFunction(options: ResolvedGdanskOptions, serverEntry: string) {
-  const path = resolveServerPath(options, serverEntry);
-  const modified = await stat(path);
-  return importRenderFunction(`${pathToFileURL(path).href}?t=${modified.mtimeMs}`);
-}
-
-function resolveServerPath(options: ResolvedGdanskOptions, serverEntry: string): string {
-  return resolve(options.root, serverEntry);
 }

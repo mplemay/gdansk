@@ -9,7 +9,7 @@ from mcp.server import MCPServer
 from mcp.types import TextContent
 from pydantic_settings import BaseSettings
 
-from gdansk import Ship
+from gdansk import Ship, Vite
 
 FastAPI = importlib.import_module("fastapi").FastAPI
 
@@ -22,7 +22,7 @@ class Settings(BaseSettings):
 
 SETTINGS = Settings()
 
-ship = Ship(views=Path(__file__).parent / "src/mount/views")
+ship = Ship(vite=Vite(Path(__file__).parent / "src/mount/views"))
 
 
 @ship.widget(name="hello", path=Path("hello/widget.tsx"))
@@ -33,7 +33,7 @@ def hello(name: str = "world") -> list[TextContent]:
 
 @asynccontextmanager
 async def mcp_lifespan(app: MCPServer) -> AsyncIterator[None]:
-    async with ship.mcp(app=app, dev=not SETTINGS.production):
+    async with ship.mcp(app=app, watch=not SETTINGS.production):
         yield
 
 
@@ -50,5 +50,5 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="FastAPI + Gdansk Example", lifespan=lifespan)
-app.mount(path="/dist", app=ship.assets)
+app.mount(path=ship.assets_path, app=ship.assets)
 app.mount(path="/mcp", app=mcp_app)

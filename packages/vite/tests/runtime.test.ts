@@ -26,20 +26,14 @@ import gdansk from "../src";
 import { resolveOptions } from "../src/context";
 import { normalizeRefreshConfig, resolveRefreshPaths } from "../src/development";
 import { createGdanskRuntime } from "../src/runtime";
-import type { GdanskManifest, GdanskRuntime } from "../src/types";
 
 const fixtureRoots: string[] = [];
-const SSR_DEPENDENCY_NAME = "__gdansk_ssr_cjs_dep__";
+const RENDER_DEPENDENCY_NAME = "__gdansk_render_cjs_dep__";
 
 type GdanskDevServer = ViteDevServer & {
   __gdansk?: {
-    ssrEndpoint: string;
-    ssrOrigin: string;
+    viteOrigin: string;
   };
-};
-
-type RuntimeWithManifestLoader = {
-  loadOrBuildManifest(): Promise<GdanskManifest>;
 };
 
 afterEach(async () => {
@@ -55,26 +49,13 @@ describe("@gdansk/vite", () => {
     expect(options.buildDirectory).toBe("dist");
     expect(options.host).toBe("127.0.0.1");
     expect(options.port).toBe(13_714);
-    expect(options.ssr).toBe(false);
     expect(options.widgetsDirectory).toBe("widgets");
-  });
-
-  it("supports opting into production SSR", () => {
-    const options = resolveOptions({ root: process.cwd(), ssr: true });
-
-    expect(options.ssr).toBe(true);
   });
 
   it("supports overriding the build directory", () => {
     const options = resolveOptions({ buildDirectory: "public", root: process.cwd() });
 
     expect(options.buildDirectory).toBe("public");
-  });
-
-  it("supports overriding the widgets directory", () => {
-    const options = resolveOptions({ root: process.cwd(), widgetsDirectory: "frontend/widgets" });
-
-    expect(options.widgetsDirectory).toBe("frontend/widgets");
   });
 
   it("injects a default @ alias for the frontend package root", async () => {
@@ -274,7 +255,7 @@ describe("@gdansk/vite", () => {
     );
   });
 
-  it("omits production SSR artifacts by default", async () => {
+  it("builds production client artifacts by default", async () => {
     const root = await createFixture({ withLocalPlugin: true });
     const runtime = await createGdanskRuntime({ root, port: 0 });
     expect(runtime.manifestPath).toBe(`${root}/dist/gdansk-manifest.json`);
@@ -287,49 +268,31 @@ describe("@gdansk/vite", () => {
     await expect(pathExists(`${root}/dist/hello/client.js`)).resolves.toBe(true);
     await expect(pathExists(`${root}/dist/hello/client.css`)).resolves.toBe(true);
     await expect(pathExists(`${root}/dist/nested/page/client.js`)).resolves.toBe(true);
-    await expect(pathExists(`${root}/dist/ssr.js`)).resolves.toBe(false);
+    await expect(pathExists(`${root}/dist/render.js`)).resolves.toBe(false);
     await expect(pathExists(`${root}/dist/server.js`)).resolves.toBe(false);
     expect(await findMatchingFiles(`${root}/dist/assets`, /\.js$/)).not.toHaveLength(0);
-    expect(manifest.server).toBeUndefined();
+    expect(manifest.widgets.hello.client).toBe("dist/hello/client.js");
     await expect(pathExists(`${root}/dist-src`)).resolves.toBe(false);
     await expect(pathExists(`${root}/__gdansk_virtual__`)).resolves.toBe(false);
 
     await runtime.close();
   }, 15_000);
 
-  it("requires production SSR to be explicitly enabled before starting the runtime server", async () => {
+  it("builds a manifest when one does not exist yet", async () => {
     const root = await createFixture({ withLocalPlugin: true });
     const runtime = await createGdanskRuntime({ root, port: 0 });
+    const manifest = await runtime.loadOrBuildManifest();
 
-    await expect(runtime.startProductionServer()).rejects.toThrow(
-      "Production SSR is disabled. Enable gdansk({ ssr: true }) before starting the SSR server.",
-    );
-
-    await runtime.close();
-  });
-
-  it("rebuilds a stale client-only manifest when production SSR is later enabled", async () => {
-    const root = await createFixture({ withLocalPlugin: true });
-    const clientRuntime = await createGdanskRuntime({ root, port: 0 });
-    const clientManifest = await clientRuntime.build();
-
-    expect(clientManifest.server).toBeUndefined();
-    await expect(pathExists(`${root}/dist/ssr.js`)).resolves.toBe(false);
+    expect(Object.keys(manifest.widgets)).toEqual(["hello", "nested/page"]);
+    await expect(pathExists(`${root}/dist/hello/client.js`)).resolves.toBe(true);
+    await expect(pathExists(`${root}/dist/render.js`)).resolves.toBe(false);
     await expect(pathExists(`${root}/dist/server.js`)).resolves.toBe(false);
-    await clientRuntime.close();
-
-    const ssrRuntime = await createGdanskRuntime({ root, port: 0, ssr: true });
-    const manifest = await (ssrRuntime as GdanskRuntime & RuntimeWithManifestLoader).loadOrBuildManifest();
-
-    expect(manifest.server).toBe("dist/ssr.js");
-    await expect(pathExists(`${root}/dist/ssr.js`)).resolves.toBe(true);
-    await expect(pathExists(`${root}/dist/server.js`)).resolves.toBe(true);
-    await ssrRuntime.close();
+    await runtime.close();
   }, 15_000);
 
-  it("builds widget outputs and serves production SSR when explicitly enabled", async () => {
+  it("writes manifest paths for static production assets", async () => {
     const root = await createFixture({ withLocalPlugin: true });
-    const runtime = await createGdanskRuntime({ root, port: 0, ssr: true });
+    const runtime = await createGdanskRuntime({ root, port: 0 });
     expect(runtime.manifestPath).toBe(`${root}/dist/gdansk-manifest.json`);
 
     const manifest = await runtime.build();
@@ -340,40 +303,24 @@ describe("@gdansk/vite", () => {
     await expect(pathExists(`${root}/dist/hello/client.js`)).resolves.toBe(true);
     await expect(pathExists(`${root}/dist/hello/client.css`)).resolves.toBe(true);
     await expect(pathExists(`${root}/dist/nested/page/client.js`)).resolves.toBe(true);
-    await expect(pathExists(`${root}/dist/ssr.js`)).resolves.toBe(true);
-    await expect(pathExists(`${root}/dist/server.js`)).resolves.toBe(true);
+    await expect(pathExists(`${root}/dist/render.js`)).resolves.toBe(false);
+    await expect(pathExists(`${root}/dist/server.js`)).resolves.toBe(false);
     expect(await findMatchingFiles(`${root}/dist/assets`, /\.js$/)).not.toHaveLength(0);
-    expect(manifest.server).toBe("dist/ssr.js");
-    await expect(pathExists(`${root}/dist-src`)).resolves.toBe(false);
-    await expect(pathExists(`${root}/__gdansk_virtual__`)).resolves.toBe(false);
-
-    const metadata = await runtime.startProductionServer();
-    const response = await renderWidget(metadata, { widget: "hello" });
-
-    expect(response.body).toContain("Hello SSR");
-    expect(response.body).toContain("from plugin");
-    expect(response.head.join("")).toContain("/dist/hello/client.css");
-
-    const assetBaseResponse = await renderWidget(metadata, {
-      assetBaseUrl: "https://example.com/app/dist",
-      widget: "hello",
+    expect(manifest.widgets.hello).toEqual({
+      client: "dist/hello/client.js",
+      css: ["dist/hello/client.css"],
+      entry: "hello/widget.tsx",
     });
-    expect(assetBaseResponse.head.join("")).toContain("https://example.com/app/dist/hello/client.css");
-
-    const health = await fetchHealth(metadata.ssrOrigin);
-    expect(health).toEqual({ status: "OK" });
-    expect(metadata.ssrEndpoint).toBe("/ssr");
-
-    const assetResponse = await fetch(`${metadata.ssrOrigin}/dist/hello/client.js`);
-    expect(assetResponse.status).toBe(200);
-    expect(assetResponse.headers.get("access-control-allow-origin")).toBe("*");
+    expect(manifest.widgets["nested/page"].client).toBe("dist/nested/page/client.js");
+    await expect(pathExists(`${root}/dist-src`)).resolves.toBe(false);
+    await expect(pathExists(`${root}/__gdansk_virtual__`)).resolves.toBe(false);
 
     await runtime.close();
   }, 15_000);
 
   it("copies shared transitive CSS into each widget manifest entry", async () => {
     const root = await createFixture({ withLocalPlugin: false, withSharedCss: true });
-    const runtime = await createGdanskRuntime({ root, port: 0, ssr: true });
+    const runtime = await createGdanskRuntime({ root, port: 0 });
 
     const manifest = await runtime.build();
 
@@ -383,30 +330,19 @@ describe("@gdansk/vite", () => {
     await expect(pathExists(`${root}/dist/nested/page/client.css`)).resolves.toBe(true);
     expect(await findMatchingFiles(`${root}/dist/assets`, /\.css$/)).not.toHaveLength(0);
 
-    const metadata = await runtime.startProductionServer();
-    const helloResponse = await renderWidget(metadata, { widget: "hello" });
-    const nestedResponse = await renderWidget(metadata, { widget: "nested/page" });
-
-    expect(helloResponse.head.join("")).toContain("/dist/hello/client.css");
-    expect(nestedResponse.head.join("")).toContain("/dist/nested/page/client.css");
-
     await runtime.close();
   }, 15_000);
 
-  it("bundles SSR dependencies into the production server output", async () => {
+  it("bundles widget dependencies into the production client output", async () => {
     const root = await createFixture({ withLocalCommonjsDependency: true, withLocalPlugin: false });
-    const runtime = await createGdanskRuntime({ root, port: 0, ssr: true });
+    const runtime = await createGdanskRuntime({ root, port: 0 });
 
     await runtime.build();
 
-    const ssrOutput = await readFile(`${root}/dist/ssr.js`, "utf8");
-    expect(ssrOutput).not.toContain(`"${SSR_DEPENDENCY_NAME}"`);
-    expect(ssrOutput).not.toContain(`'${SSR_DEPENDENCY_NAME}'`);
-
-    const metadata = await runtime.startProductionServer();
-    const response = await renderWidget(metadata, { widget: "hello" });
-
-    expect(response.body).toContain("from cjs dependency");
+    const jsOutputs = await readMatchingFiles(`${root}/dist`, /\.js$/);
+    expect(jsOutputs.join("\n")).not.toContain(`"${RENDER_DEPENDENCY_NAME}"`);
+    expect(jsOutputs.join("\n")).not.toContain(`'${RENDER_DEPENDENCY_NAME}'`);
+    expect(jsOutputs.join("\n")).toContain("from cjs dependency");
 
     await runtime.close();
   }, 15_000);
@@ -415,27 +351,18 @@ describe("@gdansk/vite", () => {
     const root = await createFixture({ withLocalPlugin: true });
     const runtime = await createGdanskRuntime({ root, port: 0 });
     const metadata = await runtime.startDev();
-    const response = await renderWidget(metadata, { component: "hello" });
 
-    expect(response.body).toContain("Hello SSR");
-    expect(response.body).toContain("from plugin");
-    expect(response.head.join("")).toContain('rel="stylesheet"');
-    expect(response.head.join("")).toContain("data-vite-dev-id");
-
-    const health = await fetchHealth(metadata.ssrOrigin);
-    expect(health).toEqual({ status: "OK" });
-    expect(metadata.ssrEndpoint).toBe("/ssr");
-    expect(metadata.viteOrigin).toBe(metadata.ssrOrigin);
-    expect(metadata.assetOrigin).toBe(metadata.ssrOrigin);
+    const viteClientResponse = await fetch(`${metadata.viteOrigin}/@vite/client`);
+    expect(viteClientResponse.status).toBe(200);
     expect(Object.keys(metadata.widgets)).toEqual(["hello", "nested/page"]);
     expect(metadata.widgets.hello.clientPath).toBe("/@gdansk/client/hello.tsx");
     await expect(pathExists(`${root}/dist-src`)).resolves.toBe(false);
     await expect(pathExists(`${root}/__gdansk_virtual__`)).resolves.toBe(false);
 
     await runtime.close();
-  });
+  }, 15_000);
 
-  it("exports a Vite plugin that serves health and SSR from the Vite dev server", async () => {
+  it("exports a Vite plugin that exposes the dev Vite origin", async () => {
     const root = await createFixture({ withLocalPlugin: false });
     const server = await createServer({
       appType: "custom",
@@ -452,12 +379,9 @@ describe("@gdansk/vite", () => {
     const metadata = (server as GdanskDevServer).__gdansk;
 
     expect(metadata).toBeDefined();
-    expect(metadata?.ssrEndpoint).toBe("/ssr");
-    expect(metadata?.ssrOrigin).toBe(server.resolvedUrls?.local[0]?.replace(/\/$/, ""));
-    expect(await fetchHealth(metadata!.ssrOrigin)).toEqual({ status: "OK" });
-    const response = await renderWidget(metadata!, { widget: "hello" });
-
-    expect(response.body).toContain("Hello SSR");
+    expect(metadata?.viteOrigin).toBe(server.resolvedUrls?.local[0]?.replace(/\/$/, ""));
+    const viteClientResponse = await fetch(`${metadata!.viteOrigin}/@vite/client`);
+    expect(viteClientResponse.status).toBe(200);
 
     await server.waitForRequestsIdle();
     const httpServer = server.httpServer as
@@ -524,14 +448,14 @@ async function createFixture(options: {
     await writeFile(`${root}/widgets/hello/global.css`, ".hello { color: red; }\n");
   }
   if (options.withLocalCommonjsDependency) {
-    const dependencyRoot = `${root}/node_modules/${SSR_DEPENDENCY_NAME}`;
+    const dependencyRoot = `${root}/node_modules/${RENDER_DEPENDENCY_NAME}`;
     await mkdir(dependencyRoot, { recursive: true });
     await writeFile(
       `${dependencyRoot}/package.json`,
       JSON.stringify(
         {
           main: "index.js",
-          name: SSR_DEPENDENCY_NAME,
+          name: RENDER_DEPENDENCY_NAME,
           private: true,
           type: "commonjs",
         },
@@ -547,11 +471,11 @@ async function createFixture(options: {
     `${root}/widgets/hello/widget.tsx`,
     options.withLocalCommonjsDependency
       ? [
-          `import message from "${SSR_DEPENDENCY_NAME}";`,
+          `import message from "${RENDER_DEPENDENCY_NAME}";`,
           helloCssImport,
           "",
           "export default function App() {",
-          `  return <main className="${helloClassName}"><h1>Hello SSR</h1><p>{message}</p></main>;`,
+          `  return <main className="${helloClassName}"><h1>Hello production</h1><p>{message}</p></main>;`,
           "}",
           "",
         ].join("\n")
@@ -561,7 +485,7 @@ async function createFixture(options: {
             helloCssImport,
             "",
             "export default function App() {",
-            `  return <main className="${helloClassName}"><h1>Hello SSR</h1><p>{message}</p></main>;`,
+            `  return <main className="${helloClassName}"><h1>Hello production</h1><p>{message}</p></main>;`,
             "}",
             "",
           ].join("\n")
@@ -569,7 +493,7 @@ async function createFixture(options: {
             helloCssImport,
             "",
             "export default function App() {",
-            `  return <main className="${helloClassName}"><h1>Hello SSR</h1><p>plain widget</p></main>;`,
+            `  return <main className="${helloClassName}"><h1>Hello production</h1><p>plain widget</p></main>;`,
             "}",
             "",
           ].join("\n"),
@@ -639,25 +563,9 @@ async function findMatchingFiles(root: string, pattern: RegExp): Promise<string[
   return matches.flat();
 }
 
-async function renderWidget(
-  metadata: { ssrEndpoint: string; ssrOrigin: string },
-  body: Record<string, string>,
-): Promise<{ body: string; head: string[] }> {
-  const response = await fetch(`${metadata.ssrOrigin}${metadata.ssrEndpoint}`, {
-    body: JSON.stringify(body),
-    headers: { "Content-Type": "application/json" },
-    method: "POST",
-  });
-
-  expect(response.status).toBe(200);
-  return (await response.json()) as { body: string; head: string[] };
-}
-
-async function fetchHealth(origin: string): Promise<{ status: string }> {
-  const response = await fetch(`${origin}/health`);
-
-  expect(response.status).toBe(200);
-  return (await response.json()) as { status: string };
+async function readMatchingFiles(root: string, pattern: RegExp): Promise<string[]> {
+  const matches = await findMatchingFiles(root, pattern);
+  return Promise.all(matches.map(async (path) => readFile(path, "utf8")));
 }
 
 function flattenPluginOptions(option: PluginOption): Plugin[] {

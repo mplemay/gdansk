@@ -16,8 +16,8 @@ my-server/
             └── widget.tsx
 ```
 
-The `frontend` directory name is arbitrary: `Ship(..., views=...)` accepts any path to the package root (the directory
-that contains `package.json`).
+The `frontend` directory name is arbitrary: `Vite(...)` accepts any path to the package root (the directory that
+contains `package.json`).
 
 ## Minimal Python server
 
@@ -31,10 +31,10 @@ from mcp.server import MCPServer
 from mcp.types import TextContent
 from starlette.middleware.cors import CORSMiddleware
 
-from gdansk import Ship
+from gdansk import Ship, Vite
 
 frontend_path = Path(__file__).parent / "frontend"
-ship = Ship(views=frontend_path)
+ship = Ship(vite=Vite(frontend_path))
 
 
 @ship.widget(path=Path("hello/widget.tsx"), name="hello")
@@ -44,7 +44,7 @@ def hello(name: str = "world") -> list[TextContent]:
 
 @asynccontextmanager
 async def lifespan(app: MCPServer) -> AsyncIterator[None]:
-    async with ship.mcp(app=app, dev=True):
+    async with ship.mcp(app=app, watch=True):
         yield
 
 
@@ -59,11 +59,11 @@ if __name__ == "__main__":
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.mount(path="/dist", app=ship.assets)
+    app.mount(path=ship.assets_path, app=ship.assets)
     uvicorn.run(app, port=3001)
 ```
 
-Production widgets load hydration assets from `/<assets_dir>/...`, so mount `ship.assets` at that path on the public
+Production widgets load hydration assets from `ship.assets_path`, so mount `ship.assets` at that path on the public
 app. With the default settings, mount it at `/dist`.
 
 Default production output:
@@ -73,10 +73,6 @@ Default production output:
 - `frontend/dist/hello/client.js`
 - optional `frontend/dist/hello/client.css`
 - `frontend/dist/assets/*`
-
-When production SSR is enabled with `Ship(ssr=True)` and `gdansk({ ssr: true })`, the build also includes:
-
-- `frontend/dist/server.js`
 
 ## Minimal React widget
 
@@ -154,13 +150,15 @@ export default defineConfig({
 repo wants `@` to resolve somewhere else. `refresh: true` adds Laravel-style full reloads for nearby Python and Jinja
 files during `vite dev`.
 
-If you need non-default frontend directories, keep Python and Vite aligned:
+If you need a non-default build output directory, keep Python and Vite aligned. Put widget sources in `widgets/` at
+the frontend package root.
 
 ```python
 ship = Ship(
-    views=Path(__file__).parent / "frontend",
-    assets="public/ui",
-    widgets_directory="ui/widgets",
+    vite=Vite(
+        Path(__file__).parent / "frontend",
+        build_directory="public/ui",
+    ),
 )
 ```
 
@@ -169,7 +167,6 @@ export default defineConfig({
   plugins: [
     gdansk({
       buildDirectory: "public/ui",
-      widgetsDirectory: "ui/widgets",
       refresh: true,
     }),
     react(),
@@ -177,10 +174,12 @@ export default defineConfig({
 });
 ```
 
-If you need a non-default SSR address, set it on both sides:
+If you need a non-default frontend runtime address, set it on both sides:
 
 ```python
-ship = Ship(views=Path(__file__).parent / "frontend", host="127.0.0.1", port=14000)
+from gdansk import Ship, Vite
+
+ship = Ship(vite=Vite(Path(__file__).parent / "frontend", host="127.0.0.1", port=14000))
 ```
 
 ```ts
@@ -218,11 +217,11 @@ from pathlib import Path
 from mcp.server import MCPServer
 from mcp.types import TextContent
 
-from gdansk import Ship
+from gdansk import Ship, Vite
 
 FastAPI = importlib.import_module("fastapi").FastAPI
 
-ship = Ship(views=Path(__file__).parent / "frontend")
+ship = Ship(vite=Vite(Path(__file__).parent / "frontend"))
 
 
 @ship.widget(path=Path("hello/widget.tsx"), name="hello")
@@ -232,7 +231,7 @@ def hello(name: str = "world") -> list[TextContent]:
 
 @asynccontextmanager
 async def mcp_lifespan(app: MCPServer) -> AsyncIterator[None]:
-    async with ship.mcp(app=app, dev=True):
+    async with ship.mcp(app=app, watch=True):
         yield
 
 
@@ -247,7 +246,7 @@ async def lifespan(_: object) -> AsyncIterator[None]:
 
 
 app = FastAPI(lifespan=lifespan)
-app.mount(path="/dist", app=ship.assets)
+app.mount(path=ship.assets_path, app=ship.assets)
 app.mount(path="/mcp", app=mcp_app)
 ```
 
@@ -270,7 +269,3 @@ Expected for a basic hello widget:
 
 - `frontend/dist/hello/client.js`
 - optional `frontend/dist/hello/client.css`
-
-If production SSR is enabled with `Ship(ssr=True)` and `gdansk({ ssr: true })`, also expect:
-
-- `frontend/dist/server.js`

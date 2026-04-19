@@ -21,7 +21,7 @@ npx skills add mplemay/gdansk
 Then use:
 
 - `$use-gdansk` to bootstrap gdansk in a new repo or add another widget to an existing integration.
-- `$debug-gdansk` to diagnose widget path, bundling, SSR, and runtime failures in an existing gdansk setup.
+- `$debug-gdansk` to diagnose widget path, bundling, render, and runtime failures in an existing gdansk setup.
 
 ## Compatibility
 
@@ -35,7 +35,7 @@ Then use:
 
 - **[FastAPI](examples/fastapi):** Mounting the MCP app inside an existing FastAPI service.
 - **[get-time](examples/get-time):** Small copyable widget example for first-time adoption in another repo.
-- **[ssr](examples/ssr):** Minimal SSR and hydration example with a single widget tool.
+- **[production](examples/production):** Minimal production-rendered and hydrated widget example with a single tool.
 - **[shadcn](examples/shadcn):** Multi-tool todo app with `structured_output=True` and `shadcn/ui`.
 
 ## Quick Start
@@ -55,7 +55,7 @@ my-mcp-server/
             └── widget.tsx
 ```
 
-The `frontend` folder name is only an example. Pass any frontend package root to `Ship(..., views=...)`.
+The `frontend` folder name is only an example. Pass any frontend package root to `Vite(...)`.
 That frontend package owns its own `vite.config.ts`; import `@gdansk/vite` there alongside any framework plugins.
 
 **server.py:**
@@ -70,10 +70,10 @@ from mcp.server import MCPServer
 from mcp.types import TextContent
 from starlette.middleware.cors import CORSMiddleware
 
-from gdansk import Ship
+from gdansk import Ship, Vite
 
 frontend_path = Path(__file__).parent / "frontend"
-ship = Ship(views=frontend_path)
+ship = Ship(vite=Vite(frontend_path))
 
 
 @ship.widget(path=Path("hello/widget.tsx"), name="greet")
@@ -84,7 +84,7 @@ def greet(name: str) -> list[TextContent]:
 
 @asynccontextmanager
 async def lifespan(app: MCPServer) -> AsyncIterator[None]:
-    async with ship.mcp(app=app, dev=True):
+    async with ship.mcp(app=app, watch=True):
         yield
 
 
@@ -99,7 +99,7 @@ def main() -> None:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.mount(path="/dist", app=ship.assets)
+    app.mount(path=ship.assets_path, app=ship.assets)
     uvicorn.run(app, port=3000)
 
 
@@ -189,25 +189,23 @@ export default defineConfig({
 alias when you want `@` to resolve somewhere else. Use `refresh: true` to trigger full browser reloads when nearby
 Python or Jinja files change during development.
 
-Production rendering defaults to client-side rendering. To enable production SSR, opt in on both sides:
+`ship.mcp(..., watch=...)` controls how the frontend is prepared:
 
-```python
-ship = Ship(views=frontend_path, ssr=True)
-```
+- **`watch=True`** — runs the Vite dev server in the background with React refresh; JS/CSS load from the Vite origin.
+- **`watch=False`** (default) — runs `vite build` on startup, then serves static hydration assets and the gdansk
+  manifest from `ship.assets`.
+- **`watch=None`** — skips Vite/Deno entirely and loads an existing `gdansk-manifest.json` under the assets directory.
+  Use this when assets are prebuilt (for example in CI) to avoid cold-start build cost.
 
-```ts
-export default defineConfig({
-  plugins: [gdansk({ ssr: true, refresh: true }), react()],
-});
-```
-
-If you need non-default frontend directories, keep the Vite plugin and Python runtime aligned:
+If you need a non-default build output directory, keep the Vite plugin and Python runtime aligned. Widget sources
+always live under `widgets/` at the frontend package root (`Vite(root=...)` / Vite `root`).
 
 ```python
 ship = Ship(
-    views=Path(__file__).parent / "frontend",
-    assets="public/ui",
-    widgets_directory="ui/widgets",
+    vite=Vite(
+        Path(__file__).parent / "frontend",
+        build_directory="public/ui",
+    ),
 )
 ```
 
@@ -216,7 +214,6 @@ export default defineConfig({
   plugins: [
     gdansk({
       buildDirectory: "public/ui",
-      widgetsDirectory: "ui/widgets",
       refresh: true,
     }),
     react(),
@@ -224,7 +221,7 @@ export default defineConfig({
 });
 ```
 
-Production widgets load their hydration assets from `/<assets_dir>/...`. Mount `ship.assets` at that path on the
+Production widgets load their hydration assets from `ship.assets_path`. Mount `ship.assets` at that path on the
 public app; with the default settings this is `/dist`.
 
 The default production output now mirrors Vite/Laravel conventions more closely:
@@ -234,21 +231,19 @@ The default production output now mirrors Vite/Laravel conventions more closely:
 - stable widget entries: `dist/<widget>/client.js` and `dist/<widget>/client.css`
 - shared hashed assets and chunks: `dist/assets/*`
 
-When production SSR is enabled with `Ship(ssr=True)` and `gdansk({ ssr: true })`, the build also includes:
-
-- SSR bundles: `dist/ssr.js` and `dist/server.js`
-
 If your MCP client renders widget HTML on a different origin, pass `base_url` to `Ship` so production asset URLs point
 back to your public app instead of the client host:
 
 ```python
-ship = Ship(views=Path(__file__).parent / "frontend", base_url="https://example.com")
+ship = Ship(vite=Vite(Path(__file__).parent / "frontend"), base_url="https://example.com")
 ```
 
-If you enable production SSR or want a different dev runtime host or port, configure both sides explicitly:
+If you want a different dev runtime host or port, configure both sides explicitly:
 
 ```python
-ship = Ship(views=Path(__file__).parent / "frontend", host="127.0.0.1", port=14000)
+from gdansk import Ship, Vite
+
+ship = Ship(vite=Vite(Path(__file__).parent / "frontend", host="127.0.0.1", port=14000))
 ```
 
 ```ts

@@ -56,22 +56,23 @@ Use [adoption-checklist.md](references/adoption-checklist.md) for compatibility 
 
 Use the public integration points directly:
 
-- Create `ship = Ship(views=Path(...))` with the frontend package root, not the widget directory.
+- Create `ship = Ship(vite=Vite(Path(...)))` with the frontend package root, not the widget directory.
 - Register the UI tool with `@ship.widget(path=Path("hello/widget.tsx"), name="hello")`.
 - Keep `path=` relative to `widgets/` inside the frontend package root.
-- Use an `MCPServer` lifespan that enters `async with ship.mcp(app=app, dev=...)`.
+- Use an `MCPServer` lifespan that enters `async with ship.mcp(app=app, watch=...)`.
 - In the frontend package, import `@gdansk/vite` in `vite.config.ts` and compose it with the framework plugins you
   need.
 - The Vite plugin now provides a default `@` alias to the frontend package root; only add a manual `@` alias when you
   need a different target.
 - Prefer `gdansk({ refresh: true })` in real app repos so nearby Python or Jinja edits trigger a full browser reload.
-- If you customize the runtime host or port, configure the same values in both `Ship(...)` and `gdansk(...)`.
-- If you customize frontend directories, keep `Ship(assets=..., widgets_directory=...)` aligned with
-  `gdansk({ buildDirectory: ..., widgetsDirectory: ... })`.
+- If you customize the runtime host or port, pass `Vite(Path(...), host=..., port=...)` to `Ship` and use the same
+  values in `gdansk(...)`.
+- If you customize the build output directory, keep `Vite(Path(...), build_directory=...)` aligned with
+  `gdansk({ buildDirectory: ... })`. Widget sources always use `widgets/` under the frontend package root.
 - Ensure the widget file default-exports the React component.
 
 Do not use filesystem-absolute paths for widget registration. Do not assume the frontend package directory must be
-named `views`; any directory passed to `Ship(..., views=...)` is valid.
+named `views`; any directory passed to `Vite(...)` is valid.
 
 ## 4) Apply optional integrations only when requested
 
@@ -94,14 +95,15 @@ Use [integration-options.md](references/integration-options.md) for exact implem
 
 After implementation:
 
-1. Start the server in development with `ship.mcp(..., dev=True)`.
+1. Start the server in development with `ship.mcp(..., watch=True)` (or `watch=False` to build on startup,
+   `watch=None` when assets are prebuilt).
 2. Confirm bundle output appears under `<frontend-package>/dist/`.
 3. Open or fetch the UI resource and confirm the rendered HTML includes the client script.
 4. Confirm the widget's `callServerTool(...)` calls use the registered MCP tool names.
 5. For metadata work, confirm the expected title or meta tags appear in the rendered page.
 6. For CSS changes, confirm the generated CSS file is present and referenced.
 
-If startup, bundling, or SSR fails, switch to `$debug-gdansk`.
+If startup, bundling, or rendering fails, switch to `$debug-gdansk`.
 
 ## Guardrails
 
@@ -109,7 +111,7 @@ If startup, bundling, or SSR fails, switch to `$debug-gdansk`.
   covers the task.
 - Do not invent alternative widget entry conventions such as `app.tsx`; gdansk expects `widget.tsx` or `widget.jsx`.
 - Do not use `widgets/...` as the `path` prefix in `@ship.widget(...)`.
-- Ensure each widget default-exports the app component and that its imports are SSR-compatible.
+- Ensure each widget default-exports the app component and that its imports are render-compatible.
 
 ## Reference map
 

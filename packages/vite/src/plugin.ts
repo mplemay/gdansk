@@ -9,13 +9,11 @@ import {
   resolveDevelopmentServerConfig,
   warmupWidgetEntries,
 } from "./development";
-import { installDevSSRMiddleware } from "./ssr";
 import type { GdanskPluginOptions, GdanskPreparedProject, ResolvedGdanskOptions } from "./types";
 import { loadVirtualModule, resolveVirtualModuleId } from "./virtual";
 
 type GdanskDevServerMetadata = {
-  ssrEndpoint: string;
-  ssrOrigin: string;
+  viteOrigin: string;
 };
 
 type GdanskDevServer = ViteDevServer & {
@@ -64,19 +62,10 @@ export function gdansk(options: GdanskPluginOptions = {}): PluginOption {
     },
     async configureServer(server) {
       const project = prepared ?? (await ensurePrepared(server.config.root));
-      const resolvedOptions = resolved ?? resolveOptions(options, server.config.root);
-
-      installDevSSRMiddleware({
-        options: resolvedOptions,
-        server,
-        ssrEntry: project.ssrEntryId,
-        widgets: project.widgets,
-      });
 
       const updateMetadata = (): void => {
         (server as GdanskDevServer).__gdansk = {
-          ssrEndpoint: resolvedOptions.ssrEndpoint,
-          ssrOrigin: resolveViteOrigin(server),
+          viteOrigin: resolveViteOrigin(server),
         };
       };
 

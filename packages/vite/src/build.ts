@@ -16,7 +16,6 @@ import { createGdanskVirtualModulesPlugin, createResolvedClientModuleId } from "
 
 const CLIENT_MANIFEST_FILE = "manifest.json";
 const GDANSK_MANIFEST_FILE = "gdansk-manifest.json";
-const SERVER_BUNDLE = "ssr.js";
 
 type ViteManifestEntry = {
   css?: string[];
@@ -34,10 +33,6 @@ export function createBuildConfig(options: ResolvedGdanskOptions, prepared: Gdan
           await builder.build(builder.environments.client);
         }
 
-        if (options.ssr) {
-          await builder.build(builder.environments.ssr);
-        }
-
         await finalizeBuildOutputs(options, prepared.widgets);
       },
     },
@@ -51,17 +46,6 @@ export function createBuildConfig(options: ResolvedGdanskOptions, prepared: Gdan
       client: {
         build: createClientBuildOptions(options, prepared),
       },
-      ...(options.ssr
-        ? {
-            ssr: {
-              consumer: "server" as const,
-              build: createSSRBuildOptions(options, prepared),
-              resolve: {
-                noExternal: true,
-              },
-            },
-          }
-        : {}),
     },
   };
 }
@@ -86,21 +70,6 @@ export async function buildWidgets(
     );
   }
 
-  if (options.ssr) {
-    await build(
-      mergeConfig(config, {
-        appType: "custom",
-        build: createSSRBuildOptions(options, prepared),
-        configFile: false,
-        plugins: [createGdanskVirtualModulesPlugin(options, prepared)],
-        root: options.root,
-        ssr: {
-          noExternal: true,
-        },
-      }),
-    );
-  }
-
   return finalizeBuildOutputs(options, prepared.widgets);
 }
 
@@ -112,10 +81,8 @@ function createClientBuildOptions(
   options: ResolvedGdanskOptions,
   prepared: GdanskPreparedProject,
 ): UserConfig["build"] {
-  const inputs =
-    prepared.widgets.length > 0
-      ? Object.fromEntries(prepared.widgets.map((widget) => [widget.key, widget.clientModuleId]))
-      : { __gdansk_empty__: prepared.ssrEntryId };
+  const inputs = Object.fromEntries(prepared.widgets.map((widget) => [widget.key, widget.clientModuleId]));
+  const input = Object.keys(inputs).length > 0 ? inputs : undefined;
 
   return {
     copyPublicDir: false,
@@ -124,7 +91,7 @@ function createClientBuildOptions(
     manifest: CLIENT_MANIFEST_FILE,
     outDir: options.buildDirectory,
     rollupOptions: {
-      input: inputs,
+      ...(input ? { input } : {}),
       output: {
         assetFileNames: (assetInfo: { names?: string[]; originalFileNames?: string[] }) =>
           resolveClientAssetPath(options, prepared.widgets, assetInfo),
@@ -133,23 +100,6 @@ function createClientBuildOptions(
       },
     },
     sourcemap: true,
-  };
-}
-
-function createSSRBuildOptions(options: ResolvedGdanskOptions, prepared: GdanskPreparedProject): UserConfig["build"] {
-  return {
-    copyPublicDir: false,
-    emptyOutDir: false,
-    outDir: options.buildDirectory,
-    rollupOptions: {
-      input: prepared.ssrEntryId,
-      output: {
-        chunkFileNames: "assets/[name]-[hash].js",
-        entryFileNames: SERVER_BUNDLE,
-      },
-    },
-    sourcemap: true,
-    ssr: true,
   };
 }
 
@@ -175,7 +125,6 @@ async function finalizeBuildOutputs(
   const manifest: GdanskManifest = {
     outDir: options.buildDirectory,
     root: options.root,
-    ...(options.ssr ? { server: toPosixPath(`${options.buildDirectory}/${SERVER_BUNDLE}`) } : {}),
     widgets: Object.fromEntries(
       await Promise.all(
         widgetBuildData.map(async ({ collectedCss, manifestEntry, widget }) => {
@@ -195,9 +144,6 @@ async function finalizeBuildOutputs(
   };
 
   await writeJson(resolve(options.buildDirectoryPath, GDANSK_MANIFEST_FILE), manifest);
-  if (options.ssr) {
-    await writeProductionServer(options);
-  }
 
   return manifest;
 }
@@ -396,31 +342,4 @@ function toOutputPath(options: ResolvedGdanskOptions, path: string): string {
 
 function toBuildPath(options: ResolvedGdanskOptions, path: string): string {
   return path.startsWith(`${options.buildDirectory}/`) ? path : `${options.buildDirectory}/${path.replace(/^\/+/, "")}`;
-}
-
-async function writeProductionServer(options: ResolvedGdanskOptions): Promise<void> {
-  const path = resolve(options.buildDirectoryPath, "server.js");
-  const runtimeModuleUrl = new URL("../runtime.js", import.meta.url).href;
-  const runtimeOptions = {
-    buildDirectory: options.buildDirectory,
-    host: options.host,
-    port: options.port,
-    ssr: options.ssr,
-    widgetsDirectory: options.widgetsDirectory,
-  };
-
-  await writeFile(
-    path,
-    [
-      'import { dirname, resolve } from "node:path";',
-      'import { fileURLToPath } from "node:url";',
-      `import { createGdanskRuntime } from "${runtimeModuleUrl}";`,
-      "",
-      "const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');",
-      `const runtime = await createGdanskRuntime({ ...${JSON.stringify(runtimeOptions)}, root });`,
-      "await runtime.startProductionServer();",
-      "await new Promise(() => {});",
-      "",
-    ].join("\n"),
-  );
 }

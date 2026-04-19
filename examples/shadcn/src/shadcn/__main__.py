@@ -10,10 +10,10 @@ import uvicorn
 from mcp.server import MCPServer
 from starlette.middleware.cors import CORSMiddleware
 
-from gdansk import Ship
+from gdansk import Ship, Vite
 
 views_path = Path(__file__).parent / "views"
-ship = Ship(views=views_path)
+ship = Ship(vite=Vite(views_path))
 
 
 @dataclass(slots=True, kw_only=True)
@@ -49,7 +49,7 @@ def list_todos() -> list[Todo]:
 
 @asynccontextmanager
 async def lifespan(app: MCPServer) -> AsyncIterator[None]:  # noqa: D103
-    async with ship.mcp(app=app, dev=True):
+    async with ship.mcp(app=app, watch=True):
         yield
 
 
@@ -93,7 +93,7 @@ def main() -> None:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.mount(path="/dist", app=ship.assets)
+    app.mount(path=ship.assets_path, app=ship.assets)
     uvicorn.run(app, port=3001)
 
 

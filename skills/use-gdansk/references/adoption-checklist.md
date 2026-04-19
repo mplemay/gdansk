@@ -26,7 +26,7 @@ my-mcp-server/
             └── widget.tsx
 ```
 
-The `frontend/` directory name is only an example. Pass any frontend package root to `Ship(..., views=...)`.
+The `frontend/` directory name is only an example. Pass any frontend package root to `Vite(...)`.
 
 ## Python dependency baseline
 
@@ -72,15 +72,16 @@ If the repo tracks `deno.lock`, keep it in sync with the edited dependencies.
 
 ## Public API checklist
 
-- Construct `Ship` with the frontend package root: `Ship(views=Path(...))`.
+- Construct `Ship` with the frontend package root: `Ship(vite=Vite(Path(...)))`.
 - Register widget tools with `@ship.widget(...)`.
 - Use `path=Path("<widget>/widget.tsx")` or `.jsx`, relative to `widgets/`.
-- Enter `async with ship.mcp(app=app, dev=...)` inside the `MCPServer` lifespan.
+- Enter `async with ship.mcp(app=app, watch=...)` inside the `MCPServer` lifespan (`watch=True` for Vite dev,
+  `watch=False` to build on startup, `watch=None` when assets are prebuilt).
 - Import `@gdansk/vite` inside the frontend package's `vite.config.ts`.
 - Rely on the plugin's default `@` alias before adding a manual one.
 - Prefer `gdansk({ refresh: true })` when backend file changes should reload the browser during development.
-- If you customize asset or widget directories, keep `Ship(assets=..., widgets_directory=...)` aligned with
-  `gdansk({ buildDirectory: ..., widgetsDirectory: ... })`.
+- If you customize the build output directory, keep `Vite(Path(...), build_directory=...)` aligned with
+  `gdansk({ buildDirectory: ... })`.
 
 ## Before finishing
 

@@ -62,7 +62,6 @@ For `hello/widget.tsx`:
 
 - client bundle: `dist/hello/client.js`
 - optional client css: `dist/hello/client.css`
-- SSR server bundle reference lives in the shared production server output
 
 ## Guardrail checklist
 
