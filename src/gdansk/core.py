@@ -63,7 +63,7 @@ class Ship:
 
     @cached_property
     def assets(self) -> StaticFiles:
-        return StaticFiles(directory=self._vite.build_directory_path, check_dir=True)
+        return StaticFiles(directory=self._vite.build_directory_path, check_dir=False)
 
     @property
     def assets_path(self) -> str:

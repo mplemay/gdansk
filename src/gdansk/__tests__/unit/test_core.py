@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, cast
 import httpx
 import pytest
 from mcp.server import MCPServer
+from starlette.applications import Starlette
 from starlette.staticfiles import StaticFiles
 
 from gdansk.__tests__.unit.conftest import FakeManagedProcess, FakeProcess, write_manifest
@@ -34,6 +35,23 @@ def test_ship_defaults_to_vite_under_cwd(tmp_path: Path, monkeypatch: pytest.Mon
     assert ship._vite.build_directory_path == views / "dist"
     assert ship.assets_path == "/dist"
     assert isinstance(ship.assets, StaticFiles)
+    assert Path(str(ship.assets.directory)) == views / "dist"
+
+
+def test_ship_assets_can_be_mounted_before_build_output_exists(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    views = tmp_path / "views"
+    (views / "widgets" / "hello").mkdir(parents=True)
+    (views / "widgets" / "hello" / "widget.tsx").write_text(
+        "export default function App() { return null; }\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    ship = Ship()
+    app = Starlette()
+    app.mount(path=ship.assets_path, app=ship.assets)
+
+    assert ship.assets_path == "/dist"
     assert Path(str(ship.assets.directory)) == views / "dist"
 
 
