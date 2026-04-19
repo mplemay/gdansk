@@ -31,7 +31,7 @@ jobs:
         run: |
           set -euo pipefail
           deno install
-          for d in packages/vite examples/fastapi/src/mount/views examples/get-time/src/get_time/views examples/shadcn/src/shadcn/views; do
+          for d in packages/vite examples/fastapi/src/mount/views examples/get-time/src/get_time/views examples/production/src/production/views examples/shadcn/src/shadcn/views; do
             (cd "$d" && deno install)
           done
 
