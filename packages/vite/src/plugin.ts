@@ -1,4 +1,4 @@
-import { mergeConfig, type Plugin, type PluginOption, type UserConfig, type ViteDevServer } from "vite";
+import { mergeConfig, type Plugin, type UserConfig, type ViteDevServer } from "vite";
 
 import { createBuildConfig } from "./build";
 import { prepareProject, resolveOptions } from "./context";
@@ -20,7 +20,7 @@ type GdanskDevServer = ViteDevServer & {
   __gdansk?: GdanskDevServerMetadata;
 };
 
-export function gdansk(options: GdanskPluginOptions = {}): PluginOption {
+export function gdansk(options: GdanskPluginOptions = {}): Array<{ name: string }> {
   let prepared: GdanskPreparedProject | undefined;
   let preparePromise: Promise<GdanskPreparedProject> | undefined;
   let resolved: ResolvedGdanskOptions | undefined;
