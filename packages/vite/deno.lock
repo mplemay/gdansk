@@ -1292,12 +1292,6 @@
     }
   },
   "workspace": {
-    "dependencies": [
-      "npm:@vitejs/plugin-react@6.0.1",
-      "npm:react-dom@19.2.5",
-      "npm:react@19.2.5",
-      "npm:vite@8.0.9"
-    ],
     "packageJson": {
       "dependencies": [
         "npm:@types/node@25.6.0",
