@@ -13,6 +13,7 @@ from mcp.server.mcpserver.resources import FunctionResource
 from mcp.server.mcpserver.tools.base import Tool
 from starlette.staticfiles import StaticFiles
 
+from gdansk.json_schema import normalize_json_schema
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import render_template
 from gdansk.utils import join_url, join_url_path
@@ -240,6 +241,9 @@ class Ship:
                 meta=dict(tm.items()),
                 structured_output=structured_output,
             )
+            tool.parameters = normalize_json_schema(tool.parameters)
+            if tool.fn_metadata.output_schema is not None:
+                tool.fn_metadata.output_schema = normalize_json_schema(tool.fn_metadata.output_schema)
             resource = FunctionResource.from_function(
                 fn=partial(self.render_widget_page, metadata=merged_metadata, widget_key=key),
                 uri=uri,

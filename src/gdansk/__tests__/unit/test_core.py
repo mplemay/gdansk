@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Annotated, Any, cast
 
 import httpx
 import pytest
 from mcp.server import MCPServer
+from pydantic import BaseModel, Field
 from starlette.applications import Starlette
 from starlette.staticfiles import StaticFiles
 
@@ -18,6 +19,26 @@ from gdansk.vite import Vite
 
 if TYPE_CHECKING:
     from gdansk.widget import WidgetMeta
+
+
+class LocationSchemaModel(BaseModel):
+    address: str | None = None
+    city: str | None = None
+    state: str | None = None
+    postal_code: str | None = None
+
+
+LocationSchemaInput = Annotated[
+    LocationSchemaModel | None,
+    Field(description="Structured company location context used to disambiguate the practice when known."),
+]
+
+
+class CompanySchemaModel(BaseModel):
+    location: Annotated[
+        LocationSchemaModel | None,
+        Field(description="Resolved structured practice location context."),
+    ] = None
 
 
 def _app() -> MCPServer:
@@ -258,6 +279,46 @@ def test_ship_widget_does_not_mutate_meta_input(views_path: Path):
         return None
 
     assert meta == original
+
+
+def test_ship_widget_inlines_internal_input_schema_refs(views_path: Path):
+    ship = Ship(vite=Vite(views_path))
+
+    @ship.widget(path=Path("hello/widget.tsx"), name="hello")
+    def hello(location: LocationSchemaInput = None) -> None:
+        _ = location
+
+    spec = ship._widget_manager[Path("hello/widget.tsx")]
+    location_schema = spec.tool.parameters["properties"]["location"]
+
+    assert "$defs" not in spec.tool.parameters
+    assert location_schema["default"] is None
+    assert (
+        location_schema["description"]
+        == "Structured company location context used to disambiguate the practice when known."
+    )
+
+    object_schema = next(option for option in location_schema["anyOf"] if option.get("type") == "object")
+    assert set(object_schema["properties"]) == {"address", "city", "state", "postal_code"}
+
+
+def test_ship_widget_inlines_structured_output_schema_refs_and_preserves_siblings(views_path: Path):
+    ship = Ship(vite=Vite(views_path))
+
+    @ship.widget(path=Path("hello/widget.tsx"), name="hello", structured_output=True)
+    def hello() -> CompanySchemaModel:
+        return CompanySchemaModel()
+
+    spec = ship._widget_manager[Path("hello/widget.tsx")]
+    assert spec.tool.output_schema is not None
+    location_schema = spec.tool.output_schema["properties"]["location"]
+
+    assert "$defs" not in spec.tool.output_schema
+    assert location_schema["default"] is None
+    assert location_schema["description"] == "Resolved structured practice location context."
+
+    object_schema = next(option for option in location_schema["anyOf"] if option.get("type") == "object")
+    assert set(object_schema["properties"]) == {"address", "city", "state", "postal_code"}
 
 
 async def test_wait_for_vite_reads_vite_client_endpoint(views_path: Path):
