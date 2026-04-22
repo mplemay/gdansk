@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, Any, cast
 import httpx
 import pytest
 from mcp.server import MCPServer
+from mcp.server.mcpserver.tools.base import Tool
+from pydantic import BaseModel
 from starlette.applications import Starlette
 from starlette.staticfiles import StaticFiles
 
@@ -18,6 +20,11 @@ from gdansk.vite import Vite
 
 if TYPE_CHECKING:
     from gdansk.widget import WidgetMeta
+
+
+class SearchFilters(BaseModel):
+    city: str
+    radius: int = 10
 
 
 def _app() -> MCPServer:
@@ -258,6 +265,37 @@ def test_ship_widget_does_not_mutate_meta_input(views_path: Path):
         return None
 
     assert meta == original
+
+
+def test_ship_widget_default_schema_preserves_generated_tool_parameters(views_path: Path):
+    ship = Ship(vite=Vite(views_path))
+
+    @ship.widget(path=Path("hello/widget.tsx"), name="hello")
+    def hello(filters: SearchFilters, name: str | None = None) -> None:
+        _ = filters, name
+
+    spec = ship._widget_manager[Path("hello/widget.tsx")]
+    expected = Tool.from_function(fn=hello, name="hello").parameters
+
+    assert spec.tool.parameters == expected
+
+
+def test_ship_widget_strict_schema_normalizes_tool_parameters(views_path: Path):
+    ship = Ship(vite=Vite(views_path))
+
+    @ship.widget(path=Path("hello/widget.tsx"), name="hello", schema="strict")
+    def hello(filters: SearchFilters, name: str | None = None) -> None:
+        _ = filters, name
+
+    spec = ship._widget_manager[Path("hello/widget.tsx")]
+
+    assert spec.tool.parameters["additionalProperties"] is False
+    assert spec.tool.parameters["required"] == ["filters", "name"]
+    assert "default" not in spec.tool.parameters["properties"]["name"]
+    assert spec.tool.parameters["properties"]["filters"] == {"$ref": "#/$defs/SearchFilters"}
+    assert spec.tool.parameters["$defs"]["SearchFilters"]["additionalProperties"] is False
+    assert spec.tool.parameters["$defs"]["SearchFilters"]["required"] == ["city", "radius"]
+    assert spec.tool.parameters["$defs"]["SearchFilters"]["properties"]["radius"]["default"] == 10
 
 
 async def test_wait_for_vite_reads_vite_client_endpoint(views_path: Path):
