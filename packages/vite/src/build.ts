@@ -7,6 +7,7 @@ import type { UserConfig } from "vite";
 import { pathExists, toPosixPath } from "./context";
 import type {
   GdanskManifest,
+  ResolvedGdanskPageOptions,
   GdanskPreparedProject,
   LoadedProjectConfig,
   ResolvedGdanskOptions,
@@ -22,6 +23,22 @@ type ViteManifestEntry = {
   file: string;
   imports?: string[];
 };
+
+export function createPageBuildConfig(options: ResolvedGdanskPageOptions): UserConfig {
+  return {
+    appType: "custom",
+    build: {
+      copyPublicDir: false,
+      emptyOutDir: true,
+      manifest: CLIENT_MANIFEST_FILE,
+      outDir: options.buildDirectory,
+      rollupOptions: {
+        input: resolve(options.root, options.entry),
+      },
+      sourcemap: true,
+    },
+  };
+}
 
 export function createBuildConfig(options: ResolvedGdanskOptions, prepared: GdanskPreparedProject): UserConfig {
   return {

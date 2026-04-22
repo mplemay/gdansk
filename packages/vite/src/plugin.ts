@@ -1,7 +1,7 @@
 import { mergeConfig, type Plugin, type UserConfig, type ViteDevServer } from "vite";
 
-import { createBuildConfig } from "./build";
-import { prepareProject, resolveOptions } from "./context";
+import { createBuildConfig, createPageBuildConfig } from "./build";
+import { prepareProject, resolveOptions, resolvePageOptions } from "./context";
 import { resolveViteOrigin } from "./css";
 import {
   createRefreshPlugin,
@@ -9,7 +9,13 @@ import {
   resolveDevelopmentServerConfig,
   warmupWidgetEntries,
 } from "./development";
-import type { GdanskPluginOptions, GdanskPreparedProject, ResolvedGdanskOptions } from "./types";
+import type {
+  GdanskPagePluginOptions,
+  GdanskPluginOptions,
+  GdanskPreparedProject,
+  ResolvedGdanskOptions,
+  ResolvedGdanskPageOptions,
+} from "./types";
 import { loadVirtualModule, resolveVirtualModuleId } from "./virtual";
 
 type GdanskDevServerMetadata = {
@@ -92,9 +98,57 @@ export function gdansk(options: GdanskPluginOptions = {}): Array<{ name: string 
   return [corePlugin, createRefreshPlugin(options)];
 }
 
+export function gdanskPages(options: GdanskPagePluginOptions = {}): Array<{ name: string }> {
+  let resolved: ResolvedGdanskPageOptions | undefined;
+
+  const corePlugin: Plugin = {
+    config(config, env) {
+      resolved = resolvePageOptions(options, config.root);
+      const sharedConfig = createSharedConfig(config, options, resolved);
+
+      if (env.command === "build") {
+        return mergeConfig(sharedConfig, createPageBuildConfig(resolved));
+      }
+
+      return sharedConfig;
+    },
+    name: "@gdansk/vite:pages",
+    configureServer(server) {
+      resolved ??= resolvePageOptions(options, server.config.root);
+      const pageOptions = resolved;
+
+      const updateMetadata = (): void => {
+        (server as GdanskDevServer).__gdansk = {
+          viteOrigin: resolveViteOrigin(server),
+        };
+      };
+
+      const warmupEntry = (): void => {
+        void server.warmupRequest?.(pageOptions.entry);
+      };
+
+      const clearMetadata = (): void => {
+        delete (server as GdanskDevServer).__gdansk;
+      };
+
+      if (server.httpServer?.listening) {
+        updateMetadata();
+        warmupEntry();
+      } else {
+        server.httpServer?.once("listening", updateMetadata);
+        server.httpServer?.once("listening", warmupEntry);
+      }
+
+      server.httpServer?.once("close", clearMetadata);
+    },
+  };
+
+  return [corePlugin, createRefreshPlugin(options)];
+}
+
 function createSharedConfig(
   config: UserConfig,
-  options: GdanskPluginOptions,
+  options: GdanskPluginOptions | GdanskPagePluginOptions,
   resolved: ResolvedGdanskOptions,
 ): UserConfig {
   const server = resolveDevelopmentServerConfig(options, resolved);

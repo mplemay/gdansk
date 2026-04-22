@@ -34,9 +34,30 @@ Then use:
 ## Examples
 
 - **[FastAPI](examples/fastapi):** Mounting the MCP app inside an existing FastAPI service.
+- **[inertia](examples/inertia):** Ship-backed Inertia pages for FastAPI with `gdanskPages()`.
 - **[get-time](examples/get-time):** Small copyable widget example for first-time adoption in another repo.
 - **[production](examples/production):** Minimal production-rendered and hydrated widget example with a single tool.
 - **[shadcn](examples/shadcn):** Multi-tool todo app with `structured_output=True` and `shadcn/ui`.
+
+## Inertia Pages
+
+`ship.inertia()` reuses the same `Ship` and `Vite` wiring for server-driven pages: the first request returns an HTML
+shell, follow-up requests use the Inertia JSON protocol, and production assets still come from `ship.assets`.
+
+Pair the backend with `gdanskPages()` in your frontend `vite.config.ts`:
+
+```ts
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
+import { gdanskPages } from "@gdansk/vite";
+
+export default defineConfig({
+  plugins: [gdanskPages({ refresh: true }), react()],
+});
+```
+
+For a full FastAPI example with validation errors, flash messages, and deferred props, see
+[`examples/inertia`](examples/inertia).
 
 ## Quick Start
 

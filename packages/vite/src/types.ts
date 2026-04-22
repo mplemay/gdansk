@@ -12,6 +12,10 @@ export interface GdanskPluginOptions {
   port?: number;
 }
 
+export interface GdanskPagePluginOptions extends GdanskPluginOptions {
+  entry?: string;
+}
+
 export interface ResolvedGdanskOptions {
   buildDirectory: string;
   buildDirectoryPath: string;
@@ -20,6 +24,10 @@ export interface ResolvedGdanskOptions {
   port: number;
   widgetsDirectory: string;
   widgetsDirectoryPath: string;
+}
+
+export interface ResolvedGdanskPageOptions extends ResolvedGdanskOptions {
+  entry: string;
 }
 
 export interface WidgetDefinition {

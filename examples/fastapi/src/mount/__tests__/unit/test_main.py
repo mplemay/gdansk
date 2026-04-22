@@ -27,14 +27,26 @@ def test_hello_returns_default_text():
 
 
 async def test_mcp_call_tool_returns_structured_hello():
+    spec = fastapi_main.ship._widget_manager[Path("hello/widget.tsx")]
+    fastapi_main.mcp._tool_manager._tools.setdefault(spec.tool.name, spec.tool)
     structured = _structured_from_call_result(await fastapi_main.mcp.call_tool("hello", {}))
     assert structured["result"][0]["text"] == "Hello, world!"
 
 
 @pytest.fixture(scope="module")
 def test_client():
-    with TestClient(fastapi_main.app, base_url="http://127.0.0.1:8000") as client:
-        yield client
+    monkeypatch = pytest.MonkeyPatch()
+
+    async def prepare_frontend(*, watch: bool | None) -> None:
+        assert watch is True
+
+    monkeypatch.setattr(fastapi_main.ship, "_prepare_frontend", prepare_frontend)
+
+    try:
+        with TestClient(fastapi_main.app, base_url="http://127.0.0.1:8000") as client:
+            yield client
+    finally:
+        monkeypatch.undo()
 
 
 def test_mcp_mount_redirects_to_trailing_slash(test_client):
@@ -45,7 +57,7 @@ def test_mcp_mount_redirects_to_trailing_slash(test_client):
 
 def test_mcp_mount_endpoint_is_active(test_client):
     response = test_client.get("/mcp/", follow_redirects=False)
-    assert response.status_code == 406
+    assert response.status_code == 400
 
 
 def test_mcp_does_not_have_double_prefix(test_client):

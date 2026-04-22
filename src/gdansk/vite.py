@@ -130,6 +130,10 @@ class Vite:
     def manifest_path(self) -> Path:
         return self._build_directory_path / "gdansk-manifest.json"
 
+    @property
+    def client_manifest_path(self) -> Path:
+        return self._build_directory_path / "manifest.json"
+
     def require_manifest(self) -> GdanskManifest:
         if self._manifest is None:
             msg = "The production asset manifest is not loaded"

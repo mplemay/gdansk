@@ -1,13 +1,15 @@
 import { access, glob as globIterate } from "node:fs/promises";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 
 import { loadConfigFromFile, mergeConfig } from "vite";
 import type { Alias, InlineConfig, Plugin, PluginOption } from "vite";
 
 import type {
   GdanskPreparedProject,
+  GdanskPagePluginOptions,
   GdanskPluginOptions,
   LoadedProjectConfig,
+  ResolvedGdanskPageOptions,
   ResolvedGdanskOptions,
   WidgetDefinition,
 } from "./types";
@@ -27,6 +29,16 @@ export function resolveOptions(options: GdanskPluginOptions = {}, configRoot?: s
     port: options.port ?? 13714,
     widgetsDirectory,
     widgetsDirectoryPath: resolve(root, widgetsDirectory),
+  };
+}
+
+export function resolvePageOptions(
+  options: GdanskPagePluginOptions = {},
+  configRoot?: string,
+): ResolvedGdanskPageOptions {
+  return {
+    ...resolveOptions(options, configRoot),
+    entry: normalizeRelativePath(options.entry ?? "src/main.tsx", "entry"),
   };
 }
 
@@ -106,6 +118,22 @@ export async function pathExists(path: string): Promise<boolean> {
 
 export function toPosixPath(path: string): string {
   return path.split(sep).join("/");
+}
+
+function normalizeRelativePath(path: string, name: string): string {
+  const trimmed = path.trim();
+  const normalized = toPosixPath(trimmed);
+
+  if (
+    !normalized ||
+    isAbsolute(trimmed) ||
+    normalized.startsWith("/") ||
+    normalized.split("/").some((part) => part === "" || part === "." || part === "..")
+  ) {
+    throw new Error(`The ${name} path must be a relative path without traversal segments`);
+  }
+
+  return normalized;
 }
 
 async function normalizePlugins(plugins: PluginOption | PluginOption[] | undefined): Promise<Plugin[]> {

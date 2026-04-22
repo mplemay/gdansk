@@ -20,6 +20,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "anyio>=4",
+    "fastapi>=0.116.1",
     "prek>=0.3.6",
     "pytest>=9.0.2",
     "ruff>=0.15.1",
@@ -53,6 +54,9 @@ select = ["ALL"]
 "main.py" = ["D"]
 "src/gdansk/**/*.py" = ["D"]
 "examples/fastapi/main.py" = [
+    "INP001", # example entrypoint is intentionally not part of a package
+]
+"examples/inertia/main.py" = [
     "INP001", # example entrypoint is intentionally not part of a package
 ]
 "**/__tests__/**/*" = [
