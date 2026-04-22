@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from hashlib import sha256
 from inspect import isawaitable
 from json import JSONDecodeError, dumps, loads
-from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Final, TypedDict, cast
 
 from pydantic import TypeAdapter
@@ -18,7 +17,6 @@ from gdansk.utils import join_url
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable, MutableMapping
-    from os import PathLike
 
     from gdansk.core import Ship
 
@@ -27,6 +25,7 @@ type InertiaResponse = HTMLResponse | JSONResponse | Response
 _JSON_ADAPTER: Final[TypeAdapter[Any]] = TypeAdapter(Any)
 _ERRORS_SESSION_KEY: Final[str] = "_gdansk_inertia_errors"
 _FLASH_SESSION_KEY: Final[str] = "_gdansk_inertia_flash"
+_PAGE_DEV_ENTRY: Final[str] = "/@gdansk/pages/app.tsx"
 
 
 class ViteManifestEntry(TypedDict, total=False):
@@ -72,18 +71,12 @@ class InertiaApp:
         self,
         *,
         ship: Ship,
-        entry: str | PathLike[str],
         root_id: str,
         version: str | None,
     ) -> None:
-        self._entry: Final[str] = self._normalize_entry(entry)
         self._root_id: Final[str] = self._normalize_root_id(root_id)
         self._ship: Final[Ship] = ship
         self._version_override: Final[str | None] = version
-
-    @property
-    def entry(self) -> str:
-        return self._entry
 
     @property
     def root_id(self) -> str:
@@ -151,8 +144,7 @@ class InertiaApp:
     def _resolve_assets(self) -> PageAssets:
         if self._ship.dev:
             runtime_origin = self._ship.require_vite_origin()
-            entry_path = PurePosixPath("/", self._entry).as_posix()
-            return PageAssets(css=[], script=join_url(runtime_origin, entry_path))
+            return PageAssets(css=[], script=join_url(runtime_origin, _PAGE_DEV_ENTRY))
 
         manifest = self._load_client_manifest()
         entry = self._resolve_manifest_entry(manifest)
@@ -210,24 +202,17 @@ class InertiaApp:
         return cast("dict[str, ViteManifestEntry]", manifest)
 
     def _resolve_manifest_entry(self, manifest: dict[str, ViteManifestEntry]) -> ViteManifestEntry:
-        if (entry := manifest.get(self._entry)) and "file" in entry:
-            return entry
+        entries = [chunk for chunk in manifest.values() if chunk.get("isEntry") and "file" in chunk]
 
-        for chunk in manifest.values():
-            if chunk.get("src") == self._entry and "file" in chunk:
-                return chunk
+        if len(entries) == 1:
+            return entries[0]
 
-        msg = f'The frontend build manifest does not contain the entry "{self._entry}"'
+        if len(entries) == 0:
+            msg = "The frontend build manifest does not contain a page entry"
+            raise RuntimeError(msg)
+
+        msg = "The frontend build manifest must contain exactly one page entry"
         raise RuntimeError(msg)
-
-    @staticmethod
-    def _normalize_entry(entry: str | PathLike[str]) -> str:
-        path = PurePosixPath(Path(entry).as_posix())
-        if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
-            msg = "The Inertia entry must be a relative path without traversal segments"
-            raise ValueError(msg)
-
-        return path.as_posix()
 
     @staticmethod
     def _normalize_root_id(root_id: str) -> str:
@@ -236,6 +221,26 @@ class InertiaApp:
             raise ValueError(msg)
 
         return cleaned
+
+    @staticmethod
+    def normalize_component(component: str) -> str:
+        if not (cleaned := component.strip()):
+            msg = "The Inertia component must not be empty"
+            raise ValueError(msg)
+
+        if cleaned == "/":
+            return cleaned
+
+        normalized = cleaned.strip("/")
+        if not normalized:
+            return "/"
+
+        parts = normalized.split("/")
+        if any(part in {"", ".", ".."} for part in parts):
+            msg = "The Inertia component must be '/' or a relative path without traversal segments"
+            raise ValueError(msg)
+
+        return "/".join(parts)
 
     @staticmethod
     def _serialize_page_data(page: dict[str, Any]) -> str:
@@ -296,10 +301,12 @@ class InertiaPage:
         *,
         metadata: Metadata | None = None,
     ) -> InertiaResponse:
+        normalized_component = self._app.normalize_component(component)
+
         if response := self._version_conflict_response():
             return response
 
-        page = await self._build_page(component=component, props=props or {})
+        page = await self._build_page(component=normalized_component, props=props or {})
         if self._is_inertia_request():
             return JSONResponse(
                 content=page,
@@ -370,9 +377,18 @@ class InertiaPage:
         if not self._is_inertia_request():
             return False
 
-        return self._request.headers.get("X-Inertia-Partial-Component") == component and (
+        return self._requested_partial_component() == component and (
             bool(self._only_keys()) or bool(self._except_keys())
         )
+
+    def _requested_partial_component(self) -> str | None:
+        if raw := self._request.headers.get("X-Inertia-Partial-Component"):
+            try:
+                return self._app.normalize_component(raw)
+            except ValueError:
+                return None
+
+        return None
 
     def _only_keys(self) -> set[str]:
         return self._split_header("X-Inertia-Partial-Data")

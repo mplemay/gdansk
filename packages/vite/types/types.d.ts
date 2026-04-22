@@ -9,9 +9,7 @@ export interface GdanskPluginOptions {
   host?: string;
   port?: number;
 }
-export interface GdanskPagePluginOptions extends GdanskPluginOptions {
-  entry?: string;
-}
+export interface GdanskPagePluginOptions extends GdanskPluginOptions {}
 export interface ResolvedGdanskOptions {
   buildDirectory: string;
   buildDirectoryPath: string;
@@ -21,9 +19,7 @@ export interface ResolvedGdanskOptions {
   widgetsDirectory: string;
   widgetsDirectoryPath: string;
 }
-export interface ResolvedGdanskPageOptions extends ResolvedGdanskOptions {
-  entry: string;
-}
+export interface ResolvedGdanskPageOptions extends ResolvedGdanskOptions {}
 export interface WidgetDefinition {
   clientCss: string;
   clientDevEntry: string;
@@ -32,6 +28,10 @@ export interface WidgetDefinition {
   entry: string;
   key: string;
   widgetPath: string;
+}
+export interface AppModuleDefinition {
+  entry: string;
+  key: string;
 }
 export interface ManifestWidget {
   client: string;
@@ -53,6 +53,10 @@ export interface GdanskRuntimeWidget {
 }
 export interface GdanskPreparedProject {
   widgets: WidgetDefinition[];
+}
+export interface GdanskPreparedPageProject {
+  layouts: AppModuleDefinition[];
+  pages: AppModuleDefinition[];
 }
 export interface GdanskRuntime {
   build(): Promise<GdanskManifest>;

@@ -27,7 +27,7 @@ Then use:
 
 - Python: `gdansk` currently requires `>=3.12,<3.15`.
 - Frontend package: use an ESM package with `@gdansk/vite`, `vite`, `@vitejs/plugin-react`, `react`, `react-dom`,
-  and `@modelcontextprotocol/ext-apps`.
+  and `@modelcontextprotocol/ext-apps`. Inertia page mode also needs `@inertiajs/react`.
 - Runtime tooling: gdansk starts the frontend through `uv run deno ...`. If you run frontend package scripts directly,
   the published `@gdansk/vite` package currently declares Node `>=22`.
 
@@ -43,6 +43,10 @@ Then use:
 
 `ship.inertia()` reuses the same `Ship` and `Vite` wiring for server-driven pages: the first request returns an HTML
 shell, follow-up requests use the Inertia JSON protocol, and production assets still come from `ship.assets`.
+
+Page mode is convention-driven. Put the root page at `app/page.tsx`, nested pages at `app/**/page.tsx`, and
+co-located layouts at `app/**/layout.tsx`. Render the root page with `page.render("/")`; nested folders map to
+slash-delimited component ids like `page.render("dashboard/reports")`.
 
 Pair the backend with `gdanskPages()` in your frontend `vite.config.ts`:
 

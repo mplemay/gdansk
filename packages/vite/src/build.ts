@@ -5,6 +5,7 @@ import { build, mergeConfig } from "vite";
 import type { UserConfig } from "vite";
 
 import { pathExists, toPosixPath } from "./context";
+import { createPageModuleId } from "./pages";
 import type {
   GdanskManifest,
   ResolvedGdanskPageOptions,
@@ -33,7 +34,7 @@ export function createPageBuildConfig(options: ResolvedGdanskPageOptions): UserC
       manifest: CLIENT_MANIFEST_FILE,
       outDir: options.buildDirectory,
       rollupOptions: {
-        input: resolve(options.root, options.entry),
+        input: createPageModuleId(),
       },
       sourcemap: true,
     },

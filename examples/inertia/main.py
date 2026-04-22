@@ -45,7 +45,7 @@ def build_metrics() -> list[dict[str, str]]:
         },
         {
             "label": "Frontend",
-            "note": "Standard Vite manifest + React pages",
+            "note": "Convention-driven app/page.tsx + layout.tsx",
             "value": "gdanskPages",
         },
     ]
@@ -86,7 +86,7 @@ async def home(page: PageDependency) -> InertiaResponse:
         "tooling gdansk already owns.",
     )
     return await page.render(
-        "Home",
+        "/",
         {
             "activity": defer(build_activity, group="activity"),
             "metrics": always(build_metrics),

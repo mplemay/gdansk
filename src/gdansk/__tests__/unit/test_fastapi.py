@@ -39,7 +39,7 @@ def test_fastapi_inertia_validation_and_flash_flow(page_views_path: Path):
     @app.get("/")
     async def home(page=Depends(inertia.dependency())):
         return await page.render(
-            "Home",
+            "/",
             {
                 "activity": defer(lambda: ["Ship lifecycle", "Session-backed flash"], group="activity"),
                 "headline": "FastAPI + Inertia",
@@ -80,7 +80,7 @@ def test_fastapi_inertia_validation_and_flash_flow(page_views_path: Path):
             "/",
             headers={
                 "X-Inertia": "true",
-                "X-Inertia-Partial-Component": "Home",
+                "X-Inertia-Partial-Component": "/",
                 "X-Inertia-Partial-Data": "activity",
             },
             follow_redirects=False,

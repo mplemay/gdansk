@@ -1,8 +1,14 @@
 # Inertia example
 
 This example shows the new Ship-backed Inertia flow for FastAPI: one HTML shell on the first request, JSON page
-payloads on subsequent visits, session-backed validation errors, flash messages, and a standard Vite page build driven
-by `gdanskPages()`.
+payloads on subsequent visits, session-backed validation errors, flash messages, and a convention-driven Vite page
+build powered by `gdanskPages()`.
+
+The frontend follows the `app/` contract:
+
+- `app/page.tsx` is the root Inertia page and is rendered from Python with `page.render("/")`.
+- `app/**/page.tsx` maps nested folders to slash-delimited component ids.
+- `app/**/layout.tsx` wraps the page in the same folder and any parent folders.
 
 ## Run
 

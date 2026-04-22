@@ -1,4 +1,5 @@
 import type {
+  GdanskPreparedPageProject,
   GdanskPreparedProject,
   GdanskPagePluginOptions,
   GdanskPluginOptions,
@@ -18,5 +19,6 @@ export declare function loadUserViteConfig(
   command: "build" | "serve",
 ): Promise<LoadedProjectConfig>;
 export declare function prepareProject(options: ResolvedGdanskOptions): Promise<GdanskPreparedProject>;
+export declare function preparePageProject(options: ResolvedGdanskPageOptions): Promise<GdanskPreparedPageProject>;
 export declare function pathExists(path: string): Promise<boolean>;
 export declare function toPosixPath(path: string): string;

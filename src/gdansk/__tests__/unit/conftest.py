@@ -78,9 +78,9 @@ def write_manifest(views: Path, *, assets_dir: str = "dist", manifest_out_dir: s
 @pytest.fixture
 def page_views_path(tmp_path: Path) -> Path:
     views = tmp_path / "views"
-    (views / "src" / "Pages").mkdir(parents=True)
-    (views / "src" / "Pages" / "Home.tsx").write_text("export default function Home() { return null; }\n")
-    (views / "src" / "main.tsx").write_text("export {};\n")
+    (views / "app").mkdir(parents=True)
+    (views / "app" / "layout.tsx").write_text("export default function Layout({ children }) { return children; }\n")
+    (views / "app" / "page.tsx").write_text("export default function Page() { return null; }\n")
     (views / "dist").mkdir(parents=True, exist_ok=True)
     return views
 
@@ -90,7 +90,7 @@ def write_page_manifest(
     *,
     assets_dir: str = "dist",
     css: list[str] | None = None,
-    entry: str = "src/main.tsx",
+    entry: str = "virtual:gdansk/pages/app",
     file: str = "assets/main.js",
     imports: dict[str, Any] | None = None,
 ) -> None:

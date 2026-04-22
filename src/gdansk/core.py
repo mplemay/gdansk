@@ -88,20 +88,18 @@ class Ship:
     def inertia(
         self,
         *,
-        entry: PathType = "src/main.tsx",
         root_id: str = "app",
         version: str | None = None,
     ) -> InertiaApp:
         self._lock_mode("inertia")
 
         if self._inertia_app is None:
-            self._inertia_app = InertiaApp(ship=self, entry=entry, root_id=root_id, version=version)
+            self._inertia_app = InertiaApp(ship=self, root_id=root_id, version=version)
             return self._inertia_app
 
-        configured_app = InertiaApp(ship=self, entry=entry, root_id=root_id, version=version)
+        configured_app = InertiaApp(ship=self, root_id=root_id, version=version)
         if (
-            self._inertia_app.entry != configured_app.entry
-            or self._inertia_app.root_id != configured_app.root_id
+            self._inertia_app.root_id != configured_app.root_id
             or self._inertia_app.version_override != configured_app.version_override
         ):
             msg = "The Ship already owns an Inertia app with a different configuration"

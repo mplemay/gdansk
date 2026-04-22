@@ -6,7 +6,7 @@ type Metric = {
   value: string;
 };
 
-type HomeProps = {
+type RootPageProps = {
   activity?: string[];
   errors: Record<string, string>;
   headline: string;
@@ -19,10 +19,10 @@ type InertiaPageModel = {
   flash?: {
     message?: string;
   };
-  props: HomeProps;
+  props: RootPageProps;
 };
 
-export default function Home() {
+export default function RootPage() {
   const page = usePage() as InertiaPageModel;
   const form = useForm({
     name: "",

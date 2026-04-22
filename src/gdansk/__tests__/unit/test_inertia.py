@@ -30,7 +30,7 @@ def test_inertia_renders_production_html_shell(page_views_path: Path):
     ship = Ship(vite=Vite(page_views_path), metadata=Metadata(title="Base title"))
     inertia = ship.inertia()
     page = {
-        "component": "Home",
+        "component": "/",
         "flash": {},
         "props": {
             "errors": {},
@@ -57,7 +57,7 @@ def test_inertia_renders_dev_html_shell(page_views_path: Path):
     ship._vite._origin = "http://127.0.0.1:5173"
     inertia = ship.inertia()
     page = {
-        "component": "Home",
+        "component": "/",
         "flash": {},
         "props": {
             "errors": {},
@@ -70,7 +70,7 @@ def test_inertia_renders_dev_html_shell(page_views_path: Path):
 
     assert 'import RefreshRuntime from "http://127.0.0.1:5173/@react-refresh"' in html
     assert '<script type="module" src="http://127.0.0.1:5173/@vite/client"></script>' in html
-    assert '<script type="module" src="http://127.0.0.1:5173/src/main.tsx"></script>' in html
+    assert '<script type="module" src="http://127.0.0.1:5173/@gdansk/pages/app.tsx"></script>' in html
     assert '<link rel="stylesheet"' not in html
 
 
@@ -82,7 +82,7 @@ def test_inertia_json_response_has_expected_page_shape(page_views_path: Path):
     async def home(request: Request):
         page = inertia.dependency()(request)
         page.share(shared=lambda: "shared")
-        return await page.render("Home", {"message": lambda: "hello"})
+        return await page.render("/", {"message": lambda: "hello"})
 
     with TestClient(_page_app(inertia, routes=[Route("/", home)])) as client:
         response = client.get("/", headers={"X-Inertia": "true"})
@@ -91,7 +91,7 @@ def test_inertia_json_response_has_expected_page_shape(page_views_path: Path):
     assert response.headers["X-Inertia"] == "true"
     assert response.headers["Vary"] == "X-Inertia"
     assert response.json() == {
-        "component": "Home",
+        "component": "/",
         "flash": {},
         "props": {
             "errors": {},
@@ -110,7 +110,7 @@ def test_inertia_returns_409_for_stale_asset_versions(page_views_path: Path):
 
     async def home(request: Request):
         page = inertia.dependency()(request)
-        return await page.render("Home", {})
+        return await page.render("/", {})
 
     with TestClient(_page_app(inertia, routes=[Route("/", home)])) as client:
         response = client.get(
@@ -134,7 +134,7 @@ def test_inertia_partial_reload_respects_optional_always_and_deferred_props(page
     async def home(request: Request):
         page = inertia.dependency()(request)
         return await page.render(
-            "Home",
+            "/",
             {
                 "always_value": always(lambda: "always"),
                 "deferred_value": defer(lambda: "deferred", group="activity"),
@@ -149,7 +149,7 @@ def test_inertia_partial_reload_respects_optional_always_and_deferred_props(page
             "/",
             headers={
                 "X-Inertia": "true",
-                "X-Inertia-Partial-Component": "Home",
+                "X-Inertia-Partial-Component": "/",
                 "X-Inertia-Partial-Data": "deferred_value",
             },
         )
@@ -157,7 +157,7 @@ def test_inertia_partial_reload_respects_optional_always_and_deferred_props(page
             "/",
             headers={
                 "X-Inertia": "true",
-                "X-Inertia-Partial-Component": "Home",
+                "X-Inertia-Partial-Component": "/",
                 "X-Inertia-Partial-Except": "plain_value",
             },
         )
@@ -179,6 +179,37 @@ def test_inertia_partial_reload_respects_optional_always_and_deferred_props(page
         "always_value": "always",
         "errors": {},
     }
+
+
+def test_inertia_normalizes_nested_component_keys(page_views_path: Path):
+    write_page_manifest(page_views_path)
+    ship = Ship(vite=Vite(page_views_path))
+    inertia = ship.inertia()
+
+    async def home(request: Request):
+        page = inertia.dependency()(request)
+        return await page.render("/dashboard/reports/", {})
+
+    with TestClient(_page_app(inertia, routes=[Route("/", home)])) as client:
+        response = client.get("/", headers={"X-Inertia": "true"})
+
+    assert response.json()["component"] == "dashboard/reports"
+
+
+def test_inertia_rejects_invalid_component_keys(page_views_path: Path):
+    write_page_manifest(page_views_path)
+    ship = Ship(vite=Vite(page_views_path))
+    inertia = ship.inertia()
+
+    async def home(request: Request):
+        page = inertia.dependency()(request)
+        return await page.render("../secret", {})
+
+    with (
+        TestClient(_page_app(inertia, routes=[Route("/", home)])) as client,
+        pytest.raises(ValueError, match="component"),
+    ):
+        client.get("/", headers={"X-Inertia": "true"})
 
 
 def test_ship_rejects_mixing_inertia_and_widgets(page_views_path: Path):
