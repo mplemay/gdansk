@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from functools import cached_property, partial
 from os import PathLike
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, Literal
 from urllib.parse import urlparse
 
 from httpx import AsyncClient
@@ -13,6 +13,7 @@ from mcp.server.mcpserver.resources import FunctionResource
 from mcp.server.mcpserver.tools.base import Tool
 from starlette.staticfiles import StaticFiles
 
+from gdansk._schema import to_strict_schema
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import render_template
 from gdansk.utils import join_url, join_url_path
@@ -202,6 +203,7 @@ class Ship:
         icons: list[Icon] | None = None,
         meta: WidgetMeta | None = None,
         metadata: Metadata | None = None,
+        schema: Literal["default", "strict"] = "default",
         structured_output: bool | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         posix_path = self._normalize_widget_path(Path(path))
@@ -240,6 +242,8 @@ class Ship:
                 meta=dict(tm.items()),
                 structured_output=structured_output,
             )
+            if schema == "strict":
+                tool.parameters = to_strict_schema(tool.parameters)
             resource = FunctionResource.from_function(
                 fn=partial(self.render_widget_page, metadata=merged_metadata, widget_key=key),
                 uri=uri,
