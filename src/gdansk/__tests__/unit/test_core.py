@@ -112,14 +112,12 @@ def test_ship_widget_default_tool_and_resource_metadata(views_path: Path):
     }
     assert spec.resource.meta == {
         "ui": {
-            "domain": "https://example.com",
             "csp": {
                 "connectDomains": ["https://example.com"],
                 "resourceDomains": ["https://example.com"],
             },
         },
         "openai/widgetDescription": "Widget description",
-        "openai/widgetDomain": "https://example.com",
     }
 
 

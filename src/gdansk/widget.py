@@ -129,10 +129,7 @@ def _transform_resource_csp(csp: WidgetCSPMeta | None, extra: WidgetExtra) -> Re
 
 def _transform_resource_ui(ui: WidgetUIMeta | None, extra: WidgetExtra) -> ResourceUIMeta | None:
     out: ResourceUIMeta = {}
-    domain: str | None = _url_origin(ui["domain"]) if ui and "domain" in ui else None
-    if domain is None and extra.get("base_url"):
-        domain = _url_origin(extra["base_url"])
-    if domain:
+    if ui and "domain" in ui and (domain := _url_origin(ui["domain"])):
         out["domain"] = domain
     if ui and "prefers_border" in ui:
         out["prefersBorder"] = ui["prefers_border"]
@@ -148,7 +145,7 @@ def _transform_resource(widget: WidgetMeta, extra: WidgetExtra) -> ResourceMeta:
         out["ui"] = resource_ui
         if "prefersBorder" in resource_ui:
             out["openai/widgetPrefersBorder"] = resource_ui["prefersBorder"]
-        if domain := resource_ui.get("domain"):
+        if ui and "domain" in ui and (domain := resource_ui.get("domain")):
             out["openai/widgetDomain"] = domain
     openai = widget.get("openai")
     widget_description: str | None = None
