@@ -1,9 +1,10 @@
 import { matchesGlob, resolve } from "node:path";
 
-import { normalizePath, type Alias, type Plugin, type UserConfig, type ViteDevServer } from "vite";
+import type { Alias, Plugin, UserConfig, ViteDevServer } from "vite";
 
 import { resolveOptions } from "./context";
 import { GDANSK_PAGE_DEV_ENTRY } from "./pages";
+import { normalizePath } from "./path";
 import type {
   GdanskPagePluginOptions,
   GdanskPluginOptions,

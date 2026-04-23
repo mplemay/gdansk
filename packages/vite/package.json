@@ -37,7 +37,8 @@
     "@inertiajs/react": "2.2.15",
     "@vitejs/plugin-react": "6.0.1",
     "react": "19.2.5",
-    "react-dom": "19.2.5"
+    "react-dom": "19.2.5",
+    "vite": "^8.0.9"
   },
   "peerDependencies": {
     "vite": ">=8 <9"

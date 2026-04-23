@@ -1,4 +1,4 @@
-import { mergeConfig, type Plugin, type UserConfig, type ViteDevServer } from "vite";
+import type { Plugin, UserConfig, ViteDevServer } from "vite";
 
 import { createBuildConfig, createPageBuildConfig } from "./build";
 import { preparePageProject, prepareProject, resolveOptions, resolvePageOptions } from "./context";
@@ -20,6 +20,7 @@ import type {
   ResolvedGdanskPageOptions,
 } from "./types";
 import { loadVirtualModule, resolveVirtualModuleId } from "./virtual";
+import { loadViteModule } from "./vite-runtime";
 
 type GdanskDevServerMetadata = {
   viteOrigin: string;
@@ -50,6 +51,7 @@ export function gdansk(options: GdanskPluginOptions = {}): Array<{ name: string 
 
       if (env.command === "build") {
         const project = await ensurePrepared(config.root);
+        const { mergeConfig } = await loadViteModule();
         return mergeConfig(sharedConfig, createBuildConfig(resolved, project));
       }
 
@@ -122,6 +124,7 @@ export function gdanskPages(options: GdanskPagePluginOptions = {}): Array<{ name
 
       if (env.command === "build") {
         await ensurePrepared(config.root);
+        const { mergeConfig } = await loadViteModule();
         return mergeConfig(sharedConfig, createPageBuildConfig(resolved));
       }
 

@@ -1,4 +1,4 @@
-import { type Plugin, type UserConfig, type ViteDevServer } from "vite";
+import type { Plugin, UserConfig, ViteDevServer } from "vite";
 
 import type {
   GdanskPagePluginOptions,

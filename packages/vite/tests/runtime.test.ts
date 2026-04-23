@@ -51,6 +51,16 @@ afterEach(async () => {
 });
 
 describe("@gdansk/vite", () => {
+  it("declares vite as a runtime dependency", async () => {
+    const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")) as {
+      dependencies?: Record<string, string>;
+      peerDependencies?: Record<string, string>;
+    };
+
+    expect(packageJson.dependencies?.vite).toBe("^8.0.9");
+    expect(packageJson.peerDependencies?.vite).toBe(">=8 <9");
+  });
+
   it("defaults the frontend runtime to localhost on port 13714", () => {
     const options = resolveOptions({ root: process.cwd() });
 

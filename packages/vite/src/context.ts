@@ -1,7 +1,6 @@
 import { access, glob as globIterate } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 
-import { loadConfigFromFile, mergeConfig } from "vite";
 import type { Alias, InlineConfig, Plugin, PluginOption } from "vite";
 
 import type {
@@ -16,6 +15,7 @@ import type {
   WidgetDefinition,
 } from "./types";
 import { createClientDevEntry, createClientModuleId } from "./virtual";
+import { loadViteModule } from "./vite-runtime";
 
 export function resolveOptions(options: GdanskPluginOptions = {}, configRoot?: string): ResolvedGdanskOptions {
   const root = resolve(configRoot ?? options.root ?? process.cwd());
@@ -75,6 +75,7 @@ export async function loadUserViteConfig(
   options: ResolvedGdanskOptions,
   command: "build" | "serve",
 ): Promise<LoadedProjectConfig> {
+  const { loadConfigFromFile, mergeConfig } = await loadViteModule();
   const loaded = await loadConfigFromFile(
     {
       command,
