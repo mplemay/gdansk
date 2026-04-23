@@ -38,7 +38,7 @@ type Metric = {
 type RootPageProps = {
   activity?: string[];
   announcements: Announcement[];
-  conversation: Conversation;
+  conversation?: Conversation;
   errors: Record<string, string>;
   feed: Feed;
   headline: string;
@@ -189,15 +189,21 @@ export default function RootPage() {
               <p>The conversation prop merges nested messages while still updating sibling summary fields.</p>
             </div>
 
-            <ul className="log-list">
-              {conversation.messages.map((message) => (
-                <li key={message.id}>
-                  <strong>{message.author}</strong>
-                  <span>{message.body}</span>
-                </li>
-              ))}
-            </ul>
-            <p>Updated {conversation.summary.updatedAt}</p>
+            {conversation ? (
+              <>
+                <ul className="log-list">
+                  {conversation.messages.map((message) => (
+                    <li key={message.id}>
+                      <strong>{message.author}</strong>
+                      <span>{message.body}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p>Updated {conversation.summary.updatedAt}</p>
+              </>
+            ) : (
+              <div className="activity-loading">Loading conversation…</div>
+            )}
           </section>
         </section>
 
