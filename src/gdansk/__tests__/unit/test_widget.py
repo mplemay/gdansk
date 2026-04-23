@@ -67,16 +67,16 @@ def test_transform_appends_base_url_to_connect_domains():
     ]
 
 
-def test_transform_synthesizes_csp_from_base_url():
+def test_transform_synthesizes_csp_from_base_url_without_domain():
     widget: WidgetMeta = {}
     extra: WidgetExtra = {"uri": "ui://x", "base_url": "https://example.com/app", "description": None}
 
     _tool, resource = transform(widget, extra)
 
-    assert resource["ui"]["domain"] == "https://example.com"
     assert resource["ui"]["csp"]["connectDomains"] == ["https://example.com"]
     assert resource["ui"]["csp"]["resourceDomains"] == ["https://example.com"]
-    assert resource["openai/widgetDomain"] == "https://example.com"
+    assert "domain" not in resource["ui"]
+    assert "openai/widgetDomain" not in resource
 
 
 def test_transform_does_not_duplicate_base_url_in_connect_domains():
