@@ -28,5 +28,5 @@ Open `http://127.0.0.1:8000`.
 PRODUCTION=true uv run uvicorn main:app
 ```
 
-Development runs `ship.inertia(...).lifespan(watch=True)` so the page loads from the Vite dev server. Production runs
-the one-shot `vite build` path on startup and serves the emitted assets from `ship.assets`.
+Development runs `ship.lifespan(watch=True)` so the page loads from the Vite dev server. Production runs the one-shot
+`vite build` path on startup and serves the emitted assets from `ship.assets`.

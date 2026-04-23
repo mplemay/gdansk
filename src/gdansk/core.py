@@ -11,10 +11,11 @@ from urllib.parse import urlparse
 from httpx import AsyncClient
 from mcp.server.mcpserver.resources import FunctionResource
 from mcp.server.mcpserver.tools.base import Tool
+from starlette.requests import Request  # noqa: TC002
 from starlette.staticfiles import StaticFiles
 
 from gdansk._schema import to_strict_schema
-from gdansk.inertia import InertiaApp
+from gdansk.inertia import InertiaApp, InertiaPage
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import render_template
 from gdansk.utils import join_url, join_url_path
@@ -85,6 +86,9 @@ class Ship:
     def metadata(self) -> Metadata:
         return self._metadata
 
+    def page(self, request: Request) -> InertiaPage:
+        return InertiaPage(app=self._ensure_inertia_app(), request=request)
+
     def inertia(
         self,
         *,
@@ -108,7 +112,33 @@ class Ship:
         return self._inertia_app
 
     @asynccontextmanager
-    async def mcp(self, app: MCPServer, *, watch: bool | None = False) -> AsyncIterator[None]:
+    async def lifespan(self, *, app: MCPServer | None = None, watch: bool | None = False) -> AsyncIterator[None]:
+        mode = self._runtime_mode()
+        if mode == "widget":
+            if app is None:
+                msg = "Ship.lifespan(app=...) requires an MCPServer when widgets are registered"
+                raise ValueError(msg)
+
+            self._register_widgets(app)
+
+        self._session_begin()
+        try:
+            if mode == "widget":
+                await self._prepare_frontend(watch=watch)
+            else:
+                await self._prepare_inertia(watch=watch)
+            yield None
+        finally:
+            await self._session_end()
+
+    def _ensure_inertia_app(self) -> InertiaApp:
+        self._lock_mode("inertia")
+        if self._inertia_app is None:
+            self._inertia_app = InertiaApp(ship=self, root_id="app", version=None)
+
+        return self._inertia_app
+
+    def _register_widgets(self, app: MCPServer) -> None:
         for spec in self._widget_manager.values():
             existing = app._tool_manager._tools.get(spec.tool.name)  # noqa: SLF001
             if existing is not None and existing is not spec.tool:
@@ -118,12 +148,12 @@ class Ship:
             app._tool_manager._tools.setdefault(spec.tool.name, spec.tool)  # noqa: SLF001
             app.add_resource(resource=spec.resource)
 
-        self._session_begin()
-        try:
-            await self._prepare_frontend(watch=watch)
-            yield None
-        finally:
-            await self._session_end()
+    def _runtime_mode(self) -> Literal["inertia", "widget"]:
+        if self._mode == "widget":
+            return "widget"
+
+        self._ensure_inertia_app()
+        return "inertia"
 
     def _session_begin(self) -> None:
         if self._active:
@@ -149,6 +179,11 @@ class Ship:
         await self._run_frontend(watch=watch)
         if not self._dev:
             self._vite.load_manifest()
+
+    async def _prepare_inertia(self, *, watch: bool | None) -> None:
+        await self._run_frontend(watch=watch)
+        if not self._dev:
+            self._ensure_inertia_app()._resolve_assets()  # noqa: SLF001
 
     def asset_url(self, path: str) -> str:
         return self._asset_url(path)

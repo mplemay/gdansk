@@ -31,7 +31,7 @@ async def test_widget_resource_renders_through_mcp(views_path: Path):
     def hello() -> None:
         return None
 
-    async with ship.mcp(app=app, watch=None):
+    async with ship.lifespan(app=app, watch=None):
         resources = await app.list_resources()
         resource = next((item for item in resources if item.uri == "ui://hello"), None)
         assert resource is not None
@@ -72,7 +72,7 @@ async def test_widget_strict_schema_is_exposed_through_list_tools(views_path: Pa
     def hello(filters: SearchFilters, name: str | None = None) -> None:
         _ = filters, name
 
-    async with ship.mcp(app=app, watch=None):
+    async with ship.lifespan(app=app, watch=None):
         tools = await app.list_tools()
         tool = next((item for item in tools if item.name == "hello"), None)
         assert tool is not None

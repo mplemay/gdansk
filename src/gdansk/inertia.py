@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from hashlib import sha256
 from inspect import isawaitable
@@ -16,7 +15,7 @@ from gdansk.render import render_template
 from gdansk.utils import join_url
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Awaitable, Callable, MutableMapping
+    from collections.abc import Awaitable, Callable, MutableMapping
 
     from gdansk.core import Ship
 
@@ -85,19 +84,6 @@ class InertiaApp:
     @property
     def version_override(self) -> str | None:
         return self._version_override
-
-    @asynccontextmanager
-    async def lifespan(self, *, watch: bool | None = False) -> AsyncIterator[None]:
-        async with self._ship.frontend_session(watch=watch):
-            if not self._ship.dev:
-                self._resolve_assets()
-            yield None
-
-    def dependency(self) -> Callable[[Request], InertiaPage]:
-        def dependency(request: Request) -> InertiaPage:
-            return InertiaPage(app=self, request=request)
-
-        return dependency
 
     def version(self) -> str | None:
         if self._version_override is not None:

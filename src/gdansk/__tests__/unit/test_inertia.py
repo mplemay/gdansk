@@ -2,19 +2,16 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import pytest
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
+from starlette.requests import Request
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
 from gdansk import Metadata, Ship, Vite, always, defer, optional
 from gdansk.__tests__.unit.conftest import SessionStateMiddleware, write_page_manifest
-
-if TYPE_CHECKING:
-    from starlette.requests import Request
 
 
 def test_inertia_renders_production_html_shell(page_views_path: Path):
@@ -80,11 +77,11 @@ def test_inertia_json_response_has_expected_page_shape(page_views_path: Path):
     inertia = ship.inertia()
 
     async def home(request: Request):
-        page = inertia.dependency()(request)
+        page = ship.page(request)
         page.share(shared=lambda: "shared")
         return await page.render("/", {"message": lambda: "hello"})
 
-    with TestClient(_page_app(inertia, routes=[Route("/", home)])) as client:
+    with TestClient(_page_app(ship, routes=[Route("/", home)])) as client:
         response = client.get("/", headers={"X-Inertia": "true"})
 
     assert response.status_code == 200
@@ -106,13 +103,12 @@ def test_inertia_json_response_has_expected_page_shape(page_views_path: Path):
 def test_inertia_returns_409_for_stale_asset_versions(page_views_path: Path):
     write_page_manifest(page_views_path)
     ship = Ship(vite=Vite(page_views_path))
-    inertia = ship.inertia()
 
     async def home(request: Request):
-        page = inertia.dependency()(request)
+        page = ship.page(request)
         return await page.render("/", {})
 
-    with TestClient(_page_app(inertia, routes=[Route("/", home)])) as client:
+    with TestClient(_page_app(ship, routes=[Route("/", home)])) as client:
         response = client.get(
             "/",
             headers={
@@ -129,10 +125,9 @@ def test_inertia_returns_409_for_stale_asset_versions(page_views_path: Path):
 def test_inertia_partial_reload_respects_optional_always_and_deferred_props(page_views_path: Path):
     write_page_manifest(page_views_path)
     ship = Ship(vite=Vite(page_views_path))
-    inertia = ship.inertia()
 
     async def home(request: Request):
-        page = inertia.dependency()(request)
+        page = ship.page(request)
         return await page.render(
             "/",
             {
@@ -143,7 +138,7 @@ def test_inertia_partial_reload_respects_optional_always_and_deferred_props(page
             },
         )
 
-    with TestClient(_page_app(inertia, routes=[Route("/", home)])) as client:
+    with TestClient(_page_app(ship, routes=[Route("/", home)])) as client:
         initial = client.get("/", headers={"X-Inertia": "true"})
         partial_only = client.get(
             "/",
@@ -184,13 +179,12 @@ def test_inertia_partial_reload_respects_optional_always_and_deferred_props(page
 def test_inertia_normalizes_nested_component_keys(page_views_path: Path):
     write_page_manifest(page_views_path)
     ship = Ship(vite=Vite(page_views_path))
-    inertia = ship.inertia()
 
     async def home(request: Request):
-        page = inertia.dependency()(request)
+        page = ship.page(request)
         return await page.render("/dashboard/reports/", {})
 
-    with TestClient(_page_app(inertia, routes=[Route("/", home)])) as client:
+    with TestClient(_page_app(ship, routes=[Route("/", home)])) as client:
         response = client.get("/", headers={"X-Inertia": "true"})
 
     assert response.json()["component"] == "dashboard/reports"
@@ -199,17 +193,27 @@ def test_inertia_normalizes_nested_component_keys(page_views_path: Path):
 def test_inertia_rejects_invalid_component_keys(page_views_path: Path):
     write_page_manifest(page_views_path)
     ship = Ship(vite=Vite(page_views_path))
-    inertia = ship.inertia()
 
     async def home(request: Request):
-        page = inertia.dependency()(request)
+        page = ship.page(request)
         return await page.render("../secret", {})
 
     with (
-        TestClient(_page_app(inertia, routes=[Route("/", home)])) as client,
+        TestClient(_page_app(ship, routes=[Route("/", home)])) as client,
         pytest.raises(ValueError, match="component"),
     ):
         client.get("/", headers={"X-Inertia": "true"})
+
+
+def test_ship_page_uses_custom_inertia_configuration(page_views_path: Path):
+    ship = Ship(vite=Vite(page_views_path))
+    request = _request(path="/")
+
+    ship.inertia(root_id="custom-root", version="custom-version")
+    page = ship.page(request)
+
+    assert page._app.root_id == "custom-root"
+    assert page._app.version() == "custom-version"
 
 
 def test_ship_rejects_mixing_inertia_and_widgets(page_views_path: Path):
@@ -220,14 +224,29 @@ def test_ship_rejects_mixing_inertia_and_widgets(page_views_path: Path):
         ship.widget(path=Path("hello/widget.tsx"))
 
 
-def _page_app(inertia, *, routes: list[Route]) -> Starlette:
+def _page_app(ship: Ship, *, routes: list[Route]) -> Starlette:
     @asynccontextmanager
     async def lifespan(_: Starlette):
-        async with inertia.lifespan(watch=None):
+        async with ship.lifespan(watch=None):
             yield
 
     return Starlette(
         lifespan=lifespan,
         middleware=[Middleware(SessionStateMiddleware)],
         routes=routes,
+    )
+
+
+def _request(*, path: str) -> Request:
+    return Request(
+        {
+            "client": ("127.0.0.1", 123),
+            "headers": [],
+            "method": "GET",
+            "path": path,
+            "query_string": b"",
+            "scheme": "http",
+            "server": ("testserver", 80),
+            "type": "http",
+        },
     )

@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from starlette.applications import Starlette
 from starlette.staticfiles import StaticFiles
 
-from gdansk.__tests__.unit.conftest import FakeManagedProcess, FakeProcess, write_manifest
+from gdansk.__tests__.unit.conftest import FakeManagedProcess, FakeProcess, write_manifest, write_page_manifest
 from gdansk.core import Ship
 from gdansk.manifest import GdanskManifest
 from gdansk.metadata import Metadata
@@ -29,6 +29,12 @@ class SearchFilters(BaseModel):
 
 def _app() -> MCPServer:
     return MCPServer(name="test")
+
+
+def _register_hello_widget(ship: Ship) -> None:
+    @ship.widget(path=Path("hello/widget.tsx"), name="hello")
+    def hello() -> None:
+        return None
 
 
 def test_ship_defaults_to_vite_under_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -488,7 +494,7 @@ async def test_ship_mcp_cleans_up_runtime_on_exit(views_path: Path, monkeypatch:
     monkeypatch.setattr("gdansk.vite.create_subprocess_exec", fake_create_subprocess_exec)
     monkeypatch.setattr(ship._vite, "wait_until_ready", fake_wait_until_ready)
 
-    async with ship.mcp(app=_app(), watch=True):
+    async with ship.lifespan(app=_app(), watch=True):
         assert ship._active is True
         assert ship._dev is True
         assert ship._vite._frontend is process
@@ -520,7 +526,7 @@ async def test_ship_mcp_cleans_up_runtime_on_start_failure(views_path: Path, mon
     monkeypatch.setattr(ship._vite, "wait_until_ready", fake_wait_until_ready)
 
     with pytest.raises(RuntimeError, match="boom"):
-        async with ship.mcp(app=_app(), watch=True):
+        async with ship.lifespan(app=_app(), watch=True):
             pytest.fail("Ship session should not yield after startup failure")
 
     assert process.terminated is True
@@ -575,7 +581,7 @@ async def test_ship_mcp_preserves_startup_error_when_runtime_exits_during_cleanu
     monkeypatch.setattr(ship._vite, "wait_until_ready", fake_wait_until_ready)
 
     with pytest.raises(RuntimeError, match="boom"):
-        async with ship.mcp(app=_app(), watch=True):
+        async with ship.lifespan(app=_app(), watch=True):
             pytest.fail("Ship session should not yield after startup failure")
 
     assert process.terminate_calls == 1
@@ -603,7 +609,7 @@ async def test_start_dev_uses_runtime_port(views_path: Path, monkeypatch: pytest
     monkeypatch.setattr("gdansk.vite.create_subprocess_exec", fake_create_subprocess_exec)
     monkeypatch.setattr(ship._vite, "wait_until_ready", fake_wait_until_ready)
 
-    async with ship.mcp(app=_app(), watch=True):
+    async with ship.lifespan(app=_app(), watch=True):
         pass
 
     assert captured_args == (
@@ -623,13 +629,14 @@ async def test_start_dev_uses_runtime_port(views_path: Path, monkeypatch: pytest
 
 async def test_start_production_builds_and_loads_manifest(views_path: Path, monkeypatch: pytest.MonkeyPatch):
     ship = Ship(vite=Vite(views_path))
+    _register_hello_widget(ship)
 
     async def fake_build() -> None:
         write_manifest(views_path)
 
     monkeypatch.setattr(ship._vite, "build", fake_build)
 
-    async with ship.mcp(app=_app(), watch=False):
+    async with ship.lifespan(app=_app(), watch=False):
         assert ship._vite._frontend is None
         assert ship._vite.require_manifest().widgets["hello"].client == "dist/hello/client.js"
         assert ship._vite._origin is None
@@ -639,6 +646,7 @@ async def test_start_production_builds_and_loads_manifest(views_path: Path, monk
 
 async def test_start_production_requires_manifest(views_path: Path, monkeypatch: pytest.MonkeyPatch):
     ship = Ship(vite=Vite(views_path))
+    _register_hello_widget(ship)
 
     async def fake_build() -> None:
         return None
@@ -646,20 +654,21 @@ async def test_start_production_requires_manifest(views_path: Path, monkeypatch:
     monkeypatch.setattr(ship._vite, "build", fake_build)
 
     with pytest.raises(RuntimeError, match="did not produce a manifest"):
-        async with ship.mcp(app=_app(), watch=False):
+        async with ship.lifespan(app=_app(), watch=False):
             pytest.fail("manifest load should fail before yield")
 
 
 async def test_start_prebuilt_loads_manifest_without_build(views_path: Path, monkeypatch: pytest.MonkeyPatch):
     write_manifest(views_path)
     ship = Ship(vite=Vite(views_path))
+    _register_hello_widget(ship)
 
     async def fail_build() -> None:
         pytest.fail("build should not run when watch is None")
 
     monkeypatch.setattr(ship._vite, "build", fail_build)
 
-    async with ship.mcp(app=_app(), watch=None):
+    async with ship.lifespan(app=_app(), watch=None):
         assert ship._vite._frontend is None
         assert ship._vite.require_manifest().widgets["hello"].client == "dist/hello/client.js"
         assert ship._vite._origin is None
@@ -670,22 +679,24 @@ async def test_start_prebuilt_loads_manifest_without_build(views_path: Path, mon
 
 async def test_start_prebuilt_requires_manifest(views_path: Path):
     ship = Ship(vite=Vite(views_path))
+    _register_hello_widget(ship)
 
     with pytest.raises(RuntimeError, match="did not produce a manifest"):
-        async with ship.mcp(app=_app(), watch=None):
+        async with ship.lifespan(app=_app(), watch=None):
             pytest.fail("manifest load should fail before yield")
 
 
 async def test_ship_mcp_open_prebuilt_skips_subprocess(views_path: Path, monkeypatch: pytest.MonkeyPatch):
     write_manifest(views_path)
     ship = Ship(vite=Vite(views_path))
+    _register_hello_widget(ship)
 
     async def fail_create_subprocess_exec(*_args: str, **_kwargs: object) -> FakeManagedProcess:
         pytest.fail("create_subprocess_exec should not run when watch is None")
 
     monkeypatch.setattr("gdansk.vite.create_subprocess_exec", fail_create_subprocess_exec)
 
-    async with ship.mcp(app=_app(), watch=None):
+    async with ship.lifespan(app=_app(), watch=None):
         assert ship._active is True
         assert ship._dev is False
         assert ship._vite._frontend is None
@@ -712,7 +723,7 @@ async def test_ship_mcp_registers_widget_tool_and_resource(
 
     monkeypatch.setattr(ship, "_prepare_frontend", fake_prepare_frontend)
 
-    async with ship.mcp(app=app, watch=None):
+    async with ship.lifespan(app=app, watch=None):
         resources = await app.list_resources()
         resource = next((item for item in resources if item.uri == "ui://hello"), None)
         assert resource is not None
@@ -734,14 +745,37 @@ def test_load_manifest_requires_matching_build_directory(views_path: Path):
         ship._vite.load_manifest()
 
 
+async def test_ship_lifespan_uses_page_mode_without_explicit_inertia_setup(page_views_path: Path):
+    write_page_manifest(page_views_path)
+    ship = Ship(vite=Vite(page_views_path))
+
+    async with ship.lifespan(app=_app(), watch=None):
+        assert ship._mode == "inertia"
+        assert ship._inertia_app is not None
+        assert ship._vite._manifest is None
+
+
+async def test_ship_lifespan_requires_app_for_widgets(views_path: Path):
+    ship = Ship(vite=Vite(views_path))
+
+    @ship.widget(path=Path("hello/widget.tsx"), name="hello")
+    def hello() -> None:
+        return None
+
+    with pytest.raises(ValueError, match="requires an MCPServer"):
+        async with ship.lifespan(watch=None):
+            pytest.fail("Widget mode should require an MCPServer app")
+
+
 async def test_ship_mcp_rejects_reentry(views_path: Path):
     write_manifest(views_path)
     ship = Ship(vite=Vite(views_path))
+    _register_hello_widget(ship)
     app = _app()
 
-    async with ship.mcp(app=app, watch=None):
+    async with ship.lifespan(app=app, watch=None):
         with pytest.raises(RuntimeError, match="already active"):
-            async with ship.mcp(app=app, watch=None):
+            async with ship.lifespan(app=app, watch=None):
                 pytest.fail("Nested Ship session should not yield")
 
     assert ship._active is False

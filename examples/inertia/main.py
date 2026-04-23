@@ -14,13 +14,14 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from gdansk import Metadata, Ship, Vite, always, defer
 from gdansk.fastapi import inertia_request_validation_exception_handler
+from gdansk.inertia import InertiaPage  # noqa: TC001
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
     from starlette.responses import Response
 
-    from gdansk.inertia import InertiaPage, InertiaResponse
+    from gdansk.inertia import InertiaResponse
 
 PRODUCTION = getenv("PRODUCTION") == "true"
 SESSION_SECRET = getenv("SESSION_SECRET") or token_urlsafe(32)
@@ -61,14 +62,12 @@ def build_activity() -> list[str]:
 
 
 ship = Ship(vite=Vite(Path(__file__).parent / "src/gdansk_inertia_example/views"))
-inertia = ship.inertia()
-page_dependency = inertia.dependency()
-PageDependency = Annotated["InertiaPage", Depends(page_dependency)]
+type PageDependency = Annotated["InertiaPage", Depends(ship.page)]
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    async with inertia.lifespan(watch=not PRODUCTION):
+    async with ship.lifespan(watch=not PRODUCTION):
         yield
 
 

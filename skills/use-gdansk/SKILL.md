@@ -1,6 +1,6 @@
 ---
 name: use-gdansk
-description: Adoption and implementation guide for using gdansk in any repository. Use when bootstrapping a new gdansk-backed MCP app, adding a `Ship` widget UI, wiring `ship.mcp(app=...)` with `MCPServer`, configuring the frontend package with `@gdansk/vite`, adding metadata or structured output, registering extra `@mcp.tool` tools on the same server, or mounting the MCP app inside FastAPI.
+description: Adoption and implementation guide for using gdansk in any repository. Use when bootstrapping a new gdansk-backed MCP app, adding a `Ship` widget UI, wiring `ship.lifespan(app=...)` with `MCPServer`, configuring the frontend package with `@gdansk/vite`, adding metadata or structured output, registering extra `@mcp.tool` tools on the same server, or mounting the MCP app inside FastAPI.
 ---
 
 # Use Gdansk
@@ -59,7 +59,7 @@ Use the public integration points directly:
 - Create `ship = Ship(vite=Vite(Path(...)))` with the frontend package root, not the widget directory.
 - Register the UI tool with `@ship.widget(path=Path("hello/widget.tsx"), name="hello")`.
 - Keep `path=` relative to `widgets/` inside the frontend package root.
-- Use an `MCPServer` lifespan that enters `async with ship.mcp(app=app, watch=...)`.
+- Use an `MCPServer` lifespan that enters `async with ship.lifespan(app=app, watch=...)`.
 - In the frontend package, import `@gdansk/vite` in `vite.config.ts` and compose it with the framework plugins you
   need.
 - The Vite plugin now provides a default `@` alias to the frontend package root; only add a manual `@` alias when you
@@ -95,7 +95,7 @@ Use [integration-options.md](references/integration-options.md) for exact implem
 
 After implementation:
 
-1. Start the server in development with `ship.mcp(..., watch=True)` (or `watch=False` to build on startup,
+1. Start the server in development with `ship.lifespan(..., watch=True)` (or `watch=False` to build on startup,
    `watch=None` when assets are prebuilt).
 2. Confirm bundle output appears under `<frontend-package>/dist/`.
 3. Open or fetch the UI resource and confirm the rendered HTML includes the client script.

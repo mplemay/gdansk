@@ -41,12 +41,19 @@ Then use:
 
 ## Inertia Pages
 
-`ship.inertia()` reuses the same `Ship` and `Vite` wiring for server-driven pages: the first request returns an HTML
-shell, follow-up requests use the Inertia JSON protocol, and production assets still come from `ship.assets`.
+`Ship` can serve convention-driven Inertia pages directly: the first request returns an HTML shell, follow-up
+requests use the Inertia JSON protocol, and production assets still come from `ship.assets`.
 
 Page mode is convention-driven. Put the root page at `app/page.tsx`, nested pages at `app/**/page.tsx`, and
 co-located layouts at `app/**/layout.tsx`. Render the root page with `page.render("/")`; nested folders map to
 slash-delimited component ids like `page.render("dashboard/reports")`.
+
+For FastAPI, inject the page with `Depends(ship.page)` and run the frontend with `ship.lifespan(...)`. Call
+`ship.inertia(...)` only when you need non-default page settings such as a custom root id or explicit version.
+
+```python
+type PageDependency = Annotated["InertiaPage", Depends(ship.page)]
+```
 
 Pair the backend with `gdanskPages()` in your frontend `vite.config.ts`:
 
@@ -109,7 +116,7 @@ def greet(name: str) -> list[TextContent]:
 
 @asynccontextmanager
 async def lifespan(app: MCPServer) -> AsyncIterator[None]:
-    async with ship.mcp(app=app, watch=True):
+    async with ship.lifespan(app=app, watch=True):
         yield
 
 
@@ -214,7 +221,7 @@ export default defineConfig({
 alias when you want `@` to resolve somewhere else. Use `refresh: true` to trigger full browser reloads when nearby
 Python or Jinja files change during development.
 
-`ship.mcp(..., watch=...)` controls how the frontend is prepared:
+For widget-based MCP apps, `ship.lifespan(..., watch=...)` controls how the frontend is prepared:
 
 - **`watch=True`** — runs the Vite dev server in the background with React refresh; JS/CSS load from the Vite origin.
 - **`watch=False`** (default) — runs `vite build` on startup, then serves static hydration assets and the gdansk
@@ -295,7 +302,7 @@ an interactive greeting tool ready to use.
    hints, build your UI in React/TypeScript. No need to learn a new framework-specific language.
 
 2. **Built for MCP** — Composes with `MCPServer` from the official Python SDK: register widget tools and HTML resources
-   via `Ship`, wire them in with `ship.mcp(app=...)`, and integrate with Claude Desktop and other MCP clients.
+   via `Ship`, wire them in with `ship.lifespan(app=...)`, and integrate with Claude Desktop and other MCP clients.
 
 3. **Fast bundling with Rolldown** — The Rolldown bundler processes your TypeScript/JSX automatically. Hot-reload in
    development mode means you see changes instantly without manual rebuilds.
@@ -304,7 +311,7 @@ an interactive greeting tool ready to use.
    automatic type checking via ruff and TypeScript compiler.
 
 5. **Developer-Friendly** — Simple decorator API (`@ship.widget()`), automatic resource registration, dev mode on
-   `ship.mcp(...)`, and comprehensive error messages. Get started in minutes, not hours.
+   `ship.lifespan(...)`, and comprehensive error messages. Get started in minutes, not hours.
 
 6. **Production Ready** — Comprehensive test suite covering Python 3.12+ across Linux, macOS, and Windows. Used in
    production MCP servers with proven reliability.
