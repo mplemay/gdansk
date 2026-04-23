@@ -67,8 +67,43 @@ export default defineConfig({
 });
 ```
 
-For a full FastAPI example with validation errors, flash messages, and deferred props, see
+For a full FastAPI example with validation errors, flash messages, deferred props, once props, merge helpers, scroll
+props, and fragment redirects, see
 [`examples/inertia`](examples/inertia).
+
+The backend helper surface is now close to the official non-SSR Inertia protocol:
+
+- `prop(value)` creates a fluent prop builder.
+- `optional(value)`, `always(value)`, and `defer(value, group=...)` control eager vs partial/deferred loading.
+- `once(value, key=...)` and `page.share_once(...)` emit `onceProps` so the client can reuse previously loaded data.
+- `merge(value)` / `deep_merge(value, match_on=...)` and `prop(...).append(...)` / `.prepend(...)` emit merge metadata.
+- `scroll(...)` emits both merge metadata and `scrollProps` for infinite-scroll style payloads.
+- `page.encrypt_history(...)`, `page.clear_history()`, and `page.redirect(..., preserve_fragment=True)` control history
+  and redirect behavior.
+
+```python
+from gdansk import deep_merge, merge, once, prop, scroll
+
+page.share_once(sessionToken=load_session_token)
+
+return await page.render(
+    "/",
+    {
+        "announcements": merge(load_announcements()).append(match_on="id"),
+        "conversation": deep_merge(load_conversation(), match_on="messages.id"),
+        "feed": scroll(
+            load_feed(),
+            items_path="items",
+            current_page_path="pagination.current",
+            next_page_path="pagination.next",
+            previous_page_path="pagination.previous",
+            page_name="feed_page",
+        ),
+        "profile": once(load_profile, key="shared-profile"),
+        "stats": prop(load_stats).optional(),
+    },
+)
+```
 
 ## Quick Start
 

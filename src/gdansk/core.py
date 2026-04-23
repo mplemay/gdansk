@@ -92,19 +92,31 @@ class Ship:
     def inertia(
         self,
         *,
+        encrypt_history: bool = False,
         root_id: str = "app",
         version: str | None = None,
     ) -> InertiaApp:
         self._lock_mode("inertia")
 
         if self._inertia_app is None:
-            self._inertia_app = InertiaApp(ship=self, root_id=root_id, version=version)
+            self._inertia_app = InertiaApp(
+                ship=self,
+                root_id=root_id,
+                version=version,
+                encrypt_history=encrypt_history,
+            )
             return self._inertia_app
 
-        configured_app = InertiaApp(ship=self, root_id=root_id, version=version)
+        configured_app = InertiaApp(
+            ship=self,
+            root_id=root_id,
+            version=version,
+            encrypt_history=encrypt_history,
+        )
         if (
             self._inertia_app.root_id != configured_app.root_id
             or self._inertia_app.version_override != configured_app.version_override
+            or self._inertia_app.default_encrypt_history != configured_app.default_encrypt_history
         ):
             msg = "The Ship already owns an Inertia app with a different configuration"
             raise RuntimeError(msg)
@@ -134,7 +146,12 @@ class Ship:
     def _ensure_inertia_app(self) -> InertiaApp:
         self._lock_mode("inertia")
         if self._inertia_app is None:
-            self._inertia_app = InertiaApp(ship=self, root_id="app", version=None)
+            self._inertia_app = InertiaApp(
+                ship=self,
+                root_id="app",
+                version=None,
+                encrypt_history=False,
+            )
 
         return self._inertia_app
 

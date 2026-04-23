@@ -12,7 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
 
-from gdansk import Metadata, Ship, Vite, always, defer
+from gdansk import Metadata, Ship, Vite, always, deep_merge, defer, merge, scroll
 from gdansk.fastapi import inertia_request_validation_exception_handler
 from gdansk.inertia import InertiaPage  # noqa: TC001
 
@@ -61,7 +61,55 @@ def build_activity() -> list[str]:
     ]
 
 
+def build_announcements() -> list[dict[str, str]]:
+    timestamp = datetime.now(UTC).strftime("%H:%M:%S")
+    key = datetime.now(UTC).strftime("%H%M%S%f")
+    return [
+        {
+            "id": f"announcement-{key}",
+            "label": f"Announcement {timestamp}",
+            "note": "This item is appended through merge() during partial reloads.",
+        },
+    ]
+
+
+def build_conversation() -> dict[str, object]:
+    timestamp = datetime.now(UTC).strftime("%H:%M:%S")
+    key = datetime.now(UTC).strftime("%H%M%S%f")
+    return {
+        "messages": [
+            {
+                "author": "Ship",
+                "body": f"Deep-merged message at {timestamp}",
+                "id": f"message-{key}",
+            },
+        ],
+        "summary": {
+            "updatedAt": timestamp,
+        },
+    }
+
+
+def build_feed() -> dict[str, object]:
+    timestamp = datetime.now(UTC).strftime("%H:%M:%S")
+    key = datetime.now(UTC).strftime("%H%M%S%f")
+    return {
+        "items": [
+            {
+                "id": f"feed-{key}",
+                "text": f"Scroll payload captured at {timestamp}",
+            },
+        ],
+        "pagination": {
+            "current": 2,
+            "next": 3,
+            "previous": 1,
+        },
+    }
+
+
 ship = Ship(vite=Vite(Path(__file__).parent / "src/gdansk_inertia_example/views"))
+ship.inertia(encrypt_history=True)
 type PageDependency = Annotated["InertiaPage", Depends(ship.page)]
 
 
@@ -84,10 +132,21 @@ async def home(page: PageDependency) -> InertiaResponse:
         summary="A FastAPI route can render the initial shell, switch to JSON visits, and keep using the frontend "
         "tooling gdansk already owns.",
     )
+    page.share_once(sessionToken=lambda: token_urlsafe(6))
     return await page.render(
         "/",
         {
             "activity": defer(build_activity, group="activity"),
+            "announcements": merge(build_announcements()).append(match_on="id"),
+            "conversation": deep_merge(build_conversation(), match_on="messages.id"),
+            "feed": scroll(
+                build_feed(),
+                current_page_path="pagination.current",
+                items_path="items",
+                next_page_path="pagination.next",
+                page_name="feed_page",
+                previous_page_path="pagination.previous",
+            ),
             "metrics": always(build_metrics),
             "updatedAt": always(datetime.now(UTC).strftime("%B %d, %Y")),
         },
@@ -102,6 +161,11 @@ async def home(page: PageDependency) -> InertiaResponse:
 async def feedback(payload: FeedbackPayload, page: PageDependency) -> Response:
     page.flash(message=f"Thanks, {payload.name}. We'll follow up about {payload.topic}.")
     return page.back()
+
+
+@app.post("/jump-to-activity")
+async def jump_to_activity(page: PageDependency) -> Response:
+    return page.redirect("/#activity")
 
 
 @app.get("/inertia")

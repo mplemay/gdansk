@@ -102,3 +102,58 @@ def test_fastapi_inertia_validation_and_flash_flow(page_views_path: Path):
         "activity": ["Ship lifecycle", "Session-backed flash"],
         "errors": {},
     }
+
+
+def test_fastapi_inertia_preserves_fragment_and_reuses_once_shared_props(page_views_path: Path):
+    write_page_manifest(page_views_path)
+    ship = Ship(vite=Vite(page_views_path))
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        async with ship.lifespan(watch=None):
+            yield
+
+    app = FastAPI(lifespan=lifespan)
+    app.add_middleware(SessionStateMiddleware)
+    app.mount(ship.assets_path, ship.assets)
+
+    @app.get("/")
+    async def home(page: InertiaPage = Depends(ship.page)):
+        page.share_once(session_token=lambda: "token-1")
+        return await page.render("/", {"headline": "Dashboard"})
+
+    @app.post("/save")
+    async def save(page: InertiaPage = Depends(ship.page)):
+        return page.redirect("/", preserve_fragment=True)
+
+    with TestClient(app) as client:
+        initial = client.get("/", headers={"X-Inertia": "true"}, follow_redirects=False)
+        redirect = client.post("/save", headers={"X-Inertia": "true"}, follow_redirects=False)
+        after_redirect = client.get(
+            "/",
+            headers={
+                "X-Inertia": "true",
+                "X-Inertia-Except-Once-Props": "session_token",
+            },
+            follow_redirects=False,
+        )
+
+    assert initial.json()["onceProps"] == {
+        "session_token": {
+            "expiresAt": None,
+            "prop": "session_token",
+        },
+    }
+    assert initial.json()["sharedProps"] == ["session_token"]
+    first_token = initial.json()["props"]["session_token"]
+    assert isinstance(first_token, str)
+    assert first_token.startswith("token-")
+    assert first_token.removeprefix("token-") == "1"
+
+    assert redirect.status_code == 303
+    assert redirect.headers["location"] == "/"
+
+    assert after_redirect.json()["preserveFragment"] is True
+    assert after_redirect.json()["sharedProps"] == ["session_token"]
+    assert "session_token" not in after_redirect.json()["props"]
+    assert after_redirect.json()["onceProps"] == initial.json()["onceProps"]

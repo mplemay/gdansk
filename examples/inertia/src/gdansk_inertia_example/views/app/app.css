@@ -48,6 +48,21 @@
   margin-top: 1.5rem;
   color: #5f7460;
   font-size: 0.95rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.token-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.45rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(30, 52, 32, 0.08);
+  color: #1e3420;
+  font-size: 0.85rem;
+  font-weight: 600;
 }
 
 .solid-button,
@@ -162,6 +177,13 @@
   color: #8c2f2f;
 }
 
+.action-cluster {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
 .activity-list {
   margin: 1rem 0 0;
   padding-left: 1.15rem;
@@ -172,6 +194,31 @@
 .activity-loading {
   margin-top: 1rem;
   color: #617562;
+}
+
+.log-list {
+  margin: 1rem 0 0;
+  padding-left: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.log-list li {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.85rem 1rem;
+  border-radius: 18px;
+  background: #f5f9f2;
+  border: 1px solid #dbe7d4;
+}
+
+.log-list strong {
+  color: #213823;
+}
+
+.log-list span {
+  color: #557057;
 }
 
 @media (max-width: 900px) {

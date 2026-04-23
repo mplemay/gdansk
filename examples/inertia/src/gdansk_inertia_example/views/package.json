@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@gdansk/vite": "^0.1.0",
+    "@gdansk/vite": "file:../../../../../packages/vite",
     "@inertiajs/react": "^2.0.0",
     "@vitejs/plugin-react": "^6.0.1",
     "react": "^19.2.5",
