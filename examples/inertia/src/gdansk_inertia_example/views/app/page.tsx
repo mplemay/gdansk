@@ -1,4 +1,5 @@
 import { Head, router, useForm, usePage } from "@inertiajs/react";
+import { useEffect, useRef } from "react";
 
 type Announcement = {
   id: string;
@@ -61,9 +62,19 @@ export default function RootPage() {
     name: "",
     topic: "",
   });
+  const conversationReloadRequested = useRef(false);
   const flashMessage = page.flash?.message;
   const { activity, announcements, conversation, feed, headline, metrics, sessionToken, summary, updatedAt } =
     page.props;
+
+  useEffect(() => {
+    if (conversation || conversationReloadRequested.current) {
+      return;
+    }
+
+    conversationReloadRequested.current = true;
+    router.reload({ only: ["conversation"] });
+  }, [conversation]);
 
   return (
     <>
