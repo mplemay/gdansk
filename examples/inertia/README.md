@@ -2,7 +2,7 @@
 
 This example shows the new Ship-backed Inertia flow for FastAPI: one HTML shell on the first request, JSON page
 payloads on subsequent visits, session-backed validation errors, flash messages, once props, merge helpers,
-scroll props, fragment redirects, and a convention-driven Vite page build powered by `gdanskPages()`.
+scroll props, and a convention-driven Vite page build powered by `gdanskPages()`.
 
 The frontend follows the `app/` contract:
 
@@ -16,8 +16,7 @@ The example backend exercises the new helper surface directly:
 - `merge(...)` appends announcements returned by later partial reloads.
 - `deep_merge(...)` merges nested conversation payloads.
 - `scroll(...)` emits merge metadata plus `scrollProps`, including reset-aware behavior.
-- `page.redirect("/#activity")` demonstrates explicit fragment redirects, and `ship.inertia(encrypt_history=True)`
-  turns on encrypted history by default.
+- `ship.inertia(encrypt_history=True)` turns on encrypted history by default.
 
 ## Run
 

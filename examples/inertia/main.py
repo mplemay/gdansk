@@ -163,11 +163,6 @@ async def feedback(payload: FeedbackPayload, page: PageDependency) -> Response:
     return page.back()
 
 
-@app.post("/jump-to-activity")
-async def jump_to_activity(page: PageDependency) -> Response:
-    return page.redirect("/#activity")
-
-
 @app.get("/inertia")
 async def inertia_docs(page: PageDependency) -> Response:
     return page.location("https://inertiajs.com/")
