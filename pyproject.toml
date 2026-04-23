@@ -50,6 +50,7 @@ select = ["ALL"]
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = [
     "F401", # imported but unused (common in __init__.py to re-export symbols)
+    "D104", # package initializers in this repo are intentionally empty
 ]
 "main.py" = ["D"]
 "src/gdansk/**/*.py" = ["D"]
