@@ -16,6 +16,7 @@ The example backend exercises the new helper surface directly:
 - `merge(...)` appends announcements returned by later partial reloads.
 - `deep_merge(...)` merges nested conversation payloads.
 - `scroll(...)` emits merge metadata plus `scrollProps`, including reset-aware behavior.
+- `page.location("/#activity")` demonstrates a server-initiated jump to a fragment anchor.
 - `ship.inertia(encrypt_history=True)` turns on encrypted history by default.
 
 ## Run

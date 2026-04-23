@@ -48,6 +48,11 @@ def _build_app(tmp_path) -> FastAPI:
             },
         )
 
+    @app.post("/jump-to-activity")
+    async def jump_to_activity(request: Request):
+        page = ship.page(request)
+        return page.location("/#activity")
+
     return app
 
 
@@ -62,6 +67,7 @@ def test_inertia_page_includes_conversation_and_handles_partial_reload(tmp_path)
                 "X-Inertia-Partial-Data": "metrics",
             },
         )
+        jump = client.post("/jump-to-activity", headers={"X-Inertia": "true"}, follow_redirects=False)
 
     assert initial.status_code == 200
 
@@ -76,3 +82,6 @@ def test_inertia_page_includes_conversation_and_handles_partial_reload(tmp_path)
     assert partial_props["errors"] == {}
     assert partial_props["metrics"]
     assert partial_props["updatedAt"]
+
+    assert jump.status_code == 409
+    assert jump.headers["X-Inertia-Location"] == "/#activity"

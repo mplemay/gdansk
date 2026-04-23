@@ -76,10 +76,6 @@ export default function RootPage() {
     router.reload({ only: ["conversation"] });
   }, [conversation]);
 
-  const jumpToActivity = () => {
-    window.location.hash = "activity";
-  };
-
   return (
     <>
       <Head title="Gdansk Inertia" />
@@ -157,7 +153,7 @@ export default function RootPage() {
               <button className="solid-button" disabled={form.processing} type="submit">
                 {form.processing ? "Sending..." : "Send feedback"}
               </button>
-              <button className="ghost-button" onClick={jumpToActivity} type="button">
+              <button className="ghost-button" onClick={() => router.post("/jump-to-activity")} type="button">
                 Jump to activity
               </button>
             </div>
