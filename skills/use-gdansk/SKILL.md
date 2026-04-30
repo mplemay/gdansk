@@ -59,7 +59,7 @@ Use the public integration points directly:
 - Create `ship = Ship(vite=Vite(Path(...)))` with the frontend package root, not the widget directory.
 - Register the UI tool with `@ship.widget(path=Path("hello/widget.tsx"), name="hello")`.
 - Keep `path=` relative to `widgets/` inside the frontend package root.
-- Use an `MCPServer` lifespan that enters `async with ship.lifespan(app=app, watch=...)`.
+- Use an `MCPServer` lifespan that enters `async with ship.lifespan(app=mcp, watch=...)`.
 - In the frontend package, import `@gdansk/vite` in `vite.config.ts` and compose it with the framework plugins you
   need.
 - The Vite plugin now provides a default `@` alias to the frontend package root; only add a manual `@` alias when you

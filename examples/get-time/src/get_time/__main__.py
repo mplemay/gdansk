@@ -23,8 +23,8 @@ def get_time() -> list[TextContent]:
 
 
 @asynccontextmanager
-async def lifespan(app: MCPServer) -> AsyncIterator[None]:  # noqa: D103
-    async with ship.lifespan(app=app, watch=True):
+async def lifespan(mcp: MCPServer) -> AsyncIterator[None]:  # noqa: D103
+    async with ship.lifespan(app=mcp, watch=True):
         yield
 
 

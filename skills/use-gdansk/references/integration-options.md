@@ -132,8 +132,8 @@ ship = Ship(vite=Vite(frontend_path))
 
 
 @asynccontextmanager
-async def mcp_lifespan(app: MCPServer) -> AsyncIterator[None]:
-    async with ship.lifespan(app=app, watch=True):
+async def mcp_lifespan(mcp: MCPServer) -> AsyncIterator[None]:
+    async with ship.lifespan(app=mcp, watch=True):
         yield
 
 
