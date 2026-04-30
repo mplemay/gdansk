@@ -2,9 +2,9 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, posix, resolve } from "node:path";
 
 import { build, mergeConfig } from "vite";
-import type { UserConfig } from "vite";
+import type { InlineConfig, UserConfig } from "vite";
 
-import { pathExists, toPosixPath } from "./context";
+import { pathExists, resolveProductionBase, toPosixPath } from "./context";
 import type {
   GdanskManifest,
   GdanskPreparedProject,
@@ -59,15 +59,19 @@ export async function buildWidgets(
   await mkdir(options.buildDirectoryPath, { recursive: true });
 
   if (prepared.widgets.length > 0) {
-    await build(
-      mergeConfig(config, {
-        appType: "custom",
-        build: createClientBuildOptions(options, prepared),
-        configFile: false,
-        plugins: [createGdanskVirtualModulesPlugin(options, prepared)],
-        root: options.root,
-      }),
-    );
+    const defaultBuildConfig: InlineConfig = {
+      appType: "custom",
+      build: createClientBuildOptions(options, prepared),
+      configFile: false,
+      plugins: [createGdanskVirtualModulesPlugin(options, prepared)],
+      root: options.root,
+    };
+
+    if (config.base === undefined) {
+      defaultBuildConfig.base = resolveProductionBase(options);
+    }
+
+    await build(mergeConfig(config, defaultBuildConfig));
   }
 
   return finalizeBuildOutputs(options, prepared.widgets);

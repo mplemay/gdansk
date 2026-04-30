@@ -6,6 +6,7 @@ import type {
   WidgetDefinition,
 } from "./types";
 export declare function resolveOptions(options?: GdanskPluginOptions, configRoot?: string): ResolvedGdanskOptions;
+export declare function resolveProductionBase(options: ResolvedGdanskOptions): string;
 export declare function discoverWidgets(options: ResolvedGdanskOptions): Promise<WidgetDefinition[]>;
 export declare function loadUserViteConfig(
   options: ResolvedGdanskOptions,

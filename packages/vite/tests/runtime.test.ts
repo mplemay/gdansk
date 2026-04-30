@@ -2,7 +2,15 @@ import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/
 import { resolve } from "node:path";
 
 import react from "@vitejs/plugin-react";
-import { createServer, normalizePath, type Plugin, type PluginOption, type UserConfig, type ViteDevServer } from "vite";
+import {
+  createServer,
+  mergeConfig,
+  normalizePath,
+  type Plugin,
+  type PluginOption,
+  type UserConfig,
+  type ViteDevServer,
+} from "vite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const viteMocks = vi.hoisted(() => ({
@@ -56,6 +64,20 @@ describe("@gdansk/vite", () => {
     const options = resolveOptions({ buildDirectory: "public", root: process.cwd() });
 
     expect(options.buildDirectory).toBe("public");
+  });
+
+  it("normalizes the build directory", () => {
+    const root = process.cwd();
+    const options = resolveOptions({ buildDirectory: " /public/ui/ ", root });
+
+    expect(options.buildDirectory).toBe("public/ui");
+    expect(options.buildDirectoryPath).toBe(`${root}/public/ui`);
+  });
+
+  it("rejects traversal build directories", () => {
+    expect(() => resolveOptions({ buildDirectory: "../public", root: process.cwd() })).toThrow(
+      "relative path without traversal segments",
+    );
   });
 
   it("injects a default @ alias for the frontend package root", async () => {
@@ -115,6 +137,35 @@ describe("@gdansk/vite", () => {
       port: 14_000,
       strictPort: true,
     });
+  });
+
+  it("defaults production base to the build directory", async () => {
+    const root = await createFixture({ withLocalPlugin: false });
+    const config = await resolvePluginConfig(gdansk({}), { root }, "build");
+
+    expect(config.base).toBe("/dist/");
+  });
+
+  it("defaults production base to a custom build directory", async () => {
+    const root = await createFixture({ withLocalPlugin: false });
+    const config = await resolvePluginConfig(gdansk({ buildDirectory: "public/ui" }), { root }, "build");
+
+    expect(config.base).toBe("/public/ui/");
+  });
+
+  it("keeps the development base at root", async () => {
+    const root = await createFixture({ withLocalPlugin: false });
+    const config = await resolvePluginConfig(gdansk({}), { root }, "serve");
+
+    expect(config.base).toBe("/");
+  });
+
+  it("preserves an explicit user base", async () => {
+    const root = await createFixture({ withLocalPlugin: false });
+    const config = await resolvePluginConfig(gdansk({}), { base: "/cdn/", root }, "build");
+    const merged = mergeConfig({ base: "/cdn/", root }, config);
+
+    expect(merged.base).toBe("/cdn/");
   });
 
   it("normalizes refresh config for all supported shapes", () => {
@@ -333,6 +384,32 @@ describe("@gdansk/vite", () => {
     await runtime.close();
   }, 15_000);
 
+  it("emits production CSS asset URLs under the build directory base", async () => {
+    const root = await createFixture({ withFontCss: true, withLocalPlugin: false });
+    const runtime = await createGdanskRuntime({ root, port: 0 });
+
+    await runtime.build();
+
+    const css = await readFile(`${root}/dist/hello/client.css`, "utf8");
+    expect(css).toMatch(/url\(["']?\/dist\/assets\/fixture-[^"')]+\.woff2["']?\)/);
+    expect(css).not.toContain("url(/assets/");
+
+    await runtime.close();
+  }, 15_000);
+
+  it("preserves explicit production base in CSS asset URLs", async () => {
+    const root = await createFixture({ viteBase: "/cdn/", withFontCss: true, withLocalPlugin: false });
+    const runtime = await createGdanskRuntime({ root, port: 0 });
+
+    await runtime.build();
+
+    const css = await readFile(`${root}/dist/hello/client.css`, "utf8");
+    expect(css).toMatch(/url\(["']?\/cdn\/assets\/fixture-[^"')]+\.woff2["']?\)/);
+    expect(css).not.toContain("url(/dist/assets/");
+
+    await runtime.close();
+  }, 15_000);
+
   it("bundles widget dependencies into the production client output", async () => {
     const root = await createFixture({ withLocalCommonjsDependency: true, withLocalPlugin: false });
     const runtime = await createGdanskRuntime({ root, port: 0 });
@@ -399,6 +476,8 @@ describe("@gdansk/vite", () => {
 });
 
 async function createFixture(options: {
+  viteBase?: string;
+  withFontCss?: boolean;
   withLocalCommonjsDependency?: boolean;
   withLocalPlugin: boolean;
   withSharedCss?: boolean;
@@ -436,13 +515,24 @@ async function createFixture(options: {
   viteConfigLines.push(
     "",
     "export default defineConfig({",
+    ...(options.viteBase ? [`  base: ${JSON.stringify(options.viteBase)},`] : []),
     options.withLocalPlugin ? "  plugins: [gdansk(), react(), messagePlugin]," : "  plugins: [gdansk(), react()],",
     "});",
     "",
   );
 
   await writeFile(`${root}/vite.config.ts`, viteConfigLines.join("\n"));
-  if (options.withSharedCss) {
+  if (options.withFontCss) {
+    await writeFile(`${root}/widgets/hello/fixture.woff2`, new Uint8Array(5000).fill(1));
+    await writeFile(
+      `${root}/widgets/hello/global.css`,
+      [
+        '@font-face { font-family: "FixtureFont"; src: url("./fixture.woff2") format("woff2"); }',
+        '.hello { color: red; font-family: "FixtureFont"; }',
+        "",
+      ].join("\n"),
+    );
+  } else if (options.withSharedCss) {
     await writeFile(`${root}/widgets/shared/global.css`, ".shared { color: blue; }\n");
   } else {
     await writeFile(`${root}/widgets/hello/global.css`, ".hello { color: red; }\n");

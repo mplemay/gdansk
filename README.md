@@ -222,7 +222,9 @@ export default defineConfig({
 ```
 
 Production widgets load their hydration assets from `ship.assets_path`. Mount `ship.assets` at that path on the
-public app; with the default settings this is `/dist`.
+public app; with the default settings this is `/dist`. During `vite build`, `@gdansk/vite` defaults Vite `base` to
+that same build directory path, so production CSS `url(...)` references and other bundled assets assume this mount.
+Override Vite `base` only for reverse-proxy or CDN setups that intentionally serve built assets from another URL.
 
 The default production output now mirrors Vite/Laravel conventions more closely:
 

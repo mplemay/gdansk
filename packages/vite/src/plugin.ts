@@ -1,7 +1,7 @@
 import { mergeConfig, type Plugin, type UserConfig, type ViteDevServer } from "vite";
 
 import { createBuildConfig } from "./build";
-import { prepareProject, resolveOptions } from "./context";
+import { prepareProject, resolveOptions, resolveProductionBase } from "./context";
 import { resolveViteOrigin } from "./css";
 import {
   createRefreshPlugin,
@@ -37,7 +37,7 @@ export function gdansk(options: GdanskPluginOptions = {}): Array<{ name: string 
   const corePlugin: Plugin = {
     async config(config, env) {
       resolved = resolveOptions(options, config.root);
-      const sharedConfig = createSharedConfig(config, options, resolved);
+      const sharedConfig = createSharedConfig(config, options, resolved, env.command);
 
       if (env.command === "build") {
         const project = await ensurePrepared(config.root);
@@ -96,11 +96,13 @@ function createSharedConfig(
   config: UserConfig,
   options: GdanskPluginOptions,
   resolved: ResolvedGdanskOptions,
+  command: "build" | "serve",
 ): UserConfig {
   const server = resolveDevelopmentServerConfig(options, resolved);
 
   return {
     appType: "custom",
+    ...(config.base === undefined ? { base: command === "build" ? resolveProductionBase(resolved) : "/" } : {}),
     resolve: {
       ...(config.resolve ?? {}),
       alias: mergeAliasConfig(config.resolve?.alias, resolved.root),

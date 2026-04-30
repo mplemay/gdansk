@@ -1,5 +1,5 @@
 import { access, glob as globIterate } from "node:fs/promises";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, join, posix, resolve, sep } from "node:path";
 
 import { loadConfigFromFile, mergeConfig } from "vite";
 import type { Alias, InlineConfig, Plugin, PluginOption } from "vite";
@@ -16,7 +16,7 @@ import { createClientDevEntry, createClientModuleId } from "./virtual";
 export function resolveOptions(options: GdanskPluginOptions = {}, configRoot?: string): ResolvedGdanskOptions {
   const root = resolve(configRoot ?? options.root ?? process.cwd());
   const widgetsDirectory = "widgets";
-  const buildDirectory = options.buildDirectory ?? "dist";
+  const buildDirectory = normalizeRelativeDirectory(options.buildDirectory ?? "dist", "build");
   const host = options.host ?? "127.0.0.1";
 
   return {
@@ -28,6 +28,25 @@ export function resolveOptions(options: GdanskPluginOptions = {}, configRoot?: s
     widgetsDirectory,
     widgetsDirectoryPath: resolve(root, widgetsDirectory),
   };
+}
+
+export function resolveProductionBase(options: ResolvedGdanskOptions): string {
+  return `/${options.buildDirectory}/`;
+}
+
+function normalizeRelativeDirectory(directory: string, name: string): string {
+  const cleaned = directory.trim().replace(/^\/+|\/+$/g, "");
+
+  if (!cleaned) {
+    throw new Error(`The ${name} directory must not be empty`);
+  }
+
+  const parts = cleaned.split("/");
+  if (cleaned.startsWith("/") || parts.some((part) => part === "" || part === "." || part === "..")) {
+    throw new Error(`The ${name} directory (i.e. ${directory}) must be a relative path without traversal segments`);
+  }
+
+  return posix.normalize(cleaned);
 }
 
 async function globPaths(pattern: string, options: { absolute?: boolean; cwd: string }): Promise<string[]> {
