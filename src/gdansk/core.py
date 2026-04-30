@@ -124,14 +124,14 @@ class Ship:
         return self._inertia_app
 
     @asynccontextmanager
-    async def lifespan(self, *, app: MCPServer | None = None, watch: bool | None = False) -> AsyncIterator[None]:
+    async def lifespan(self, *, mcp: MCPServer | None = None, watch: bool | None = False) -> AsyncIterator[None]:
         mode = self._runtime_mode()
         if mode == "widget":
-            if app is None:
-                msg = "Ship.lifespan(app=...) requires an MCPServer when widgets are registered"
+            if mcp is None:
+                msg = "Ship.lifespan(mcp=...) requires an MCPServer when widgets are registered"
                 raise ValueError(msg)
 
-            self._register_widgets(app)
+            self._register_widgets(mcp)
 
         self._session_begin()
         try:

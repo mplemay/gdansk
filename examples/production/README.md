@@ -10,7 +10,7 @@ uv sync
 uv run main
 ```
 
-The Python server uses `MCPServer` with a lifespan that enters `ship.lifespan(app=...)` so widget tools and HTML
+The Python server uses `MCPServer` with a lifespan that enters `ship.lifespan(mcp=...)` so widget tools and HTML
 resources are registered on the MCP app.
 
 Production builds only static assets plus `gdansk-manifest.json`; there is no separate JS runtime server. Development

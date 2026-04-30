@@ -22,7 +22,7 @@ def hello() -> list[TextContent]:
 
 @asynccontextmanager
 async def lifespan(mcp: MCPServer) -> AsyncIterator[None]:  # noqa: D103
-    async with ship.lifespan(app=mcp, watch=False):
+    async with ship.lifespan(mcp=mcp, watch=False):
         yield
 
 

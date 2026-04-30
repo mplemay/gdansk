@@ -70,7 +70,7 @@ async def test_mcp_list_tools_schemas_and_structured_calls(monkeypatch: pytest.M
 
     monkeypatch.setattr(todo_main.ship, "_prepare_frontend", prepare_frontend)
 
-    async with todo_main.ship.lifespan(app=todo_main.mcp, watch=True):
+    async with todo_main.ship.lifespan(mcp=todo_main.mcp, watch=True):
         tools = await todo_main.mcp.list_tools()
         schemas = {tool.name: getattr(tool, "output_schema", getattr(tool, "outputSchema", None)) for tool in tools}
 

@@ -151,7 +151,7 @@ def greet(name: str) -> list[TextContent]:
 
 @asynccontextmanager
 async def lifespan(mcp: MCPServer) -> AsyncIterator[None]:
-    async with ship.lifespan(app=mcp, watch=True):
+    async with ship.lifespan(mcp=mcp, watch=True):
         yield
 
 
@@ -337,7 +337,7 @@ an interactive greeting tool ready to use.
    hints, build your UI in React/TypeScript. No need to learn a new framework-specific language.
 
 2. **Built for MCP** — Composes with `MCPServer` from the official Python SDK: register widget tools and HTML resources
-   via `Ship`, wire them in with `ship.lifespan(app=...)`, and integrate with Claude Desktop and other MCP clients.
+   via `Ship`, wire them in with `ship.lifespan(mcp=...)`, and integrate with Claude Desktop and other MCP clients.
 
 3. **Fast bundling with Rolldown** — The Rolldown bundler processes your TypeScript/JSX automatically. Hot-reload in
    development mode means you see changes instantly without manual rebuilds.
