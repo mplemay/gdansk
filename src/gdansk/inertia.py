@@ -466,7 +466,8 @@ class InertiaPage:
 
     def location(self, url: str) -> Response:
         if not self._is_inertia_request():
-            return RedirectResponse(url=url)
+            status_code = 307 if self._request.method == "GET" else 303
+            return RedirectResponse(url=url, status_code=status_code)
 
         return Response(
             status_code=409,
@@ -683,13 +684,13 @@ class InertiaPage:
 
             if include and not skip_due_once:
                 resolved_value = await self._evaluate(value)
-                resolved_value = self._filter_nested_value(
+                filtered_value = self._filter_nested_value(
                     resolved_value,
                     direct_only=direct_only,
                     nested_only=nested_only,
                     nested_except=nested_except,
                 )
-                result.props[key] = resolved_value
+                result.props[key] = filtered_value
 
                 if page_prop and page_prop.scroll_config is not None:
                     result.scroll_props[key] = self._build_scroll_prop(

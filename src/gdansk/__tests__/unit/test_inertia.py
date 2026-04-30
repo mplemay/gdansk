@@ -414,16 +414,33 @@ def test_inertia_scroll_props_follow_merge_intent_and_reset(page_views_path: Pat
                 "X-Inertia-Reset": "feed",
             },
         )
+        partial_items_response = client.get(
+            "/",
+            headers={
+                "X-Inertia": "true",
+                "X-Inertia-Partial-Component": "/",
+                "X-Inertia-Partial-Data": "feed.items",
+            },
+        )
+        except_pagination_response = client.get(
+            "/",
+            headers={
+                "X-Inertia": "true",
+                "X-Inertia-Partial-Component": "/",
+                "X-Inertia-Partial-Except": "feed.pagination",
+            },
+        )
 
+    expected_scroll_prop = {
+        "currentPage": 2,
+        "nextPage": 3,
+        "pageName": "feed_page",
+        "previousPage": 1,
+        "reset": False,
+    }
     assert initial.json()["mergeProps"] == ["feed.items"]
     assert initial.json()["scrollProps"] == {
-        "feed": {
-            "currentPage": 2,
-            "nextPage": 3,
-            "pageName": "feed_page",
-            "previousPage": 1,
-            "reset": False,
-        },
+        "feed": expected_scroll_prop,
     }
 
     assert prepend_response.json()["prependProps"] == ["feed.items"]
@@ -433,6 +450,37 @@ def test_inertia_scroll_props_follow_merge_intent_and_reset(page_views_path: Pat
     assert "mergeProps" not in reset_response.json()
     assert "prependProps" not in reset_response.json()
     assert reset_response.json()["scrollProps"]["feed"]["reset"] is True
+
+    assert partial_items_response.json()["props"]["feed"] == {"items": [{"id": 1, "title": "Update"}]}
+    assert partial_items_response.json()["scrollProps"]["feed"] == expected_scroll_prop
+
+    assert except_pagination_response.status_code == 200
+    assert except_pagination_response.json()["props"]["feed"] == {"items": [{"id": 1, "title": "Update"}]}
+    assert except_pagination_response.json()["scrollProps"]["feed"] == expected_scroll_prop
+
+
+def test_inertia_location_non_inertia_redirects_convert_unsafe_methods(page_views_path: Path):
+    write_page_manifest(page_views_path)
+    ship = Ship(vite=Vite(page_views_path))
+
+    async def jump(request: Request):
+        page = ship.page(request)
+        return page.location("/target")
+
+    with TestClient(_page_app(ship, routes=[Route("/jump", jump, methods=["GET", "POST", "PUT", "PATCH"])])) as client:
+        get_response = client.get("/jump", follow_redirects=False)
+        post_response = client.post("/jump", follow_redirects=False)
+        put_response = client.put("/jump", follow_redirects=False)
+        patch_response = client.patch("/jump", follow_redirects=False)
+
+    assert get_response.status_code == 307
+    assert post_response.status_code == 303
+    assert put_response.status_code == 303
+    assert patch_response.status_code == 303
+    assert get_response.headers["location"] == "/target"
+    assert post_response.headers["location"] == "/target"
+    assert put_response.headers["location"] == "/target"
+    assert patch_response.headers["location"] == "/target"
 
 
 def test_inertia_supports_history_flags_and_fragment_redirects(page_views_path: Path):
