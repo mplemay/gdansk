@@ -35,6 +35,18 @@ class FakeManagedProcess:
         return self.returncode
 
 
+class SessionStateMiddleware:
+    def __init__(self, app) -> None:
+        self.app = app
+        self._session: dict[str, Any] = {}
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] == "http":
+            scope["session"] = self._session
+
+        await self.app(scope, receive, send)
+
+
 @pytest.fixture
 def views_path(tmp_path: Path) -> Path:
     views = tmp_path / "views"
@@ -59,5 +71,40 @@ def write_manifest(views: Path, *, assets_dir: str = "dist", manifest_out_dir: s
     }
 
     path = views / assets_dir / "gdansk-manifest.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+
+
+@pytest.fixture
+def page_views_path(tmp_path: Path) -> Path:
+    views = tmp_path / "views"
+    (views / "app").mkdir(parents=True)
+    (views / "app" / "layout.tsx").write_text("export default function Layout({ children }) { return children; }\n")
+    (views / "app" / "page.tsx").write_text("export default function Page() { return null; }\n")
+    (views / "dist").mkdir(parents=True, exist_ok=True)
+    return views
+
+
+def write_page_manifest(
+    views: Path,
+    *,
+    assets_dir: str = "dist",
+    css: list[str] | None = None,
+    entry: str = "virtual:gdansk/pages/app",
+    file: str = "assets/main.js",
+    imports: dict[str, Any] | None = None,
+) -> None:
+    manifest: dict[str, Any] = {
+        entry: {
+            "css": css or ["assets/main.css"],
+            "file": file,
+            "imports": list((imports or {}).keys()),
+            "isEntry": True,
+            "src": entry,
+        },
+        **(imports or {}),
+    }
+
+    path = views / assets_dir / "manifest.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(manifest), encoding="utf-8")

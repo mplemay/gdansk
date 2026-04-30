@@ -11,9 +11,11 @@ from urllib.parse import urlparse
 from httpx import AsyncClient
 from mcp.server.mcpserver.resources import FunctionResource
 from mcp.server.mcpserver.tools.base import Tool
+from starlette.requests import Request  # noqa: TC002
 from starlette.staticfiles import StaticFiles
 
 from gdansk._schema import to_strict_schema
+from gdansk.inertia import InertiaApp, InertiaPage
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import render_template
 from gdansk.utils import join_url, join_url_path
@@ -55,7 +57,9 @@ class Ship:
         self._base_url: Final[str | None] = base_url
         self._client: Final[AsyncClient | None] = client
         self._dev = False
+        self._inertia_app: InertiaApp | None = None
         self._metadata: Final[Metadata] = metadata or Metadata()
+        self._mode: Literal["inertia", "widget"] | None = None
         self._session_client: AsyncClient | None = None
         self._vite: Final[Vite] = vite or Vite()
         self._widget_manager: dict[Path, WidgetSpec] = {}
@@ -70,8 +74,88 @@ class Ship:
     def assets_path(self) -> str:
         return self._vite.assets_path
 
+    @property
+    def client_manifest_path(self) -> Path:
+        return self._vite.client_manifest_path
+
+    @property
+    def dev(self) -> bool:
+        return self._dev
+
+    @property
+    def metadata(self) -> Metadata:
+        return self._metadata
+
+    def page(self, request: Request) -> InertiaPage:
+        return InertiaPage(app=self._ensure_inertia_app(), request=request)
+
+    def inertia(
+        self,
+        *,
+        encrypt_history: bool = False,
+        root_id: str = "app",
+        version: str | None = None,
+    ) -> InertiaApp:
+        self._lock_mode("inertia")
+
+        if self._inertia_app is None:
+            self._inertia_app = InertiaApp(
+                ship=self,
+                root_id=root_id,
+                version=version,
+                encrypt_history=encrypt_history,
+            )
+            return self._inertia_app
+
+        configured_app = InertiaApp(
+            ship=self,
+            root_id=root_id,
+            version=version,
+            encrypt_history=encrypt_history,
+        )
+        if (
+            self._inertia_app.root_id != configured_app.root_id
+            or self._inertia_app.version_override != configured_app.version_override
+            or self._inertia_app.default_encrypt_history != configured_app.default_encrypt_history
+        ):
+            msg = "The Ship already owns an Inertia app with a different configuration"
+            raise RuntimeError(msg)
+
+        return self._inertia_app
+
     @asynccontextmanager
-    async def mcp(self, app: MCPServer, *, watch: bool | None = False) -> AsyncIterator[None]:
+    async def lifespan(self, *, mcp: MCPServer | None = None, watch: bool | None = False) -> AsyncIterator[None]:
+        mode = self._runtime_mode()
+        if mode == "widget":
+            if mcp is None:
+                msg = "Ship.lifespan(mcp=...) requires an MCPServer when widgets are registered"
+                raise ValueError(msg)
+
+            self._register_widgets(mcp)
+
+        self._session_begin()
+        try:
+            if mode == "widget":
+                await self._prepare_frontend(watch=watch)
+            else:
+                await self._prepare_inertia(watch=watch)
+            yield None
+        finally:
+            await self._session_end()
+
+    def _ensure_inertia_app(self) -> InertiaApp:
+        self._lock_mode("inertia")
+        if self._inertia_app is None:
+            self._inertia_app = InertiaApp(
+                ship=self,
+                root_id="app",
+                version=None,
+                encrypt_history=False,
+            )
+
+        return self._inertia_app
+
+    def _register_widgets(self, app: MCPServer) -> None:
         for spec in self._widget_manager.values():
             existing = app._tool_manager._tools.get(spec.tool.name)  # noqa: SLF001
             if existing is not None and existing is not spec.tool:
@@ -81,12 +165,12 @@ class Ship:
             app._tool_manager._tools.setdefault(spec.tool.name, spec.tool)  # noqa: SLF001
             app.add_resource(resource=spec.resource)
 
-        self._session_begin()
-        try:
-            await self._prepare_frontend(watch=watch)
-            yield None
-        finally:
-            await self._session_end()
+    def _runtime_mode(self) -> Literal["inertia", "widget"]:
+        if self._mode == "widget":
+            return "widget"
+
+        self._ensure_inertia_app()
+        return "inertia"
 
     def _session_begin(self) -> None:
         if self._active:
@@ -97,7 +181,7 @@ class Ship:
         self._dev = False
         self._vite.clear_manifest()
 
-    async def _prepare_frontend(self, *, watch: bool | None) -> None:
+    async def _run_frontend(self, *, watch: bool | None) -> None:
         match watch:
             case True:
                 await self._vite.start_dev()
@@ -105,9 +189,35 @@ class Ship:
                 self._dev = True
             case False:
                 await self._vite.build()
-                self._vite.load_manifest()
             case None:
-                self._vite.load_manifest()
+                return
+
+    async def _prepare_frontend(self, *, watch: bool | None) -> None:
+        await self._run_frontend(watch=watch)
+        if not self._dev:
+            self._vite.load_manifest()
+
+    async def _prepare_inertia(self, *, watch: bool | None) -> None:
+        await self._run_frontend(watch=watch)
+        if not self._dev:
+            self._ensure_inertia_app()._resolve_assets()  # noqa: SLF001
+
+    def asset_url(self, path: str) -> str:
+        return self._asset_url(path)
+
+    @asynccontextmanager
+    async def _frontend_session(self, *, watch: bool | None = False) -> AsyncIterator[None]:
+        self._session_begin()
+        try:
+            await self._run_frontend(watch=watch)
+            yield None
+        finally:
+            await self._session_end()
+
+    @asynccontextmanager
+    async def frontend_session(self, *, watch: bool | None = False) -> AsyncIterator[None]:
+        async with self._frontend_session(watch=watch):
+            yield None
 
     async def _require_client(self) -> AsyncClient:
         if self._client is not None:
@@ -129,6 +239,17 @@ class Ship:
                 await self._session_client.aclose()
                 self._session_client = None
 
+    def _lock_mode(self, mode: Literal["inertia", "widget"]) -> None:
+        if self._mode is None:
+            self._mode = mode
+            return
+
+        if self._mode != mode:
+            msg = "A Ship instance cannot register widgets and Inertia pages at the same time"
+            raise RuntimeError(msg)
+
+        return
+
     def _asset_base_url(self) -> str | None:
         if self._base_url is None:
             return None
@@ -148,6 +269,9 @@ class Ship:
         prefix = f"{out_dir}/"
         relative_path = normalized.removeprefix(prefix)
         return self._asset_url(relative_path)
+
+    def require_vite_origin(self) -> str:
+        return self._vite.require_origin()
 
     async def render_widget_page(self, *, metadata: Metadata | None, widget_key: str) -> str:
         body = ""
@@ -206,6 +330,7 @@ class Ship:
         schema: Literal["default", "strict"] = "default",
         structured_output: bool | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+        self._lock_mode("widget")
         posix_path = self._normalize_widget_path(Path(path))
         key = PurePosixPath(*posix_path.parts[:-1]).as_posix()
         resolved_path = (self._vite.widgets_root / Path(posix_path.as_posix())).resolve()

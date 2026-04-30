@@ -1,6 +1,7 @@
 {
   "version": "5",
   "specifiers": {
+    "npm:@inertiajs/react@3.0.3": "3.0.3_react@19.2.5_react-dom@19.2.5__react@19.2.5",
     "npm:@types/node@25.6.0": "25.6.0",
     "npm:@types/react-dom@19.2.3": "19.2.3_@types+react@19.2.14",
     "npm:@types/react@19.2.14": "19.2.14",
@@ -10,6 +11,7 @@
     "npm:test@*": "3.3.0",
     "npm:typescript@~6.0.3": "6.0.3",
     "npm:vite@8.0.9": "8.0.9_@types+node@25.6.0",
+    "npm:vite@^8.0.9": "8.0.9_@types+node@25.6.0",
     "npm:vitest@4.1.5": "4.1.5_@types+node@25.6.0_vite@8.0.9__@types+node@25.6.0"
   },
   "npm": {
@@ -32,8 +34,36 @@
         "tslib"
       ]
     },
+    "@inertiajs/core@3.0.3": {
+      "integrity": "sha512-/4sW/cfNpvujjVOZlB5UNypLGNySs7X7V8IMLNSK8+3j1KsUYGS5wpLd9EqAu8wy8RiW7PPra2rPwB6Lx/ACow==",
+      "dependencies": [
+        "@jridgewell/trace-mapping",
+        "es-toolkit",
+        "laravel-precognition"
+      ]
+    },
+    "@inertiajs/react@3.0.3_react@19.2.5_react-dom@19.2.5__react@19.2.5": {
+      "integrity": "sha512-1NjfbsaAiHX9oLbk3ghoAKbptOupYN7jb2I/3+OTD/MomjH9hO0IxwbIHPajrndghz5yWvRN+E045EzDvze2hg==",
+      "dependencies": [
+        "@inertiajs/core",
+        "es-toolkit",
+        "laravel-precognition",
+        "react",
+        "react-dom"
+      ]
+    },
+    "@jridgewell/resolve-uri@3.1.2": {
+      "integrity": "sha512-bRISgCIjP20/tbWSPWMEi54QVPRZExkuD9lJL+UIxUKtwVJA8wW1Trb1jMs1RFXo1CBTNZ/5hpC9QvmKWdopKw=="
+    },
     "@jridgewell/sourcemap-codec@1.5.5": {
       "integrity": "sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og=="
+    },
+    "@jridgewell/trace-mapping@0.3.31": {
+      "integrity": "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==",
+      "dependencies": [
+        "@jridgewell/resolve-uri",
+        "@jridgewell/sourcemap-codec"
+      ]
     },
     "@napi-rs/wasm-runtime@1.1.4_@emnapi+core@1.9.2_@emnapi+runtime@1.9.2": {
       "integrity": "sha512-3NQNNgA1YSlJb/kMH1ildASP9HW7/7kYnRI2szWJaofaS1hWmbGI4H+d3+22aGzXXN9IJ+n+GiFVcGipJP18ow==",
@@ -455,6 +485,9 @@
         "is-symbol"
       ]
     },
+    "es-toolkit@1.46.1": {
+      "integrity": "sha512-5eNtXOs3tbfxXOj04tjjseeWkRWaoCjdEI+96DgwzZoe6c9juL49pXlzAFTI72aWC9Y8p7168g6XIKjh7k6pyQ=="
+    },
     "estree-walker@3.0.3": {
       "integrity": "sha512-7RUKfXgSMMkzt6ZuXmqapOurLGPPfgj6l9uRZ7lRGolvk0y2yocc35LdcxKC5PQZdn2DMqioAQ2NoWcrTKmm6g==",
       "dependencies": [
@@ -726,6 +759,12 @@
     },
     "isarray@2.0.5": {
       "integrity": "sha512-xHjhDr3cNBK0BzdUJSPXZntQUx/mwMS5Rw4A7lPJ90XGAO6ISP/ePDNuo0vhqOZU+UD5JoodwCAAoZQd3FeAKw=="
+    },
+    "laravel-precognition@2.0.0": {
+      "integrity": "sha512-dmA4HGc9m+TsVNsJs9/XQBI8u6j7coilN+qKkBuhuXQzH3HypwS/c5dFQ4UqUGjBbcxIM7zdk91kM/SRZwIvWQ==",
+      "dependencies": [
+        "es-toolkit"
+      ]
     },
     "lightningcss-android-arm64@1.32.0": {
       "integrity": "sha512-YK7/ClTt4kAK0vo6w3X+Pnm0D2cf2vPHbhOXdoNti1Ga0al1P4TBZhwjATvjNwLEBCnKvjJc2jQgHXH0NEwlAg==",
@@ -1293,6 +1332,7 @@
   "workspace": {
     "packageJson": {
       "dependencies": [
+        "npm:@inertiajs/react@3.0.3",
         "npm:@types/node@25.6.0",
         "npm:@types/react-dom@19.2.3",
         "npm:@types/react@19.2.14",
@@ -1301,6 +1341,7 @@
         "npm:react@19.2.5",
         "npm:typescript@~6.0.3",
         "npm:vite@8.0.9",
+        "npm:vite@^8.0.9",
         "npm:vitest@4.1.5"
       ]
     }

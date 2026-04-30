@@ -31,6 +31,7 @@ def test_vite_owns_frontend_paths(views_path: Path):
     assert vite.assets_path == "/public/ui"
     assert vite.build_directory == "public/ui"
     assert vite.build_directory_path == views_path / "public/ui"
+    assert vite.client_manifest_path == views_path / "public/ui" / "manifest.json"
     assert vite.manifest_path == views_path / "public/ui" / "gdansk-manifest.json"
     assert vite.root == views_path
     assert vite.widgets_root == views_path / "widgets"

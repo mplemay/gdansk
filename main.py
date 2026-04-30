@@ -19,9 +19,9 @@ def hello() -> list[TextContent]:
 
 
 @asynccontextmanager
-async def lifespan(app: MCPServer) -> AsyncIterator[None]:
-    async with ship.mcp(app=app, watch=False) as context:
-        yield context
+async def lifespan(mcp: MCPServer) -> AsyncIterator[None]:
+    async with ship.lifespan(mcp=mcp, watch=False):
+        yield
 
 
 mcp = MCPServer(name="example", lifespan=lifespan)

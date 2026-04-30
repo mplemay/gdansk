@@ -2,7 +2,15 @@ import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/
 import { resolve } from "node:path";
 
 import react from "@vitejs/plugin-react";
-import { createServer, normalizePath, type Plugin, type PluginOption, type UserConfig, type ViteDevServer } from "vite";
+import {
+  build,
+  createServer,
+  normalizePath,
+  type Plugin,
+  type PluginOption,
+  type UserConfig,
+  type ViteDevServer,
+} from "vite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const viteMocks = vi.hoisted(() => ({
@@ -22,7 +30,7 @@ vi.mock("vite", async (importOriginal) => {
   };
 });
 
-import gdansk from "../src";
+import gdansk, { gdanskPages } from "../src";
 import { resolveOptions } from "../src/context";
 import { normalizeRefreshConfig, resolveRefreshPaths } from "../src/development";
 import { createGdanskRuntime } from "../src/runtime";
@@ -43,6 +51,17 @@ afterEach(async () => {
 });
 
 describe("@gdansk/vite", () => {
+  it("declares vite as a runtime dependency", async () => {
+    const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")) as {
+      dependencies?: Record<string, string>;
+      peerDependencies?: Record<string, string>;
+    };
+
+    expect(packageJson.dependencies?.["@inertiajs/react"]).toBe("3.0.3");
+    expect(packageJson.dependencies?.vite).toBe("^8.0.9");
+    expect(packageJson.peerDependencies?.vite).toBe(">=8 <9");
+  });
+
   it("defaults the frontend runtime to localhost on port 13714", () => {
     const options = resolveOptions({ root: process.cwd() });
 
@@ -396,6 +415,164 @@ describe("@gdansk/vite", () => {
     await closeServer;
     await waitFor(async () => (server as GdanskDevServer).__gdansk === undefined);
   }, 15_000);
+
+  it("configures page-mode builds with a standard Vite manifest", async () => {
+    const root = await createPageFixture();
+    const config = await resolvePluginConfig(gdanskPages({}), { root }, "build", "@gdansk/vite:pages");
+
+    expect(config.build).toMatchObject({
+      copyPublicDir: false,
+      emptyOutDir: true,
+      manifest: "manifest.json",
+      outDir: "dist",
+      sourcemap: true,
+    });
+    expect(config.build?.rollupOptions?.input).toBe("virtual:gdansk/pages/app");
+    expect(config.resolve?.alias).toEqual({
+      "@": root,
+    });
+  });
+
+  it("warms page entry modules during dev server setup", async () => {
+    const root = await createPageFixture();
+    const logger = { info: vi.fn(), warn: vi.fn() };
+    const warmupRequest = vi.fn().mockResolvedValue(undefined);
+    const plugin = resolvePluginByName(gdanskPages({}), "@gdansk/vite:pages");
+
+    await callHook(plugin.configResolved, {
+      root,
+    } as unknown as Parameters<ConfigResolvedHook>[0]);
+    await callHook(plugin.configureServer, {
+      config: {
+        logger,
+        root,
+        server: {
+          host: "127.0.0.1",
+          port: 5173,
+        },
+      } as unknown as ViteDevServer["config"],
+      httpServer: {
+        listening: true,
+        once: vi.fn(),
+      },
+      middlewares: {
+        use: vi.fn(),
+      },
+      warmupRequest,
+    } as unknown as ViteDevServer);
+
+    await waitFor(async () => warmupRequest.mock.calls.length === 6);
+
+    expect(new Set(warmupRequest.mock.calls.map(([entry]) => entry))).toEqual(
+      new Set([
+        `${root}/app/layout.tsx`,
+        `${root}/app/page.tsx`,
+        `${root}/app/dashboard/layout.tsx`,
+        `${root}/app/dashboard/reports/layout.tsx`,
+        `${root}/app/dashboard/reports/page.tsx`,
+        "/@gdansk/pages/app.tsx",
+      ]),
+    );
+  });
+
+  it("generates a convention-driven Inertia runtime", async () => {
+    const root = await createPageFixture();
+    const plugin = resolvePluginByName(gdanskPages({}), "@gdansk/vite:pages");
+
+    await callHook(plugin.configResolved, {
+      root,
+    } as unknown as Parameters<ConfigResolvedHook>[0]);
+    const resolvedId = await callHook(plugin.resolveId, "/@gdansk/pages/app.tsx", undefined, {
+      isEntry: true,
+    });
+    expect(resolvedId).toBe("\0virtual:gdansk/pages/app");
+    const source = (await callHook(plugin.load, resolvedId as string)) as string;
+
+    expect(source).toContain('import { createInertiaApp } from "@inertiajs/react";');
+    expect(source).toContain("const inertiaRootId = document");
+    expect(source).toContain(`.querySelector('script[data-page][type="application/json"]')`);
+    expect(source).toContain("id: inertiaRootId,");
+    expect(source).toContain('"../../app/page.tsx"');
+    expect(source).toContain('"../../app/layout.tsx"');
+    expect(source).toContain('"../../app/dashboard/layout.tsx"');
+    expect(source).toContain('"../../app/dashboard/reports/layout.tsx"');
+    expect(source).toContain('"../../app/dashboard/reports/page.tsx"');
+    expect(source).toContain("throw new Error(`Unknown page component: ${key}`);");
+    expect(source).toContain("const pageModules = {");
+    expect(source).toContain("const layoutModules = {");
+    expect(source).toContain("return wrapWithLayouts(page, getLayouts(key));");
+  });
+
+  it("rejects duplicate page files for the same route", async () => {
+    const root = await createPageFixture({ withDuplicateRootPage: true });
+
+    await expect(resolvePluginConfig(gdanskPages({}), { root }, "build", "@gdansk/vite:pages")).rejects.toThrow(
+      'multiple app/**/page files for "/"',
+    );
+  });
+
+  it("builds page-mode production assets with a standard Vite manifest", async () => {
+    const root = await createPageFixture();
+
+    await build({
+      appType: "custom",
+      configFile: false,
+      plugins: [gdanskPages({ root }), react()],
+      root,
+    });
+
+    const manifest = JSON.parse(await readFile(`${root}/dist/manifest.json`, "utf8")) as Record<
+      string,
+      {
+        css?: string[];
+        file: string;
+        isEntry?: boolean;
+      }
+    >;
+    const entry = Object.values(manifest).find((chunk) => chunk.isEntry);
+
+    expect(entry).toBeDefined();
+    expect(entry?.file).toMatch(/^assets\/.*\.js$/);
+    expect(entry?.css).toHaveLength(1);
+    await expect(pathExists(`${root}/dist/${entry?.file}`)).resolves.toBe(true);
+    await expect(pathExists(`${root}/dist/${entry?.css?.[0]}`)).resolves.toBe(true);
+    await expect(pathExists(`${root}/dist/gdansk-manifest.json`)).resolves.toBe(false);
+  }, 15_000);
+
+  it("exports a page-mode Vite plugin that exposes the dev Vite origin", async () => {
+    const root = await createPageFixture();
+    const server = await createServer({
+      appType: "custom",
+      configFile: false,
+      plugins: [gdanskPages({ root, port: 0 }), react()],
+      root,
+      server: {
+        host: "127.0.0.1",
+        port: 0,
+      },
+    });
+
+    await server.listen();
+    const metadata = (server as GdanskDevServer).__gdansk;
+
+    expect(metadata).toBeDefined();
+    expect(metadata?.viteOrigin).toBe(server.resolvedUrls?.local[0]?.replace(/\/$/, ""));
+    const viteClientResponse = await fetch(`${metadata!.viteOrigin}/@vite/client`);
+    expect(viteClientResponse.status).toBe(200);
+
+    await server.waitForRequestsIdle();
+    const httpServer = server.httpServer as
+      | (typeof server.httpServer & {
+          closeAllConnections?: () => void;
+          closeIdleConnections?: () => void;
+        })
+      | undefined;
+    const closeServer = server.close();
+    httpServer?.closeIdleConnections?.();
+    httpServer?.closeAllConnections?.();
+    await closeServer;
+    await waitFor(async () => (server as GdanskDevServer).__gdansk === undefined);
+  }, 15_000);
 });
 
 async function createFixture(options: {
@@ -533,6 +710,73 @@ async function createFixture(options: {
   return root;
 }
 
+async function createPageFixture(
+  options: {
+    withDuplicateRootPage?: boolean;
+  } = {},
+): Promise<string> {
+  const root = await mkdtemp(resolve(process.cwd(), ".tmp-vitest-"));
+  fixtureRoots.push(root);
+
+  await mkdir(`${root}/app/dashboard/reports`, { recursive: true });
+  await writeFile(
+    `${root}/package.json`,
+    JSON.stringify(
+      {
+        name: "fixture-pages",
+        private: true,
+        type: "module",
+      },
+      null,
+      2,
+    ),
+  );
+  await writeFile(`${root}/app/app.css`, ".page { color: red; }\n");
+  await writeFile(
+    `${root}/app/layout.tsx`,
+    [
+      'import "./app.css";',
+      "",
+      "export default function RootLayout({ children }) {",
+      '  return <div className="page">{children}</div>;',
+      "}",
+      "",
+    ].join("\n"),
+  );
+  await writeFile(
+    `${root}/app/page.tsx`,
+    ["export default function RootPage() {", "  return <main><h1>Page mode</h1></main>;", "}", ""].join("\n"),
+  );
+  await writeFile(
+    `${root}/app/dashboard/layout.tsx`,
+    [
+      "export default function DashboardLayout({ children }) {",
+      '  return <section data-layout="dashboard">{children}</section>;',
+      "}",
+      "",
+    ].join("\n"),
+  );
+  await writeFile(
+    `${root}/app/dashboard/reports/layout.tsx`,
+    [
+      "export default function ReportsLayout({ children }) {",
+      '  return <section data-layout="reports">{children}</section>;',
+      "}",
+      "",
+    ].join("\n"),
+  );
+  await writeFile(
+    `${root}/app/dashboard/reports/page.tsx`,
+    ["export default function ReportsPage() {", "  return <main><h2>Reports page</h2></main>;", "}", ""].join("\n"),
+  );
+
+  if (options.withDuplicateRootPage) {
+    await writeFile(`${root}/app/page.jsx`, "export default function DuplicateRootPage() { return null; }\n");
+  }
+
+  return root;
+}
+
 async function pathExists(path: string): Promise<boolean> {
   try {
     await stat(path);
@@ -594,8 +838,9 @@ async function resolvePluginConfig(
   option: PluginOption,
   config: UserConfig,
   command: "build" | "serve",
+  name: string = "@gdansk/vite",
 ): Promise<UserConfig> {
-  const plugin = resolvePluginByName(option, "@gdansk/vite");
+  const plugin = resolvePluginByName(option, name);
 
   return ((await callHook(plugin.config, config, {
     command,

@@ -32,8 +32,8 @@ def hello(name: str = "world") -> list[TextContent]:
 
 
 @asynccontextmanager
-async def mcp_lifespan(app: MCPServer) -> AsyncIterator[None]:
-    async with ship.mcp(app=app, watch=not SETTINGS.production):
+async def mcp_lifespan(mcp: MCPServer) -> AsyncIterator[None]:
+    async with ship.lifespan(mcp=mcp, watch=not SETTINGS.production):
         yield
 
 

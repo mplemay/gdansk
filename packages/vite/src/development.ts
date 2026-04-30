@@ -1,9 +1,18 @@
 import { matchesGlob, resolve } from "node:path";
 
-import { normalizePath, type Alias, type Plugin, type UserConfig, type ViteDevServer } from "vite";
+import type { Alias, Plugin, UserConfig, ViteDevServer } from "vite";
 
 import { resolveOptions } from "./context";
-import type { GdanskPluginOptions, RefreshConfig, ResolvedGdanskOptions, WidgetDefinition } from "./types";
+import { GDANSK_PAGE_DEV_ENTRY } from "./pages";
+import { normalizePath } from "./path";
+import type {
+  GdanskPagePluginOptions,
+  GdanskPluginOptions,
+  GdanskPreparedPageProject,
+  RefreshConfig,
+  ResolvedGdanskOptions,
+  WidgetDefinition,
+} from "./types";
 
 type AliasOption = NonNullable<NonNullable<UserConfig["resolve"]>["alias"]>;
 
@@ -101,6 +110,26 @@ export async function warmupWidgetEntries(server: ViteDevServer, widgets: Widget
   await server.waitForRequestsIdle?.();
 }
 
+export async function warmupPageEntries(server: ViteDevServer, project: GdanskPreparedPageProject): Promise<void> {
+  const entries = new Set<string>([GDANSK_PAGE_DEV_ENTRY]);
+
+  for (const page of project.pages) {
+    entries.add(page.entry);
+  }
+
+  for (const layout of project.layouts) {
+    entries.add(layout.entry);
+  }
+
+  await Promise.allSettled(
+    [...entries].map(async (entry) => {
+      await server.warmupRequest(entry);
+    }),
+  );
+
+  await server.waitForRequestsIdle?.();
+}
+
 export function normalizeRefreshConfig(refresh: GdanskPluginOptions["refresh"]): Array<{ paths: string[] }> {
   if (!refresh) {
     return [];
@@ -129,7 +158,10 @@ export function normalizeRefreshConfig(refresh: GdanskPluginOptions["refresh"]):
   return [normalizeRefreshEntry(refresh)];
 }
 
-export function resolveRefreshPaths(refresh: GdanskPluginOptions["refresh"], root: string): string[] {
+export function resolveRefreshPaths(
+  refresh: GdanskPluginOptions["refresh"] | GdanskPagePluginOptions["refresh"],
+  root: string,
+): string[] {
   return normalizeRefreshConfig(refresh).flatMap((config) =>
     config.paths.map((pattern) => normalizePath(resolve(root, pattern))),
   );

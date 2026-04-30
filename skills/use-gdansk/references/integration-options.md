@@ -99,7 +99,7 @@ export default defineConfig({
 
 ## Plain MCP tools (no React UI)
 
-Register tools on the same `MCPServer` instance that you pass into `ship.mcp(app=...)`:
+Register tools on the same `MCPServer` instance that you pass into `ship.lifespan(mcp=...)`:
 
 ```python
 mcp = MCPServer(name="My Server", lifespan=lifespan)
@@ -132,8 +132,8 @@ ship = Ship(vite=Vite(frontend_path))
 
 
 @asynccontextmanager
-async def mcp_lifespan(app: MCPServer) -> AsyncIterator[None]:
-    async with ship.mcp(app=app, watch=True):
+async def mcp_lifespan(mcp: MCPServer) -> AsyncIterator[None]:
+    async with ship.lifespan(mcp=mcp, watch=True):
         yield
 
 

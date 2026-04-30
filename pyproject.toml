@@ -9,6 +9,7 @@ authors = [
 ]
 requires-python = ">=3.12,<3.15"
 dependencies = [
+    "asyncer>=0.0.17",
     "deno>=2.7.12,<3",
     "mcp>=1.25.1.dev114,<1.26",
     "minijinja>=2,<3",
@@ -20,6 +21,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "anyio>=4",
+    "fastapi>=0.116.1",
     "prek>=0.3.6",
     "pytest>=9.0.2",
     "ruff>=0.15.1",
@@ -49,10 +51,14 @@ select = ["ALL"]
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = [
     "F401", # imported but unused (common in __init__.py to re-export symbols)
+    "D104", # package initializers in this repo are intentionally empty
 ]
 "main.py" = ["D"]
 "src/gdansk/**/*.py" = ["D"]
 "examples/fastapi/main.py" = [
+    "INP001", # example entrypoint is intentionally not part of a package
+]
+"examples/inertia/main.py" = [
     "INP001", # example entrypoint is intentionally not part of a package
 ]
 "**/__tests__/**/*" = [
