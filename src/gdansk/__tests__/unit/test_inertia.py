@@ -72,6 +72,26 @@ def test_inertia_renders_dev_html_shell(page_views_path: Path):
     assert '<link rel="stylesheet"' not in html
 
 
+def test_inertia_renders_custom_root_id_in_html_shell(page_views_path: Path):
+    write_page_manifest(page_views_path)
+    ship = Ship(vite=Vite(page_views_path))
+    inertia = ship.inertia(root_id="custom-root")
+    page = {
+        "component": "/",
+        "flash": {},
+        "props": {
+            "errors": {},
+        },
+        "url": "/",
+        "version": inertia.version(),
+    }
+
+    html = inertia.render_html(metadata=None, page=page)
+
+    assert '<script data-page="custom-root" type="application/json">' in html
+    assert '<div id="custom-root"></div>' in html
+
+
 def test_inertia_json_response_has_expected_page_shape(page_views_path: Path):
     write_page_manifest(page_views_path)
     ship = Ship(vite=Vite(page_views_path))

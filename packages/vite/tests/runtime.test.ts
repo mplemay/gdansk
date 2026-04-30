@@ -57,6 +57,7 @@ describe("@gdansk/vite", () => {
       peerDependencies?: Record<string, string>;
     };
 
+    expect(packageJson.dependencies?.["@inertiajs/react"]).toBe("3.0.3");
     expect(packageJson.dependencies?.vite).toBe("^8.0.9");
     expect(packageJson.peerDependencies?.vite).toBe(">=8 <9");
   });
@@ -488,6 +489,9 @@ describe("@gdansk/vite", () => {
     const source = (await callHook(plugin.load, resolvedId as string)) as string;
 
     expect(source).toContain('import { createInertiaApp } from "@inertiajs/react";');
+    expect(source).toContain("const inertiaRootId = document");
+    expect(source).toContain(`.querySelector('script[data-page][type="application/json"]')`);
+    expect(source).toContain("id: inertiaRootId,");
     expect(source).toContain('"../../app/page.tsx"');
     expect(source).toContain('"../../app/layout.tsx"');
     expect(source).toContain('"../../app/dashboard/layout.tsx"');
