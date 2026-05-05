@@ -51,7 +51,7 @@ class DuplicateSharedProps(BaseModel):
 
 
 def read_page_type(page_views_path, *parts: str) -> str:
-    return (page_views_path / "@types" / "gdansk" / Path(*parts)).read_text(encoding="utf-8")
+    return (page_views_path / "types" / "gdansk" / Path(*parts)).read_text(encoding="utf-8")
 
 
 def test_inertia_generates_page_props_from_unwrapped_prop_payloads(page_views_path):
@@ -60,6 +60,9 @@ def test_inertia_generates_page_props_from_unwrapped_prop_payloads(page_views_pa
     legacy_output = page_views_path / ".gdansk" / "pages.ts"
     legacy_output.parent.mkdir(parents=True)
     legacy_output.write_text("stale aggregate module\n", encoding="utf-8")
+    stale_output_root = page_views_path / "@types" / "gdansk"
+    stale_output_root.mkdir(parents=True)
+    (stale_output_root / "index.ts").write_text("stale page type module\n", encoding="utf-8")
 
     @app.get("/")
     @ship.page()
@@ -88,6 +91,7 @@ def test_inertia_generates_page_props_from_unwrapped_prop_payloads(page_views_pa
     assert "PropSource" not in generated
     assert "always_include" not in generated
     assert not legacy_output.exists()
+    assert not stale_output_root.exists()
 
 
 def test_inertia_page_type_generation_resolves_implicit_route_components(page_views_path):

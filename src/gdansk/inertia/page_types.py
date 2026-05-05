@@ -115,13 +115,13 @@ def write_page_type_modules(
     output_root: Path,
     routes: Sequence[PageTypeRoute],
     shared_props_model: type[BaseModel] | None,
-    legacy_output_path: Path | None = None,
+    stale_paths: Sequence[Path] = (),
 ) -> None:
     modules = build_page_type_modules(app=app, routes=routes, shared_props_model=shared_props_model)
 
     _remove_generated_path(output_root)
-    if legacy_output_path is not None:
-        legacy_output_path.unlink(missing_ok=True)
+    for stale_path in stale_paths:
+        _remove_generated_path(stale_path)
 
     for relative_path, source in modules.items():
         output_path = output_root / relative_path

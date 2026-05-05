@@ -431,18 +431,18 @@ describe("@gdansk/vite", () => {
     expect(config.build?.rollupOptions?.input).toBe("virtual:gdansk/pages/app");
     expect(config.resolve?.alias).toEqual({
       "@": root,
-      "@gdansk/types": resolve(root, "@types/gdansk"),
+      "@types/gdansk": resolve(root, "types/gdansk"),
     });
   });
 
-  it("preserves a user-defined page type alias", async () => {
+  it("preserves a user-defined @types page type alias", async () => {
     const root = await createPageFixture();
     const config = await resolvePluginConfig(
       gdanskPages({}),
       {
         resolve: {
           alias: {
-            "@gdansk/types": "/custom/page-types",
+            "@types/gdansk": "/custom/page-types",
           },
         },
         root,
@@ -453,7 +453,7 @@ describe("@gdansk/vite", () => {
 
     expect(config.resolve?.alias).toEqual({
       "@": root,
-      "@gdansk/types": "/custom/page-types",
+      "@types/gdansk": "/custom/page-types",
     });
   });
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import wraps
 from hashlib import sha256
@@ -199,13 +199,19 @@ class InertiaApp[SharedPropsT: BaseModel]:
 
         return page
 
-    def generate_page_types(self, *, app: object, output_root: Path, legacy_output_path: Path | None = None) -> None:
+    def generate_page_types(
+        self,
+        *,
+        app: object,
+        output_root: Path,
+        stale_paths: Sequence[Path] = (),
+    ) -> None:
         write_page_type_modules(
             app=app,
             output_root=output_root,
             routes=self._page_type_routes,
             shared_props_model=self._shared_props_model,
-            legacy_output_path=legacy_output_path,
+            stale_paths=stale_paths,
         )
 
     def version(self) -> str | None:
