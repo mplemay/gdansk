@@ -3,19 +3,22 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from functools import cached_property, partial
+from inspect import Parameter, Signature
 from os import PathLike
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Any, Final, Literal
+from typing import TYPE_CHECKING, Any, Final, Literal, cast, overload
 from urllib.parse import urlparse
 
 from httpx import AsyncClient
 from mcp.server.mcpserver.resources import FunctionResource
 from mcp.server.mcpserver.tools.base import Tool
-from starlette.requests import Request  # noqa: TC002
+from starlette.requests import Request
 from starlette.staticfiles import StaticFiles
 
 from gdansk._schema import to_strict_schema
-from gdansk.inertia import InertiaApp, InertiaPage
+from gdansk.inertia.config import Inertia
+from gdansk.inertia.core import InertiaApp, PageRouteDecorator
+from gdansk.inertia.page import InertiaPage
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import render_template
 from gdansk.utils import join_url, join_url_path
@@ -46,6 +49,7 @@ class Ship:
         self,
         *,
         vite: Vite | None = None,
+        inertia: Inertia | None = None,
         base_url: str | None = None,
         metadata: Metadata | None = None,
         client: AsyncClient | None = None,
@@ -57,6 +61,7 @@ class Ship:
         self._base_url: Final[str | None] = base_url
         self._client: Final[AsyncClient | None] = client
         self._dev = False
+        self._inertia: Final[Inertia] = inertia or Inertia()
         self._inertia_app: InertiaApp | None = None
         self._metadata: Final[Metadata] = metadata or Metadata()
         self._mode: Literal["inertia", "widget"] | None = None
@@ -65,6 +70,8 @@ class Ship:
         self._widget_manager: dict[Path, WidgetSpec] = {}
 
         self._active = False
+        if inertia is not None:
+            self._lock_mode("inertia")
 
     @cached_property
     def assets(self) -> StaticFiles:
@@ -86,42 +93,44 @@ class Ship:
     def metadata(self) -> Metadata:
         return self._metadata
 
-    def page(self, request: Request) -> InertiaPage:
-        return InertiaPage(app=self._ensure_inertia_app(), request=request)
+    @overload
+    def page(self, request: Request) -> InertiaPage: ...
 
-    def inertia(
+    @overload
+    def page(
         self,
         *,
-        encrypt_history: bool = False,
-        root_id: str = "app",
-        version: str | None = None,
-    ) -> InertiaApp:
-        self._lock_mode("inertia")
+        metadata: Metadata | None = None,
+    ) -> PageRouteDecorator: ...
 
-        if self._inertia_app is None:
-            self._inertia_app = InertiaApp(
-                ship=self,
-                root_id=root_id,
-                version=version,
-                encrypt_history=encrypt_history,
-            )
-            return self._inertia_app
+    @overload
+    def page(
+        self,
+        component: str,
+        *,
+        metadata: Metadata | None = None,
+    ) -> PageRouteDecorator: ...
 
-        configured_app = InertiaApp(
-            ship=self,
-            root_id=root_id,
-            version=version,
-            encrypt_history=encrypt_history,
-        )
-        if (
-            self._inertia_app.root_id != configured_app.root_id
-            or self._inertia_app.version_override != configured_app.version_override
-            or self._inertia_app.default_encrypt_history != configured_app.default_encrypt_history
-        ):
-            msg = "The Ship already owns an Inertia app with a different configuration"
-            raise RuntimeError(msg)
+    def page(
+        self,
+        request: Request | str | None = None,
+        *,
+        metadata: Metadata | None = None,
+    ) -> InertiaPage | PageRouteDecorator:
+        if isinstance(request, Request):
+            return self._page_dependency(request)
 
-        return self._inertia_app
+        if request is None:
+            return self._ensure_inertia_app().page(metadata=metadata)
+
+        if isinstance(request, str):
+            return self._ensure_inertia_app().page(request, metadata=metadata)
+
+        msg = "Ship.page() requires no arguments, a Request dependency, or an Inertia component string"
+        raise TypeError(msg)
+
+    def _page_dependency(self, request: Request) -> InertiaPage:
+        return InertiaPage(app=self._ensure_inertia_app(), request=request)
 
     @asynccontextmanager
     async def lifespan(self, *, mcp: MCPServer | None = None, watch: bool | None = False) -> AsyncIterator[None]:
@@ -148,9 +157,7 @@ class Ship:
         if self._inertia_app is None:
             self._inertia_app = InertiaApp(
                 ship=self,
-                root_id="app",
-                version=None,
-                encrypt_history=False,
+                config=self._inertia,
             )
 
         return self._inertia_app
@@ -390,3 +397,12 @@ class Ship:
             return fn
 
         return decorator
+
+
+cast("Any", Ship.page).__signature__ = Signature(
+    parameters=(
+        Parameter("self", Parameter.POSITIONAL_OR_KEYWORD),
+        Parameter("request", Parameter.POSITIONAL_OR_KEYWORD, annotation=Request),
+    ),
+    return_annotation=InertiaPage,
+)

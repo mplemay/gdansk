@@ -1,11 +1,41 @@
 from __future__ import annotations
 
-from fastapi import FastAPI
-from starlette.requests import Request  # noqa: TC002
+from typing import TypedDict
+
+from fastapi import Depends, FastAPI
+from pydantic import BaseModel, Field
 from starlette.testclient import TestClient
 
-from gdansk import Ship, Vite, always, deep_merge
+from gdansk import Ship, Vite
 from gdansk.__tests__.unit.conftest import write_page_manifest
+from gdansk.inertia import Always, InertiaPage, Merge
+
+
+class ConversationMessage(TypedDict):
+    author: str
+    body: str
+    id: str
+
+
+class ConversationSummary(TypedDict):
+    updatedAt: str
+
+
+class Conversation(TypedDict):
+    messages: list[ConversationMessage]
+    summary: ConversationSummary
+
+
+class Metric(TypedDict):
+    label: str
+    note: str
+    value: str
+
+
+class HomeProps(BaseModel):
+    conversation: Merge[Conversation]
+    metrics: Always[list[Metric]]
+    updated_at: Always[str] = Field(serialization_alias="updatedAt")
 
 
 def _build_app(tmp_path) -> FastAPI:
@@ -15,42 +45,39 @@ def _build_app(tmp_path) -> FastAPI:
     app = FastAPI()
 
     @app.get("/")
-    async def home(request: Request):
-        page = ship.page(request)
-        return await page.render(
-            "/",
-            {
-                "conversation": deep_merge(
-                    {
-                        "messages": [
-                            {
-                                "author": "Ship",
-                                "body": "Deep-merged message at 04:11:33",
-                                "id": "message-1",
-                            },
-                        ],
-                        "summary": {
-                            "updatedAt": "04:11:33",
-                        },
-                    },
-                    match_on="messages.id",
-                ),
-                "metrics": always(
-                    [
+    @ship.page()
+    async def home() -> HomeProps:
+        return HomeProps(
+            conversation=Merge(
+                value={
+                    "messages": [
                         {
-                            "label": "Protocol",
-                            "note": "HTML first, JSON after hydrate",
-                            "value": "Inertia",
+                            "author": "Ship",
+                            "body": "Deep-merged message at 04:11:33",
+                            "id": "message-1",
                         },
                     ],
-                ),
-                "updatedAt": always("April 23, 2026"),
-            },
+                    "summary": {
+                        "updatedAt": "04:11:33",
+                    },
+                },
+                deep=True,
+                match_on="messages.id",
+            ),
+            metrics=Always(
+                value=[
+                    {
+                        "label": "Protocol",
+                        "note": "HTML first, JSON after hydrate",
+                        "value": "Inertia",
+                    },
+                ],
+            ),
+            updated_at=Always(value="April 23, 2026"),
         )
 
     @app.post("/jump-to-activity")
-    async def jump_to_activity(request: Request):
-        page = ship.page(request)
+    async def jump_to_activity(page: InertiaPage = Depends(ship.page)):
         return page.location("/#activity")
 
     return app

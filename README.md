@@ -27,7 +27,7 @@ Then use:
 
 - Python: `gdansk` currently requires `>=3.12,<3.15`.
 - Frontend package: use an ESM package with `@gdansk/vite`, `vite`, `@vitejs/plugin-react`, `react`, `react-dom`,
-  and `@modelcontextprotocol/ext-apps`. Inertia page mode also needs `@inertiajs/react`.
+  and `@modelcontextprotocol/ext-apps`. Inertia page mode targets `@inertiajs/react@3.0.3`.
 - Runtime tooling: gdansk starts the frontend through `uv run deno ...`. If you run frontend package scripts directly,
   the published `@gdansk/vite` package currently declares Node `>=22`.
 
@@ -41,19 +41,49 @@ Then use:
 
 ## Inertia Pages
 
-`Ship` can serve convention-driven Inertia pages directly: the first request returns an HTML shell, follow-up
+`Ship` can serve convention-driven Inertia v3 pages directly: the first request returns an HTML shell, follow-up
 requests use the Inertia JSON protocol, and production assets still come from `ship.assets`.
 
 Page mode is convention-driven. Put the root page at `app/page.tsx`, nested pages at `app/**/page.tsx`, and
-co-located layouts at `app/**/layout.tsx`. Render the root page with `page.render("/")`; nested folders map to
-slash-delimited component ids like `page.render("dashboard/reports")`.
+co-located layouts at `app/**/layout.tsx`. Decorate matching routes with `@ship.page()` to infer the component from
+the route path, or use an explicit id like `@ship.page("dashboard/reports")` when the backend route and frontend page
+key intentionally differ.
 
-For FastAPI, inject the page with `Depends(ship.page)` and run the frontend with `ship.lifespan(...)`. Call
-`ship.inertia(...)` only when you need non-default page settings such as a custom root id or explicit version.
+For FastAPI pages, decorate a route with `@ship.page(...)`, return a Pydantic model or mapping, and run the frontend
+with `ship.lifespan(...)`. Page routes may also return `None` for empty props or an `InertiaResponse` such as
+`page.location("/#activity")`. Pass `inertia=Inertia(...)` to `Ship` to configure page settings such as a custom root
+id, explicit version, or default encrypted history.
 
 ```python
-type PageDependency = Annotated["InertiaPage", Depends(ship.page)]
+from pydantic import BaseModel, Field
+
+from gdansk import Metadata, Ship, Vite
+from gdansk.inertia import Defer, Inertia, Merge
+
+
+class HomeProps(BaseModel):
+    activity: Defer[list[str]]
+    announcements: Merge[list[dict[str, str]]]
+    headline: str
+    updated_at: str = Field(serialization_alias="updatedAt")
+
+
+ship = Ship(vite=Vite("frontend"), inertia=Inertia(id="app"))
+
+
+@app.get("/")
+@ship.page(metadata=Metadata(title="Home"))
+async def home() -> HomeProps:
+    return HomeProps(
+        activity=Defer(value=load_activity, group="activity"),
+        announcements=Merge(value=load_announcements(), match_on="id"),
+        headline="FastAPI + Inertia",
+        updated_at="May 5, 2026",
+    )
 ```
+
+If a rendered route needs imperative page control for flash, history flags, or per-request shared props, combine the
+decorator with `Depends(ship.page)`, mutate the injected page, and return props from the route.
 
 Pair the backend with `gdanskPages()` in your frontend `vite.config.ts`:
 
@@ -71,38 +101,56 @@ For a full FastAPI example with validation errors, flash messages, deferred prop
 props, and fragment redirects, see
 [`examples/inertia`](examples/inertia).
 
-The backend helper surface is now close to the official non-SSR Inertia protocol:
+The backend prop wrappers are close to the official non-SSR Inertia protocol:
 
-- `prop(value)` creates a fluent prop builder.
-- `optional(value)`, `always(value)`, and `defer(value, group=...)` control eager vs partial/deferred loading.
-- `once(value, key=...)` and `page.share_once(...)` emit `onceProps` so the client can reuse previously loaded data.
-- `merge(value)` / `deep_merge(value, match_on=...)` and `prop(...).append(...)` / `.prepend(...)` emit merge metadata.
-- `scroll(...)` emits both merge metadata and `scrollProps` for infinite-scroll style payloads.
+- `Prop(value=...)` is the advanced escape hatch for combining prop behaviors.
+- `OptionalProp(value=...)`, `Always(value=...)`, and `Defer(value=..., group=...)` control eager vs partial/deferred
+  loading.
+- `Once(value=..., key=...)` and `page.share_once(...)` emit `onceProps` so the client can reuse previously loaded data.
+- `Merge(value=..., match_on=...)`, `Merge(value=..., deep=True, match_on=...)`, and
+  `Merge(value=..., mode="prepend")` emit merge metadata.
+- `Scroll(value=...)` emits both merge metadata and `scrollProps` for infinite-scroll style payloads.
 - `page.encrypt_history(...)`, `page.clear_history()`, and `page.redirect(..., preserve_fragment=True)` control history
   and redirect behavior.
 
 ```python
-from gdansk import deep_merge, merge, once, prop, scroll
+from typing import Annotated
 
-page.share_once(sessionToken=load_session_token)
+from fastapi import Depends
+from pydantic import BaseModel
 
-return await page.render(
-    "/",
-    {
-        "announcements": merge(load_announcements()).append(match_on="id"),
-        "conversation": deep_merge(load_conversation(), match_on="messages.id"),
-        "feed": scroll(
-            load_feed(),
+from gdansk.inertia import InertiaPage, Merge, Once, OptionalProp, Scroll
+
+type PageDependency = Annotated[InertiaPage, Depends(ship.page)]
+
+
+class DashboardProps(BaseModel):
+    announcements: Merge[list[dict[str, object]]]
+    conversation: Merge[dict[str, object]]
+    feed: Scroll[dict[str, object]]
+    profile: Once[object]
+    stats: OptionalProp[object]
+
+
+@app.get("/")
+@ship.page()
+async def home(page: PageDependency) -> DashboardProps:
+    page.share_once(sessionToken=load_session_token)
+
+    return DashboardProps(
+        announcements=Merge(value=load_announcements(), match_on="id"),
+        conversation=Merge(value=load_conversation(), deep=True, match_on="messages.id"),
+        feed=Scroll(
+            value=load_feed(),
             items_path="items",
             current_page_path="pagination.current",
             next_page_path="pagination.next",
             previous_page_path="pagination.previous",
             page_name="feed_page",
         ),
-        "profile": once(load_profile, key="shared-profile"),
-        "stats": prop(load_stats).optional(),
-    },
-)
+        profile=Once(value=load_profile, key="shared-profile"),
+        stats=OptionalProp(value=load_stats),
+    )
 ```
 
 ## Quick Start
