@@ -30,6 +30,15 @@ class FeedbackPayload(BaseModel):
     topic: str = Field(min_length=3)
 
 
+class HomeProps(BaseModel):
+    activity: Defer[list[str]]
+    announcements: Merge[list[dict[str, str]]]
+    conversation: Merge[dict[str, object]]
+    feed: Scroll[dict[str, object]]
+    metrics: Always[list[dict[str, str]]]
+    updated_at: Always[str] = Field(serialization_alias="updatedAt")
+
+
 def build_metrics() -> list[dict[str, str]]:
     return [
         {
@@ -131,18 +140,18 @@ app.mount(ship.assets_path, ship.assets)
         title="Gdansk Inertia",
     ),
 )
-async def home(page: PageDependency) -> dict[str, object]:
+async def home(page: PageDependency) -> HomeProps:
     page.share(
         headline="Ship-backed Inertia pages",
         summary="A FastAPI route can render the initial shell, switch to JSON visits, and keep using the frontend "
         "tooling gdansk already owns.",
     )
     page.share_once(sessionToken=lambda: token_urlsafe(6))
-    return {
-        "activity": Defer(value=build_activity, group="activity"),
-        "announcements": Merge(value=build_announcements(), match_on="id"),
-        "conversation": Merge(value=build_conversation(), deep=True, match_on="messages.id"),
-        "feed": Scroll(
+    return HomeProps(
+        activity=Defer(value=build_activity, group="activity"),
+        announcements=Merge(value=build_announcements(), match_on="id"),
+        conversation=Merge(value=build_conversation(), deep=True, match_on="messages.id"),
+        feed=Scroll(
             value=build_feed(),
             current_page_path="pagination.current",
             items_path="items",
@@ -150,9 +159,9 @@ async def home(page: PageDependency) -> dict[str, object]:
             page_name="feed_page",
             previous_page_path="pagination.previous",
         ),
-        "metrics": Always(value=build_metrics),
-        "updatedAt": Always(value=datetime.now(UTC).strftime("%B %d, %Y")),
-    }
+        metrics=Always(value=build_metrics),
+        updated_at=Always(value=datetime.now(UTC).strftime("%B %d, %Y")),
+    )
 
 
 @app.post("/feedback")

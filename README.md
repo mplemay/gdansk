@@ -48,9 +48,9 @@ Page mode is convention-driven. Put the root page at `app/page.tsx`, nested page
 co-located layouts at `app/**/layout.tsx`. Decorate the root route with `@ship.page("/")`; nested folders map to
 slash-delimited component ids like `@ship.page("dashboard/reports")`.
 
-For FastAPI pages, decorate a route with `@ship.page(...)`, return a Pydantic model or mapping, and run the frontend
-with `ship.lifespan(...)`. Call `ship.inertia(...)` only when you need non-default page settings such as a custom root
-id or explicit version.
+For FastAPI pages, decorate a route with `@ship.page(...)`, return a Pydantic model, and run the frontend with
+`ship.lifespan(...)`. Call `ship.inertia(...)` only when you need non-default page settings such as a custom root id or
+explicit version.
 
 ```python
 from pydantic import BaseModel, Field
@@ -114,21 +114,30 @@ The backend prop wrappers are close to the official non-SSR Inertia protocol:
 from typing import Annotated
 
 from fastapi import Depends
+from pydantic import BaseModel
 
 from gdansk import InertiaPage, Merge, Once, OptionalProp, Scroll
 
 type PageDependency = Annotated[InertiaPage, Depends(ship.page)]
 
 
+class DashboardProps(BaseModel):
+    announcements: Merge[list[dict[str, object]]]
+    conversation: Merge[dict[str, object]]
+    feed: Scroll[dict[str, object]]
+    profile: Once[object]
+    stats: OptionalProp[object]
+
+
 @app.get("/")
 @ship.page("/")
-async def home(page: PageDependency) -> dict[str, object]:
+async def home(page: PageDependency) -> DashboardProps:
     page.share_once(sessionToken=load_session_token)
 
-    return {
-        "announcements": Merge(value=load_announcements(), match_on="id"),
-        "conversation": Merge(value=load_conversation(), deep=True, match_on="messages.id"),
-        "feed": Scroll(
+    return DashboardProps(
+        announcements=Merge(value=load_announcements(), match_on="id"),
+        conversation=Merge(value=load_conversation(), deep=True, match_on="messages.id"),
+        feed=Scroll(
             value=load_feed(),
             items_path="items",
             current_page_path="pagination.current",
@@ -136,9 +145,9 @@ async def home(page: PageDependency) -> dict[str, object]:
             previous_page_path="pagination.previous",
             page_name="feed_page",
         ),
-        "profile": Once(value=load_profile, key="shared-profile"),
-        "stats": OptionalProp(value=load_stats),
-    }
+        profile=Once(value=load_profile, key="shared-profile"),
+        stats=OptionalProp(value=load_stats),
+    )
 ```
 
 ## Quick Start

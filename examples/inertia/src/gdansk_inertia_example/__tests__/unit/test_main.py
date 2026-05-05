@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 from fastapi import Depends, FastAPI
+from pydantic import BaseModel, Field
 from starlette.testclient import TestClient
 
 from gdansk import Always, InertiaPage, Merge, Ship, Vite
 from gdansk.__tests__.unit.conftest import write_page_manifest
+
+
+class HomeProps(BaseModel):
+    conversation: Merge[dict[str, object]]
+    metrics: Always[list[dict[str, str]]]
+    updated_at: Always[str] = Field(serialization_alias="updatedAt")
 
 
 def _build_app(tmp_path) -> FastAPI:
@@ -15,9 +22,9 @@ def _build_app(tmp_path) -> FastAPI:
 
     @app.get("/")
     @ship.page("/")
-    async def home():
-        return {
-            "conversation": Merge(
+    async def home() -> HomeProps:
+        return HomeProps(
+            conversation=Merge(
                 value={
                     "messages": [
                         {
@@ -33,7 +40,7 @@ def _build_app(tmp_path) -> FastAPI:
                 deep=True,
                 match_on="messages.id",
             ),
-            "metrics": Always(
+            metrics=Always(
                 value=[
                     {
                         "label": "Protocol",
@@ -42,8 +49,8 @@ def _build_app(tmp_path) -> FastAPI:
                     },
                 ],
             ),
-            "updatedAt": Always(value="April 23, 2026"),
-        }
+            updated_at=Always(value="April 23, 2026"),
+        )
 
     @app.post("/jump-to-activity")
     async def jump_to_activity(page: InertiaPage = Depends(ship.page)):

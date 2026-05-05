@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 from fastapi import Body, Depends, FastAPI
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field
-from starlette.responses import Response
 from starlette.testclient import TestClient
 
 from gdansk import Always, Defer, Merge, Metadata, Once, OptionalProp, Scroll, Ship, Vite
@@ -22,6 +21,15 @@ if TYPE_CHECKING:
 class FeedbackPayload(BaseModel):
     name: str = Field(min_length=2)
     topic: str = Field(min_length=3)
+
+
+class ValidationPageProps(BaseModel):
+    activity: Defer[list[str]]
+    headline: str
+
+
+class HeadlinePageProps(BaseModel):
+    headline: str
 
 
 class DecoratedPageProps(BaseModel):
@@ -52,12 +60,12 @@ def test_fastapi_inertia_validation_and_flash_flow(page_views_path: Path):
 
     @app.get("/")
     @ship.page("/", metadata=Metadata(description="FastAPI Inertia example"))
-    async def home(page: InertiaPage = Depends(ship.page)):
+    async def home(page: InertiaPage = Depends(ship.page)) -> ValidationPageProps:
         page.share(source="decorated")
-        return {
-            "activity": Defer(value=lambda: ["Ship lifecycle", "Session-backed flash"], group="activity"),
-            "headline": "FastAPI + Inertia",
-        }
+        return ValidationPageProps(
+            activity=Defer(value=lambda: ["Ship lifecycle", "Session-backed flash"], group="activity"),
+            headline="FastAPI + Inertia",
+        )
 
     @app.post("/feedback")
     async def feedback(
@@ -133,9 +141,9 @@ def test_fastapi_inertia_preserves_fragment_and_reuses_once_shared_props(page_vi
 
     @app.get("/")
     @ship.page("/")
-    async def home(page: InertiaPage = Depends(ship.page)):
+    async def home(page: InertiaPage = Depends(ship.page)) -> HeadlinePageProps:
         page.share_once(session_token=lambda: "token-1")
-        return {"headline": "Dashboard"}
+        return HeadlinePageProps(headline="Dashboard")
 
     @app.post("/save")
     async def save(page: InertiaPage = Depends(ship.page)):
@@ -317,29 +325,3 @@ def test_fastapi_inertia_page_decorator_renders_model_props(page_views_path: Pat
         "errors": {},
     }
     assert activity_calls == ["activity"]
-
-
-def test_fastapi_inertia_page_decorator_passes_through_responses(page_views_path: Path):
-    write_page_manifest(page_views_path)
-    ship = Ship(vite=Vite(page_views_path))
-
-    @asynccontextmanager
-    async def lifespan(_: FastAPI):
-        async with ship.lifespan(watch=None):
-            yield
-
-    app = FastAPI(lifespan=lifespan)
-    app.add_middleware(SessionStateMiddleware)
-    app.mount(ship.assets_path, ship.assets)
-
-    @app.get("/")
-    @ship.page("/")
-    def home() -> Response:
-        return Response("raw", status_code=202, headers={"X-Test": "passthrough"})
-
-    with TestClient(app) as client:
-        response = client.get("/", headers={"X-Inertia": "true"}, follow_redirects=False)
-
-    assert response.status_code == 202
-    assert response.text == "raw"
-    assert response.headers["X-Test"] == "passthrough"
