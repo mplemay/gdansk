@@ -12,12 +12,16 @@ from pydantic import BaseModel
 from starlette.requests import Request
 from starlette.testclient import TestClient
 
-from gdansk import Always, Defer, InertiaPage, Merge, Metadata, Once, OptionalProp, Scroll, Ship, Vite
+from gdansk import Always, Defer, InertiaPage, InertiaResponse, Merge, Metadata, Once, OptionalProp, Scroll, Ship, Vite
 from gdansk.__tests__.unit.conftest import SessionStateMiddleware, write_page_manifest
 
 
 class EmptyPageProps(BaseModel):
     pass
+
+
+class HomeProps(BaseModel):
+    message: str
 
 
 class LazyMessagePageProps(BaseModel):
@@ -763,6 +767,60 @@ def test_inertia_supports_history_flags_and_fragment_redirects(page_views_path: 
     assert explicit.status_code == 409
     assert explicit.headers["Vary"] == "X-Inertia"
     assert explicit.headers["X-Inertia-Redirect"] == "/target#details"
+
+
+def test_inertia_page_decorator_renders_none_as_empty_props(page_views_path: Path):
+    write_page_manifest(page_views_path)
+    ship = Ship(vite=Vite(page_views_path))
+    app = _page_app(ship)
+
+    @app.get("/")
+    @ship.page()
+    async def home() -> None:
+        return None
+
+    with TestClient(app) as client:
+        response = client.get("/", headers={"X-Inertia": "true"})
+
+    page = response.json()
+
+    _assert_released_v3_page_payload(page)
+    assert page["props"] == {"errors": {}}
+
+
+def test_inertia_page_decorator_accepts_props_response_or_none_return(page_views_path: Path):
+    write_page_manifest(page_views_path)
+    ship = Ship(vite=Vite(page_views_path))
+    app = _page_app(ship)
+
+    @app.get("/")
+    @ship.page()
+    async def home(
+        mode: str = "props",
+        page: InertiaPage = Depends(ship.page),
+    ) -> HomeProps | InertiaResponse | None:
+        if mode == "jump":
+            return page.location("/#activity")
+        if mode == "empty":
+            return None
+        return HomeProps(message="Home")
+
+    with TestClient(app) as client:
+        props_response = client.get("/", headers={"X-Inertia": "true"})
+        none_response = client.get("/?mode=empty", headers={"X-Inertia": "true"})
+        location_response = client.get("/?mode=jump", headers={"X-Inertia": "true"}, follow_redirects=False)
+
+    props_page = props_response.json()
+    none_page = none_response.json()
+
+    _assert_released_v3_page_payload(props_page)
+    _assert_released_v3_page_payload(none_page)
+
+    assert props_page["props"]["message"] == "Home"
+    assert none_page["props"] == {"errors": {}}
+    assert location_response.status_code == 409
+    assert location_response.headers["Vary"] == "X-Inertia"
+    assert location_response.headers["X-Inertia-Location"] == "/#activity"
 
 
 def test_inertia_page_decorator_infers_root_component(page_views_path: Path):

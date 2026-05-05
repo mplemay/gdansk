@@ -24,7 +24,9 @@ if TYPE_CHECKING:
     from gdansk.core import Ship
 
 type InertiaResponse = HTMLResponse | JSONResponse | Response
-type PageRouteDecorator = Callable[[Callable[..., object]], Callable[..., object]]
+type PageRouteResult = BaseModel | Mapping[str, object] | InertiaResponse | None
+type PageRouteHandler = Callable[..., PageRouteResult | Awaitable[PageRouteResult]]
+type PageRouteDecorator = Callable[[PageRouteHandler], Callable[..., object]]
 type RawExpiration = datetime | timedelta | int
 type SerializableProp = (
     None | bool | int | float | str | BaseModel | Mapping[str, SerializableProp] | Sequence[SerializableProp]
@@ -267,7 +269,7 @@ class InertiaApp:
     ) -> PageRouteDecorator:
         normalized_component = self.normalize_component(component) if component is not None else None
 
-        def decorator(func: Callable[..., object]) -> Callable[..., object]:
+        def decorator(func: PageRouteHandler) -> Callable[..., object]:
             @wraps(func)
             async def wrapper(
                 *args: object,

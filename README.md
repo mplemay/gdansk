@@ -49,9 +49,10 @@ co-located layouts at `app/**/layout.tsx`. Decorate matching routes with `@ship.
 the route path, or use an explicit id like `@ship.page("dashboard/reports")` when the backend route and frontend page
 key intentionally differ.
 
-For FastAPI pages, decorate a route with `@ship.page(...)`, return a Pydantic model, and run the frontend with
-`ship.lifespan(...)`. Call `ship.inertia(...)` only when you need non-default page settings such as a custom root id or
-explicit version.
+For FastAPI pages, decorate a route with `@ship.page(...)`, return a Pydantic model or mapping, and run the frontend
+with `ship.lifespan(...)`. Page routes may also return `None` for empty props or an `InertiaResponse` such as
+`page.location("/#activity")`. Call `ship.inertia(...)` only when you need non-default page settings such as a custom
+root id or explicit version.
 
 ```python
 from pydantic import BaseModel, Field
