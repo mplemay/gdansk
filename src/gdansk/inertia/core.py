@@ -45,16 +45,17 @@ class PageAssets:
     script: str
 
 
-class InertiaApp:
+class InertiaApp[SharedPropsT: BaseModel]:
     def __init__(
         self,
         *,
-        ship: Ship,
-        config: Inertia,
+        ship: Ship[SharedPropsT],
+        config: Inertia[SharedPropsT],
     ) -> None:
         self._default_encrypt_history: Final[bool] = config.encrypt_history
         self._root_id: Final[str] = config.id
-        self._ship: Final[Ship] = ship
+        self._shared_props_model: Final[type[SharedPropsT] | None] = config.props
+        self._ship: Final[Ship[SharedPropsT]] = ship
         self._version_override: Final[str | None] = config.version
 
     @property
@@ -68,6 +69,10 @@ class InertiaApp:
     @property
     def default_encrypt_history(self) -> bool:
         return self._default_encrypt_history
+
+    @property
+    def shared_props_model(self) -> type[SharedPropsT] | None:
+        return self._shared_props_model
 
     @overload
     def page(
@@ -140,7 +145,13 @@ class InertiaApp:
 
         return cls.normalize_component(request.url.path)
 
-    def _route_page(self, *, args: tuple[object, ...], kwargs: dict[str, object], request: Request) -> InertiaPage:
+    def _route_page(
+        self,
+        *,
+        args: tuple[object, ...],
+        kwargs: dict[str, object],
+        request: Request,
+    ) -> InertiaPage[SharedPropsT]:
         pages = [value for value in (*args, *kwargs.values()) if isinstance(value, InertiaPage)]
         if len(pages) > 1:
             msg = "Inertia page decorators accept at most one InertiaPage dependency"

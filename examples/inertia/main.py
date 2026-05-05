@@ -73,6 +73,12 @@ class Metric(TypedDict):
     value: str
 
 
+class SharedProps(BaseModel):
+    headline: str | None = None
+    session_token: object | None = Field(default=None, serialization_alias="sessionToken")
+    summary: str | None = None
+
+
 class HomeProps(BaseModel):
     activity: Defer[list[str]]
     announcements: Merge[list[Announcement]]
@@ -160,9 +166,9 @@ def build_feed() -> Feed:
 
 ship = Ship(
     vite=Vite(Path(__file__).parent / "src/gdansk_inertia_example/views"),
-    inertia=Inertia(encrypt_history=True),
+    inertia=Inertia(encrypt_history=True, props=SharedProps),
 )
-type PageDependency = Annotated["InertiaPage", Depends(ship.page)]
+type PageDependency = Annotated["InertiaPage[SharedProps]", Depends(ship.page)]
 
 
 @asynccontextmanager
@@ -186,11 +192,13 @@ app.mount(ship.assets_path, ship.assets)
 )
 async def home(page: PageDependency) -> HomeProps:
     page.share(
-        headline="Ship-backed Inertia pages",
-        summary="A FastAPI route can render the initial shell, switch to JSON visits, and keep using the frontend "
-        "tooling gdansk already owns.",
+        SharedProps(
+            headline="Ship-backed Inertia pages",
+            summary="A FastAPI route can render the initial shell, switch to JSON visits, and keep using the frontend "
+            "tooling gdansk already owns.",
+        ),
     )
-    page.share_once(sessionToken=lambda: token_urlsafe(6))
+    page.share_once(SharedProps(session_token=lambda: token_urlsafe(6)))
     return HomeProps(
         activity=Defer(value=build_activity, group="activity"),
         announcements=Merge(value=build_announcements(), match_on="id"),

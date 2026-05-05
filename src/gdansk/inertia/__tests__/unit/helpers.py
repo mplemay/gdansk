@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, Final, TypedDict
 
 from fastapi import FastAPI
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.requests import Request
 
 from gdansk.__tests__.unit.conftest import SessionStateMiddleware
@@ -95,6 +95,12 @@ class MergeMetadataPageProps(BaseModel):
 
 class ScrollPageProps(BaseModel):
     feed: Scroll[Feed]
+
+
+class SharedPageProps(BaseModel):
+    headline: str | None = Field(default=None, min_length=2)
+    session_token: object | None = Field(default=None, serialization_alias="sessionToken")
+    summary: str | None = None
 
 
 _V3_REQUIRED_PAGE_KEYS: Final[frozenset[str]] = frozenset({"component", "flash", "props", "url", "version"})

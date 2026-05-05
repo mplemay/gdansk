@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 from httpx import AsyncClient
 from mcp.server.mcpserver.resources import FunctionResource
 from mcp.server.mcpserver.tools.base import Tool
+from pydantic import BaseModel
 from starlette.requests import Request
 from starlette.staticfiles import StaticFiles
 
@@ -44,12 +45,12 @@ class WidgetSpec:
     uri: str
 
 
-class Ship:
+class Ship[SharedPropsT: BaseModel]:
     def __init__(
         self,
         *,
         vite: Vite | None = None,
-        inertia: Inertia | None = None,
+        inertia: Inertia[SharedPropsT] | None = None,
         base_url: str | None = None,
         metadata: Metadata | None = None,
         client: AsyncClient | None = None,
@@ -61,8 +62,8 @@ class Ship:
         self._base_url: Final[str | None] = base_url
         self._client: Final[AsyncClient | None] = client
         self._dev = False
-        self._inertia: Final[Inertia] = inertia or Inertia()
-        self._inertia_app: InertiaApp | None = None
+        self._inertia: Final[Inertia[SharedPropsT]] = cast("Inertia[SharedPropsT]", inertia or Inertia())
+        self._inertia_app: InertiaApp[SharedPropsT] | None = None
         self._metadata: Final[Metadata] = metadata or Metadata()
         self._mode: Literal["inertia", "widget"] | None = None
         self._session_client: AsyncClient | None = None
@@ -94,7 +95,7 @@ class Ship:
         return self._metadata
 
     @overload
-    def page(self, request: Request) -> InertiaPage: ...
+    def page(self, request: Request) -> InertiaPage[SharedPropsT]: ...
 
     @overload
     def page(
@@ -116,7 +117,7 @@ class Ship:
         request: Request | str | None = None,
         *,
         metadata: Metadata | None = None,
-    ) -> InertiaPage | PageRouteDecorator:
+    ) -> InertiaPage[SharedPropsT] | PageRouteDecorator:
         if isinstance(request, Request):
             return self._page_dependency(request)
 
@@ -129,7 +130,7 @@ class Ship:
         msg = "Ship.page() requires no arguments, a Request dependency, or an Inertia component string"
         raise TypeError(msg)
 
-    def _page_dependency(self, request: Request) -> InertiaPage:
+    def _page_dependency(self, request: Request) -> InertiaPage[SharedPropsT]:
         return InertiaPage(app=self._ensure_inertia_app(), request=request)
 
     @asynccontextmanager
@@ -152,7 +153,7 @@ class Ship:
         finally:
             await self._session_end()
 
-    def _ensure_inertia_app(self) -> InertiaApp:
+    def _ensure_inertia_app(self) -> InertiaApp[SharedPropsT]:
         self._lock_mode("inertia")
         if self._inertia_app is None:
             self._inertia_app = InertiaApp(
