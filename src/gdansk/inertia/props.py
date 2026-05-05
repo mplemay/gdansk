@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, Final, Literal, Self
+from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -14,12 +14,6 @@ type SerializableProp = (
     None | bool | int | float | str | BaseModel | Mapping[str, SerializableProp] | Sequence[SerializableProp]
 )
 type PropSource[T] = T | Callable[[], MaybeAwaitable[T]]
-
-_PROP_MODEL_CONFIG: Final[ConfigDict] = ConfigDict(
-    arbitrary_types_allowed=True,
-    extra="forbid",
-    populate_by_name=True,
-)
 
 
 @dataclass(slots=True, kw_only=True, frozen=True)
@@ -39,7 +33,11 @@ class ScrollConfig:
 
 
 class Prop[T](BaseModel):
-    model_config = _PROP_MODEL_CONFIG
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        extra="forbid",
+        populate_by_name=True,
+    )
 
     value: PropSource[T]
     always_include: bool = False
