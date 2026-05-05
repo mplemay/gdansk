@@ -18,7 +18,7 @@ from gdansk.inertia.page_types import (
     PageTypeRoute,
     infer_page_props_model,
     normalize_page_props_model,
-    write_page_types_module,
+    write_page_type_modules,
 )
 from gdansk.inertia.props import Prop
 from gdansk.inertia.utils import _PAGE_DEV_ENTRY, InertiaResponse
@@ -199,12 +199,13 @@ class InertiaApp[SharedPropsT: BaseModel]:
 
         return page
 
-    def generate_page_types(self, *, app: object, output_path: Path) -> None:
-        write_page_types_module(
+    def generate_page_types(self, *, app: object, output_root: Path, legacy_output_path: Path | None = None) -> None:
+        write_page_type_modules(
             app=app,
-            output_path=output_path,
+            output_root=output_root,
             routes=self._page_type_routes,
             shared_props_model=self._shared_props_model,
+            legacy_output_path=legacy_output_path,
         )
 
     def version(self) -> str | None:

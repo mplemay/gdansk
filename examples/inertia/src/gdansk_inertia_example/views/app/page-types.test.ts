@@ -1,6 +1,6 @@
-import type { PageProps } from "../.gdansk/pages";
+import type { RootPageProps } from "@gdansk/types";
 
-declare const props: PageProps<"/">;
+declare const props: RootPageProps;
 
 props.metrics[0]?.label.toUpperCase();
 props.activity?.map((item) => item.toUpperCase());

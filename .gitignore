@@ -68,6 +68,7 @@ Temporary Items
 node_modules/
 .gdansk/
 **/.gdansk/
+**/@types/gdansk/
 
 ### Python ###
 # Byte-compiled / optimized / DLL files

@@ -4,7 +4,9 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from inspect import Signature, signature
 from json import dumps
-from re import match
+from pathlib import PurePosixPath
+from re import findall, match
+from shutil import rmtree
 from types import NoneType, UnionType
 from typing import TYPE_CHECKING, Annotated, Any, Literal, Union, cast, get_args, get_origin
 
@@ -107,44 +109,101 @@ def infer_page_props_model(func: Callable[..., object]) -> type[BaseModel] | Non
     return models[0] if models else None
 
 
-def write_page_types_module(
+def write_page_type_modules(
     *,
     app: object,
-    output_path: Path,
+    output_root: Path,
     routes: Sequence[PageTypeRoute],
     shared_props_model: type[BaseModel] | None,
+    legacy_output_path: Path | None = None,
 ) -> None:
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(
-        build_page_types_module(app=app, routes=routes, shared_props_model=shared_props_model),
-        encoding="utf-8",
-    )
+    modules = build_page_type_modules(app=app, routes=routes, shared_props_model=shared_props_model)
+
+    _remove_generated_path(output_root)
+    if legacy_output_path is not None:
+        legacy_output_path.unlink(missing_ok=True)
+
+    for relative_path, source in modules.items():
+        output_path = output_root / relative_path
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(source, encoding="utf-8")
 
 
-def build_page_types_module(
+def build_page_type_modules(
     *,
     app: object,
     routes: Sequence[PageTypeRoute],
     shared_props_model: type[BaseModel] | None,
-) -> str:
+) -> dict[PurePosixPath, str]:
     resolved = _resolve_page_type_routes(app=app, routes=routes)
     schemas_by_component = _component_schemas(resolved, shared_props_model=shared_props_model)
+
+    return {
+        _component_module_path(component): _page_type_module_source(component=component, schemas=schemas)
+        for component, schemas in schemas_by_component.items()
+    }
+
+
+def _remove_generated_path(path: Path) -> None:
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+        return
+
+    if path.exists():
+        rmtree(path)
+
+
+def _component_module_path(component: str) -> PurePosixPath:
+    if component == "/":
+        return PurePosixPath("index.ts")
+
+    return PurePosixPath(f"{component}.ts")
+
+
+def _page_type_module_source(*, component: str, schemas: Sequence[JsonSchema]) -> str:
+    type_name = _page_props_type_name(component)
+    raw_schema = _component_json_schema(schemas)
 
     return "\n".join(
         (
             _TYPE_HEADER,
             'import { z } from "@gdansk/vite/zod";',
             "",
-            _raw_schema_source(schemas_by_component),
+            f"const rawPageSchema: unknown = {_json_source(raw_schema)};",
             "",
-            _page_schemas_source(schemas_by_component),
+            "export const pageSchema = z.fromJSONSchema(rawPageSchema as Parameters<typeof z.fromJSONSchema>[0]);",
             "",
-            _parse_helper_source(),
+            f"export function parsePageProps(props: unknown): {type_name} {{",
+            f"  return pageSchema.parse(props) as {type_name};",
+            "}",
             "",
-            _page_props_types_source(schemas_by_component),
+            f"export type {type_name} = {_component_ts_type(schemas)};",
             "",
         ),
     )
+
+
+def _page_props_type_name(component: str) -> str:
+    if component == "/":
+        return "RootPageProps"
+
+    words = [word for part in component.split("/") for word in findall(r"[0-9A-Za-z]+", part)]
+    parts = [_pascal_case_word(word) for word in words] or ["Route"]
+    if parts[-1] == "Page":
+        parts.pop()
+
+    name = "".join(parts)
+    if not name:
+        return "PageProps"
+
+    if name[0].isdigit():
+        name = f"Route{name}"
+
+    return f"{name}PageProps"
+
+
+def _pascal_case_word(word: str) -> str:
+    return f"{word[0].upper()}{word[1:]}" if word else ""
 
 
 def _return_annotation(func: Callable[..., object]) -> object:
@@ -474,56 +533,11 @@ def _clean_schema_value(value: object) -> object:
     return value
 
 
-def _raw_schema_source(schemas_by_component: dict[str, list[JsonSchema]]) -> str:
-    schemas = {component: _component_json_schema(schemas) for component, schemas in schemas_by_component.items()}
-    return f"const rawPageSchemas: Record<string, unknown> = {_json_source(schemas)};"
-
-
 def _component_json_schema(schemas: Sequence[JsonSchema]) -> JsonSchema:
     if len(schemas) == 1:
         return schemas[0]
 
     return {"anyOf": list(schemas)}
-
-
-def _page_schemas_source(schemas_by_component: dict[str, list[JsonSchema]]) -> str:
-    if not schemas_by_component:
-        return "export const pageSchemas = {} as const;"
-
-    lines = [
-        "export const pageSchemas = {",
-        *[
-            f"  {_json_string(component)}: z.fromJSONSchema("
-            f"rawPageSchemas[{_json_string(component)}] as Parameters<typeof z.fromJSONSchema>[0]),"
-            for component in schemas_by_component
-        ],
-        "} as const;",
-    ]
-    return "\n".join(lines)
-
-
-def _parse_helper_source() -> str:
-    return """export function parsePageProps<TComponent extends keyof PagePropsByComponent>(
-  component: TComponent,
-  props: unknown,
-): PageProps<TComponent> {
-  return pageSchemas[component].parse(props) as PageProps<TComponent>;
-}"""
-
-
-def _page_props_types_source(schemas_by_component: dict[str, list[JsonSchema]]) -> str:
-    lines = ["export type PagePropsByComponent = {"]
-    for component, schemas in schemas_by_component.items():
-        lines.append(f"  {_json_string(component)}: {_component_ts_type(schemas)};")
-
-    lines.extend(
-        (
-            "};",
-            "",
-            "export type PageProps<TComponent extends keyof PagePropsByComponent> = PagePropsByComponent[TComponent];",
-        ),
-    )
-    return "\n".join(lines)
 
 
 def _component_ts_type(schemas: Sequence[JsonSchema]) -> str:
@@ -727,8 +741,8 @@ def _json_string(value: str) -> str:
 
 __all__ = [
     "PageTypeRoute",
-    "build_page_types_module",
+    "build_page_type_modules",
     "infer_page_props_model",
     "normalize_page_props_model",
-    "write_page_types_module",
+    "write_page_type_modules",
 ]

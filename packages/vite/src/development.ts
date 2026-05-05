@@ -18,19 +18,36 @@ type AliasOption = NonNullable<NonNullable<UserConfig["resolve"]>["alias"]>;
 
 const DEFAULT_REFRESH_PATHS = ["../**/*.py", "../**/*.j2", "../**/*.jinja", "../**/*.jinja2"];
 
-export function mergeAliasConfig(alias: AliasOption | undefined, root: string): AliasOption {
-  if (Array.isArray(alias)) {
-    return hasNamedAlias(alias, "@") ? alias : [...alias, { find: "@", replacement: root }];
-  }
-
-  if (typeof alias === "object" && alias !== null && "@" in alias) {
-    return alias;
-  }
-
-  return {
-    ...(alias ?? {}),
+export function mergeAliasConfig(
+  alias: AliasOption | undefined,
+  root: string,
+  extraAliases: Record<string, string> = {},
+): AliasOption {
+  const defaultAliases = {
     "@": root,
+    ...extraAliases,
   };
+
+  if (Array.isArray(alias)) {
+    const missingAliases = Object.entries(defaultAliases)
+      .filter(([name]) => !hasNamedAlias(alias, name))
+      .map(([find, replacement]) => ({ find, replacement }));
+
+    return [...alias, ...missingAliases];
+  }
+
+  if (typeof alias === "object" && alias !== null) {
+    const missingAliases = Object.fromEntries(
+      Object.entries(defaultAliases).filter(([name]) => !(name in alias)),
+    ) as Record<string, string>;
+
+    return {
+      ...missingAliases,
+      ...alias,
+    };
+  }
+
+  return defaultAliases;
 }
 
 export function resolveDevelopmentServerConfig(

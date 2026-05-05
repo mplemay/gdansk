@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, TypedDict, cast
 
 import pytest
@@ -49,9 +50,16 @@ class DuplicateSharedProps(BaseModel):
     metrics: str | None = None
 
 
+def read_page_type(page_views_path, *parts: str) -> str:
+    return (page_views_path / "@types" / "gdansk" / Path(*parts)).read_text(encoding="utf-8")
+
+
 def test_inertia_generates_page_props_from_unwrapped_prop_payloads(page_views_path):
     ship = Ship(vite=Vite(page_views_path), inertia=Inertia(props=SharedProps))
     app = FastAPI()
+    legacy_output = page_views_path / ".gdansk" / "pages.ts"
+    legacy_output.parent.mkdir(parents=True)
+    legacy_output.write_text("stale aggregate module\n", encoding="utf-8")
 
     @app.get("/")
     @ship.page()
@@ -60,10 +68,15 @@ def test_inertia_generates_page_props_from_unwrapped_prop_payloads(page_views_pa
 
     ship.generate_page_types(app=app)
 
-    generated = (page_views_path / ".gdansk" / "pages.ts").read_text(encoding="utf-8")
+    generated = read_page_type(page_views_path, "index.ts")
 
     assert 'import { z } from "@gdansk/vite/zod";' in generated
-    assert '"/": z.fromJSONSchema(rawPageSchemas["/"] as Parameters<typeof z.fromJSONSchema>[0]),' in generated
+    assert (
+        "export const pageSchema = z.fromJSONSchema(rawPageSchema as Parameters<typeof z.fromJSONSchema>[0]);"
+        in generated
+    )
+    assert "export function parsePageProps(props: unknown): RootPageProps {" in generated
+    assert "export type RootPageProps = {" in generated
     assert "activity?: Array<string>;" in generated
     assert "feed: {" in generated
     assert "metrics: Array<{" in generated
@@ -74,6 +87,7 @@ def test_inertia_generates_page_props_from_unwrapped_prop_payloads(page_views_pa
     assert "errors: Record<string, string | Record<string, string>>;" in generated
     assert "PropSource" not in generated
     assert "always_include" not in generated
+    assert not legacy_output.exists()
 
 
 def test_inertia_page_type_generation_resolves_implicit_route_components(page_views_path):
@@ -87,9 +101,27 @@ def test_inertia_page_type_generation_resolves_implicit_route_components(page_vi
 
     ship.generate_page_types(app=app)
 
-    generated = (page_views_path / ".gdansk" / "pages.ts").read_text(encoding="utf-8")
+    generated = read_page_type(page_views_path, "dashboard", "{report_id}.ts")
 
-    assert '"dashboard/{report_id}"' in generated
+    assert "export type DashboardReportIdPageProps = {" in generated
+    assert "message: string;" in generated
+
+
+def test_inertia_page_type_generation_creates_nested_route_modules(page_views_path):
+    ship = Ship(vite=Vite(page_views_path))
+    app = FastAPI()
+
+    @app.get("/my/page")
+    @ship.page()
+    async def nested() -> AlternateHomeProps:
+        raise AssertionError
+
+    ship.generate_page_types(app=app)
+
+    generated = read_page_type(page_views_path, "my", "page.ts")
+
+    assert "export function parsePageProps(props: unknown): MyPageProps {" in generated
+    assert "export type MyPageProps = {" in generated
     assert "message: string;" in generated
 
 
@@ -104,9 +136,9 @@ def test_inertia_page_type_generation_accepts_props_and_shared_overrides(page_vi
 
     ship.generate_page_types(app=app)
 
-    generated = (page_views_path / ".gdansk" / "pages.ts").read_text(encoding="utf-8")
+    generated = read_page_type(page_views_path, "summary.ts")
 
-    assert '"summary"' in generated
+    assert "export type SummaryPageProps = {" in generated
     assert "message: string;" in generated
     assert "pageSummary?: string | null;" in generated
     assert "headline?: string | null;" not in generated
@@ -128,9 +160,9 @@ def test_inertia_page_type_generation_unions_multiple_models_for_same_component(
 
     ship.generate_page_types(app=app)
 
-    generated = (page_views_path / ".gdansk" / "pages.ts").read_text(encoding="utf-8")
+    generated = read_page_type(page_views_path, "shared.ts")
 
-    assert '"shared": {' in generated
+    assert "export type SharedPageProps = {" in generated
     assert '"anyOf": [' in generated
     assert "updatedAt: string;" in generated
     assert "message: string;" in generated

@@ -107,6 +107,20 @@ export default defineConfig({
 });
 ```
 
+Generated page prop modules live under `@types/gdansk/**` in the frontend root and are imported through the
+`@gdansk/types` alias. Add the matching TypeScript paths:
+
+```json
+{
+  "compilerOptions": {
+    "paths": {
+      "@gdansk/types": ["./@types/gdansk/index"],
+      "@gdansk/types/*": ["./@types/gdansk/*"]
+    }
+  }
+}
+```
+
 For a full FastAPI example with validation errors, flash messages, deferred props, once props, merge helpers, scroll
 props, and fragment redirects, see
 [`examples/inertia`](examples/inertia).

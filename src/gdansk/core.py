@@ -220,7 +220,8 @@ class Ship[SharedPropsT: BaseModel]:
     def generate_page_types(self, *, app: object) -> None:
         self._ensure_inertia_app().generate_page_types(
             app=app,
-            output_path=self._vite.root / ".gdansk" / "pages.ts",
+            output_root=self._vite.root / "@types" / "gdansk",
+            legacy_output_path=self._vite.root / ".gdansk" / "pages.ts",
         )
 
     async def _prepare_inertia(self, *, app: object | None, watch: bool | None) -> None:
