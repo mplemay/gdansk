@@ -5,13 +5,11 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
-from starlette.applications import Starlette
-from starlette.middleware import Middleware
+from fastapi import Depends, FastAPI
 from starlette.requests import Request
-from starlette.routing import Route
 from starlette.testclient import TestClient
 
-from gdansk import Always, Defer, Merge, Metadata, Once, OptionalProp, Scroll, Ship, Vite
+from gdansk import Always, Defer, InertiaPage, Merge, Metadata, Once, OptionalProp, Scroll, Ship, Vite
 from gdansk.__tests__.unit.conftest import SessionStateMiddleware, write_page_manifest
 
 
@@ -96,13 +94,15 @@ def test_inertia_json_response_has_expected_page_shape(page_views_path: Path):
     write_page_manifest(page_views_path)
     ship = Ship(vite=Vite(page_views_path))
     inertia = ship.inertia()
+    app = _page_app(ship)
 
-    async def home(request: Request):
-        page = ship.page(request)
+    @app.get("/")
+    @ship.page("/")
+    async def home(page: InertiaPage = Depends(ship.page)):
         page.share(shared=lambda: "shared")
-        return await page.render("/", {"message": lambda: "hello"})
+        return {"message": lambda: "hello"}
 
-    with TestClient(_page_app(ship, routes=[Route("/", home)])) as client:
+    with TestClient(app) as client:
         response = client.get("/", headers={"X-Inertia": "true"})
 
     assert response.status_code == 200
@@ -125,12 +125,14 @@ def test_inertia_json_response_has_expected_page_shape(page_views_path: Path):
 def test_inertia_returns_409_for_stale_asset_versions(page_views_path: Path):
     write_page_manifest(page_views_path)
     ship = Ship(vite=Vite(page_views_path))
+    app = _page_app(ship)
 
-    async def home(request: Request):
-        page = ship.page(request)
-        return await page.render("/", {})
+    @app.get("/")
+    @ship.page("/")
+    async def home():
+        return {}
 
-    with TestClient(_page_app(ship, routes=[Route("/", home)])) as client:
+    with TestClient(app) as client:
         response = client.get(
             "/",
             headers={
@@ -147,20 +149,19 @@ def test_inertia_returns_409_for_stale_asset_versions(page_views_path: Path):
 def test_inertia_partial_reload_respects_optional_always_and_deferred_props(page_views_path: Path):
     write_page_manifest(page_views_path)
     ship = Ship(vite=Vite(page_views_path))
+    app = _page_app(ship)
 
-    async def home(request: Request):
-        page = ship.page(request)
-        return await page.render(
-            "/",
-            {
-                "always_value": Always(value=lambda: "always"),
-                "deferred_value": Defer(value=lambda: "deferred", group="activity"),
-                "optional_value": OptionalProp(value=lambda: "optional"),
-                "plain_value": lambda: "plain",
-            },
-        )
+    @app.get("/")
+    @ship.page("/")
+    async def home():
+        return {
+            "always_value": Always(value=lambda: "always"),
+            "deferred_value": Defer(value=lambda: "deferred", group="activity"),
+            "optional_value": OptionalProp(value=lambda: "optional"),
+            "plain_value": lambda: "plain",
+        }
 
-    with TestClient(_page_app(ship, routes=[Route("/", home)])) as client:
+    with TestClient(app) as client:
         initial = client.get("/", headers={"X-Inertia": "true"})
         partial_only = client.get(
             "/",
@@ -201,6 +202,7 @@ def test_inertia_partial_reload_respects_optional_always_and_deferred_props(page
 def test_inertia_supports_once_props_reuse_and_refresh(page_views_path: Path):
     write_page_manifest(page_views_path)
     ship = Ship(vite=Vite(page_views_path))
+    app = _page_app(ship)
     calls: list[str] = []
 
     def expensive() -> str:
@@ -208,11 +210,12 @@ def test_inertia_supports_once_props_reuse_and_refresh(page_views_path: Path):
         calls.append(value)
         return value
 
-    async def home(request: Request):
-        page = ship.page(request)
-        return await page.render("/", {"expensive": Once(value=expensive)})
+    @app.get("/")
+    @ship.page("/")
+    async def home():
+        return {"expensive": Once(value=expensive)}
 
-    with TestClient(_page_app(ship, routes=[Route("/", home)])) as client:
+    with TestClient(app) as client:
         initial = client.get("/", headers={"X-Inertia": "true"})
         skipped = client.get(
             "/",
@@ -255,25 +258,24 @@ def test_inertia_supports_once_props_reuse_and_refresh(page_views_path: Path):
 def test_inertia_once_props_support_custom_keys_expiration_and_fresh(page_views_path: Path):
     write_page_manifest(page_views_path)
     ship = Ship(vite=Vite(page_views_path))
+    app = _page_app(ship)
     calls: list[str] = []
 
     def record(name: str) -> str:
         calls.append(name)
         return name
 
-    async def home(request: Request):
-        page = ship.page(request)
-        return await page.render(
-            "/",
-            {
-                "aliased": Once(value=lambda: record("aliased"), key="shared-cache"),
-                "expired": Once(value=lambda: record("expired"), expires_at=timedelta(seconds=-1)),
-                "fresh_value": Once(value=lambda: record("fresh"), fresh=True),
-                "stale": Once(value=lambda: record("stale")),
-            },
-        )
+    @app.get("/")
+    @ship.page("/")
+    async def home():
+        return {
+            "aliased": Once(value=lambda: record("aliased"), key="shared-cache"),
+            "expired": Once(value=lambda: record("expired"), expires_at=timedelta(seconds=-1)),
+            "fresh_value": Once(value=lambda: record("fresh"), fresh=True),
+            "stale": Once(value=lambda: record("stale")),
+        }
 
-    with TestClient(_page_app(ship, routes=[Route("/", home)])) as client:
+    with TestClient(app) as client:
         response = client.get(
             "/",
             headers={
@@ -295,21 +297,20 @@ def test_inertia_once_props_support_custom_keys_expiration_and_fresh(page_views_
 def test_inertia_partial_reload_supports_nested_only_and_except_paths(page_views_path: Path):
     write_page_manifest(page_views_path)
     ship = Ship(vite=Vite(page_views_path))
+    app = _page_app(ship)
 
-    async def home(request: Request):
-        page = ship.page(request)
-        return await page.render(
-            "/",
-            {
-                "auth": lambda: {
-                    "notifications": ["ping"],
-                    "roles": ["admin"],
-                    "user": {"name": "Ada"},
-                },
+    @app.get("/")
+    @ship.page("/")
+    async def home():
+        return {
+            "auth": lambda: {
+                "notifications": ["ping"],
+                "roles": ["admin"],
+                "user": {"name": "Ada"},
             },
-        )
+        }
 
-    with TestClient(_page_app(ship, routes=[Route("/", home)])) as client:
+    with TestClient(app) as client:
         only_response = client.get(
             "/",
             headers={
@@ -343,29 +344,28 @@ def test_inertia_partial_reload_supports_nested_only_and_except_paths(page_views
 def test_inertia_emits_merge_metadata_and_respects_resets(page_views_path: Path):
     write_page_manifest(page_views_path)
     ship = Ship(vite=Vite(page_views_path))
+    app = _page_app(ship)
 
-    async def home(request: Request):
-        page = ship.page(request)
-        return await page.render(
-            "/",
-            {
-                "announcements": Merge(
-                    value=[{"id": 2, "title": "Launch"}],
-                    match_on="id",
-                    mode="prepend",
-                ),
-                "conversation": Merge(
-                    value={
-                        "messages": [{"body": "Hello", "id": 3}],
-                    },
-                    deep=True,
-                    match_on="messages.id",
-                ),
-                "users": Merge(value=[{"id": 1, "name": "Ada"}], match_on="id"),
-            },
-        )
+    @app.get("/")
+    @ship.page("/")
+    async def home():
+        return {
+            "announcements": Merge(
+                value=[{"id": 2, "title": "Launch"}],
+                match_on="id",
+                mode="prepend",
+            ),
+            "conversation": Merge(
+                value={
+                    "messages": [{"body": "Hello", "id": 3}],
+                },
+                deep=True,
+                match_on="messages.id",
+            ),
+            "users": Merge(value=[{"id": 1, "name": "Ada"}], match_on="id"),
+        }
 
-    with TestClient(_page_app(ship, routes=[Route("/", home)])) as client:
+    with TestClient(app) as client:
         initial = client.get("/", headers={"X-Inertia": "true"})
         reset = client.get(
             "/",
@@ -400,31 +400,30 @@ def test_inertia_rejects_deep_prepend_merge_props() -> None:
 def test_inertia_scroll_props_follow_merge_intent_and_reset(page_views_path: Path):
     write_page_manifest(page_views_path)
     ship = Ship(vite=Vite(page_views_path))
+    app = _page_app(ship)
 
-    async def home(request: Request):
-        page = ship.page(request)
-        return await page.render(
-            "/",
-            {
-                "feed": Scroll(
-                    value={
-                        "items": [{"id": 1, "title": "Update"}],
-                        "pagination": {
-                            "current": 2,
-                            "next": 3,
-                            "previous": 1,
-                        },
+    @app.get("/")
+    @ship.page("/")
+    async def home():
+        return {
+            "feed": Scroll(
+                value={
+                    "items": [{"id": 1, "title": "Update"}],
+                    "pagination": {
+                        "current": 2,
+                        "next": 3,
+                        "previous": 1,
                     },
-                    current_page_path="pagination.current",
-                    items_path="items",
-                    next_page_path="pagination.next",
-                    page_name="feed_page",
-                    previous_page_path="pagination.previous",
-                ),
-            },
-        )
+                },
+                current_page_path="pagination.current",
+                items_path="items",
+                next_page_path="pagination.next",
+                page_name="feed_page",
+                previous_page_path="pagination.previous",
+            ),
+        }
 
-    with TestClient(_page_app(ship, routes=[Route("/", home)])) as client:
+    with TestClient(app) as client:
         initial = client.get("/", headers={"X-Inertia": "true"})
         prepend_response = client.get(
             "/",
@@ -492,12 +491,13 @@ def test_inertia_scroll_props_follow_merge_intent_and_reset(page_views_path: Pat
 def test_inertia_location_non_inertia_redirects_convert_unsafe_methods(page_views_path: Path):
     write_page_manifest(page_views_path)
     ship = Ship(vite=Vite(page_views_path))
+    app = _page_app(ship)
 
-    async def jump(request: Request):
-        page = ship.page(request)
+    @app.api_route("/jump", methods=["GET", "POST", "PUT", "PATCH"])
+    async def jump(page: InertiaPage = Depends(ship.page)):
         return page.location("/target")
 
-    with TestClient(_page_app(ship, routes=[Route("/jump", jump, methods=["GET", "POST", "PUT", "PATCH"])])) as client:
+    with TestClient(app) as client:
         get_response = client.get("/jump", follow_redirects=False)
         post_response = client.post("/jump", follow_redirects=False)
         put_response = client.put("/jump", follow_redirects=False)
@@ -517,38 +517,34 @@ def test_inertia_supports_history_flags_and_fragment_redirects(page_views_path: 
     write_page_manifest(page_views_path)
     ship = Ship(vite=Vite(page_views_path))
     ship.inertia(encrypt_history=True)
+    app = _page_app(ship)
 
-    async def home(request: Request):
-        page = ship.page(request)
-        return await page.render("/", {"message": "Home"})
+    @app.get("/")
+    @ship.page("/")
+    async def home():
+        return {"message": "Home"}
 
-    async def cleared(request: Request):
-        page = ship.page(request)
+    @app.get("/cleared")
+    @ship.page("/")
+    async def cleared(page: InertiaPage = Depends(ship.page)):
         page.clear_history()
         page.encrypt_history(enabled=False)
-        return await page.render("/", {"message": "Cleared"})
+        return {"message": "Cleared"}
 
-    async def preserve(request: Request):
-        page = ship.page(request)
+    @app.post("/preserve")
+    async def preserve(page: InertiaPage = Depends(ship.page)):
         return page.redirect("/target", preserve_fragment=True)
 
-    async def explicit_fragment(request: Request):
-        page = ship.page(request)
+    @app.post("/fragment")
+    async def explicit_fragment(page: InertiaPage = Depends(ship.page)):
         return page.redirect("/target#details")
 
-    async def target(request: Request):
-        page = ship.page(request)
-        return await page.render("/", {"message": "Target"})
+    @app.get("/target")
+    @ship.page("/")
+    async def target():
+        return {"message": "Target"}
 
-    routes = [
-        Route("/", home),
-        Route("/cleared", cleared),
-        Route("/preserve", preserve, methods=["POST"]),
-        Route("/fragment", explicit_fragment, methods=["POST"]),
-        Route("/target", target),
-    ]
-
-    with TestClient(_page_app(ship, routes=routes)) as client:
+    with TestClient(app) as client:
         initial = client.get("/", headers={"X-Inertia": "true"})
         cleared_response = client.get("/cleared", headers={"X-Inertia": "true"})
         preserve_response = client.post("/preserve", headers={"X-Inertia": "true"}, follow_redirects=False)
@@ -574,12 +570,14 @@ def test_inertia_supports_history_flags_and_fragment_redirects(page_views_path: 
 def test_inertia_normalizes_nested_component_keys(page_views_path: Path):
     write_page_manifest(page_views_path)
     ship = Ship(vite=Vite(page_views_path))
+    app = _page_app(ship)
 
-    async def home(request: Request):
-        page = ship.page(request)
-        return await page.render("/dashboard/reports/", {})
+    @app.get("/")
+    @ship.page("/dashboard/reports/")
+    async def home():
+        return {}
 
-    with TestClient(_page_app(ship, routes=[Route("/", home)])) as client:
+    with TestClient(app) as client:
         response = client.get("/", headers={"X-Inertia": "true"})
 
     assert response.json()["component"] == "dashboard/reports"
@@ -589,15 +587,53 @@ def test_inertia_rejects_invalid_component_keys(page_views_path: Path):
     write_page_manifest(page_views_path)
     ship = Ship(vite=Vite(page_views_path))
 
-    async def home(request: Request):
-        page = ship.page(request)
-        return await page.render("../secret", {})
+    with pytest.raises(ValueError, match="component"):
+        ship.page("../secret")
+
+
+def test_inertia_page_has_no_public_render_api() -> None:
+    assert not hasattr(InertiaPage, "render")
+
+
+def test_inertia_decorator_rejects_multiple_page_dependencies(page_views_path: Path):
+    write_page_manifest(page_views_path)
+    ship = Ship(vite=Vite(page_views_path))
+    app = _page_app(ship)
+
+    @app.get("/")
+    @ship.page("/")
+    async def home(
+        first_page: InertiaPage = Depends(ship.page),
+        second_page: InertiaPage = Depends(ship.page),
+    ):
+        first_page.share(first=True)
+        second_page.share(second=True)
+        return {}
 
     with (
-        TestClient(_page_app(ship, routes=[Route("/", home)])) as client,
-        pytest.raises(ValueError, match="component"),
+        TestClient(app) as client,
+        pytest.raises(RuntimeError, match="at most one InertiaPage"),
     ):
         client.get("/", headers={"X-Inertia": "true"})
+
+
+def test_inertia_decorator_rejects_page_from_different_app(page_views_path: Path):
+    first_ship = Ship(vite=Vite(page_views_path))
+    second_ship = Ship(vite=Vite(page_views_path))
+    request = _request(path="/")
+    page = second_ship.page(request)
+
+    with pytest.raises(RuntimeError, match="different Inertia app"):
+        first_ship.inertia()._route_page(args=(page,), kwargs={}, request=request)
+
+
+def test_inertia_decorator_rejects_page_from_different_request(page_views_path: Path):
+    ship = Ship(vite=Vite(page_views_path))
+    request = _request(path="/")
+    page = ship.page(_request(path="/other"))
+
+    with pytest.raises(RuntimeError, match="different request"):
+        ship.inertia()._route_page(args=(page,), kwargs={}, request=request)
 
 
 def test_ship_page_uses_custom_inertia_configuration(page_views_path: Path):
@@ -620,17 +656,15 @@ def test_ship_rejects_mixing_inertia_and_widgets(page_views_path: Path):
         ship.widget(path=Path("hello/widget.tsx"))
 
 
-def _page_app(ship: Ship, *, routes: list[Route]) -> Starlette:
+def _page_app(ship: Ship) -> FastAPI:
     @asynccontextmanager
-    async def lifespan(_: Starlette):
+    async def lifespan(_: FastAPI):
         async with ship.lifespan(watch=None):
             yield
 
-    return Starlette(
-        lifespan=lifespan,
-        middleware=[Middleware(SessionStateMiddleware)],
-        routes=routes,
-    )
+    app = FastAPI(lifespan=lifespan)
+    app.add_middleware(SessionStateMiddleware)
+    return app
 
 
 def _request(*, path: str) -> Request:

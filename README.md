@@ -45,8 +45,8 @@ Then use:
 requests use the Inertia JSON protocol, and production assets still come from `ship.assets`.
 
 Page mode is convention-driven. Put the root page at `app/page.tsx`, nested pages at `app/**/page.tsx`, and
-co-located layouts at `app/**/layout.tsx`. Render the root page with `page.render("/")`; nested folders map to
-slash-delimited component ids like `page.render("dashboard/reports")`.
+co-located layouts at `app/**/layout.tsx`. Decorate the root route with `@ship.page("/")`; nested folders map to
+slash-delimited component ids like `@ship.page("dashboard/reports")`.
 
 For FastAPI pages, decorate a route with `@ship.page(...)`, return a Pydantic model or mapping, and run the frontend
 with `ship.lifespan(...)`. Call `ship.inertia(...)` only when you need non-default page settings such as a custom root
@@ -79,8 +79,8 @@ async def home() -> HomeProps:
     )
 ```
 
-If a route needs imperative page control for flash, redirects, or per-request shared props, inject the page with
-`Depends(ship.page)` and return `await page.render(...)` directly.
+If a rendered route needs imperative page control for flash, history flags, or per-request shared props, combine the
+decorator with `Depends(ship.page)`, mutate the injected page, and return props from the route.
 
 Pair the backend with `gdanskPages()` in your frontend `vite.config.ts`:
 
@@ -111,13 +111,21 @@ The backend prop wrappers are close to the official non-SSR Inertia protocol:
   and redirect behavior.
 
 ```python
-from gdansk import Merge, Once, OptionalProp, Scroll
+from typing import Annotated
 
-page.share_once(sessionToken=load_session_token)
+from fastapi import Depends
 
-return await page.render(
-    "/",
-    {
+from gdansk import InertiaPage, Merge, Once, OptionalProp, Scroll
+
+type PageDependency = Annotated[InertiaPage, Depends(ship.page)]
+
+
+@app.get("/")
+@ship.page("/")
+async def home(page: PageDependency) -> dict[str, object]:
+    page.share_once(sessionToken=load_session_token)
+
+    return {
         "announcements": Merge(value=load_announcements(), match_on="id"),
         "conversation": Merge(value=load_conversation(), deep=True, match_on="messages.id"),
         "feed": Scroll(
@@ -130,8 +138,7 @@ return await page.render(
         ),
         "profile": Once(value=load_profile, key="shared-profile"),
         "stats": OptionalProp(value=load_stats),
-    },
-)
+    }
 ```
 
 ## Quick Start

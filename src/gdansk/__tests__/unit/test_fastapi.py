@@ -51,15 +51,13 @@ def test_fastapi_inertia_validation_and_flash_flow(page_views_path: Path):
     app.mount(ship.assets_path, ship.assets)
 
     @app.get("/")
+    @ship.page("/", metadata=Metadata(description="FastAPI Inertia example"))
     async def home(page: InertiaPage = Depends(ship.page)):
-        return await page.render(
-            "/",
-            {
-                "activity": Defer(value=lambda: ["Ship lifecycle", "Session-backed flash"], group="activity"),
-                "headline": "FastAPI + Inertia",
-            },
-            metadata=Metadata(description="FastAPI Inertia example"),
-        )
+        page.share(source="decorated")
+        return {
+            "activity": Defer(value=lambda: ["Ship lifecycle", "Session-backed flash"], group="activity"),
+            "headline": "FastAPI + Inertia",
+        }
 
     @app.post("/feedback")
     async def feedback(
@@ -111,6 +109,8 @@ def test_fastapi_inertia_validation_and_flash_flow(page_views_path: Path):
     assert valid.status_code == 303
     assert after_valid.json()["props"]["errors"] == {}
     assert after_valid.json()["flash"] == {"message": "Thanks, Marta."}
+    assert after_valid.json()["props"]["source"] == "decorated"
+    assert after_valid.json()["sharedProps"] == ["source"]
 
     assert partial.json()["props"] == {
         "activity": ["Ship lifecycle", "Session-backed flash"],
@@ -132,9 +132,10 @@ def test_fastapi_inertia_preserves_fragment_and_reuses_once_shared_props(page_vi
     app.mount(ship.assets_path, ship.assets)
 
     @app.get("/")
+    @ship.page("/")
     async def home(page: InertiaPage = Depends(ship.page)):
         page.share_once(session_token=lambda: "token-1")
-        return await page.render("/", {"headline": "Dashboard"})
+        return {"headline": "Dashboard"}
 
     @app.post("/save")
     async def save(page: InertiaPage = Depends(ship.page)):

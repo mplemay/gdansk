@@ -21,8 +21,6 @@ if TYPE_CHECKING:
 
     from starlette.responses import Response
 
-    from gdansk.inertia import InertiaResponse
-
 PRODUCTION = getenv("PRODUCTION") == "true"
 SESSION_SECRET = getenv("SESSION_SECRET") or token_urlsafe(32)
 
@@ -126,35 +124,35 @@ app.mount(ship.assets_path, ship.assets)
 
 
 @app.get("/")
-async def home(page: PageDependency) -> InertiaResponse:
+@ship.page(
+    "/",
+    metadata=Metadata(
+        description="Ship-backed Inertia pages for FastAPI",
+        title="Gdansk Inertia",
+    ),
+)
+async def home(page: PageDependency) -> dict[str, object]:
     page.share(
         headline="Ship-backed Inertia pages",
         summary="A FastAPI route can render the initial shell, switch to JSON visits, and keep using the frontend "
         "tooling gdansk already owns.",
     )
     page.share_once(sessionToken=lambda: token_urlsafe(6))
-    return await page.render(
-        "/",
-        {
-            "activity": Defer(value=build_activity, group="activity"),
-            "announcements": Merge(value=build_announcements(), match_on="id"),
-            "conversation": Merge(value=build_conversation(), deep=True, match_on="messages.id"),
-            "feed": Scroll(
-                value=build_feed(),
-                current_page_path="pagination.current",
-                items_path="items",
-                next_page_path="pagination.next",
-                page_name="feed_page",
-                previous_page_path="pagination.previous",
-            ),
-            "metrics": Always(value=build_metrics),
-            "updatedAt": Always(value=datetime.now(UTC).strftime("%B %d, %Y")),
-        },
-        metadata=Metadata(
-            description="Ship-backed Inertia pages for FastAPI",
-            title="Gdansk Inertia",
+    return {
+        "activity": Defer(value=build_activity, group="activity"),
+        "announcements": Merge(value=build_announcements(), match_on="id"),
+        "conversation": Merge(value=build_conversation(), deep=True, match_on="messages.id"),
+        "feed": Scroll(
+            value=build_feed(),
+            current_page_path="pagination.current",
+            items_path="items",
+            next_page_path="pagination.next",
+            page_name="feed_page",
+            previous_page_path="pagination.previous",
         ),
-    )
+        "metrics": Always(value=build_metrics),
+        "updatedAt": Always(value=datetime.now(UTC).strftime("%B %d, %Y")),
+    }
 
 
 @app.post("/feedback")

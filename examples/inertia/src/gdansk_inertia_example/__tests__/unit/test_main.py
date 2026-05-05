@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from fastapi import FastAPI
-from starlette.requests import Request  # noqa: TC002
+from fastapi import Depends, FastAPI
 from starlette.testclient import TestClient
 
-from gdansk import Always, Merge, Ship, Vite
+from gdansk import Always, InertiaPage, Merge, Ship, Vite
 from gdansk.__tests__.unit.conftest import write_page_manifest
 
 
@@ -15,43 +14,39 @@ def _build_app(tmp_path) -> FastAPI:
     app = FastAPI()
 
     @app.get("/")
-    async def home(request: Request):
-        page = ship.page(request)
-        return await page.render(
-            "/",
-            {
-                "conversation": Merge(
-                    value={
-                        "messages": [
-                            {
-                                "author": "Ship",
-                                "body": "Deep-merged message at 04:11:33",
-                                "id": "message-1",
-                            },
-                        ],
-                        "summary": {
-                            "updatedAt": "04:11:33",
-                        },
-                    },
-                    deep=True,
-                    match_on="messages.id",
-                ),
-                "metrics": Always(
-                    value=[
+    @ship.page("/")
+    async def home():
+        return {
+            "conversation": Merge(
+                value={
+                    "messages": [
                         {
-                            "label": "Protocol",
-                            "note": "HTML first, JSON after hydrate",
-                            "value": "Inertia",
+                            "author": "Ship",
+                            "body": "Deep-merged message at 04:11:33",
+                            "id": "message-1",
                         },
                     ],
-                ),
-                "updatedAt": Always(value="April 23, 2026"),
-            },
-        )
+                    "summary": {
+                        "updatedAt": "04:11:33",
+                    },
+                },
+                deep=True,
+                match_on="messages.id",
+            ),
+            "metrics": Always(
+                value=[
+                    {
+                        "label": "Protocol",
+                        "note": "HTML first, JSON after hydrate",
+                        "value": "Inertia",
+                    },
+                ],
+            ),
+            "updatedAt": Always(value="April 23, 2026"),
+        }
 
     @app.post("/jump-to-activity")
-    async def jump_to_activity(request: Request):
-        page = ship.page(request)
+    async def jump_to_activity(page: InertiaPage = Depends(ship.page)):
         return page.location("/#activity")
 
     return app

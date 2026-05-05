@@ -249,12 +249,16 @@ class InertiaApp:
                 _gdansk_inertia_request: Request,
                 **kwargs: object,
             ) -> InertiaResponse:
+                page = self._route_page(
+                    args=args,
+                    kwargs=kwargs,
+                    request=_gdansk_inertia_request,
+                )
                 result = await _execute_maybe_sync_func(func, *args, **kwargs)
                 if isinstance(result, Response):
                     return result
 
-                page = InertiaPage(app=self, request=_gdansk_inertia_request)
-                return await page.render(
+                return await page._render(  # noqa: SLF001
                     normalized_component,
                     _route_result_to_props(result),
                     metadata=metadata,
@@ -271,6 +275,26 @@ class InertiaApp:
             )
 
         return decorator
+
+    def _route_page(self, *, args: tuple[object, ...], kwargs: dict[str, object], request: Request) -> InertiaPage:
+        pages = [value for value in (*args, *kwargs.values()) if isinstance(value, InertiaPage)]
+        if len(pages) > 1:
+            msg = "Inertia page decorators accept at most one InertiaPage dependency"
+            raise RuntimeError(msg)
+
+        if not pages:
+            return InertiaPage(app=self, request=request)
+
+        page = pages[0]
+        if page._app is not self:  # noqa: SLF001
+            msg = "Inertia page decorator received an InertiaPage from a different Inertia app"
+            raise RuntimeError(msg)
+
+        if page._request.scope is not request.scope:  # noqa: SLF001
+            msg = "Inertia page decorator received an InertiaPage for a different request"
+            raise RuntimeError(msg)
+
+        return page
 
     def version(self) -> str | None:
         if self._version_override is not None:
@@ -490,7 +514,7 @@ class InertiaPage:
             headers={"Vary": "X-Inertia"},
         )
 
-    async def render(
+    async def _render(
         self,
         component: str,
         props: dict[str, Any] | None = None,
