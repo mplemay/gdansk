@@ -5,7 +5,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from functools import wraps
 from hashlib import sha256
-from inspect import Parameter, Signature, isawaitable, iscoroutinefunction, signature
+from inspect import Parameter, Signature, iscoroutinefunction, signature
 from json import JSONDecodeError, dumps, loads
 from typing import TYPE_CHECKING, Any, Final, Literal, Self, TypedDict, cast, overload
 
@@ -16,7 +16,7 @@ from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Re
 
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import render_template
-from gdansk.utils import join_url
+from gdansk.utils import MaybeAwaitable, join_url, maybe_awaitable
 
 if TYPE_CHECKING:
     from pydantic.fields import FieldInfo
@@ -25,7 +25,6 @@ if TYPE_CHECKING:
 
 type InertiaResponse = HTMLResponse | JSONResponse | Response
 type PageRouteDecorator = Callable[[Callable[..., object]], Callable[..., object]]
-type PropValue[T] = T | Callable[[], T] | Callable[[], Awaitable[T]]
 type RawExpiration = datetime | timedelta | int
 
 _JSON_ADAPTER: Final[TypeAdapter[Any]] = TypeAdapter(Any)
@@ -691,9 +690,7 @@ class InertiaPage:
             value = value.value
 
         if callable(value):
-            value = cast("Callable[[], object]", value)()
-            if isawaitable(value):
-                value = await value
+            value = await maybe_awaitable(cast("Callable[[], MaybeAwaitable[object]]", value))()
 
         if isinstance(value, dict):
             return {key: await self._evaluate(item) for key, item in value.items()}

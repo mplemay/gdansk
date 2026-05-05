@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable  # noqa: TC003
 from contextlib import asynccontextmanager
 from inspect import Signature, signature
 from typing import TYPE_CHECKING, Annotated
@@ -10,7 +11,7 @@ from pydantic import BaseModel, Field
 from starlette.responses import Response
 from starlette.testclient import TestClient
 
-from gdansk import Metadata, PropValue, Ship, Vite, always, deep_merge, defer, merge, once, optional, prop, scroll
+from gdansk import MaybeAwaitable, Metadata, Ship, Vite, always, deep_merge, defer, merge, once, optional, prop, scroll
 from gdansk.__tests__.unit.conftest import SessionStateMiddleware, write_page_manifest
 from gdansk.fastapi import inertia_request_validation_exception_handler
 from gdansk.inertia import InertiaPage
@@ -25,7 +26,7 @@ class FeedbackPayload(BaseModel):
 
 
 class DecoratedPageProps(BaseModel):
-    activity: Annotated[PropValue[list[str]], defer(group="activity")]
+    activity: Annotated[Callable[[], MaybeAwaitable[list[str]]], defer(group="activity")]
     always_value: Annotated[str, always()]
     announcements: Annotated[list[dict[str, object]], prop().prepend(match_on="id")]
     conversation: Annotated[dict[str, object], deep_merge(match_on="messages.id")]

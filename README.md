@@ -53,15 +53,16 @@ with `ship.lifespan(...)`. Call `ship.inertia(...)` only when you need non-defau
 id or explicit version.
 
 ```python
+from collections.abc import Callable
 from typing import Annotated
 
 from pydantic import BaseModel, Field
 
-from gdansk import Metadata, PropValue, Ship, Vite, defer, merge
+from gdansk import MaybeAwaitable, Metadata, Ship, Vite, defer, merge
 
 
 class HomeProps(BaseModel):
-    activity: Annotated[PropValue[list[str]], defer(group="activity")]
+    activity: Annotated[Callable[[], MaybeAwaitable[list[str]]], defer(group="activity")]
     announcements: Annotated[list[dict[str, str]], merge(match_on="id")]
     headline: str
     updated_at: str = Field(serialization_alias="updatedAt")
