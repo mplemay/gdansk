@@ -48,12 +48,41 @@ Page mode is convention-driven. Put the root page at `app/page.tsx`, nested page
 co-located layouts at `app/**/layout.tsx`. Render the root page with `page.render("/")`; nested folders map to
 slash-delimited component ids like `page.render("dashboard/reports")`.
 
-For FastAPI, inject the page with `Depends(ship.page)` and run the frontend with `ship.lifespan(...)`. Call
-`ship.inertia(...)` only when you need non-default page settings such as a custom root id or explicit version.
+For FastAPI pages, decorate a route with `@ship.page(...)`, return a Pydantic model or mapping, and run the frontend
+with `ship.lifespan(...)`. Call `ship.inertia(...)` only when you need non-default page settings such as a custom root
+id or explicit version.
 
 ```python
-type PageDependency = Annotated["InertiaPage", Depends(ship.page)]
+from typing import Annotated
+
+from pydantic import BaseModel, Field
+
+from gdansk import Metadata, PropValue, Ship, Vite, defer, merge
+
+
+class HomeProps(BaseModel):
+    activity: Annotated[PropValue[list[str]], defer(group="activity")]
+    announcements: Annotated[list[dict[str, str]], merge(match_on="id")]
+    headline: str
+    updated_at: str = Field(serialization_alias="updatedAt")
+
+
+ship = Ship(vite=Vite("frontend"))
+
+
+@app.get("/")
+@ship.page("/", metadata=Metadata(title="Home"))
+async def home() -> HomeProps:
+    return HomeProps(
+        activity=load_activity,
+        announcements=load_announcements(),
+        headline="FastAPI + Inertia",
+        updated_at="May 5, 2026",
+    )
 ```
+
+If a route needs imperative page control for flash, redirects, or per-request shared props, inject the page with
+`Depends(ship.page)` and return `await page.render(...)` directly.
 
 Pair the backend with `gdanskPages()` in your frontend `vite.config.ts`:
 

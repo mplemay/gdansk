@@ -1,17 +1,19 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING
+from inspect import Signature, signature
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Body, Depends, FastAPI
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field
+from starlette.responses import Response
 from starlette.testclient import TestClient
 
-from gdansk import Metadata, Ship, Vite, defer
+from gdansk import Metadata, PropValue, Ship, Vite, always, deep_merge, defer, merge, once, optional, prop, scroll
 from gdansk.__tests__.unit.conftest import SessionStateMiddleware, write_page_manifest
 from gdansk.fastapi import inertia_request_validation_exception_handler
-from gdansk.inertia import InertiaPage  # noqa: TC001
+from gdansk.inertia import InertiaPage
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -20,6 +22,27 @@ if TYPE_CHECKING:
 class FeedbackPayload(BaseModel):
     name: str = Field(min_length=2)
     topic: str = Field(min_length=3)
+
+
+class DecoratedPageProps(BaseModel):
+    activity: Annotated[PropValue[list[str]], defer(group="activity")]
+    always_value: Annotated[str, always()]
+    announcements: Annotated[list[dict[str, object]], prop().prepend(match_on="id")]
+    conversation: Annotated[dict[str, object], deep_merge(match_on="messages.id")]
+    feed: Annotated[
+        dict[str, object],
+        scroll(
+            current_page_path="pagination.current",
+            items_path="items",
+            next_page_path="pagination.next",
+            page_name="feed_page",
+            previous_page_path="pagination.previous",
+        ),
+    ]
+    optional_value: Annotated[str, optional()]
+    profile: Annotated[str, once(key="profile-cache")]
+    updated_at: str = Field(serialization_alias="updatedAt")
+    users: Annotated[list[dict[str, object]], merge(match_on="id")]
 
 
 def test_fastapi_inertia_validation_and_flash_flow(page_views_path: Path):
@@ -157,3 +180,159 @@ def test_fastapi_inertia_preserves_fragment_and_reuses_once_shared_props(page_vi
     assert after_redirect.json()["sharedProps"] == ["session_token"]
     assert "session_token" not in after_redirect.json()["props"]
     assert after_redirect.json()["onceProps"] == initial.json()["onceProps"]
+
+
+def test_ship_page_signature_preserves_fastapi_dependency_shape(page_views_path: Path):
+    ship = Ship(vite=Vite(page_views_path))
+
+    ship_page_signature = signature(ship.page)
+    params = list(ship_page_signature.parameters.values())
+
+    assert len(params) == 1
+    assert params[0].name == "request"
+    assert params[0].annotation is not Signature.empty
+    assert ship_page_signature.return_annotation is InertiaPage
+
+
+def test_fastapi_inertia_page_decorator_renders_model_props(page_views_path: Path):
+    write_page_manifest(page_views_path)
+    ship = Ship(vite=Vite(page_views_path), metadata=Metadata(title="Gdansk"))
+    activity_calls: list[str] = []
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        async with ship.lifespan(watch=None):
+            yield
+
+    app = FastAPI(lifespan=lifespan)
+    app.add_middleware(SessionStateMiddleware)
+    app.mount(ship.assets_path, ship.assets)
+
+    def load_activity() -> list[str]:
+        activity_calls.append("activity")
+        return ["deferred activity"]
+
+    @app.get("/")
+    @ship.page("/", metadata=Metadata(description="Decorated page"))
+    async def home() -> DecoratedPageProps:
+        return DecoratedPageProps(
+            activity=load_activity,
+            always_value="always",
+            announcements=[{"id": 2, "title": "Announcement"}],
+            conversation={
+                "messages": [{"body": "Hello", "id": 3}],
+                "summary": {"updatedAt": "10:00"},
+            },
+            feed={
+                "items": [{"id": 4, "title": "Feed item"}],
+                "pagination": {
+                    "current": 2,
+                    "next": 3,
+                    "previous": 1,
+                },
+            },
+            optional_value="optional",
+            profile="Ada",
+            updated_at="May 5, 2026",
+            users=[{"id": 1, "name": "Ada"}],
+        )
+
+    with TestClient(app) as client:
+        html = client.get("/", follow_redirects=False)
+        initial = client.get("/", headers={"X-Inertia": "true"}, follow_redirects=False)
+
+    assert activity_calls == []
+
+    with TestClient(app) as client:
+        partial = client.get(
+            "/",
+            headers={
+                "X-Inertia": "true",
+                "X-Inertia-Partial-Component": "/",
+                "X-Inertia-Partial-Data": "activity",
+            },
+            follow_redirects=False,
+        )
+
+    assert html.status_code == 200
+    assert "<title>Gdansk</title>" in html.text
+    assert '<meta name="description" content="Decorated page" />' in html.text
+
+    initial_page = initial.json()
+    assert initial_page["component"] == "/"
+    assert initial_page["props"] == {
+        "always_value": "always",
+        "announcements": [{"id": 2, "title": "Announcement"}],
+        "conversation": {
+            "messages": [{"body": "Hello", "id": 3}],
+            "summary": {"updatedAt": "10:00"},
+        },
+        "errors": {},
+        "feed": {
+            "items": [{"id": 4, "title": "Feed item"}],
+            "pagination": {
+                "current": 2,
+                "next": 3,
+                "previous": 1,
+            },
+        },
+        "profile": "Ada",
+        "updatedAt": "May 5, 2026",
+        "users": [{"id": 1, "name": "Ada"}],
+    }
+    assert initial_page["deferredProps"] == {"activity": ["activity"]}
+    assert initial_page["mergeProps"] == ["feed.items", "users"]
+    assert initial_page["prependProps"] == ["announcements"]
+    assert initial_page["deepMergeProps"] == ["conversation"]
+    assert initial_page["matchPropsOn"] == [
+        "announcements.id",
+        "conversation.messages.id",
+        "users.id",
+    ]
+    assert initial_page["onceProps"] == {
+        "profile-cache": {
+            "expiresAt": None,
+            "prop": "profile",
+        },
+    }
+    assert initial_page["scrollProps"] == {
+        "feed": {
+            "currentPage": 2,
+            "nextPage": 3,
+            "pageName": "feed_page",
+            "previousPage": 1,
+            "reset": False,
+        },
+    }
+    assert partial.json()["props"] == {
+        "activity": ["deferred activity"],
+        "always_value": "always",
+        "errors": {},
+    }
+    assert activity_calls == ["activity"]
+
+
+def test_fastapi_inertia_page_decorator_passes_through_responses(page_views_path: Path):
+    write_page_manifest(page_views_path)
+    ship = Ship(vite=Vite(page_views_path))
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        async with ship.lifespan(watch=None):
+            yield
+
+    app = FastAPI(lifespan=lifespan)
+    app.add_middleware(SessionStateMiddleware)
+    app.mount(ship.assets_path, ship.assets)
+
+    @app.get("/")
+    @ship.page("/")
+    def home() -> Response:
+        return Response("raw", status_code=202, headers={"X-Test": "passthrough"})
+
+    with TestClient(app) as client:
+        response = client.get("/", headers={"X-Inertia": "true"}, follow_redirects=False)
+
+    assert response.status_code == 202
+    assert response.text == "raw"
+    assert response.headers["X-Test"] == "passthrough"

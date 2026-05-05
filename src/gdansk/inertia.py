@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
+from functools import wraps
 from hashlib import sha256
-from inspect import isawaitable
+from inspect import Parameter, Signature, isawaitable, iscoroutinefunction, signature
 from json import JSONDecodeError, dumps, loads
-from typing import TYPE_CHECKING, Any, Final, Literal, Self, TypedDict, cast
+from typing import TYPE_CHECKING, Any, Final, Literal, Self, TypedDict, cast, overload
 
-from pydantic import TypeAdapter
-from starlette.requests import Request  # noqa: TC002
+from pydantic import BaseModel, TypeAdapter
+from starlette.concurrency import run_in_threadpool
+from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from gdansk.metadata import Metadata, merge_metadata
@@ -16,16 +19,19 @@ from gdansk.render import render_template
 from gdansk.utils import join_url
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, MutableMapping, Sequence
+    from pydantic.fields import FieldInfo
 
     from gdansk.core import Ship
 
 type InertiaResponse = HTMLResponse | JSONResponse | Response
+type PageRouteDecorator = Callable[[Callable[..., object]], Callable[..., object]]
+type PropValue[T] = T | Callable[[], T] | Callable[[], Awaitable[T]]
 type RawExpiration = datetime | timedelta | int
 
 _JSON_ADAPTER: Final[TypeAdapter[Any]] = TypeAdapter(Any)
 _ERRORS_SESSION_KEY: Final[str] = "_gdansk_inertia_errors"
 _FLASH_SESSION_KEY: Final[str] = "_gdansk_inertia_flash"
+_MISSING_PROP_VALUE: Final = object()
 _PAGE_DEV_ENTRY: Final[str] = "/@gdansk/pages/app.tsx"
 _PRESERVE_FRAGMENT_SESSION_KEY: Final[str] = "_gdansk_inertia_preserve_fragment"
 
@@ -185,39 +191,132 @@ class PageProp:
         return replace(self, merge_instructions=instructions)
 
 
-def prop[T](value: T) -> PageProp:
+@overload
+def prop() -> PageProp: ...
+
+
+@overload
+def prop[T](value: T) -> PageProp: ...
+
+
+def prop[T](value: T | object = _MISSING_PROP_VALUE) -> PageProp:
     if isinstance(value, PageProp):
         return value
 
     return PageProp(value=value)
 
 
-def optional[T](value: T) -> PageProp:
+@overload
+def optional() -> PageProp: ...
+
+
+@overload
+def optional[T](value: T) -> PageProp: ...
+
+
+def optional[T](value: T | object = _MISSING_PROP_VALUE) -> PageProp:
     return prop(value).optional()
 
 
-def always[T](value: T) -> PageProp:
+@overload
+def always() -> PageProp: ...
+
+
+@overload
+def always[T](value: T) -> PageProp: ...
+
+
+def always[T](value: T | object = _MISSING_PROP_VALUE) -> PageProp:
     return prop(value).always()
 
 
-def defer[T](value: T, *, group: str = "default") -> PageProp:
+@overload
+def defer(*, group: str = "default") -> PageProp: ...
+
+
+@overload
+def defer[T](value: T, *, group: str = "default") -> PageProp: ...
+
+
+def defer[T](value: T | object = _MISSING_PROP_VALUE, *, group: str = "default") -> PageProp:
     return prop(value).defer(group=group)
 
 
-def once[T](value: T, *, key: str | None = None) -> PageProp:
+@overload
+def once(*, key: str | None = None) -> PageProp: ...
+
+
+@overload
+def once[T](value: T, *, key: str | None = None) -> PageProp: ...
+
+
+def once[T](value: T | object = _MISSING_PROP_VALUE, *, key: str | None = None) -> PageProp:
     return prop(value).once(key=key)
 
 
-def merge[T](value: T) -> PageProp:
-    return prop(value).append()
+@overload
+def merge(
+    path: str | None = None,
+    *,
+    match_on: str | Sequence[str] | None = None,
+) -> PageProp: ...
 
 
-def deep_merge[T](value: T, *, match_on: str | Sequence[str] | None = None) -> PageProp:
+@overload
+def merge[T](
+    value: T,
+    path: str | None = None,
+    *,
+    match_on: str | Sequence[str] | None = None,
+) -> PageProp: ...
+
+
+def merge[T](
+    value: T | object = _MISSING_PROP_VALUE,
+    path: str | None = None,
+    *,
+    match_on: str | Sequence[str] | None = None,
+) -> PageProp:
+    return prop(value).append(path, match_on=match_on)
+
+
+@overload
+def deep_merge(*, match_on: str | Sequence[str] | None = None) -> PageProp: ...
+
+
+@overload
+def deep_merge[T](value: T, *, match_on: str | Sequence[str] | None = None) -> PageProp: ...
+
+
+def deep_merge[T](value: T | object = _MISSING_PROP_VALUE, *, match_on: str | Sequence[str] | None = None) -> PageProp:
     return prop(value).deep_merge(match_on=match_on)
 
 
-def scroll[T](  # noqa: PLR0913
+@overload
+def scroll(
+    *,
+    current_page_path: str = "current_page",
+    items_path: str = "data",
+    next_page_path: str = "next_page",
+    page_name: str = "page",
+    previous_page_path: str = "previous_page",
+) -> PageProp: ...
+
+
+@overload
+def scroll[T](
     value: T,
+    *,
+    current_page_path: str = "current_page",
+    items_path: str = "data",
+    next_page_path: str = "next_page",
+    page_name: str = "page",
+    previous_page_path: str = "previous_page",
+) -> PageProp: ...
+
+
+def scroll[T](  # noqa: PLR0913
+    value: T | object = _MISSING_PROP_VALUE,
     *,
     current_page_path: str = "current_page",
     items_path: str = "data",
@@ -278,6 +377,44 @@ class InertiaApp:
     @property
     def default_encrypt_history(self) -> bool:
         return self._default_encrypt_history
+
+    def page(
+        self,
+        component: str,
+        *,
+        metadata: Metadata | None = None,
+    ) -> PageRouteDecorator:
+        normalized_component = self.normalize_component(component)
+
+        def decorator(func: Callable[..., object]) -> Callable[..., object]:
+            @wraps(func)
+            async def wrapper(
+                *args: object,
+                _gdansk_inertia_request: Request,
+                **kwargs: object,
+            ) -> InertiaResponse:
+                result = await _execute_maybe_sync_func(func, *args, **kwargs)
+                if isinstance(result, Response):
+                    return result
+
+                page = InertiaPage(app=self, request=_gdansk_inertia_request)
+                return await page.render(
+                    normalized_component,
+                    _route_result_to_props(result),
+                    metadata=metadata,
+                )
+
+            return _append_to_signature(
+                wrapper,
+                Parameter(
+                    "_gdansk_inertia_request",
+                    Parameter.KEYWORD_ONLY,
+                    annotation=Request,
+                ),
+                return_annotation=Response,
+            )
+
+        return decorator
 
     def version(self) -> str | None:
         if self._version_override is not None:
@@ -891,6 +1028,104 @@ class InertiaPage:
             return True
 
         return page_prop.include_on_initial if page_prop else True
+
+
+def _append_to_signature(
+    func: Callable[..., object],
+    *params: Parameter,
+    return_annotation: object = Signature.empty,
+) -> Callable[..., object]:
+    base_signature = signature(func, eval_str=True)
+    base_params = tuple(base_signature.parameters.values())
+    insert_at = next(
+        (index for index, param in enumerate(base_params) if param.kind == Parameter.VAR_KEYWORD),
+        len(base_params),
+    )
+    cast("Any", func).__signature__ = base_signature.replace(
+        parameters=(*base_params[:insert_at], *params, *base_params[insert_at:]),
+        return_annotation=return_annotation,
+    )
+    return func
+
+
+async def _execute_maybe_sync_func(func: Callable[..., object], *args: object, **kwargs: object) -> object:
+    if iscoroutinefunction(func):
+        async_func = cast("Callable[..., Awaitable[object]]", func)
+        return await async_func(*args, **kwargs)
+
+    return await run_in_threadpool(func, *args, **kwargs)
+
+
+def _route_result_to_props(result: object) -> dict[str, Any]:
+    if result is None:
+        return {}
+
+    if isinstance(result, BaseModel):
+        return _model_to_props(result)
+
+    if isinstance(result, Mapping):
+        props: dict[str, Any] = {}
+        for key, value in result.items():
+            if not isinstance(key, str):
+                msg = "Inertia page decorator mapping results must use string keys"
+                raise TypeError(msg)
+            props[key] = value
+
+        return props
+
+    msg = "Inertia page decorators require routes to return a pydantic model, mapping, response, or None"
+    raise TypeError(msg)
+
+
+def _model_to_props(model: BaseModel) -> dict[str, Any]:
+    props = model.model_dump(mode="python", by_alias=True)
+
+    for field_name, model_field in type(model).model_fields.items():
+        markers = [metadata for metadata in model_field.metadata if isinstance(metadata, PageProp)]
+        if not markers:
+            continue
+
+        prop_key = _model_field_prop_key(field_name, model_field)
+        if prop_key not in props:
+            continue
+
+        props[prop_key] = _apply_page_prop_markers(props[prop_key], markers)
+
+    return props
+
+
+def _model_field_prop_key(field_name: str, model_field: FieldInfo) -> str:
+    alias = model_field.serialization_alias or model_field.alias
+    return alias if isinstance(alias, str) else field_name
+
+
+def _apply_page_prop_markers(value: object, markers: Sequence[PageProp]) -> PageProp:
+    result = prop(value)
+    for marker in markers:
+        result = _apply_page_prop_marker(result, marker)
+
+    return result
+
+
+def _apply_page_prop_marker(result: PageProp, marker: PageProp) -> PageProp:
+    if marker.always_include:
+        result = result.always()
+    if marker.deferred_group is not None:
+        result = result.defer(group=marker.deferred_group)
+    elif not marker.include_on_initial:
+        result = result.optional()
+    if marker.once_enabled:
+        result = result.once(key=marker.once_key)
+    if marker.once_fresh:
+        result = result.fresh()
+    if marker.once_expires_at is not None:
+        result = result.until(marker.once_expires_at)
+    for instruction in marker.merge_instructions:
+        result = result._with_instruction(instruction)  # noqa: SLF001
+    if marker.scroll_config is not None:
+        result = replace(result, scroll_config=marker.scroll_config)
+
+    return result
 
 
 def _build_path_tree(paths: list[str]) -> dict[str, dict[str, Any]]:

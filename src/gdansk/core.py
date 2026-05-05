@@ -3,19 +3,20 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from functools import cached_property, partial
+from inspect import Parameter, Signature
 from os import PathLike
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Any, Final, Literal
+from typing import TYPE_CHECKING, Any, Final, Literal, cast, overload
 from urllib.parse import urlparse
 
 from httpx import AsyncClient
 from mcp.server.mcpserver.resources import FunctionResource
 from mcp.server.mcpserver.tools.base import Tool
-from starlette.requests import Request  # noqa: TC002
+from starlette.requests import Request
 from starlette.staticfiles import StaticFiles
 
 from gdansk._schema import to_strict_schema
-from gdansk.inertia import InertiaApp, InertiaPage
+from gdansk.inertia import InertiaApp, InertiaPage, PageRouteDecorator
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import render_template
 from gdansk.utils import join_url, join_url_path
@@ -86,7 +87,33 @@ class Ship:
     def metadata(self) -> Metadata:
         return self._metadata
 
-    def page(self, request: Request) -> InertiaPage:
+    @overload
+    def page(self, request: Request) -> InertiaPage: ...
+
+    @overload
+    def page(
+        self,
+        component: str,
+        *,
+        metadata: Metadata | None = None,
+    ) -> PageRouteDecorator: ...
+
+    def page(
+        self,
+        request: Request | str,
+        *,
+        metadata: Metadata | None = None,
+    ) -> InertiaPage | PageRouteDecorator:
+        if isinstance(request, Request):
+            return self._page_dependency(request)
+
+        if isinstance(request, str):
+            return self._ensure_inertia_app().page(request, metadata=metadata)
+
+        msg = "Ship.page() requires a Request dependency or an Inertia component string"
+        raise TypeError(msg)
+
+    def _page_dependency(self, request: Request) -> InertiaPage:
         return InertiaPage(app=self._ensure_inertia_app(), request=request)
 
     def inertia(
@@ -390,3 +417,12 @@ class Ship:
             return fn
 
         return decorator
+
+
+cast("Any", Ship.page).__signature__ = Signature(
+    parameters=(
+        Parameter("self", Parameter.POSITIONAL_OR_KEYWORD),
+        Parameter("request", Parameter.POSITIONAL_OR_KEYWORD, annotation=Request),
+    ),
+    return_annotation=InertiaPage,
+)
