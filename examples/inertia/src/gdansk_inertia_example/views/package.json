@@ -4,7 +4,7 @@
   "type": "module",
   "dependencies": {
     "@gdansk/vite": "file:../../../../../packages/vite",
-    "@inertiajs/react": "^3.0.3",
+    "@inertiajs/react": "3.0.3",
     "@vitejs/plugin-react": "^6.0.1",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",

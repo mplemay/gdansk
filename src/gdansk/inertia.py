@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from gdansk.core import Ship
 
 type InertiaResponse = HTMLResponse | JSONResponse | Response
-type PageRouteDecorator = Callable[[Callable[..., MaybeAwaitable[BaseModel]]], Callable[..., object]]
+type PageRouteDecorator = Callable[[Callable[..., object]], Callable[..., object]]
 type RawExpiration = datetime | timedelta | int
 type SerializableProp = (
     None | bool | int | float | str | BaseModel | Mapping[str, SerializableProp] | Sequence[SerializableProp]
@@ -36,6 +36,16 @@ _ERRORS_SESSION_KEY: Final[str] = "_gdansk_inertia_errors"
 _FLASH_SESSION_KEY: Final[str] = "_gdansk_inertia_flash"
 _PAGE_DEV_ENTRY: Final[str] = "/@gdansk/pages/app.tsx"
 _PRESERVE_FRAGMENT_SESSION_KEY: Final[str] = "_gdansk_inertia_preserve_fragment"
+_REQUIRED_V3_PAGE_KEYS: Final[frozenset[str]] = frozenset({"component", "flash", "props", "url", "version"})
+_CLIENT_OWNED_V3_PAGE_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "initialDeferredProps",
+        "optimisticUpdatedAt",
+        "rememberedState",
+    },
+)
+_UNSUPPORTED_3X_PAGE_KEYS: Final[frozenset[str]] = frozenset({"rescuedProps"})
+_V3_OPTIONAL_BOOLEAN_PAGE_KEYS: Final[tuple[str, ...]] = ("clearHistory", "preserveFragment", "encryptHistory")
 _PROP_MODEL_CONFIG: Final[ConfigDict] = ConfigDict(
     arbitrary_types_allowed=True,
     extra="forbid",
@@ -242,7 +252,7 @@ class InertiaApp:
     ) -> PageRouteDecorator:
         normalized_component = self.normalize_component(component)
 
-        def decorator(func: Callable[..., MaybeAwaitable[BaseModel]]) -> Callable[..., object]:
+        def decorator(func: Callable[..., object]) -> Callable[..., object]:
             @wraps(func)
             async def wrapper(
                 *args: object,
@@ -563,6 +573,7 @@ class InertiaPage:
             "version": self._app.version(),
         }
         self._apply_page_metadata(page=page, resolved=resolved)
+        _validate_v3_page_payload(page)
 
         return cast("dict[str, Any]", _JSON_ADAPTER.dump_python(page, mode="json"))
 
@@ -953,6 +964,34 @@ def _route_result_to_props(result: object) -> dict[str, Any]:
 
     msg = "Inertia page decorators require routes to return a pydantic model, mapping, response, or None"
     raise TypeError(msg)
+
+
+def _validate_v3_page_payload(page: dict[str, Any]) -> None:
+    if missing := _REQUIRED_V3_PAGE_KEYS.difference(page):
+        msg = f"Inertia v3 page payload is missing required field(s): {', '.join(sorted(missing))}"
+        raise RuntimeError(msg)
+
+    if forbidden := (_CLIENT_OWNED_V3_PAGE_KEYS | _UNSUPPORTED_3X_PAGE_KEYS).intersection(page):
+        msg = f"Inertia v3 page payload includes client-owned field(s): {', '.join(sorted(forbidden))}"
+        raise RuntimeError(msg)
+
+    for key in _V3_OPTIONAL_BOOLEAN_PAGE_KEYS:
+        if page.get(key) is False:
+            msg = f'Inertia v3 optional boolean field "{key}" must be omitted unless enabled'
+            raise RuntimeError(msg)
+
+    props = page["props"]
+    if not isinstance(props, dict):
+        msg = "Inertia v3 page payload props must be an object"
+        raise TypeError(msg)
+
+    if "errors" not in props:
+        msg = 'Inertia v3 page payload props must include "errors"'
+        raise RuntimeError(msg)
+
+    if "deferred" in props:
+        msg = 'Inertia v3 page payload must not include client-owned "props.deferred"'
+        raise RuntimeError(msg)
 
 
 def _model_to_props(model: BaseModel) -> dict[str, Any]:

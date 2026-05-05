@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from datetime import timedelta
+from json import loads
 from pathlib import Path
+from typing import Any, Final
 
 import pytest
 from fastapi import Depends, FastAPI
@@ -56,6 +58,17 @@ class MergeMetadataPageProps(BaseModel):
 
 class ScrollPageProps(BaseModel):
     feed: Scroll[dict[str, object]]
+
+
+_V3_REQUIRED_PAGE_KEYS: Final[frozenset[str]] = frozenset({"component", "flash", "props", "url", "version"})
+_V3_CLIENT_OWNED_PAGE_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "initialDeferredProps",
+        "optimisticUpdatedAt",
+        "rememberedState",
+    },
+)
+_UNSUPPORTED_3X_PAGE_KEYS: Final[frozenset[str]] = frozenset({"rescuedProps"})
 
 
 def test_inertia_renders_production_html_shell(page_views_path: Path):
@@ -150,10 +163,13 @@ def test_inertia_json_response_has_expected_page_shape(page_views_path: Path):
     with TestClient(app) as client:
         response = client.get("/", headers={"X-Inertia": "true"})
 
+    page_payload = response.json()
+
     assert response.status_code == 200
     assert response.headers["X-Inertia"] == "true"
     assert response.headers["Vary"] == "X-Inertia"
-    assert response.json() == {
+    _assert_released_v3_page_payload(page_payload)
+    assert page_payload == {
         "component": "/",
         "flash": {},
         "props": {
@@ -165,6 +181,56 @@ def test_inertia_json_response_has_expected_page_shape(page_views_path: Path):
         "url": "/",
         "version": inertia.version(),
     }
+
+
+def test_inertia_omits_default_false_and_client_owned_v3_fields(page_views_path: Path):
+    write_page_manifest(page_views_path)
+    ship = Ship(vite=Vite(page_views_path))
+    app = _page_app(ship)
+
+    @app.get("/")
+    @ship.page("/")
+    async def home() -> EmptyPageProps:
+        return EmptyPageProps()
+
+    with TestClient(app) as client:
+        response = client.get("/", headers={"X-Inertia": "true"})
+
+    page_payload = response.json()
+    _assert_released_v3_page_payload(page_payload)
+    assert page_payload == {
+        "component": "/",
+        "flash": {},
+        "props": {
+            "errors": {},
+        },
+        "url": "/",
+        "version": ship.inertia().version(),
+    }
+
+
+def test_inertia_rejects_client_owned_deferred_prop(page_views_path: Path):
+    write_page_manifest(page_views_path)
+    ship = Ship(vite=Vite(page_views_path))
+    app = _page_app(ship)
+
+    @app.get("/")
+    @ship.page("/")
+    async def home() -> dict[str, object]:
+        return {"deferred": {"default": ["stats"]}}
+
+    with (
+        TestClient(app) as client,
+        pytest.raises(RuntimeError, match=r"props\.deferred"),
+    ):
+        client.get("/", headers={"X-Inertia": "true"})
+
+
+def test_inertia_runtime_dependency_targets_released_v3() -> None:
+    package_json_path = Path(__file__).resolve().parents[4] / "packages/vite/package.json"
+    package_json = loads(package_json_path.read_text(encoding="utf-8"))
+
+    assert package_json["dependencies"]["@inertiajs/react"] == "3.0.3"
 
 
 def test_inertia_returns_409_for_stale_asset_versions(page_views_path: Path):
@@ -225,20 +291,28 @@ def test_inertia_partial_reload_respects_optional_always_and_deferred_props(page
             },
         )
 
-    assert initial.json()["props"] == {
+    initial_page = initial.json()
+    partial_only_page = partial_only.json()
+    partial_except_page = partial_except.json()
+
+    _assert_released_v3_page_payload(initial_page)
+    _assert_released_v3_page_payload(partial_only_page)
+    _assert_released_v3_page_payload(partial_except_page)
+
+    assert initial_page["props"] == {
         "always_value": "always",
         "errors": {},
         "plain_value": "plain",
     }
-    assert initial.json()["deferredProps"] == {"activity": ["deferred_value"]}
+    assert initial_page["deferredProps"] == {"activity": ["deferred_value"]}
 
-    assert partial_only.json()["props"] == {
+    assert partial_only_page["props"] == {
         "always_value": "always",
         "deferred_value": "deferred",
         "errors": {},
     }
 
-    assert partial_except.json()["props"] == {
+    assert partial_except_page["props"] == {
         "always_value": "always",
         "errors": {},
     }
@@ -279,21 +353,29 @@ def test_inertia_supports_once_props_reuse_and_refresh(page_views_path: Path):
             },
         )
 
-    assert initial.json()["props"] == {
+    initial_page = initial.json()
+    skipped_page = skipped.json()
+    refreshed_page = refreshed.json()
+
+    _assert_released_v3_page_payload(initial_page)
+    _assert_released_v3_page_payload(skipped_page)
+    _assert_released_v3_page_payload(refreshed_page)
+
+    assert initial_page["props"] == {
         "errors": {},
         "expensive": "value-1",
     }
-    assert initial.json()["onceProps"] == {
+    assert initial_page["onceProps"] == {
         "expensive": {
             "expiresAt": None,
             "prop": "expensive",
         },
     }
 
-    assert skipped.json()["props"] == {"errors": {}}
-    assert skipped.json()["onceProps"] == initial.json()["onceProps"]
+    assert skipped_page["props"] == {"errors": {}}
+    assert skipped_page["onceProps"] == initial_page["onceProps"]
 
-    assert refreshed.json()["props"] == {
+    assert refreshed_page["props"] == {
         "errors": {},
         "expensive": "value-2",
     }
@@ -329,13 +411,15 @@ def test_inertia_once_props_support_custom_keys_expiration_and_fresh(page_views_
             },
         )
 
-    assert response.json()["props"] == {
+    page_payload = response.json()
+    _assert_released_v3_page_payload(page_payload)
+    assert page_payload["props"] == {
         "errors": {},
         "expired": "expired",
         "fresh_value": "fresh",
     }
-    assert response.json()["onceProps"].keys() == {"shared-cache", "expired", "fresh_value", "stale"}
-    assert response.json()["onceProps"]["shared-cache"]["prop"] == "aliased"
+    assert page_payload["onceProps"].keys() == {"shared-cache", "expired", "fresh_value", "stale"}
+    assert page_payload["onceProps"]["shared-cache"]["prop"] == "aliased"
     assert calls == ["expired", "fresh"]
 
 
@@ -373,11 +457,17 @@ def test_inertia_partial_reload_supports_nested_only_and_except_paths(page_views
             },
         )
 
-    assert only_response.json()["props"] == {
+    only_page = only_response.json()
+    except_page = except_response.json()
+
+    _assert_released_v3_page_payload(only_page)
+    _assert_released_v3_page_payload(except_page)
+
+    assert only_page["props"] == {
         "auth": {"notifications": ["ping"]},
         "errors": {},
     }
-    assert except_response.json()["props"] == {
+    assert except_page["props"] == {
         "auth": {
             "roles": ["admin"],
             "user": {"name": "Ada"},
@@ -422,19 +512,25 @@ def test_inertia_emits_merge_metadata_and_respects_resets(page_views_path: Path)
             },
         )
 
-    assert initial.json()["mergeProps"] == ["users"]
-    assert initial.json()["prependProps"] == ["announcements"]
-    assert initial.json()["deepMergeProps"] == ["conversation"]
-    assert initial.json()["matchPropsOn"] == [
+    initial_page = initial.json()
+    reset_page = reset.json()
+
+    _assert_released_v3_page_payload(initial_page)
+    _assert_released_v3_page_payload(reset_page)
+
+    assert initial_page["mergeProps"] == ["users"]
+    assert initial_page["prependProps"] == ["announcements"]
+    assert initial_page["deepMergeProps"] == ["conversation"]
+    assert initial_page["matchPropsOn"] == [
         "announcements.id",
         "conversation.messages.id",
         "users.id",
     ]
 
-    assert "mergeProps" not in reset.json()
-    assert reset.json()["prependProps"] == ["announcements"]
-    assert "deepMergeProps" not in reset.json()
-    assert reset.json()["matchPropsOn"] == ["announcements.id"]
+    assert "mergeProps" not in reset_page
+    assert reset_page["prependProps"] == ["announcements"]
+    assert "deepMergeProps" not in reset_page
+    assert reset_page["matchPropsOn"] == ["announcements.id"]
 
 
 def test_inertia_rejects_deep_prepend_merge_props() -> None:
@@ -505,6 +601,18 @@ def test_inertia_scroll_props_follow_merge_intent_and_reset(page_views_path: Pat
             },
         )
 
+    initial_page = initial.json()
+    prepend_page = prepend_response.json()
+    reset_page = reset_response.json()
+    partial_items_page = partial_items_response.json()
+    except_pagination_page = except_pagination_response.json()
+
+    _assert_released_v3_page_payload(initial_page)
+    _assert_released_v3_page_payload(prepend_page)
+    _assert_released_v3_page_payload(reset_page)
+    _assert_released_v3_page_payload(partial_items_page)
+    _assert_released_v3_page_payload(except_pagination_page)
+
     expected_scroll_prop = {
         "currentPage": 2,
         "nextPage": 3,
@@ -512,25 +620,25 @@ def test_inertia_scroll_props_follow_merge_intent_and_reset(page_views_path: Pat
         "previousPage": 1,
         "reset": False,
     }
-    assert initial.json()["mergeProps"] == ["feed.items"]
-    assert initial.json()["scrollProps"] == {
+    assert initial_page["mergeProps"] == ["feed.items"]
+    assert initial_page["scrollProps"] == {
         "feed": expected_scroll_prop,
     }
 
-    assert prepend_response.json()["prependProps"] == ["feed.items"]
-    assert "mergeProps" not in prepend_response.json()
-    assert prepend_response.json()["scrollProps"]["feed"]["reset"] is False
+    assert prepend_page["prependProps"] == ["feed.items"]
+    assert "mergeProps" not in prepend_page
+    assert prepend_page["scrollProps"]["feed"]["reset"] is False
 
-    assert "mergeProps" not in reset_response.json()
-    assert "prependProps" not in reset_response.json()
-    assert reset_response.json()["scrollProps"]["feed"]["reset"] is True
+    assert "mergeProps" not in reset_page
+    assert "prependProps" not in reset_page
+    assert reset_page["scrollProps"]["feed"]["reset"] is True
 
-    assert partial_items_response.json()["props"]["feed"] == {"items": [{"id": 1, "title": "Update"}]}
-    assert partial_items_response.json()["scrollProps"]["feed"] == expected_scroll_prop
+    assert partial_items_page["props"]["feed"] == {"items": [{"id": 1, "title": "Update"}]}
+    assert partial_items_page["scrollProps"]["feed"] == expected_scroll_prop
 
     assert except_pagination_response.status_code == 200
-    assert except_pagination_response.json()["props"]["feed"] == {"items": [{"id": 1, "title": "Update"}]}
-    assert except_pagination_response.json()["scrollProps"]["feed"] == expected_scroll_prop
+    assert except_pagination_page["props"]["feed"] == {"items": [{"id": 1, "title": "Update"}]}
+    assert except_pagination_page["scrollProps"]["feed"] == expected_scroll_prop
 
 
 def test_inertia_location_non_inertia_redirects_convert_unsafe_methods(page_views_path: Path):
@@ -597,15 +705,25 @@ def test_inertia_supports_history_flags_and_fragment_redirects(page_views_path: 
         after_preserve_again = client.get("/target", headers={"X-Inertia": "true"})
         explicit = client.post("/fragment", headers={"X-Inertia": "true"}, follow_redirects=False)
 
-    assert initial.json()["encryptHistory"] is True
+    initial_page = initial.json()
+    cleared_page = cleared_response.json()
+    after_preserve_page = after_preserve.json()
+    after_preserve_again_page = after_preserve_again.json()
 
-    assert cleared_response.json()["clearHistory"] is True
-    assert "encryptHistory" not in cleared_response.json()
+    _assert_released_v3_page_payload(initial_page)
+    _assert_released_v3_page_payload(cleared_page)
+    _assert_released_v3_page_payload(after_preserve_page)
+    _assert_released_v3_page_payload(after_preserve_again_page)
+
+    assert initial_page["encryptHistory"] is True
+
+    assert cleared_page["clearHistory"] is True
+    assert "encryptHistory" not in cleared_page
 
     assert preserve_response.status_code == 303
     assert preserve_response.headers["location"] == "/target"
-    assert after_preserve.json()["preserveFragment"] is True
-    assert "preserveFragment" not in after_preserve_again.json()
+    assert after_preserve_page["preserveFragment"] is True
+    assert "preserveFragment" not in after_preserve_again_page
 
     assert explicit.status_code == 409
     assert explicit.headers["Vary"] == "X-Inertia"
@@ -725,3 +843,17 @@ def _request(*, path: str) -> Request:
             "type": "http",
         },
     )
+
+
+def _assert_released_v3_page_payload(page: dict[str, Any]) -> None:
+    assert page.keys() >= _V3_REQUIRED_PAGE_KEYS
+    assert _V3_CLIENT_OWNED_PAGE_KEYS.isdisjoint(page)
+    assert _UNSUPPORTED_3X_PAGE_KEYS.isdisjoint(page)
+
+    props = page["props"]
+    assert isinstance(props, dict)
+    assert "errors" in props
+    assert "deferred" not in props
+
+    for optional_boolean_key in ("clearHistory", "encryptHistory", "preserveFragment"):
+        assert page.get(optional_boolean_key) is not False

@@ -27,7 +27,7 @@ Then use:
 
 - Python: `gdansk` currently requires `>=3.12,<3.15`.
 - Frontend package: use an ESM package with `@gdansk/vite`, `vite`, `@vitejs/plugin-react`, `react`, `react-dom`,
-  and `@modelcontextprotocol/ext-apps`. Inertia page mode also needs `@inertiajs/react`.
+  and `@modelcontextprotocol/ext-apps`. Inertia page mode targets `@inertiajs/react@3.0.3`.
 - Runtime tooling: gdansk starts the frontend through `uv run deno ...`. If you run frontend package scripts directly,
   the published `@gdansk/vite` package currently declares Node `>=22`.
 
@@ -41,7 +41,7 @@ Then use:
 
 ## Inertia Pages
 
-`Ship` can serve convention-driven Inertia pages directly: the first request returns an HTML shell, follow-up
+`Ship` can serve convention-driven Inertia v3 pages directly: the first request returns an HTML shell, follow-up
 requests use the Inertia JSON protocol, and production assets still come from `ship.assets`.
 
 Page mode is convention-driven. Put the root page at `app/page.tsx`, nested pages at `app/**/page.tsx`, and
