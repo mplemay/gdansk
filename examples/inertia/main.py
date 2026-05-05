@@ -12,9 +12,9 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
 
-from gdansk import Always, Defer, Inertia, Merge, Metadata, Scroll, Ship, Vite
+from gdansk import Metadata, Ship, Vite
 from gdansk.fastapi import inertia_request_validation_exception_handler
-from gdansk.inertia import InertiaPage  # noqa: TC001
+from gdansk.inertia import Always, Defer, Inertia, InertiaPage, Merge, Scroll
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator

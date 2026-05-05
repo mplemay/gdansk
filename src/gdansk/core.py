@@ -16,7 +16,9 @@ from starlette.requests import Request
 from starlette.staticfiles import StaticFiles
 
 from gdansk._schema import to_strict_schema
-from gdansk.inertia import Inertia, InertiaApp, InertiaPage, PageRouteDecorator
+from gdansk.inertia.config import Inertia
+from gdansk.inertia.core import InertiaApp, PageRouteDecorator
+from gdansk.inertia.page import InertiaPage
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import render_template
 from gdansk.utils import join_url, join_url_path

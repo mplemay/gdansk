@@ -9,10 +9,10 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field
 from starlette.testclient import TestClient
 
-from gdansk import Always, Defer, Merge, Metadata, Once, OptionalProp, Scroll, Ship, Vite
+from gdansk import Metadata, Ship, Vite
 from gdansk.__tests__.unit.conftest import SessionStateMiddleware, write_page_manifest
 from gdansk.fastapi import inertia_request_validation_exception_handler
-from gdansk.inertia import InertiaPage
+from gdansk.inertia import Always, Defer, InertiaPage, Merge, Once, OptionalProp, Scroll
 
 if TYPE_CHECKING:
     from pathlib import Path

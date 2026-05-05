@@ -57,7 +57,8 @@ id, explicit version, or default encrypted history.
 ```python
 from pydantic import BaseModel, Field
 
-from gdansk import Defer, Inertia, Merge, Metadata, Ship, Vite
+from gdansk import Metadata, Ship, Vite
+from gdansk.inertia import Defer, Inertia, Merge
 
 
 class HomeProps(BaseModel):
@@ -118,7 +119,7 @@ from typing import Annotated
 from fastapi import Depends
 from pydantic import BaseModel
 
-from gdansk import InertiaPage, Merge, Once, OptionalProp, Scroll
+from gdansk.inertia import InertiaPage, Merge, Once, OptionalProp, Scroll
 
 type PageDependency = Annotated[InertiaPage, Depends(ship.page)]
 

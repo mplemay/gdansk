@@ -6,7 +6,7 @@ from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from starlette.responses import RedirectResponse, Response
 
-from gdansk.inertia import _ERRORS_SESSION_KEY
+from gdansk.inertia.utils import _ERRORS_SESSION_KEY
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence

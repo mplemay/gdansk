@@ -6,8 +6,9 @@ from fastapi import Depends, FastAPI
 from pydantic import BaseModel, Field
 from starlette.testclient import TestClient
 
-from gdansk import Always, InertiaPage, Merge, Ship, Vite
+from gdansk import Ship, Vite
 from gdansk.__tests__.unit.conftest import write_page_manifest
+from gdansk.inertia import Always, InertiaPage, Merge
 
 
 class ConversationMessage(TypedDict):
