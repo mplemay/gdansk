@@ -9,6 +9,7 @@ export default defineConfig({
       input: {
         index: "src/index.ts",
         runtime: "src/runtime-entry.ts",
+        zod: "src/zod.ts",
       },
       output: {
         entryFileNames: "[name].js",

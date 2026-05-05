@@ -22,6 +22,10 @@
     "./runtime": {
       "types": "./types/runtime-entry.d.ts",
       "import": "./dist/runtime.js"
+    },
+    "./zod": {
+      "types": "./types/zod.d.ts",
+      "import": "./dist/zod.js"
     }
   },
   "scripts": {
@@ -38,7 +42,8 @@
     "@vitejs/plugin-react": "6.0.1",
     "react": "19.2.5",
     "react-dom": "19.2.5",
-    "vite": "^8.0.10"
+    "vite": "^8.0.10",
+    "zod": "^4.3.6"
   },
   "peerDependencies": {
     "vite": ">=8 <9"

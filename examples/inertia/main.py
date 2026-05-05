@@ -14,7 +14,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from gdansk import Metadata, Ship, Vite
 from gdansk.fastapi import inertia_request_validation_exception_handler
-from gdansk.inertia import Always, Defer, Inertia, InertiaPage, Merge, Scroll
+from gdansk.inertia import Always, Defer, Inertia, InertiaPage, Merge, Once, Scroll
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -75,7 +75,7 @@ class Metric(TypedDict):
 
 class SharedProps(BaseModel):
     headline: str | None = None
-    session_token: object | None = Field(default=None, serialization_alias="sessionToken")
+    session_token: Once[str] | None = Field(default=None, serialization_alias="sessionToken")
     summary: str | None = None
 
 
@@ -173,7 +173,7 @@ type PageDependency = Annotated["InertiaPage[SharedProps]", Depends(ship.page)]
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    async with ship.lifespan(watch=not PRODUCTION):
+    async with ship.lifespan(app=app, watch=not PRODUCTION):
         yield
 
 
@@ -198,7 +198,7 @@ async def home(page: PageDependency) -> HomeProps:
             "tooling gdansk already owns.",
         ),
     )
-    page.share_once(SharedProps(session_token=lambda: token_urlsafe(6)))
+    page.share_once(SharedProps(session_token=Once(value=lambda: token_urlsafe(6))))
     return HomeProps(
         activity=Defer(value=build_activity, group="activity"),
         announcements=Merge(value=build_announcements(), match_on="id"),

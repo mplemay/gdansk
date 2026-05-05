@@ -102,6 +102,8 @@ class Ship[SharedPropsT: BaseModel]:
         self,
         *,
         metadata: Metadata | None = None,
+        props: type[BaseModel] | None = None,
+        shared: type[BaseModel] | None = None,
     ) -> PageRouteDecorator: ...
 
     @overload
@@ -110,6 +112,8 @@ class Ship[SharedPropsT: BaseModel]:
         component: str,
         *,
         metadata: Metadata | None = None,
+        props: type[BaseModel] | None = None,
+        shared: type[BaseModel] | None = None,
     ) -> PageRouteDecorator: ...
 
     def page(
@@ -117,15 +121,17 @@ class Ship[SharedPropsT: BaseModel]:
         request: Request | str | None = None,
         *,
         metadata: Metadata | None = None,
+        props: type[BaseModel] | None = None,
+        shared: type[BaseModel] | None = None,
     ) -> InertiaPage[SharedPropsT] | PageRouteDecorator:
         if isinstance(request, Request):
             return self._page_dependency(request)
 
         if request is None:
-            return self._ensure_inertia_app().page(metadata=metadata)
+            return self._ensure_inertia_app().page(metadata=metadata, props=props, shared=shared)
 
         if isinstance(request, str):
-            return self._ensure_inertia_app().page(request, metadata=metadata)
+            return self._ensure_inertia_app().page(request, metadata=metadata, props=props, shared=shared)
 
         msg = "Ship.page() requires no arguments, a Request dependency, or an Inertia component string"
         raise TypeError(msg)
@@ -134,7 +140,13 @@ class Ship[SharedPropsT: BaseModel]:
         return InertiaPage(app=self._ensure_inertia_app(), request=request)
 
     @asynccontextmanager
-    async def lifespan(self, *, mcp: MCPServer | None = None, watch: bool | None = False) -> AsyncIterator[None]:
+    async def lifespan(
+        self,
+        *,
+        app: object | None = None,
+        mcp: MCPServer | None = None,
+        watch: bool | None = False,
+    ) -> AsyncIterator[None]:
         mode = self._runtime_mode()
         if mode == "widget":
             if mcp is None:
@@ -148,7 +160,7 @@ class Ship[SharedPropsT: BaseModel]:
             if mode == "widget":
                 await self._prepare_frontend(watch=watch)
             else:
-                await self._prepare_inertia(watch=watch)
+                await self._prepare_inertia(app=app, watch=watch)
             yield None
         finally:
             await self._session_end()
@@ -205,7 +217,16 @@ class Ship[SharedPropsT: BaseModel]:
         if not self._dev:
             self._vite.load_manifest()
 
-    async def _prepare_inertia(self, *, watch: bool | None) -> None:
+    def generate_page_types(self, *, app: object) -> None:
+        self._ensure_inertia_app().generate_page_types(
+            app=app,
+            output_path=self._vite.root / ".gdansk" / "pages.ts",
+        )
+
+    async def _prepare_inertia(self, *, app: object | None, watch: bool | None) -> None:
+        if app is not None:
+            self.generate_page_types(app=app)
+
         await self._run_frontend(watch=watch)
         if not self._dev:
             self._ensure_inertia_app()._resolve_assets()  # noqa: SLF001

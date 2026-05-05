@@ -58,7 +58,8 @@ describe("@gdansk/vite", () => {
     };
 
     expect(packageJson.dependencies?.["@inertiajs/react"]).toBe("3.0.3");
-    expect(packageJson.dependencies?.vite).toBe("^8.0.9");
+    expect(packageJson.dependencies?.vite).toBe("^8.0.10");
+    expect(packageJson.dependencies?.zod).toBe("^4.3.6");
     expect(packageJson.peerDependencies?.vite).toBe(">=8 <9");
   });
 

@@ -66,6 +66,8 @@ Temporary Items
 
 ### JavaScript / Node (root tooling) ###
 node_modules/
+.gdansk/
+**/.gdansk/
 
 ### Python ###
 # Byte-compiled / optimized / DLL files

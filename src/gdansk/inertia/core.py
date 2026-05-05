@@ -14,6 +14,12 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from gdansk.inertia.page import InertiaPage
+from gdansk.inertia.page_types import (
+    PageTypeRoute,
+    infer_page_props_model,
+    normalize_page_props_model,
+    write_page_types_module,
+)
 from gdansk.inertia.props import Prop
 from gdansk.inertia.utils import _PAGE_DEV_ENTRY, InertiaResponse
 from gdansk.metadata import Metadata, merge_metadata
@@ -21,6 +27,8 @@ from gdansk.render import render_template
 from gdansk.utils import join_url
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from pydantic.fields import FieldInfo
 
     from gdansk.core import Ship
@@ -53,6 +61,7 @@ class InertiaApp[SharedPropsT: BaseModel]:
         config: Inertia[SharedPropsT],
     ) -> None:
         self._default_encrypt_history: Final[bool] = config.encrypt_history
+        self._page_type_routes: list[PageTypeRoute] = []
         self._root_id: Final[str] = config.id
         self._shared_props_model: Final[type[SharedPropsT] | None] = config.props
         self._ship: Final[Ship[SharedPropsT]] = ship
@@ -79,6 +88,8 @@ class InertiaApp[SharedPropsT: BaseModel]:
         self,
         *,
         metadata: Metadata | None = None,
+        props: type[BaseModel] | None = None,
+        shared: type[BaseModel] | None = None,
     ) -> PageRouteDecorator: ...
 
     @overload
@@ -87,6 +98,8 @@ class InertiaApp[SharedPropsT: BaseModel]:
         component: str,
         *,
         metadata: Metadata | None = None,
+        props: type[BaseModel] | None = None,
+        shared: type[BaseModel] | None = None,
     ) -> PageRouteDecorator: ...
 
     def page(
@@ -94,10 +107,16 @@ class InertiaApp[SharedPropsT: BaseModel]:
         component: str | None = None,
         *,
         metadata: Metadata | None = None,
+        props: type[BaseModel] | None = None,
+        shared: type[BaseModel] | None = None,
     ) -> PageRouteDecorator:
         normalized_component = self.normalize_component(component) if component is not None else None
+        normalized_props_model = normalize_page_props_model(props, name="route")
+        normalized_shared_model = normalize_page_props_model(shared, name="shared")
 
         def decorator(func: PageRouteHandler) -> Callable[..., object]:
+            props_model = normalized_props_model or infer_page_props_model(func)
+
             @wraps(func)
             async def wrapper(
                 *args: object,
@@ -124,7 +143,7 @@ class InertiaApp[SharedPropsT: BaseModel]:
                     metadata=metadata,
                 )
 
-            return _append_to_signature(
+            decorated = _append_to_signature(
                 wrapper,
                 Parameter(
                     "_gdansk_inertia_request",
@@ -133,6 +152,15 @@ class InertiaApp[SharedPropsT: BaseModel]:
                 ),
                 return_annotation=Response,
             )
+            self._page_type_routes.append(
+                PageTypeRoute(
+                    component=normalized_component,
+                    endpoint=decorated,
+                    props_model=props_model,
+                    shared_model=normalized_shared_model,
+                ),
+            )
+            return decorated
 
         return decorator
 
@@ -170,6 +198,14 @@ class InertiaApp[SharedPropsT: BaseModel]:
             raise RuntimeError(msg)
 
         return page
+
+    def generate_page_types(self, *, app: object, output_path: Path) -> None:
+        write_page_types_module(
+            app=app,
+            output_path=output_path,
+            routes=self._page_type_routes,
+            shared_props_model=self._shared_props_model,
+        )
 
     def version(self) -> str | None:
         if self._version_override is not None:
