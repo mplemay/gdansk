@@ -17,7 +17,7 @@ The example backend exercises the new prop wrapper surface directly:
 - `Merge(..., deep=True)` merges nested conversation payloads.
 - `Scroll(...)` emits merge metadata plus `scrollProps`, including reset-aware behavior.
 - `page.location("/#activity")` demonstrates a server-initiated jump to a fragment anchor.
-- `ship.inertia(encrypt_history=True)` turns on encrypted history by default.
+- `Ship(..., inertia=Inertia(encrypt_history=True))` turns on encrypted history by default.
 
 ## Run
 

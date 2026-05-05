@@ -12,7 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
 
-from gdansk import Always, Defer, Merge, Metadata, Scroll, Ship, Vite
+from gdansk import Always, Defer, Inertia, Merge, Metadata, Scroll, Ship, Vite
 from gdansk.fastapi import inertia_request_validation_exception_handler
 from gdansk.inertia import InertiaPage  # noqa: TC001
 
@@ -158,8 +158,10 @@ def build_feed() -> Feed:
     }
 
 
-ship = Ship(vite=Vite(Path(__file__).parent / "src/gdansk_inertia_example/views"))
-ship.inertia(encrypt_history=True)
+ship = Ship(
+    vite=Vite(Path(__file__).parent / "src/gdansk_inertia_example/views"),
+    inertia=Inertia(encrypt_history=True),
+)
 type PageDependency = Annotated["InertiaPage", Depends(ship.page)]
 
 

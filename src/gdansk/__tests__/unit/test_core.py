@@ -747,6 +747,9 @@ async def test_ship_lifespan_uses_page_mode_without_explicit_inertia_setup(page_
     write_page_manifest(page_views_path)
     ship = Ship(vite=Vite(page_views_path))
 
+    assert ship._mode is None
+    assert ship._inertia_app is None
+
     async with ship.lifespan(mcp=_app(), watch=None):
         assert ship._mode == "inertia"
         assert ship._inertia_app is not None

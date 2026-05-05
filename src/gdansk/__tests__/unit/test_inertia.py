@@ -12,7 +12,20 @@ from pydantic import BaseModel
 from starlette.requests import Request
 from starlette.testclient import TestClient
 
-from gdansk import Always, Defer, InertiaPage, InertiaResponse, Merge, Metadata, Once, OptionalProp, Scroll, Ship, Vite
+from gdansk import (
+    Always,
+    Defer,
+    Inertia,
+    InertiaPage,
+    InertiaResponse,
+    Merge,
+    Metadata,
+    Once,
+    OptionalProp,
+    Scroll,
+    Ship,
+    Vite,
+)
 from gdansk.__tests__.unit.conftest import SessionStateMiddleware, write_page_manifest
 
 
@@ -121,7 +134,7 @@ def test_inertia_renders_production_html_shell(page_views_path: Path):
         },
     )
     ship = Ship(vite=Vite(page_views_path), metadata=Metadata(title="Base title"))
-    inertia = ship.inertia()
+    inertia = ship._ensure_inertia_app()
     page = {
         "component": "/",
         "flash": {},
@@ -148,7 +161,7 @@ def test_inertia_renders_dev_html_shell(page_views_path: Path):
     ship = Ship(vite=Vite(page_views_path))
     ship._dev = True
     ship._vite._origin = "http://127.0.0.1:5173"
-    inertia = ship.inertia()
+    inertia = ship._ensure_inertia_app()
     page = {
         "component": "/",
         "flash": {},
@@ -169,8 +182,8 @@ def test_inertia_renders_dev_html_shell(page_views_path: Path):
 
 def test_inertia_renders_custom_root_id_in_html_shell(page_views_path: Path):
     write_page_manifest(page_views_path)
-    ship = Ship(vite=Vite(page_views_path))
-    inertia = ship.inertia(root_id="custom-root")
+    ship = Ship(vite=Vite(page_views_path), inertia=Inertia(id="custom-root"))
+    inertia = ship._ensure_inertia_app()
     page = {
         "component": "/",
         "flash": {},
@@ -187,10 +200,16 @@ def test_inertia_renders_custom_root_id_in_html_shell(page_views_path: Path):
     assert '<div id="custom-root"></div>' in html
 
 
+@pytest.mark.parametrize("id_value", ["", "   "])
+def test_inertia_rejects_empty_id(id_value: str) -> None:
+    with pytest.raises(ValueError, match="Inertia id"):
+        Inertia(id=id_value)
+
+
 def test_inertia_json_response_has_expected_page_shape(page_views_path: Path):
     write_page_manifest(page_views_path)
     ship = Ship(vite=Vite(page_views_path))
-    inertia = ship.inertia()
+    inertia = ship._ensure_inertia_app()
     app = _page_app(ship)
 
     @app.get("/")
@@ -244,7 +263,7 @@ def test_inertia_omits_default_false_and_client_owned_v3_fields(page_views_path:
             "errors": {},
         },
         "url": "/",
-        "version": ship.inertia().version(),
+        "version": ship._ensure_inertia_app().version(),
     }
 
 
@@ -707,8 +726,7 @@ def test_inertia_location_non_inertia_redirects_convert_unsafe_methods(page_view
 
 def test_inertia_supports_history_flags_and_fragment_redirects(page_views_path: Path):
     write_page_manifest(page_views_path)
-    ship = Ship(vite=Vite(page_views_path))
-    ship.inertia(encrypt_history=True)
+    ship = Ship(vite=Vite(page_views_path), inertia=Inertia(encrypt_history=True))
     app = _page_app(ship)
 
     @app.get("/")
@@ -929,7 +947,7 @@ def test_inertia_decorator_rejects_page_from_different_app(page_views_path: Path
     page = second_ship.page(request)
 
     with pytest.raises(RuntimeError, match="different Inertia app"):
-        first_ship.inertia()._route_page(args=(page,), kwargs={}, request=request)
+        first_ship._ensure_inertia_app()._route_page(args=(page,), kwargs={}, request=request)
 
 
 def test_inertia_decorator_rejects_page_from_different_request(page_views_path: Path):
@@ -938,14 +956,16 @@ def test_inertia_decorator_rejects_page_from_different_request(page_views_path: 
     page = ship.page(_request(path="/other"))
 
     with pytest.raises(RuntimeError, match="different request"):
-        ship.inertia()._route_page(args=(page,), kwargs={}, request=request)
+        ship._ensure_inertia_app()._route_page(args=(page,), kwargs={}, request=request)
 
 
 def test_ship_page_uses_custom_inertia_configuration(page_views_path: Path):
-    ship = Ship(vite=Vite(page_views_path))
+    ship = Ship(
+        vite=Vite(page_views_path),
+        inertia=Inertia(id="custom-root", version="custom-version", encrypt_history=True),
+    )
     request = _request(path="/")
 
-    ship.inertia(root_id="custom-root", version="custom-version", encrypt_history=True)
     page = ship.page(request)
 
     assert page._app.root_id == "custom-root"
@@ -954,8 +974,7 @@ def test_ship_page_uses_custom_inertia_configuration(page_views_path: Path):
 
 
 def test_ship_rejects_mixing_inertia_and_widgets(page_views_path: Path):
-    ship = Ship(vite=Vite(page_views_path))
-    ship.inertia()
+    ship = Ship(vite=Vite(page_views_path), inertia=Inertia())
 
     with pytest.raises(RuntimeError, match="cannot register widgets and Inertia pages"):
         ship.widget(path=Path("hello/widget.tsx"))

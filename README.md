@@ -51,13 +51,13 @@ key intentionally differ.
 
 For FastAPI pages, decorate a route with `@ship.page(...)`, return a Pydantic model or mapping, and run the frontend
 with `ship.lifespan(...)`. Page routes may also return `None` for empty props or an `InertiaResponse` such as
-`page.location("/#activity")`. Call `ship.inertia(...)` only when you need non-default page settings such as a custom
-root id or explicit version.
+`page.location("/#activity")`. Pass `inertia=Inertia(...)` to `Ship` to configure page settings such as a custom root
+id, explicit version, or default encrypted history.
 
 ```python
 from pydantic import BaseModel, Field
 
-from gdansk import Defer, Merge, Metadata, Ship, Vite
+from gdansk import Defer, Inertia, Merge, Metadata, Ship, Vite
 
 
 class HomeProps(BaseModel):
@@ -67,7 +67,7 @@ class HomeProps(BaseModel):
     updated_at: str = Field(serialization_alias="updatedAt")
 
 
-ship = Ship(vite=Vite("frontend"))
+ship = Ship(vite=Vite("frontend"), inertia=Inertia(id="app"))
 
 
 @app.get("/")

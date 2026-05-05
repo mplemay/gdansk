@@ -2,6 +2,7 @@ from .core import Ship
 from .inertia import (
     Always,
     Defer,
+    Inertia,
     InertiaApp,
     InertiaPage,
     InertiaResponse,
@@ -21,6 +22,7 @@ __all__: tuple[str, ...] = (
     "Always",
     "Defer",
     "FileParam",
+    "Inertia",
     "InertiaApp",
     "InertiaPage",
     "InertiaResponse",

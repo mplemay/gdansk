@@ -220,19 +220,27 @@ class ResolvedPageData:
     shared_props: list[str] = field(default_factory=list)
 
 
+@dataclass(slots=True, kw_only=True, frozen=True)
+class Inertia:
+    id: str = "app"
+    version: str | None = None
+    encrypt_history: bool = False
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "id", _normalize_inertia_id(self.id))
+
+
 class InertiaApp:
     def __init__(
         self,
         *,
         ship: Ship,
-        root_id: str,
-        version: str | None,
-        encrypt_history: bool,
+        config: Inertia,
     ) -> None:
-        self._default_encrypt_history: Final[bool] = encrypt_history
-        self._root_id: Final[str] = self._normalize_root_id(root_id)
+        self._default_encrypt_history: Final[bool] = config.encrypt_history
+        self._root_id: Final[str] = config.id
         self._ship: Final[Ship] = ship
-        self._version_override: Final[str | None] = version
+        self._version_override: Final[str | None] = config.version
 
     @property
     def root_id(self) -> str:
@@ -449,14 +457,6 @@ class InertiaApp:
 
         msg = "The frontend build manifest must contain exactly one page entry"
         raise RuntimeError(msg)
-
-    @staticmethod
-    def _normalize_root_id(root_id: str) -> str:
-        if not (cleaned := root_id.strip()):
-            msg = "The Inertia root ID must not be empty"
-            raise ValueError(msg)
-
-        return cleaned
 
     @staticmethod
     def normalize_component(component: str) -> str:
@@ -997,6 +997,14 @@ def _route_result_to_props(result: object) -> dict[str, Any]:
     raise TypeError(msg)
 
 
+def _normalize_inertia_id(id_value: str) -> str:
+    if not (cleaned := id_value.strip()):
+        msg = "The Inertia id must not be empty"
+        raise ValueError(msg)
+
+    return cleaned
+
+
 def _validate_v3_page_payload(page: dict[str, Any]) -> None:
     if missing := _REQUIRED_V3_PAGE_KEYS.difference(page):
         msg = f"Inertia v3 page payload is missing required field(s): {', '.join(sorted(missing))}"
@@ -1233,6 +1241,7 @@ __all__ = [
     "_FLASH_SESSION_KEY",
     "Always",
     "Defer",
+    "Inertia",
     "InertiaApp",
     "InertiaPage",
     "InertiaResponse",
