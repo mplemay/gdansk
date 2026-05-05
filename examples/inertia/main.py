@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from os import getenv
 from pathlib import Path
 from secrets import token_urlsafe
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, TypedDict
 
 from fastapi import Depends, FastAPI
 from fastapi.exceptions import RequestValidationError
@@ -30,16 +30,59 @@ class FeedbackPayload(BaseModel):
     topic: str = Field(min_length=3)
 
 
+class Announcement(TypedDict):
+    id: str
+    label: str
+    note: str
+
+
+class ConversationMessage(TypedDict):
+    author: str
+    body: str
+    id: str
+
+
+class ConversationSummary(TypedDict):
+    updatedAt: str
+
+
+class Conversation(TypedDict):
+    messages: list[ConversationMessage]
+    summary: ConversationSummary
+
+
+class FeedItem(TypedDict):
+    id: str
+    text: str
+
+
+class FeedPagination(TypedDict):
+    current: int
+    next: int
+    previous: int
+
+
+class Feed(TypedDict):
+    items: list[FeedItem]
+    pagination: FeedPagination
+
+
+class Metric(TypedDict):
+    label: str
+    note: str
+    value: str
+
+
 class HomeProps(BaseModel):
     activity: Defer[list[str]]
-    announcements: Merge[list[dict[str, str]]]
-    conversation: Merge[dict[str, object]]
-    feed: Scroll[dict[str, object]]
-    metrics: Always[list[dict[str, str]]]
+    announcements: Merge[list[Announcement]]
+    conversation: Merge[Conversation]
+    feed: Scroll[Feed]
+    metrics: Always[list[Metric]]
     updated_at: Always[str] = Field(serialization_alias="updatedAt")
 
 
-def build_metrics() -> list[dict[str, str]]:
+def build_metrics() -> list[Metric]:
     return [
         {
             "label": "Protocol",
@@ -68,7 +111,7 @@ def build_activity() -> list[str]:
     ]
 
 
-def build_announcements() -> list[dict[str, str]]:
+def build_announcements() -> list[Announcement]:
     timestamp = datetime.now(UTC).strftime("%H:%M:%S")
     key = datetime.now(UTC).strftime("%H%M%S%f")
     return [
@@ -80,7 +123,7 @@ def build_announcements() -> list[dict[str, str]]:
     ]
 
 
-def build_conversation() -> dict[str, object]:
+def build_conversation() -> Conversation:
     timestamp = datetime.now(UTC).strftime("%H:%M:%S")
     key = datetime.now(UTC).strftime("%H%M%S%f")
     return {
@@ -97,7 +140,7 @@ def build_conversation() -> dict[str, object]:
     }
 
 
-def build_feed() -> dict[str, object]:
+def build_feed() -> Feed:
     timestamp = datetime.now(UTC).strftime("%H:%M:%S")
     key = datetime.now(UTC).strftime("%H%M%S%f")
     return {

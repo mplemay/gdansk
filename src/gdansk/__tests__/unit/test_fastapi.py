@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from inspect import Signature, signature
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 from fastapi import Body, Depends, FastAPI
 from fastapi.exceptions import RequestValidationError
@@ -23,6 +23,46 @@ class FeedbackPayload(BaseModel):
     topic: str = Field(min_length=3)
 
 
+class Announcement(TypedDict):
+    id: int
+    title: str
+
+
+class ConversationMessage(TypedDict):
+    body: str
+    id: int
+
+
+class ConversationSummary(TypedDict):
+    updatedAt: str
+
+
+class Conversation(TypedDict):
+    messages: list[ConversationMessage]
+    summary: ConversationSummary
+
+
+class FeedItem(TypedDict):
+    id: int
+    title: str
+
+
+class FeedPagination(TypedDict):
+    current: int
+    next: int
+    previous: int
+
+
+class Feed(TypedDict):
+    items: list[FeedItem]
+    pagination: FeedPagination
+
+
+class User(TypedDict):
+    id: int
+    name: str
+
+
 class ValidationPageProps(BaseModel):
     activity: Defer[list[str]]
     headline: str
@@ -35,13 +75,13 @@ class HeadlinePageProps(BaseModel):
 class DecoratedPageProps(BaseModel):
     activity: Defer[list[str]]
     always_value: Always[str]
-    announcements: Merge[list[dict[str, object]]]
-    conversation: Merge[dict[str, object]]
-    feed: Scroll[dict[str, object]]
+    announcements: Merge[list[Announcement]]
+    conversation: Merge[Conversation]
+    feed: Scroll[Feed]
     optional_value: OptionalProp[str]
     profile: Once[str]
     updated_at: str = Field(serialization_alias="updatedAt")
-    users: Merge[list[dict[str, object]]]
+    users: Merge[list[User]]
 
 
 def test_fastapi_inertia_validation_and_flash_flow(page_views_path: Path):

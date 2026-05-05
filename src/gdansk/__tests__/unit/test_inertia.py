@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from datetime import timedelta
 from json import loads
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, TypedDict
 
 import pytest
 from fastapi import Depends, FastAPI
@@ -26,6 +26,41 @@ class LazyMessagePageProps(BaseModel):
 
 class MessagePageProps(BaseModel):
     message: str
+
+
+class Announcement(TypedDict):
+    id: int
+    title: str
+
+
+class ConversationMessage(TypedDict):
+    body: str
+    id: int
+
+
+class Conversation(TypedDict):
+    messages: list[ConversationMessage]
+
+
+class FeedItem(TypedDict):
+    id: int
+    title: str
+
+
+class FeedPagination(TypedDict):
+    current: int
+    next: int
+    previous: int
+
+
+class Feed(TypedDict):
+    items: list[FeedItem]
+    pagination: FeedPagination
+
+
+class User(TypedDict):
+    id: int
+    name: str
 
 
 class PartialReloadPageProps(BaseModel):
@@ -51,13 +86,13 @@ class NestedAuthPageProps(BaseModel):
 
 
 class MergeMetadataPageProps(BaseModel):
-    announcements: Merge[list[dict[str, object]]]
-    conversation: Merge[dict[str, object]]
-    users: Merge[list[dict[str, object]]]
+    announcements: Merge[list[Announcement]]
+    conversation: Merge[Conversation]
+    users: Merge[list[User]]
 
 
 class ScrollPageProps(BaseModel):
-    feed: Scroll[dict[str, object]]
+    feed: Scroll[Feed]
 
 
 _V3_REQUIRED_PAGE_KEYS: Final[frozenset[str]] = frozenset({"component", "flash", "props", "url", "version"})

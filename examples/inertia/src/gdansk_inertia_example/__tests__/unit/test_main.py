@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TypedDict
+
 from fastapi import Depends, FastAPI
 from pydantic import BaseModel, Field
 from starlette.testclient import TestClient
@@ -8,9 +10,30 @@ from gdansk import Always, InertiaPage, Merge, Ship, Vite
 from gdansk.__tests__.unit.conftest import write_page_manifest
 
 
+class ConversationMessage(TypedDict):
+    author: str
+    body: str
+    id: str
+
+
+class ConversationSummary(TypedDict):
+    updatedAt: str
+
+
+class Conversation(TypedDict):
+    messages: list[ConversationMessage]
+    summary: ConversationSummary
+
+
+class Metric(TypedDict):
+    label: str
+    note: str
+    value: str
+
+
 class HomeProps(BaseModel):
-    conversation: Merge[dict[str, object]]
-    metrics: Always[list[dict[str, str]]]
+    conversation: Merge[Conversation]
+    metrics: Always[list[Metric]]
     updated_at: Always[str] = Field(serialization_alias="updatedAt")
 
 
