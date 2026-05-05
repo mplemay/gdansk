@@ -134,7 +134,6 @@ app.mount(ship.assets_path, ship.assets)
 
 @app.get("/")
 @ship.page(
-    "/",
     metadata=Metadata(
         description="Ship-backed Inertia pages for FastAPI",
         title="Gdansk Inertia",

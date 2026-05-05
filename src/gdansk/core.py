@@ -93,6 +93,13 @@ class Ship:
     @overload
     def page(
         self,
+        *,
+        metadata: Metadata | None = None,
+    ) -> PageRouteDecorator: ...
+
+    @overload
+    def page(
+        self,
         component: str,
         *,
         metadata: Metadata | None = None,
@@ -100,17 +107,20 @@ class Ship:
 
     def page(
         self,
-        request: Request | str,
+        request: Request | str | None = None,
         *,
         metadata: Metadata | None = None,
     ) -> InertiaPage | PageRouteDecorator:
         if isinstance(request, Request):
             return self._page_dependency(request)
 
+        if request is None:
+            return self._ensure_inertia_app().page(metadata=metadata)
+
         if isinstance(request, str):
             return self._ensure_inertia_app().page(request, metadata=metadata)
 
-        msg = "Ship.page() requires a Request dependency or an Inertia component string"
+        msg = "Ship.page() requires no arguments, a Request dependency, or an Inertia component string"
         raise TypeError(msg)
 
     def _page_dependency(self, request: Request) -> InertiaPage:

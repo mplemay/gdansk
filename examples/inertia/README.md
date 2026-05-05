@@ -6,7 +6,7 @@ scroll props, and a convention-driven Vite page build powered by `gdanskPages()`
 
 The frontend follows the `app/` contract:
 
-- `app/page.tsx` is the root Inertia page and is rendered from Python with `@ship.page("/")`.
+- `app/page.tsx` is the root Inertia page and is rendered from Python with `@ship.page()`.
 - `app/**/page.tsx` maps nested folders to slash-delimited component ids.
 - `app/**/layout.tsx` wraps the page in the same folder and any parent folders.
 

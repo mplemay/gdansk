@@ -45,8 +45,9 @@ Then use:
 requests use the Inertia JSON protocol, and production assets still come from `ship.assets`.
 
 Page mode is convention-driven. Put the root page at `app/page.tsx`, nested pages at `app/**/page.tsx`, and
-co-located layouts at `app/**/layout.tsx`. Decorate the root route with `@ship.page("/")`; nested folders map to
-slash-delimited component ids like `@ship.page("dashboard/reports")`.
+co-located layouts at `app/**/layout.tsx`. Decorate matching routes with `@ship.page()` to infer the component from
+the route path, or use an explicit id like `@ship.page("dashboard/reports")` when the backend route and frontend page
+key intentionally differ.
 
 For FastAPI pages, decorate a route with `@ship.page(...)`, return a Pydantic model, and run the frontend with
 `ship.lifespan(...)`. Call `ship.inertia(...)` only when you need non-default page settings such as a custom root id or
@@ -69,7 +70,7 @@ ship = Ship(vite=Vite("frontend"))
 
 
 @app.get("/")
-@ship.page("/", metadata=Metadata(title="Home"))
+@ship.page(metadata=Metadata(title="Home"))
 async def home() -> HomeProps:
     return HomeProps(
         activity=Defer(value=load_activity, group="activity"),
@@ -130,7 +131,7 @@ class DashboardProps(BaseModel):
 
 
 @app.get("/")
-@ship.page("/")
+@ship.page()
 async def home(page: PageDependency) -> DashboardProps:
     page.share_once(sessionToken=load_session_token)
 

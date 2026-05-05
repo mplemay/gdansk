@@ -21,7 +21,7 @@ def _build_app(tmp_path) -> FastAPI:
     app = FastAPI()
 
     @app.get("/")
-    @ship.page("/")
+    @ship.page()
     async def home() -> HomeProps:
         return HomeProps(
             conversation=Merge(

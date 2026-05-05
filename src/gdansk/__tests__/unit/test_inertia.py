@@ -730,6 +730,55 @@ def test_inertia_supports_history_flags_and_fragment_redirects(page_views_path: 
     assert explicit.headers["X-Inertia-Redirect"] == "/target#details"
 
 
+def test_inertia_page_decorator_infers_root_component(page_views_path: Path):
+    write_page_manifest(page_views_path)
+    ship = Ship(vite=Vite(page_views_path))
+    app = _page_app(ship)
+
+    @app.get("/")
+    @ship.page()
+    async def home() -> EmptyPageProps:
+        return EmptyPageProps()
+
+    with TestClient(app) as client:
+        response = client.get("/", headers={"X-Inertia": "true"})
+
+    assert response.json()["component"] == "/"
+
+
+def test_inertia_page_decorator_infers_nested_route_component(page_views_path: Path):
+    write_page_manifest(page_views_path)
+    ship = Ship(vite=Vite(page_views_path))
+    app = _page_app(ship)
+
+    @app.get("/dashboard/reports")
+    @ship.page()
+    async def reports() -> EmptyPageProps:
+        return EmptyPageProps()
+
+    with TestClient(app) as client:
+        response = client.get("/dashboard/reports", headers={"X-Inertia": "true"})
+
+    assert response.json()["component"] == "dashboard/reports"
+
+
+def test_inertia_page_decorator_prefers_route_template_for_dynamic_components(page_views_path: Path):
+    write_page_manifest(page_views_path)
+    ship = Ship(vite=Vite(page_views_path))
+    app = _page_app(ship)
+
+    @app.get("/dashboard/{report_id}")
+    @ship.page()
+    async def report(report_id: str) -> EmptyPageProps:
+        assert report_id == "weekly"
+        return EmptyPageProps()
+
+    with TestClient(app) as client:
+        response = client.get("/dashboard/weekly", headers={"X-Inertia": "true"})
+
+    assert response.json()["component"] == "dashboard/{report_id}"
+
+
 def test_inertia_normalizes_nested_component_keys(page_views_path: Path):
     write_page_manifest(page_views_path)
     ship = Ship(vite=Vite(page_views_path))

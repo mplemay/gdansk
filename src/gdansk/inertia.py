@@ -7,7 +7,7 @@ from functools import wraps
 from hashlib import sha256
 from inspect import Parameter, Signature, iscoroutinefunction, signature
 from json import JSONDecodeError, dumps, loads
-from typing import TYPE_CHECKING, Any, Final, Literal, Self, TypedDict, cast
+from typing import TYPE_CHECKING, Any, Final, Literal, Self, TypedDict, cast, overload
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 from starlette.concurrency import run_in_threadpool
@@ -244,13 +244,28 @@ class InertiaApp:
     def default_encrypt_history(self) -> bool:
         return self._default_encrypt_history
 
+    @overload
+    def page(
+        self,
+        *,
+        metadata: Metadata | None = None,
+    ) -> PageRouteDecorator: ...
+
+    @overload
     def page(
         self,
         component: str,
         *,
         metadata: Metadata | None = None,
+    ) -> PageRouteDecorator: ...
+
+    def page(
+        self,
+        component: str | None = None,
+        *,
+        metadata: Metadata | None = None,
     ) -> PageRouteDecorator:
-        normalized_component = self.normalize_component(component)
+        normalized_component = self.normalize_component(component) if component is not None else None
 
         def decorator(func: Callable[..., object]) -> Callable[..., object]:
             @wraps(func)
@@ -268,8 +283,13 @@ class InertiaApp:
                 if isinstance(result, Response):
                     return result
 
+                component_key = (
+                    normalized_component
+                    if normalized_component is not None
+                    else self._component_from_request(_gdansk_inertia_request)
+                )
                 return await page._render(  # noqa: SLF001
-                    normalized_component,
+                    component_key,
                     _route_result_to_props(result),
                     metadata=metadata,
                 )
@@ -285,6 +305,15 @@ class InertiaApp:
             )
 
         return decorator
+
+    @classmethod
+    def _component_from_request(cls, request: Request) -> str:
+        route = request.scope.get("route")
+        route_path = getattr(route, "path", None)
+        if isinstance(route_path, str) and route_path.strip():
+            return cls.normalize_component(route_path)
+
+        return cls.normalize_component(request.url.path)
 
     def _route_page(self, *, args: tuple[object, ...], kwargs: dict[str, object], request: Request) -> InertiaPage:
         pages = [value for value in (*args, *kwargs.values()) if isinstance(value, InertiaPage)]
