@@ -14,7 +14,7 @@ def maybe_awaitable[**P, T](callback: Callable[P, Awaitable[T]]) -> Callable[P, 
 
 
 @overload
-def maybe_awaitable[**P, T](callback: Callable[P, MaybeAwaitable[T]]) -> Callable[P, Awaitable[T]]: ...
+def maybe_awaitable[**P, T](callback: Callable[P, T]) -> Callable[P, Awaitable[T]]: ...
 
 
 def maybe_awaitable[**P, T](callback: Callable[P, MaybeAwaitable[T]]) -> Callable[P, Awaitable[T]]:
