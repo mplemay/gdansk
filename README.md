@@ -58,7 +58,8 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field
 
-from gdansk import MaybeAwaitable, Metadata, Ship, Vite, defer, merge
+from gdansk import Metadata, Ship, Vite, defer, merge
+from gdansk.utils import MaybeAwaitable
 
 
 class HomeProps(BaseModel):

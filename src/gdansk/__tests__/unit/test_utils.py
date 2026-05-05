@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gdansk import maybe_awaitable
+from gdansk.utils import maybe_awaitable
 
 
 async def test_maybe_awaitable_wraps_sync_callbacks():

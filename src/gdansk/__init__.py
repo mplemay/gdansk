@@ -13,7 +13,6 @@ from .inertia import (
     scroll,
 )
 from .metadata import Metadata
-from .utils import MaybeAwaitable, maybe_awaitable
 from .vite import Vite
 from .widget import FileParam, WidgetMeta
 
@@ -21,7 +20,6 @@ __all__: tuple[str, ...] = (
     "FileParam",
     "InertiaApp",
     "InertiaPage",
-    "MaybeAwaitable",
     "Metadata",
     "PageProp",
     "Ship",
@@ -30,7 +28,6 @@ __all__: tuple[str, ...] = (
     "always",
     "deep_merge",
     "defer",
-    "maybe_awaitable",
     "merge",
     "once",
     "optional",
