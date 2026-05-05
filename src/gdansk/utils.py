@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import functools
 from collections.abc import Awaitable, Callable
+from functools import wraps
+from inspect import isawaitable
 from pathlib import PurePosixPath
 from typing import cast, overload
 from urllib.parse import urlparse, urlunparse
@@ -18,10 +19,10 @@ def maybe_awaitable[**P, T](callback: Callable[P, T]) -> Callable[P, Awaitable[T
 
 
 def maybe_awaitable[**P, T](callback: Callable[P, MaybeAwaitable[T]]) -> Callable[P, Awaitable[T]]:
-    @functools.wraps(callback)
+    @wraps(callback)
     async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
         result = callback(*args, **kwargs)
-        if isinstance(result, Awaitable):
+        if isawaitable(result):
             return await cast("Awaitable[T]", result)
 
         return result
