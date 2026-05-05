@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Callable  # noqa: TC003
 from contextlib import asynccontextmanager
 from inspect import Signature, signature
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING
 
 from fastapi import Body, Depends, FastAPI
 from fastapi.exceptions import RequestValidationError
@@ -11,11 +10,10 @@ from pydantic import BaseModel, Field
 from starlette.responses import Response
 from starlette.testclient import TestClient
 
-from gdansk import Metadata, Ship, Vite, always, deep_merge, defer, merge, once, optional, prop, scroll
+from gdansk import Always, Defer, Merge, Metadata, Once, OptionalProp, Scroll, Ship, Vite
 from gdansk.__tests__.unit.conftest import SessionStateMiddleware, write_page_manifest
 from gdansk.fastapi import inertia_request_validation_exception_handler
 from gdansk.inertia import InertiaPage
-from gdansk.utils import MaybeAwaitable  # noqa: TC001
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -27,24 +25,15 @@ class FeedbackPayload(BaseModel):
 
 
 class DecoratedPageProps(BaseModel):
-    activity: Annotated[Callable[[], MaybeAwaitable[list[str]]], defer(group="activity")]
-    always_value: Annotated[str, always()]
-    announcements: Annotated[list[dict[str, object]], prop().prepend(match_on="id")]
-    conversation: Annotated[dict[str, object], deep_merge(match_on="messages.id")]
-    feed: Annotated[
-        dict[str, object],
-        scroll(
-            current_page_path="pagination.current",
-            items_path="items",
-            next_page_path="pagination.next",
-            page_name="feed_page",
-            previous_page_path="pagination.previous",
-        ),
-    ]
-    optional_value: Annotated[str, optional()]
-    profile: Annotated[str, once(key="profile-cache")]
+    activity: Defer[list[str]]
+    always_value: Always[str]
+    announcements: Merge[list[dict[str, object]]]
+    conversation: Merge[dict[str, object]]
+    feed: Scroll[dict[str, object]]
+    optional_value: OptionalProp[str]
+    profile: Once[str]
     updated_at: str = Field(serialization_alias="updatedAt")
-    users: Annotated[list[dict[str, object]], merge(match_on="id")]
+    users: Merge[list[dict[str, object]]]
 
 
 def test_fastapi_inertia_validation_and_flash_flow(page_views_path: Path):
@@ -66,7 +55,7 @@ def test_fastapi_inertia_validation_and_flash_flow(page_views_path: Path):
         return await page.render(
             "/",
             {
-                "activity": defer(lambda: ["Ship lifecycle", "Session-backed flash"], group="activity"),
+                "activity": Defer(value=lambda: ["Ship lifecycle", "Session-backed flash"], group="activity"),
                 "headline": "FastAPI + Inertia",
             },
             metadata=Metadata(description="FastAPI Inertia example"),
@@ -218,25 +207,40 @@ def test_fastapi_inertia_page_decorator_renders_model_props(page_views_path: Pat
     @ship.page("/", metadata=Metadata(description="Decorated page"))
     async def home() -> DecoratedPageProps:
         return DecoratedPageProps(
-            activity=load_activity,
-            always_value="always",
-            announcements=[{"id": 2, "title": "Announcement"}],
-            conversation={
-                "messages": [{"body": "Hello", "id": 3}],
-                "summary": {"updatedAt": "10:00"},
-            },
-            feed={
-                "items": [{"id": 4, "title": "Feed item"}],
-                "pagination": {
-                    "current": 2,
-                    "next": 3,
-                    "previous": 1,
+            activity=Defer(value=load_activity, group="activity"),
+            always_value=Always(value="always"),
+            announcements=Merge(
+                value=[{"id": 2, "title": "Announcement"}],
+                match_on="id",
+                mode="prepend",
+            ),
+            conversation=Merge(
+                value={
+                    "messages": [{"body": "Hello", "id": 3}],
+                    "summary": {"updatedAt": "10:00"},
                 },
-            },
-            optional_value="optional",
-            profile="Ada",
+                deep=True,
+                match_on="messages.id",
+            ),
+            feed=Scroll(
+                value={
+                    "items": [{"id": 4, "title": "Feed item"}],
+                    "pagination": {
+                        "current": 2,
+                        "next": 3,
+                        "previous": 1,
+                    },
+                },
+                current_page_path="pagination.current",
+                items_path="items",
+                next_page_path="pagination.next",
+                page_name="feed_page",
+                previous_page_path="pagination.previous",
+            ),
+            optional_value=OptionalProp(value="optional"),
+            profile=Once(value="Ada", key="profile-cache"),
             updated_at="May 5, 2026",
-            users=[{"id": 1, "name": "Ada"}],
+            users=Merge(value=[{"id": 1, "name": "Ada"}], match_on="id"),
         )
 
     with TestClient(app) as client:

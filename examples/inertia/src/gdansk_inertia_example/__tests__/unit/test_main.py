@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from starlette.requests import Request  # noqa: TC002
 from starlette.testclient import TestClient
 
-from gdansk import Ship, Vite, always, deep_merge
+from gdansk import Always, Merge, Ship, Vite
 from gdansk.__tests__.unit.conftest import write_page_manifest
 
 
@@ -20,8 +20,8 @@ def _build_app(tmp_path) -> FastAPI:
         return await page.render(
             "/",
             {
-                "conversation": deep_merge(
-                    {
+                "conversation": Merge(
+                    value={
                         "messages": [
                             {
                                 "author": "Ship",
@@ -33,10 +33,11 @@ def _build_app(tmp_path) -> FastAPI:
                             "updatedAt": "04:11:33",
                         },
                     },
+                    deep=True,
                     match_on="messages.id",
                 ),
-                "metrics": always(
-                    [
+                "metrics": Always(
+                    value=[
                         {
                             "label": "Protocol",
                             "note": "HTML first, JSON after hydrate",
@@ -44,7 +45,7 @@ def _build_app(tmp_path) -> FastAPI:
                         },
                     ],
                 ),
-                "updatedAt": always("April 23, 2026"),
+                "updatedAt": Always(value="April 23, 2026"),
             },
         )
 

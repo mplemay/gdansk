@@ -11,7 +11,7 @@ from starlette.requests import Request
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
-from gdansk import Metadata, Ship, Vite, always, deep_merge, defer, merge, once, optional, prop, scroll
+from gdansk import Always, Defer, Merge, Metadata, Once, OptionalProp, Scroll, Ship, Vite
 from gdansk.__tests__.unit.conftest import SessionStateMiddleware, write_page_manifest
 
 
@@ -153,9 +153,9 @@ def test_inertia_partial_reload_respects_optional_always_and_deferred_props(page
         return await page.render(
             "/",
             {
-                "always_value": always(lambda: "always"),
-                "deferred_value": defer(lambda: "deferred", group="activity"),
-                "optional_value": optional(lambda: "optional"),
+                "always_value": Always(value=lambda: "always"),
+                "deferred_value": Defer(value=lambda: "deferred", group="activity"),
+                "optional_value": OptionalProp(value=lambda: "optional"),
                 "plain_value": lambda: "plain",
             },
         )
@@ -210,7 +210,7 @@ def test_inertia_supports_once_props_reuse_and_refresh(page_views_path: Path):
 
     async def home(request: Request):
         page = ship.page(request)
-        return await page.render("/", {"expensive": once(expensive)})
+        return await page.render("/", {"expensive": Once(value=expensive)})
 
     with TestClient(_page_app(ship, routes=[Route("/", home)])) as client:
         initial = client.get("/", headers={"X-Inertia": "true"})
@@ -266,10 +266,10 @@ def test_inertia_once_props_support_custom_keys_expiration_and_fresh(page_views_
         return await page.render(
             "/",
             {
-                "aliased": once(lambda: record("aliased"), key="shared-cache"),
-                "expired": once(lambda: record("expired")).until(timedelta(seconds=-1)),
-                "fresh_value": once(lambda: record("fresh")).fresh(),
-                "stale": once(lambda: record("stale")),
+                "aliased": Once(value=lambda: record("aliased"), key="shared-cache"),
+                "expired": Once(value=lambda: record("expired"), expires_at=timedelta(seconds=-1)),
+                "fresh_value": Once(value=lambda: record("fresh"), fresh=True),
+                "stale": Once(value=lambda: record("stale")),
             },
         )
 
@@ -349,14 +349,19 @@ def test_inertia_emits_merge_metadata_and_respects_resets(page_views_path: Path)
         return await page.render(
             "/",
             {
-                "announcements": prop([{"id": 2, "title": "Launch"}]).prepend(match_on="id"),
-                "conversation": deep_merge(
-                    {
+                "announcements": Merge(
+                    value=[{"id": 2, "title": "Launch"}],
+                    match_on="id",
+                    mode="prepend",
+                ),
+                "conversation": Merge(
+                    value={
                         "messages": [{"body": "Hello", "id": 3}],
                     },
+                    deep=True,
                     match_on="messages.id",
                 ),
-                "users": merge([{"id": 1, "name": "Ada"}]).append(match_on="id"),
+                "users": Merge(value=[{"id": 1, "name": "Ada"}], match_on="id"),
             },
         )
 
@@ -387,6 +392,11 @@ def test_inertia_emits_merge_metadata_and_respects_resets(page_views_path: Path)
     assert reset.json()["matchPropsOn"] == ["announcements.id"]
 
 
+def test_inertia_rejects_deep_prepend_merge_props() -> None:
+    with pytest.raises(ValueError, match="Deep merge props cannot use prepend mode"):
+        Merge(value={}, deep=True, mode="prepend")
+
+
 def test_inertia_scroll_props_follow_merge_intent_and_reset(page_views_path: Path):
     write_page_manifest(page_views_path)
     ship = Ship(vite=Vite(page_views_path))
@@ -396,8 +406,8 @@ def test_inertia_scroll_props_follow_merge_intent_and_reset(page_views_path: Pat
         return await page.render(
             "/",
             {
-                "feed": scroll(
-                    {
+                "feed": Scroll(
+                    value={
                         "items": [{"id": 1, "title": "Update"}],
                         "pagination": {
                             "current": 2,

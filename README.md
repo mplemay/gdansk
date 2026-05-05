@@ -53,18 +53,14 @@ with `ship.lifespan(...)`. Call `ship.inertia(...)` only when you need non-defau
 id or explicit version.
 
 ```python
-from collections.abc import Callable
-from typing import Annotated
-
 from pydantic import BaseModel, Field
 
-from gdansk import Metadata, Ship, Vite, defer, merge
-from gdansk.utils import MaybeAwaitable
+from gdansk import Defer, Merge, Metadata, Ship, Vite
 
 
 class HomeProps(BaseModel):
-    activity: Annotated[Callable[[], MaybeAwaitable[list[str]]], defer(group="activity")]
-    announcements: Annotated[list[dict[str, str]], merge(match_on="id")]
+    activity: Defer[list[str]]
+    announcements: Merge[list[dict[str, str]]]
     headline: str
     updated_at: str = Field(serialization_alias="updatedAt")
 
@@ -76,8 +72,8 @@ ship = Ship(vite=Vite("frontend"))
 @ship.page("/", metadata=Metadata(title="Home"))
 async def home() -> HomeProps:
     return HomeProps(
-        activity=load_activity,
-        announcements=load_announcements(),
+        activity=Defer(value=load_activity, group="activity"),
+        announcements=Merge(value=load_announcements(), match_on="id"),
         headline="FastAPI + Inertia",
         updated_at="May 5, 2026",
     )
@@ -102,36 +98,38 @@ For a full FastAPI example with validation errors, flash messages, deferred prop
 props, and fragment redirects, see
 [`examples/inertia`](examples/inertia).
 
-The backend helper surface is now close to the official non-SSR Inertia protocol:
+The backend prop wrappers are close to the official non-SSR Inertia protocol:
 
-- `prop(value)` creates a fluent prop builder.
-- `optional(value)`, `always(value)`, and `defer(value, group=...)` control eager vs partial/deferred loading.
-- `once(value, key=...)` and `page.share_once(...)` emit `onceProps` so the client can reuse previously loaded data.
-- `merge(value)` / `deep_merge(value, match_on=...)` and `prop(...).append(...)` / `.prepend(...)` emit merge metadata.
-- `scroll(...)` emits both merge metadata and `scrollProps` for infinite-scroll style payloads.
+- `Prop(value=...)` is the advanced escape hatch for combining prop behaviors.
+- `OptionalProp(value=...)`, `Always(value=...)`, and `Defer(value=..., group=...)` control eager vs partial/deferred
+  loading.
+- `Once(value=..., key=...)` and `page.share_once(...)` emit `onceProps` so the client can reuse previously loaded data.
+- `Merge(value=..., match_on=...)`, `Merge(value=..., deep=True, match_on=...)`, and
+  `Merge(value=..., mode="prepend")` emit merge metadata.
+- `Scroll(value=...)` emits both merge metadata and `scrollProps` for infinite-scroll style payloads.
 - `page.encrypt_history(...)`, `page.clear_history()`, and `page.redirect(..., preserve_fragment=True)` control history
   and redirect behavior.
 
 ```python
-from gdansk import deep_merge, merge, once, prop, scroll
+from gdansk import Merge, Once, OptionalProp, Scroll
 
 page.share_once(sessionToken=load_session_token)
 
 return await page.render(
     "/",
     {
-        "announcements": merge(load_announcements()).append(match_on="id"),
-        "conversation": deep_merge(load_conversation(), match_on="messages.id"),
-        "feed": scroll(
-            load_feed(),
+        "announcements": Merge(value=load_announcements(), match_on="id"),
+        "conversation": Merge(value=load_conversation(), deep=True, match_on="messages.id"),
+        "feed": Scroll(
+            value=load_feed(),
             items_path="items",
             current_page_path="pagination.current",
             next_page_path="pagination.next",
             previous_page_path="pagination.previous",
             page_name="feed_page",
         ),
-        "profile": once(load_profile, key="shared-profile"),
-        "stats": prop(load_stats).optional(),
+        "profile": Once(value=load_profile, key="shared-profile"),
+        "stats": OptionalProp(value=load_stats),
     },
 )
 ```

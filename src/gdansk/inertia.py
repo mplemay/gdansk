@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping, MutableMapping, Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from functools import wraps
 from hashlib import sha256
 from inspect import Parameter, Signature, iscoroutinefunction, signature
 from json import JSONDecodeError, dumps, loads
-from typing import TYPE_CHECKING, Any, Final, Literal, Self, TypedDict, cast, overload
+from typing import TYPE_CHECKING, Any, Final, Literal, Self, TypedDict, cast
 
-from pydantic import BaseModel, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -26,13 +26,21 @@ if TYPE_CHECKING:
 type InertiaResponse = HTMLResponse | JSONResponse | Response
 type PageRouteDecorator = Callable[[Callable[..., object]], Callable[..., object]]
 type RawExpiration = datetime | timedelta | int
+type SerializableProp = (
+    None | bool | int | float | str | BaseModel | Mapping[str, SerializableProp] | Sequence[SerializableProp]
+)
+type PropSource[T] = T | Callable[[], MaybeAwaitable[T]]
 
 _JSON_ADAPTER: Final[TypeAdapter[Any]] = TypeAdapter(Any)
 _ERRORS_SESSION_KEY: Final[str] = "_gdansk_inertia_errors"
 _FLASH_SESSION_KEY: Final[str] = "_gdansk_inertia_flash"
-_MISSING_PROP_VALUE: Final = object()
 _PAGE_DEV_ENTRY: Final[str] = "/@gdansk/pages/app.tsx"
 _PRESERVE_FRAGMENT_SESSION_KEY: Final[str] = "_gdansk_inertia_preserve_fragment"
+_PROP_MODEL_CONFIG: Final[ConfigDict] = ConfigDict(
+    arbitrary_types_allowed=True,
+    extra="forbid",
+    populate_by_name=True,
+)
 
 
 class ViteManifestEntry(TypedDict, total=False):
@@ -72,109 +80,28 @@ class ScrollConfig:
     previous_page_path: str
 
 
-@dataclass(slots=True, kw_only=True, frozen=True)
-class PageProp:
-    value: Any
+class Prop[T](BaseModel):
+    model_config = _PROP_MODEL_CONFIG
+
+    value: PropSource[T]
     always_include: bool = False
     deferred_group: str | None = None
     include_on_initial: bool = True
-    merge_instructions: tuple[MergeInstruction, ...] = field(default_factory=tuple)
+    merge_instructions: tuple[MergeInstruction, ...] = ()
     once_enabled: bool = False
     once_expires_at: RawExpiration | None = None
     once_fresh: bool = False
     once_key: str | None = None
     scroll_config: ScrollConfig | None = None
 
-    def optional(self) -> Self:
-        return replace(self, include_on_initial=False)
+    def model_post_init(self, _context: object) -> None:
+        if self.deferred_group is not None:
+            self.deferred_group = _normalize_group(self.deferred_group)
+            self.include_on_initial = False
 
-    def always(self) -> Self:
-        return replace(self, always_include=True)
-
-    def defer(self, *, group: str = "default") -> Self:
-        return replace(
-            self,
-            deferred_group=_normalize_group(group),
-            include_on_initial=False,
-        )
-
-    def once(self, key: str | None = None) -> Self:
-        return replace(self, once_enabled=True, once_key=_normalize_once_key(key))
-
-    def fresh(self, enabled: bool = True) -> Self:  # noqa: FBT001, FBT002
-        return replace(self, once_enabled=True, once_fresh=enabled)
-
-    def until(self, value: RawExpiration) -> Self:
-        _resolve_once_expires_at(value)
-        return replace(self, once_enabled=True, once_expires_at=value)
-
-    def append(
-        self,
-        path: str | None = None,
-        *,
-        match_on: str | Sequence[str] | None = None,
-    ) -> Self:
-        return self._with_instruction(
-            MergeInstruction(
-                match_on=_normalize_match_on(match_on),
-                mode="append",
-                path=_normalize_prop_path(path or "", allow_empty=True, name="merge path"),
-            ),
-        )
-
-    def prepend(
-        self,
-        path: str | None = None,
-        *,
-        match_on: str | Sequence[str] | None = None,
-    ) -> Self:
-        return self._with_instruction(
-            MergeInstruction(
-                match_on=_normalize_match_on(match_on),
-                mode="prepend",
-                path=_normalize_prop_path(path or "", allow_empty=True, name="merge path"),
-            ),
-        )
-
-    def deep_merge(self, *, match_on: str | Sequence[str] | None = None) -> Self:
-        return self._with_instruction(
-            MergeInstruction(
-                match_on=_normalize_match_on(match_on),
-                mode="deep",
-            ),
-        )
-
-    def scroll(
-        self,
-        *,
-        current_page_path: str = "current_page",
-        items_path: str = "data",
-        next_page_path: str = "next_page",
-        page_name: str = "page",
-        previous_page_path: str = "previous_page",
-    ) -> Self:
-        if not (cleaned_page_name := page_name.strip()):
-            msg = "The scroll page name must not be empty"
-            raise ValueError(msg)
-
-        return replace(
-            self,
-            scroll_config=ScrollConfig(
-                current_page_path=_normalize_prop_path(
-                    current_page_path,
-                    allow_empty=True,
-                    name="scroll current page path",
-                ),
-                items_path=_normalize_prop_path(items_path, allow_empty=True, name="scroll items path"),
-                next_page_path=_normalize_prop_path(next_page_path, allow_empty=True, name="scroll next page path"),
-                page_name=cleaned_page_name,
-                previous_page_path=_normalize_prop_path(
-                    previous_page_path,
-                    allow_empty=True,
-                    name="scroll previous page path",
-                ),
-            ),
-        )
+        self.once_key = _normalize_once_key(self.once_key)
+        if self.once_expires_at is not None:
+            _resolve_once_expires_at(self.once_expires_at)
 
     def resolved_once_key(self, *, prop_name: str) -> str:
         return self.once_key or prop_name
@@ -182,154 +109,84 @@ class PageProp:
     def resolved_once_expires_at(self) -> int | None:
         return _resolve_once_expires_at(self.once_expires_at)
 
-    def _with_instruction(self, instruction: MergeInstruction) -> Self:
-        instructions = (
-            *(existing for existing in self.merge_instructions if existing.path != instruction.path),
-            instruction,
+    def with_once(self, *, key: str | None = None) -> Self:
+        return self.model_copy(
+            update={
+                "once_enabled": True,
+                "once_key": self.once_key if self.once_enabled else _normalize_once_key(key),
+            },
         )
-        return replace(self, merge_instructions=instructions)
 
 
-@overload
-def prop() -> PageProp: ...
+class Defer[T](Prop[T]):
+    deferred_group: str = Field(default="default", alias="group")
+    include_on_initial: bool = False
 
 
-@overload
-def prop[T](value: T) -> PageProp: ...
+class OptionalProp[T](Prop[T]):
+    include_on_initial: bool = False
 
 
-def prop[T](value: T | object = _MISSING_PROP_VALUE) -> PageProp:
-    if isinstance(value, PageProp):
-        return value
-
-    return PageProp(value=value)
+class Always[T](Prop[T]):
+    always_include: bool = True
 
 
-@overload
-def optional() -> PageProp: ...
+class Once[T](Prop[T]):
+    once_enabled: bool = True
+    once_expires_at: RawExpiration | None = Field(default=None, alias="expires_at")
+    once_fresh: bool = Field(default=False, alias="fresh")
+    once_key: str | None = Field(default=None, alias="key")
 
 
-@overload
-def optional[T](value: T) -> PageProp: ...
+class Merge[T](Prop[T]):
+    deep: bool = False
+    match_on: str | Sequence[str] | None = None
+    mode: Literal["append", "prepend"] = "append"
+    path: str = ""
+
+    def model_post_init(self, _context: object) -> None:
+        super().model_post_init(_context)
+        if self.deep and self.mode == "prepend":
+            msg = "Deep merge props cannot use prepend mode"
+            raise ValueError(msg)
+
+        self.merge_instructions = (
+            MergeInstruction(
+                match_on=_normalize_match_on(self.match_on),
+                mode="deep" if self.deep else self.mode,
+                path=_normalize_prop_path(self.path, allow_empty=True, name="merge path"),
+            ),
+        )
 
 
-def optional[T](value: T | object = _MISSING_PROP_VALUE) -> PageProp:
-    return prop(value).optional()
+class Scroll[T](Prop[T]):
+    current_page_path: str = "current_page"
+    items_path: str = "data"
+    next_page_path: str = "next_page"
+    page_name: str = "page"
+    previous_page_path: str = "previous_page"
 
+    def model_post_init(self, _context: object) -> None:
+        super().model_post_init(_context)
+        if not (cleaned_page_name := self.page_name.strip()):
+            msg = "The scroll page name must not be empty"
+            raise ValueError(msg)
 
-@overload
-def always() -> PageProp: ...
-
-
-@overload
-def always[T](value: T) -> PageProp: ...
-
-
-def always[T](value: T | object = _MISSING_PROP_VALUE) -> PageProp:
-    return prop(value).always()
-
-
-@overload
-def defer(*, group: str = "default") -> PageProp: ...
-
-
-@overload
-def defer[T](value: T, *, group: str = "default") -> PageProp: ...
-
-
-def defer[T](value: T | object = _MISSING_PROP_VALUE, *, group: str = "default") -> PageProp:
-    return prop(value).defer(group=group)
-
-
-@overload
-def once(*, key: str | None = None) -> PageProp: ...
-
-
-@overload
-def once[T](value: T, *, key: str | None = None) -> PageProp: ...
-
-
-def once[T](value: T | object = _MISSING_PROP_VALUE, *, key: str | None = None) -> PageProp:
-    return prop(value).once(key=key)
-
-
-@overload
-def merge(
-    path: str | None = None,
-    *,
-    match_on: str | Sequence[str] | None = None,
-) -> PageProp: ...
-
-
-@overload
-def merge[T](
-    value: T,
-    path: str | None = None,
-    *,
-    match_on: str | Sequence[str] | None = None,
-) -> PageProp: ...
-
-
-def merge[T](
-    value: T | object = _MISSING_PROP_VALUE,
-    path: str | None = None,
-    *,
-    match_on: str | Sequence[str] | None = None,
-) -> PageProp:
-    return prop(value).append(path, match_on=match_on)
-
-
-@overload
-def deep_merge(*, match_on: str | Sequence[str] | None = None) -> PageProp: ...
-
-
-@overload
-def deep_merge[T](value: T, *, match_on: str | Sequence[str] | None = None) -> PageProp: ...
-
-
-def deep_merge[T](value: T | object = _MISSING_PROP_VALUE, *, match_on: str | Sequence[str] | None = None) -> PageProp:
-    return prop(value).deep_merge(match_on=match_on)
-
-
-@overload
-def scroll(
-    *,
-    current_page_path: str = "current_page",
-    items_path: str = "data",
-    next_page_path: str = "next_page",
-    page_name: str = "page",
-    previous_page_path: str = "previous_page",
-) -> PageProp: ...
-
-
-@overload
-def scroll[T](
-    value: T,
-    *,
-    current_page_path: str = "current_page",
-    items_path: str = "data",
-    next_page_path: str = "next_page",
-    page_name: str = "page",
-    previous_page_path: str = "previous_page",
-) -> PageProp: ...
-
-
-def scroll[T](  # noqa: PLR0913
-    value: T | object = _MISSING_PROP_VALUE,
-    *,
-    current_page_path: str = "current_page",
-    items_path: str = "data",
-    next_page_path: str = "next_page",
-    page_name: str = "page",
-    previous_page_path: str = "previous_page",
-) -> PageProp:
-    return prop(value).scroll(
-        current_page_path=current_page_path,
-        items_path=items_path,
-        next_page_path=next_page_path,
-        page_name=page_name,
-        previous_page_path=previous_page_path,
-    )
+        self.scroll_config = ScrollConfig(
+            current_page_path=_normalize_prop_path(
+                self.current_page_path,
+                allow_empty=True,
+                name="scroll current page path",
+            ),
+            items_path=_normalize_prop_path(self.items_path, allow_empty=True, name="scroll items path"),
+            next_page_path=_normalize_prop_path(self.next_page_path, allow_empty=True, name="scroll next page path"),
+            page_name=cleaned_page_name,
+            previous_page_path=_normalize_prop_path(
+                self.previous_page_path,
+                allow_empty=True,
+                name="scroll previous page path",
+            ),
+        )
 
 
 @dataclass(slots=True, kw_only=True, frozen=True)
@@ -665,7 +522,7 @@ class InertiaPage:
 
     def share_once(self, **props: object) -> None:
         shared_once = {
-            key: (value if isinstance(value, PageProp) and value.once_enabled else once(value, key=key))
+            key: (value if isinstance(value, Prop) and value.once_enabled else _as_once_prop(value, key=key))
             for key, value in props.items()
         }
         self.share(**shared_once)
@@ -686,7 +543,7 @@ class InertiaPage:
         return cast("dict[str, Any]", _JSON_ADAPTER.dump_python(page, mode="json"))
 
     async def _evaluate(self, value: object) -> object:
-        if isinstance(value, PageProp):
+        if isinstance(value, Prop):
             value = value.value
 
         if callable(value):
@@ -790,7 +647,7 @@ class InertiaPage:
         merge_intent = self._merge_intent()
 
         for key, value in merged.items():
-            page_prop = value if isinstance(value, PageProp) else None
+            page_prop = value if isinstance(value, Prop) else None
             direct_only, nested_only = _matching_paths(key, only_keys)
             direct_except, nested_except = _matching_paths(key, except_keys)
             explicitly_requested = direct_only or bool(nested_only)
@@ -932,7 +789,7 @@ class InertiaPage:
         self,
         *,
         key: str,
-        page_prop: PageProp,
+        page_prop: Prop[Any],
         result: ResolvedPageData,
         reset: bool,
         merge_intent: Literal["append", "prepend"] | None,
@@ -1006,7 +863,7 @@ class InertiaPage:
     @staticmethod
     def _should_include_prop(  # noqa: PLR0913
         *,
-        page_prop: PageProp | None,
+        page_prop: Prop[Any] | None,
         partial: bool,
         only_keys: set[str],
         except_keys: set[str],
@@ -1078,15 +935,12 @@ def _model_to_props(model: BaseModel) -> dict[str, Any]:
     props = model.model_dump(mode="python", by_alias=True)
 
     for field_name, model_field in type(model).model_fields.items():
-        markers = [metadata for metadata in model_field.metadata if isinstance(metadata, PageProp)]
-        if not markers:
-            continue
-
         prop_key = _model_field_prop_key(field_name, model_field)
         if prop_key not in props:
             continue
 
-        props[prop_key] = _apply_page_prop_markers(props[prop_key], markers)
+        if isinstance(value := getattr(model, field_name), Prop):
+            props[prop_key] = value
 
     return props
 
@@ -1096,33 +950,11 @@ def _model_field_prop_key(field_name: str, model_field: FieldInfo) -> str:
     return alias if isinstance(alias, str) else field_name
 
 
-def _apply_page_prop_markers(value: object, markers: Sequence[PageProp]) -> PageProp:
-    result = prop(value)
-    for marker in markers:
-        result = _apply_page_prop_marker(result, marker)
+def _as_once_prop(value: object, *, key: str) -> Prop[Any]:
+    if isinstance(value, Prop):
+        return value.with_once(key=key)
 
-    return result
-
-
-def _apply_page_prop_marker(result: PageProp, marker: PageProp) -> PageProp:
-    if marker.always_include:
-        result = result.always()
-    if marker.deferred_group is not None:
-        result = result.defer(group=marker.deferred_group)
-    elif not marker.include_on_initial:
-        result = result.optional()
-    if marker.once_enabled:
-        result = result.once(key=marker.once_key)
-    if marker.once_fresh:
-        result = result.fresh()
-    if marker.once_expires_at is not None:
-        result = result.until(marker.once_expires_at)
-    for instruction in marker.merge_instructions:
-        result = result._with_instruction(instruction)  # noqa: SLF001
-    if marker.scroll_config is not None:
-        result = replace(result, scroll_config=marker.scroll_config)
-
-    return result
+    return Once(value=value, key=key)
 
 
 def _build_path_tree(paths: list[str]) -> dict[str, dict[str, Any]]:
@@ -1305,16 +1137,16 @@ def _select_with_tree(value: object, tree: dict[str, dict[str, Any]]) -> object:
 __all__ = [
     "_ERRORS_SESSION_KEY",
     "_FLASH_SESSION_KEY",
+    "Always",
+    "Defer",
     "InertiaApp",
     "InertiaPage",
     "InertiaResponse",
-    "PageProp",
-    "always",
-    "deep_merge",
-    "defer",
-    "merge",
-    "once",
-    "optional",
-    "prop",
-    "scroll",
+    "Merge",
+    "Once",
+    "OptionalProp",
+    "Prop",
+    "PropSource",
+    "Scroll",
+    "SerializableProp",
 ]

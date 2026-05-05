@@ -12,7 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
 
-from gdansk import Metadata, Ship, Vite, always, deep_merge, defer, merge, scroll
+from gdansk import Always, Defer, Merge, Metadata, Scroll, Ship, Vite
 from gdansk.fastapi import inertia_request_validation_exception_handler
 from gdansk.inertia import InertiaPage  # noqa: TC001
 
@@ -68,7 +68,7 @@ def build_announcements() -> list[dict[str, str]]:
         {
             "id": f"announcement-{key}",
             "label": f"Announcement {timestamp}",
-            "note": "This item is appended through merge() during partial reloads.",
+            "note": "This item is appended through Merge(...) during partial reloads.",
         },
     ]
 
@@ -136,19 +136,19 @@ async def home(page: PageDependency) -> InertiaResponse:
     return await page.render(
         "/",
         {
-            "activity": defer(build_activity, group="activity"),
-            "announcements": merge(build_announcements()).append(match_on="id"),
-            "conversation": deep_merge(build_conversation(), match_on="messages.id"),
-            "feed": scroll(
-                build_feed(),
+            "activity": Defer(value=build_activity, group="activity"),
+            "announcements": Merge(value=build_announcements(), match_on="id"),
+            "conversation": Merge(value=build_conversation(), deep=True, match_on="messages.id"),
+            "feed": Scroll(
+                value=build_feed(),
                 current_page_path="pagination.current",
                 items_path="items",
                 next_page_path="pagination.next",
                 page_name="feed_page",
                 previous_page_path="pagination.previous",
             ),
-            "metrics": always(build_metrics),
-            "updatedAt": always(datetime.now(UTC).strftime("%B %d, %Y")),
+            "metrics": Always(value=build_metrics),
+            "updatedAt": Always(value=datetime.now(UTC).strftime("%B %d, %Y")),
         },
         metadata=Metadata(
             description="Ship-backed Inertia pages for FastAPI",
