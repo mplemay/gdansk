@@ -186,7 +186,7 @@ function createSharedConfig(
 ): UserConfig {
   const server = resolveDevelopmentServerConfig(options, resolved);
   const extraAliases: Record<string, string> = extra.pageTypes
-    ? { "@types/gdansk": resolve(resolved.root, "types/gdansk") }
+    ? { "@gdansk/types": resolve(resolved.root, "types/gdansk") }
     : {};
 
   return {

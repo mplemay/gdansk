@@ -6,8 +6,8 @@
     "moduleResolution": "Bundler",
     "noEmit": true,
     "paths": {
-      "@types/gdansk": ["./types/gdansk/index"],
-      "@types/gdansk/*": ["./types/gdansk/*"]
+      "@gdansk/types": ["./types/gdansk/index"],
+      "@gdansk/types/*": ["./types/gdansk/*"]
     },
     "skipLibCheck": true,
     "strict": true,

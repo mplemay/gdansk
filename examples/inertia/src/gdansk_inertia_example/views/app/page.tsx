@@ -1,5 +1,5 @@
+import type { RootPageProps } from "@gdansk/types";
 import { Head, router, useForm, usePage } from "@inertiajs/react";
-import type { RootPageProps } from "@types/gdansk";
 import { useEffect, useRef } from "react";
 
 export default function RootPage() {

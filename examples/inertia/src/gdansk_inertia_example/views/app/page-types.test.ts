@@ -1,4 +1,4 @@
-import type { RootPageProps } from "@types/gdansk";
+import type { RootPageProps } from "@gdansk/types";
 
 declare const props: RootPageProps;
 

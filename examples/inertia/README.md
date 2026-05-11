@@ -14,7 +14,7 @@ The example backend exercises the new prop wrapper surface directly:
 
 - `Ship(..., inertia=Inertia(props=SharedProps))` validates Python shared page props with a Pydantic model.
 - `ship.lifespan(app=app, ...)` generates `types/gdansk/**` so React pages can import typed page props from
-  `@types/gdansk`.
+  `@gdansk/types`.
 - `page.share(SharedProps(...))` updates only the fields set on the model instance.
 - `page.share_once(...)` keeps a shared token stable across partial reloads without resending it every time.
 - `Merge(...)` appends announcements returned by later partial reloads.

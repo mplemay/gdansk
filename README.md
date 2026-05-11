@@ -108,14 +108,14 @@ export default defineConfig({
 ```
 
 Generated page prop modules live under `types/gdansk/**` in the frontend root and are imported through the
-`@types/gdansk` alias. Add the matching TypeScript paths:
+`@gdansk/types` alias. Add the matching TypeScript paths:
 
 ```json
 {
   "compilerOptions": {
     "paths": {
-      "@types/gdansk": ["./types/gdansk/index"],
-      "@types/gdansk/*": ["./types/gdansk/*"]
+      "@gdansk/types": ["./types/gdansk/index"],
+      "@gdansk/types/*": ["./types/gdansk/*"]
     }
   }
 }
