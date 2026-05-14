@@ -14,7 +14,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from gdansk import Metadata, Ship, Vite
 from gdansk.fastapi import inertia_request_validation_exception_handler
-from gdansk.inertia import Always, Defer, Inertia, InertiaPage, Merge, Scroll
+from gdansk.inertia import Always, Defer, Inertia, InertiaPage, Merge, Once, Scroll
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -71,6 +71,12 @@ class Metric(TypedDict):
     label: str
     note: str
     value: str
+
+
+class SharedProps(BaseModel):
+    headline: str | None = None
+    session_token: Once[str] | None = Field(default=None, serialization_alias="sessionToken")
+    summary: str | None = None
 
 
 class HomeProps(BaseModel):
@@ -160,14 +166,14 @@ def build_feed() -> Feed:
 
 ship = Ship(
     vite=Vite(Path(__file__).parent / "src/gdansk_inertia_example/views"),
-    inertia=Inertia(encrypt_history=True),
+    inertia=Inertia(encrypt_history=True, props=SharedProps),
 )
-type PageDependency = Annotated["InertiaPage", Depends(ship.page)]
+type PageDependency = Annotated["InertiaPage[SharedProps]", Depends(ship.page)]
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    async with ship.lifespan(watch=not PRODUCTION):
+    async with ship.lifespan(app=app, watch=not PRODUCTION):
         yield
 
 
@@ -186,11 +192,13 @@ app.mount(ship.assets_path, ship.assets)
 )
 async def home(page: PageDependency) -> HomeProps:
     page.share(
-        headline="Ship-backed Inertia pages",
-        summary="A FastAPI route can render the initial shell, switch to JSON visits, and keep using the frontend "
-        "tooling gdansk already owns.",
+        SharedProps(
+            headline="Ship-backed Inertia pages",
+            summary="A FastAPI route can render the initial shell, switch to JSON visits, and keep using the frontend "
+            "tooling gdansk already owns.",
+        ),
     )
-    page.share_once(sessionToken=lambda: token_urlsafe(6))
+    page.share_once(SharedProps(session_token=Once(value=lambda: token_urlsafe(6))))
     return HomeProps(
         activity=Defer(value=build_activity, group="activity"),
         announcements=Merge(value=build_announcements(), match_on="id"),

@@ -8,7 +8,11 @@ import type {
   WidgetDefinition,
 } from "./types";
 type AliasOption = NonNullable<NonNullable<UserConfig["resolve"]>["alias"]>;
-export declare function mergeAliasConfig(alias: AliasOption | undefined, root: string): AliasOption;
+export declare function mergeAliasConfig(
+  alias: AliasOption | undefined,
+  root: string,
+  extraAliases?: Record<string, string>,
+): AliasOption;
 export declare function resolveDevelopmentServerConfig(
   options: GdanskPluginOptions,
   resolved: ResolvedGdanskOptions,

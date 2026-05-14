@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 from fastapi import Depends
+from pydantic import ValidationError
 from starlette.testclient import TestClient
 
 from gdansk import Ship, Vite
@@ -48,6 +49,139 @@ def test_inertia_json_response_has_expected_page_shape(page_views_path: Path):
         "url": "/",
         "version": inertia.version(),
     }
+
+
+def test_inertia_share_accepts_typed_model_mapping_and_keyword_updates(page_views_path: Path):
+    write_page_manifest(page_views_path)
+    ship = Ship(vite=Vite(page_views_path), inertia=Inertia(props=helpers.SharedPageProps))
+    app = helpers._page_app(ship)
+
+    @app.get("/")
+    @ship.page("/")
+    async def home(page: InertiaPage[helpers.SharedPageProps] = Depends(ship.page)) -> helpers.EmptyPageProps:
+        page.share(helpers.SharedPageProps(headline="Shared headline"))
+        page.share({"sessionToken": "abc123"})
+        page.share(summary="Keyword summary")
+        page.share(helpers.SharedPageProps(summary="Updated summary"))
+        return helpers.EmptyPageProps()
+
+    with TestClient(app) as client:
+        response = client.get("/", headers={"X-Inertia": "true"})
+
+    page_payload = response.json()
+
+    helpers._assert_released_v3_page_payload(page_payload)
+    assert page_payload["props"] == {
+        "errors": {},
+        "headline": "Shared headline",
+        "sessionToken": "abc123",
+        "summary": "Updated summary",
+    }
+    assert page_payload["sharedProps"] == ["headline", "sessionToken", "summary"]
+
+
+def test_inertia_typed_share_validates_partial_updates(page_views_path: Path):
+    write_page_manifest(page_views_path)
+    ship = Ship(vite=Vite(page_views_path), inertia=Inertia(props=helpers.SharedPageProps))
+    app = helpers._page_app(ship)
+
+    @app.get("/")
+    @ship.page("/")
+    async def home(page: InertiaPage[helpers.SharedPageProps] = Depends(ship.page)) -> helpers.EmptyPageProps:
+        page.share(headline="x")
+        return helpers.EmptyPageProps()
+
+    with (
+        TestClient(app) as client,
+        pytest.raises(ValidationError, match="at least 2"),
+    ):
+        client.get("/", headers={"X-Inertia": "true"})
+
+
+def test_inertia_route_props_override_typed_shared_props(page_views_path: Path):
+    write_page_manifest(page_views_path)
+    ship = Ship(vite=Vite(page_views_path), inertia=Inertia(props=helpers.SharedPageProps))
+    app = helpers._page_app(ship)
+
+    @app.get("/")
+    @ship.page("/")
+    async def home(page: InertiaPage[helpers.SharedPageProps] = Depends(ship.page)) -> dict[str, object]:
+        page.share(headline="Shared headline", summary="Shared summary")
+        return {"headline": "Route headline"}
+
+    with TestClient(app) as client:
+        response = client.get("/", headers={"X-Inertia": "true"})
+
+    page_payload = response.json()
+
+    helpers._assert_released_v3_page_payload(page_payload)
+    assert page_payload["props"] == {
+        "errors": {},
+        "headline": "Route headline",
+        "summary": "Shared summary",
+    }
+    assert page_payload["sharedProps"] == ["summary"]
+
+
+def test_inertia_partial_reload_preserves_typed_shared_props_metadata(page_views_path: Path):
+    write_page_manifest(page_views_path)
+    ship = Ship(vite=Vite(page_views_path), inertia=Inertia(props=helpers.SharedPageProps))
+    app = helpers._page_app(ship)
+
+    @app.get("/")
+    @ship.page("/")
+    async def home(page: InertiaPage[helpers.SharedPageProps] = Depends(ship.page)) -> helpers.MessagePageProps:
+        page.share(headline="Shared headline", summary="Shared summary")
+        return helpers.MessagePageProps(message="Route message")
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/",
+            headers={
+                "X-Inertia": "true",
+                "X-Inertia-Partial-Component": "/",
+                "X-Inertia-Partial-Data": "message",
+            },
+        )
+
+    page_payload = response.json()
+
+    helpers._assert_released_v3_page_payload(page_payload)
+    assert page_payload["props"] == {
+        "errors": {},
+        "message": "Route message",
+    }
+    assert page_payload["sharedProps"] == ["headline", "summary"]
+
+
+def test_inertia_share_once_accepts_typed_model_updates(page_views_path: Path):
+    write_page_manifest(page_views_path)
+    ship = Ship(vite=Vite(page_views_path), inertia=Inertia(props=helpers.SharedPageProps))
+    app = helpers._page_app(ship)
+
+    @app.get("/")
+    @ship.page("/")
+    async def home(page: InertiaPage[helpers.SharedPageProps] = Depends(ship.page)) -> helpers.EmptyPageProps:
+        page.share_once(helpers.SharedPageProps(session_token="token-123"))
+        return helpers.EmptyPageProps()
+
+    with TestClient(app) as client:
+        response = client.get("/", headers={"X-Inertia": "true"})
+
+    page_payload = response.json()
+
+    helpers._assert_released_v3_page_payload(page_payload)
+    assert page_payload["props"] == {
+        "errors": {},
+        "sessionToken": "token-123",
+    }
+    assert page_payload["onceProps"] == {
+        "sessionToken": {
+            "expiresAt": None,
+            "prop": "sessionToken",
+        },
+    }
+    assert page_payload["sharedProps"] == ["sessionToken"]
 
 
 def test_inertia_omits_default_false_and_client_owned_v3_fields(page_views_path: Path):

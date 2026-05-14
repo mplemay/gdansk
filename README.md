@@ -55,35 +55,45 @@ with `ship.lifespan(...)`. Page routes may also return `None` for empty props or
 id, explicit version, or default encrypted history.
 
 ```python
+from typing import Annotated
+
+from fastapi import Depends
 from pydantic import BaseModel, Field
 
 from gdansk import Metadata, Ship, Vite
-from gdansk.inertia import Defer, Inertia, Merge
+from gdansk.inertia import Defer, Inertia, InertiaPage, Merge
 
 
 class HomeProps(BaseModel):
     activity: Defer[list[str]]
     announcements: Merge[list[dict[str, str]]]
-    headline: str
     updated_at: str = Field(serialization_alias="updatedAt")
 
 
-ship = Ship(vite=Vite("frontend"), inertia=Inertia(id="app"))
+class SharedProps(BaseModel):
+    headline: str | None = None
+
+
+ship = Ship(vite=Vite("frontend"), inertia=Inertia(id="app", props=SharedProps))
+type PageDependency = Annotated[InertiaPage[SharedProps], Depends(ship.page)]
 
 
 @app.get("/")
 @ship.page(metadata=Metadata(title="Home"))
-async def home() -> HomeProps:
+async def home(page: PageDependency) -> HomeProps:
+    page.share(SharedProps(headline="FastAPI + Inertia"))
+
     return HomeProps(
         activity=Defer(value=load_activity, group="activity"),
         announcements=Merge(value=load_announcements(), match_on="id"),
-        headline="FastAPI + Inertia",
         updated_at="May 5, 2026",
     )
 ```
 
 If a rendered route needs imperative page control for flash, history flags, or per-request shared props, combine the
 decorator with `Depends(ship.page)`, mutate the injected page, and return props from the route.
+When `Inertia(props=SharedProps)` is configured, `page.share(...)` accepts `SharedProps` instances, mappings, or keyword
+updates and validates only the fields being updated. Frontend `sharedPageProps` declarations remain manual.
 
 Pair the backend with `gdanskPages()` in your frontend `vite.config.ts`:
 
@@ -95,6 +105,20 @@ import { gdanskPages } from "@gdansk/vite";
 export default defineConfig({
   plugins: [gdanskPages({ refresh: true }), react()],
 });
+```
+
+Generated page prop modules live under `types/gdansk/**` in the frontend root and are imported through the
+`@gdansk/types` alias. Add the matching TypeScript paths:
+
+```json
+{
+  "compilerOptions": {
+    "paths": {
+      "@gdansk/types": ["./types/gdansk/index"],
+      "@gdansk/types/*": ["./types/gdansk/*"]
+    }
+  }
+}
 ```
 
 For a full FastAPI example with validation errors, flash messages, deferred props, once props, merge helpers, scroll
@@ -117,11 +141,15 @@ The backend prop wrappers are close to the official non-SSR Inertia protocol:
 from typing import Annotated
 
 from fastapi import Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from gdansk.inertia import InertiaPage, Merge, Once, OptionalProp, Scroll
 
-type PageDependency = Annotated[InertiaPage, Depends(ship.page)]
+type PageDependency = Annotated[InertiaPage[SharedProps], Depends(ship.page)]
+
+
+class SharedProps(BaseModel):
+    session_token: object | None = Field(default=None, serialization_alias="sessionToken")
 
 
 class DashboardProps(BaseModel):
@@ -135,7 +163,7 @@ class DashboardProps(BaseModel):
 @app.get("/")
 @ship.page()
 async def home(page: PageDependency) -> DashboardProps:
-    page.share_once(sessionToken=load_session_token)
+    page.share_once(SharedProps(session_token=load_session_token))
 
     return DashboardProps(
         announcements=Merge(value=load_announcements(), match_on="id"),

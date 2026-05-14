@@ -4,9 +4,11 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal, TypedDict, cast
 
+from pydantic import BaseModel
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
-from gdansk.inertia.props import Prop, ScrollConfig, _as_once_prop
+from gdansk.inertia.props import Prop, ScrollConfig
+from gdansk.inertia.shared import SharedPropPayload, SharedPropsState
 from gdansk.inertia.utils import (
     _ERRORS_SESSION_KEY,
     _FLASH_SESSION_KEY,
@@ -59,14 +61,14 @@ class ResolvedPageData:
     shared_props: list[str] = field(default_factory=list)
 
 
-class InertiaPage:
-    def __init__(self, *, app: InertiaApp, request: Request) -> None:
+class InertiaPage[SharedPropsT: BaseModel]:
+    def __init__(self, *, app: InertiaApp[SharedPropsT], request: Request) -> None:
         self._app = app
         self._clear_history_requested = False
         self._encrypt_history_enabled = app.default_encrypt_history
         self._local_flash: dict[str, Any] = {}
         self._request = request
-        self._shared_props: dict[str, Any] = {}
+        self._shared_props = SharedPropsState(app.shared_props_model)
 
     def back(self, *, preserve_fragment: bool = False) -> Response:
         return self.redirect(
@@ -151,15 +153,11 @@ class InertiaPage:
             headers={"Vary": "X-Inertia"},
         )
 
-    def share(self, **props: object) -> None:
-        self._shared_props.update(props)
+    def share(self, props: SharedPropPayload[SharedPropsT] = None, /, **updates: object) -> None:
+        self._shared_props.update(props, **updates)
 
-    def share_once(self, **props: object) -> None:
-        shared_once = {
-            key: (value if isinstance(value, Prop) and value.once_enabled else _as_once_prop(value, key=key))
-            for key, value in props.items()
-        }
-        self.share(**shared_once)
+    def share_once(self, props: SharedPropPayload[SharedPropsT] = None, /, **updates: object) -> None:
+        self._shared_props.update_once(props, **updates)
 
     async def _build_page(self, *, component: str, props: dict[str, Any]) -> dict[str, Any]:
         resolved = await self._resolve_props(component=component, props=props)
@@ -270,9 +268,9 @@ class InertiaPage:
         component: str,
         props: dict[str, Any],
     ) -> ResolvedPageData:
-        merged = {**self._shared_props, **props}
+        merged = {**self._shared_props.props, **props}
         result = ResolvedPageData(
-            shared_props=[key for key in self._shared_props if key not in props],
+            shared_props=[key for key in self._shared_props.props if key not in props],
         )
         partial = self._is_partial_reload(component=component)
         only_keys = self._only_keys()

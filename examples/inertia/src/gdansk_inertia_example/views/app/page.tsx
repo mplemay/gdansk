@@ -1,69 +1,15 @@
+import type { RootPageProps } from "@gdansk/types";
 import { Head, router, useForm, usePage } from "@inertiajs/react";
 import { useEffect, useRef } from "react";
 
-type Announcement = {
-  id: string;
-  label: string;
-  note: string;
-};
-
-type Conversation = {
-  messages: Array<{
-    author: string;
-    body: string;
-    id: string;
-  }>;
-  summary: {
-    updatedAt: string;
-  };
-};
-
-type Feed = {
-  items: Array<{
-    id: string;
-    text: string;
-  }>;
-  pagination: {
-    current: number;
-    next: number | null;
-    previous: number | null;
-  };
-};
-
-type Metric = {
-  label: string;
-  note: string;
-  value: string;
-};
-
-type RootPageProps = {
-  activity?: string[];
-  announcements: Announcement[];
-  conversation?: Conversation;
-  errors: Record<string, string>;
-  feed: Feed;
-  headline: string;
-  metrics: Metric[];
-  sessionToken?: string;
-  summary: string;
-  updatedAt: string;
-};
-
-type InertiaPageModel = {
-  flash?: {
-    message?: string;
-  };
-  props: RootPageProps;
-};
-
 export default function RootPage() {
-  const page = usePage() as InertiaPageModel;
+  const page = usePage<RootPageProps>();
   const form = useForm({
     name: "",
     topic: "",
   });
   const conversationReloadRequested = useRef(false);
-  const flashMessage = page.flash?.message;
+  const flashMessage = typeof page.flash.message === "string" ? page.flash.message : undefined;
   const { activity, announcements, conversation, feed, headline, metrics, sessionToken, summary, updatedAt } =
     page.props;
 

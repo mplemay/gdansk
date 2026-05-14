@@ -1,3 +1,5 @@
+import { resolve } from "node:path";
+
 import type { Plugin, UserConfig, ViteDevServer } from "vite";
 
 import { createBuildConfig, createPageBuildConfig } from "./build";
@@ -120,7 +122,7 @@ export function gdanskPages(options: GdanskPagePluginOptions = {}): Array<{ name
   const corePlugin: Plugin = {
     async config(config, env) {
       resolved = resolvePageOptions(options, config.root);
-      const sharedConfig = createSharedConfig(config, options, resolved);
+      const sharedConfig = createSharedConfig(config, options, resolved, { pageTypes: true });
 
       if (env.command === "build") {
         await ensurePrepared(config.root);
@@ -180,14 +182,18 @@ function createSharedConfig(
   config: UserConfig,
   options: GdanskPluginOptions | GdanskPagePluginOptions,
   resolved: ResolvedGdanskOptions,
+  extra: { pageTypes?: boolean } = {},
 ): UserConfig {
   const server = resolveDevelopmentServerConfig(options, resolved);
+  const extraAliases: Record<string, string> = extra.pageTypes
+    ? { "@gdansk/types": resolve(resolved.root, "types/gdansk") }
+    : {};
 
   return {
     appType: "custom",
     resolve: {
       ...(config.resolve ?? {}),
-      alias: mergeAliasConfig(config.resolve?.alias, resolved.root),
+      alias: mergeAliasConfig(config.resolve?.alias, resolved.root, extraAliases),
     },
     ...(server
       ? {
