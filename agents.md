@@ -78,8 +78,15 @@
 - Tests live under `__tests__/` with `unit/` and `integration/` subdirectories
 - Integration tests are marked with `@pytest.mark.integration`
 
-## Final Workflow
+## Workflows
 
-Run `uv run pytest` and `uv run prek run --all-files` with elevated permissions when needed. If you fix
-anything, rerun those same commands until they pass, then `git commit` (with an all lowercase single-line conventional
-commit message) and `git push`.
+### After Changes
+
+> [!IMPORTANT]
+> Always run this after you have complete your changes to code.
+
+1. Run `uv run pytest` to verify the code works. If it is broken, figure out the root cause, fix it, and then restart
+   this workflow.
+2. Run `uv run prek run --all-files` before staging. If the linter makes any changes, or changes are required, figure
+   out the root cause, fix it, and then restart this workflow.
+3. Stage the changes, commit, and push.
