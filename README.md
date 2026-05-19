@@ -10,6 +10,8 @@
 uv add gdansk
 ```
 
+Pre-built wheels are published for common platforms; the package includes a small native extension built with Rust.
+
 ## Skill for Coding Agents
 
 If you use coding agents such as Claude Code or Cursor, add the gdansk skills to your repository:

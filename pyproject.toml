@@ -29,11 +29,23 @@ dev = [
     "ty>=0.0.17",
 ]
 
+[tool.maturin]
+module-name = "gdansk._core"
+python-packages = ["gdansk"]
+python-source = "src"
+exclude = ["**/__tests__/**"]
+
 [build-system]
-requires = ["uv_build>=0.11,<0.12"]
-build-backend = "uv_build"
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
 
 [tool.uv]
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "src/**/*.rs" },
+    { file = "Cargo.toml" },
+    { file = "Cargo.lock" },
+]
 exclude-newer = "7 days"
 exclude-newer-package = { deno = false }
 

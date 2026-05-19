@@ -4,14 +4,15 @@ Thank you for your interest in contributing to Gdansk! We welcome contributions 
 
 ## Development Setup
 
-To set up a development environment:
+To set up a development environment you need a [Rust toolchain](https://rustup.rs/) (stable) in addition to Python 3.12+
+and `uv`. `uv sync` builds the `gdansk._core` native extension via [maturin](https://www.maturin.rs/).
 
 ```bash
 # Clone the repository
 git clone https://github.com/mattlemay/gdansk.git
 cd gdansk
 
-# Install dependencies (including dev dependencies)
+# Install dependencies (including dev dependencies; compiles the Rust extension)
 uv sync --all-extras
 
 # Install prek hooks
@@ -70,13 +71,15 @@ uv run prek run --all-files
 
 ```text
 gdansk/
+├── Cargo.toml              # Rust extension crate (PyO3 / maturin)
 ├── src/
+│   ├── lib.rs              # Rust pymodule for gdansk._core
 │   └── gdansk/
 │       ├── __init__.py     # Package exports
 │       ├── core.py         # Python Ship class
-│       ├── _core.py        # Internal build/runtime helpers
+│       ├── _core.pyi       # Type stubs for the Rust extension
 │       └── __tests__/      # Test files
-├── packages/               # Helper workspace packages
+├── packages/               # TypeScript / Deno packages (e.g. @gdansk/vite)
 ├── examples/               # Example MCP servers
 └── pyproject.toml         # Python project config
 ```
