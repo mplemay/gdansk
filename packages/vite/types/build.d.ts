@@ -1,13 +1,6 @@
 import type { UserConfig } from "vite";
 
-import type {
-  GdanskManifest,
-  ResolvedGdanskPageOptions,
-  GdanskPreparedProject,
-  LoadedProjectConfig,
-  ResolvedGdanskOptions,
-} from "./types";
-export declare function createPageBuildConfig(options: ResolvedGdanskPageOptions): UserConfig;
+import type { GdanskManifest, GdanskPreparedProject, LoadedProjectConfig, ResolvedGdanskOptions } from "./types";
 export declare function createBuildConfig(options: ResolvedGdanskOptions, prepared: GdanskPreparedProject): UserConfig;
 export declare function buildWidgets(
   options: ResolvedGdanskOptions,

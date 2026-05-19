@@ -1,8 +1,2 @@
-export { gdansk as default, gdansk, gdanskPages } from "./plugin";
-export type {
-  GdanskDevRuntimeMetadata,
-  GdanskPagePluginOptions,
-  GdanskPluginOptions,
-  RefreshConfig,
-  ResolvedGdanskOptions,
-} from "./types";
+export { gdansk as default, gdansk } from "./plugin";
+export type { GdanskDevRuntimeMetadata, GdanskPluginOptions, RefreshConfig, ResolvedGdanskOptions } from "./types";

@@ -4,13 +4,9 @@ import { dirname, join, resolve, sep } from "node:path";
 import type { Alias, InlineConfig, Plugin, PluginOption } from "vite";
 
 import type {
-  AppModuleDefinition,
-  GdanskPreparedPageProject,
   GdanskPreparedProject,
-  GdanskPagePluginOptions,
   GdanskPluginOptions,
   LoadedProjectConfig,
-  ResolvedGdanskPageOptions,
   ResolvedGdanskOptions,
   WidgetDefinition,
 } from "./types";
@@ -32,13 +28,6 @@ export function resolveOptions(options: GdanskPluginOptions = {}, configRoot?: s
     widgetsDirectory,
     widgetsDirectoryPath: resolve(root, widgetsDirectory),
   };
-}
-
-export function resolvePageOptions(
-  options: GdanskPagePluginOptions = {},
-  configRoot?: string,
-): ResolvedGdanskPageOptions {
-  return resolveOptions(options, configRoot);
 }
 
 async function globPaths(pattern: string, options: { absolute?: boolean; cwd: string }): Promise<string[]> {
@@ -107,23 +96,6 @@ export async function prepareProject(options: ResolvedGdanskOptions): Promise<Gd
   };
 }
 
-export async function preparePageProject(options: ResolvedGdanskPageOptions): Promise<GdanskPreparedPageProject> {
-  const appRoot = resolve(options.root, "app");
-  const [pages, layouts] = await Promise.all([
-    discoverAppModules(appRoot, "page"),
-    discoverAppModules(appRoot, "layout"),
-  ]);
-
-  if (pages.length === 0) {
-    throw new Error("The frontend app must contain at least one app/**/page.tsx or app/**/page.jsx file");
-  }
-
-  return {
-    layouts,
-    pages,
-  };
-}
-
 export async function pathExists(path: string): Promise<boolean> {
   try {
     await access(path);
@@ -135,43 +107,6 @@ export async function pathExists(path: string): Promise<boolean> {
 
 export function toPosixPath(path: string): string {
   return path.split(sep).join("/");
-}
-
-async function discoverAppModules(appRoot: string, name: "layout" | "page"): Promise<AppModuleDefinition[]> {
-  if (!(await pathExists(appRoot))) {
-    return [];
-  }
-
-  const entries = await globPaths(`**/${name}.{tsx,jsx}`, {
-    cwd: appRoot,
-  });
-  const modules = entries.map((entry) => {
-    const directory = toPosixPath(dirname(entry));
-    return {
-      entry: resolve(appRoot, entry),
-      key: directory === "." ? "/" : directory,
-    };
-  });
-
-  return ensureUniqueAppModules(modules, name);
-}
-
-function ensureUniqueAppModules(modules: AppModuleDefinition[], kind: "layout" | "page"): AppModuleDefinition[] {
-  const seen = new Map<string, string>();
-
-  for (const module of modules) {
-    const existing = seen.get(module.key);
-
-    if (existing) {
-      throw new Error(
-        `The frontend app contains multiple app/**/${kind} files for "${module.key}": ${existing} and ${module.entry}`,
-      );
-    }
-
-    seen.set(module.key, module.entry);
-  }
-
-  return modules.sort((left, right) => left.key.localeCompare(right.key) || left.entry.localeCompare(right.entry));
 }
 
 async function normalizePlugins(plugins: PluginOption | PluginOption[] | undefined): Promise<Plugin[]> {

@@ -58,9 +58,6 @@ select = ["ALL"]
 "examples/fastapi/main.py" = [
     "INP001", # example entrypoint is intentionally not part of a package
 ]
-"examples/inertia/main.py" = [
-    "INP001", # example entrypoint is intentionally not part of a package
-]
 "**/__tests__/**/*" = [
     "D", # pydocstyle (i.e. ignore missing/malformed docstrings)
     "ANN001",  # missing type annotation for function argument

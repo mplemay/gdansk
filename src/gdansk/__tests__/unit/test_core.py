@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from starlette.applications import Starlette
 from starlette.staticfiles import StaticFiles
 
-from gdansk.__tests__.unit.conftest import FakeManagedProcess, FakeProcess, write_manifest, write_page_manifest
+from gdansk.__tests__.unit.conftest import FakeManagedProcess, FakeProcess, write_manifest
 from gdansk.core import Ship
 from gdansk.manifest import GdanskManifest
 from gdansk.metadata import Metadata
@@ -741,19 +741,6 @@ def test_load_manifest_requires_matching_build_directory(views_path: Path):
 
     with pytest.raises(RuntimeError, match="configured build directory"):
         ship._vite.load_manifest()
-
-
-async def test_ship_lifespan_uses_page_mode_without_explicit_inertia_setup(page_views_path: Path):
-    write_page_manifest(page_views_path)
-    ship = Ship(vite=Vite(page_views_path))
-
-    assert ship._mode is None
-    assert ship._inertia_app is None
-
-    async with ship.lifespan(mcp=_app(), watch=None):
-        assert ship._mode == "inertia"
-        assert ship._inertia_app is not None
-        assert ship._vite._manifest is None
 
 
 async def test_ship_lifespan_requires_mcp_for_widgets(views_path: Path):

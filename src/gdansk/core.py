@@ -3,22 +3,17 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from functools import cached_property, partial
-from inspect import Parameter, Signature
 from os import PathLike
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Any, Final, Literal, cast, overload
+from typing import TYPE_CHECKING, Any, Final, Literal
 from urllib.parse import urlparse
 
 from httpx import AsyncClient
 from mcp.server.mcpserver.resources import FunctionResource
 from mcp.server.mcpserver.tools.base import Tool
-from starlette.requests import Request
 from starlette.staticfiles import StaticFiles
 
 from gdansk._schema import to_strict_schema
-from gdansk.inertia.config import Inertia
-from gdansk.inertia.core import InertiaApp, PageRouteDecorator
-from gdansk.inertia.page import InertiaPage
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import render_template
 from gdansk.utils import join_url, join_url_path
@@ -49,7 +44,6 @@ class Ship:
         self,
         *,
         vite: Vite | None = None,
-        inertia: Inertia | None = None,
         base_url: str | None = None,
         metadata: Metadata | None = None,
         client: AsyncClient | None = None,
@@ -61,17 +55,12 @@ class Ship:
         self._base_url: Final[str | None] = base_url
         self._client: Final[AsyncClient | None] = client
         self._dev = False
-        self._inertia: Final[Inertia] = inertia or Inertia()
-        self._inertia_app: InertiaApp | None = None
         self._metadata: Final[Metadata] = metadata or Metadata()
-        self._mode: Literal["inertia", "widget"] | None = None
         self._session_client: AsyncClient | None = None
         self._vite: Final[Vite] = vite or Vite()
         self._widget_manager: dict[Path, WidgetSpec] = {}
 
         self._active = False
-        if inertia is not None:
-            self._lock_mode("inertia")
 
     @cached_property
     def assets(self) -> StaticFiles:
@@ -93,49 +82,9 @@ class Ship:
     def metadata(self) -> Metadata:
         return self._metadata
 
-    @overload
-    def page(self, request: Request) -> InertiaPage: ...
-
-    @overload
-    def page(
-        self,
-        *,
-        metadata: Metadata | None = None,
-    ) -> PageRouteDecorator: ...
-
-    @overload
-    def page(
-        self,
-        component: str,
-        *,
-        metadata: Metadata | None = None,
-    ) -> PageRouteDecorator: ...
-
-    def page(
-        self,
-        request: Request | str | None = None,
-        *,
-        metadata: Metadata | None = None,
-    ) -> InertiaPage | PageRouteDecorator:
-        if isinstance(request, Request):
-            return self._page_dependency(request)
-
-        if request is None:
-            return self._ensure_inertia_app().page(metadata=metadata)
-
-        if isinstance(request, str):
-            return self._ensure_inertia_app().page(request, metadata=metadata)
-
-        msg = "Ship.page() requires no arguments, a Request dependency, or an Inertia component string"
-        raise TypeError(msg)
-
-    def _page_dependency(self, request: Request) -> InertiaPage:
-        return InertiaPage(app=self._ensure_inertia_app(), request=request)
-
     @asynccontextmanager
     async def lifespan(self, *, mcp: MCPServer | None = None, watch: bool | None = False) -> AsyncIterator[None]:
-        mode = self._runtime_mode()
-        if mode == "widget":
+        if self._widget_manager:
             if mcp is None:
                 msg = "Ship.lifespan(mcp=...) requires an MCPServer when widgets are registered"
                 raise ValueError(msg)
@@ -144,23 +93,10 @@ class Ship:
 
         self._session_begin()
         try:
-            if mode == "widget":
-                await self._prepare_frontend(watch=watch)
-            else:
-                await self._prepare_inertia(watch=watch)
+            await self._prepare_frontend(watch=watch)
             yield None
         finally:
             await self._session_end()
-
-    def _ensure_inertia_app(self) -> InertiaApp:
-        self._lock_mode("inertia")
-        if self._inertia_app is None:
-            self._inertia_app = InertiaApp(
-                ship=self,
-                config=self._inertia,
-            )
-
-        return self._inertia_app
 
     def _register_widgets(self, app: MCPServer) -> None:
         for spec in self._widget_manager.values():
@@ -171,13 +107,6 @@ class Ship:
 
             app._tool_manager._tools.setdefault(spec.tool.name, spec.tool)  # noqa: SLF001
             app.add_resource(resource=spec.resource)
-
-    def _runtime_mode(self) -> Literal["inertia", "widget"]:
-        if self._mode == "widget":
-            return "widget"
-
-        self._ensure_inertia_app()
-        return "inertia"
 
     def _session_begin(self) -> None:
         if self._active:
@@ -203,11 +132,6 @@ class Ship:
         await self._run_frontend(watch=watch)
         if not self._dev:
             self._vite.load_manifest()
-
-    async def _prepare_inertia(self, *, watch: bool | None) -> None:
-        await self._run_frontend(watch=watch)
-        if not self._dev:
-            self._ensure_inertia_app()._resolve_assets()  # noqa: SLF001
 
     def asset_url(self, path: str) -> str:
         return self._asset_url(path)
@@ -245,17 +169,6 @@ class Ship:
             if self._session_client is not None:
                 await self._session_client.aclose()
                 self._session_client = None
-
-    def _lock_mode(self, mode: Literal["inertia", "widget"]) -> None:
-        if self._mode is None:
-            self._mode = mode
-            return
-
-        if self._mode != mode:
-            msg = "A Ship instance cannot register widgets and Inertia pages at the same time"
-            raise RuntimeError(msg)
-
-        return
 
     def _asset_base_url(self) -> str | None:
         if self._base_url is None:
@@ -337,7 +250,6 @@ class Ship:
         schema: Literal["default", "strict"] = "default",
         structured_output: bool | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-        self._lock_mode("widget")
         posix_path = self._normalize_widget_path(Path(path))
         key = PurePosixPath(*posix_path.parts[:-1]).as_posix()
         resolved_path = (self._vite.widgets_root / Path(posix_path.as_posix())).resolve()
@@ -397,12 +309,3 @@ class Ship:
             return fn
 
         return decorator
-
-
-cast("Any", Ship.page).__signature__ = Signature(
-    parameters=(
-        Parameter("self", Parameter.POSITIONAL_OR_KEYWORD),
-        Parameter("request", Parameter.POSITIONAL_OR_KEYWORD, annotation=Request),
-    ),
-    return_annotation=InertiaPage,
-)
