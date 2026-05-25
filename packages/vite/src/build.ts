@@ -1,20 +1,18 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, posix, resolve } from "node:path";
 
+import { build, mergeConfig } from "vite";
 import type { UserConfig } from "vite";
 
 import { pathExists, toPosixPath } from "./context";
-import { createPageModuleId } from "./pages";
 import type {
   GdanskManifest,
-  ResolvedGdanskPageOptions,
   GdanskPreparedProject,
   LoadedProjectConfig,
   ResolvedGdanskOptions,
   WidgetDefinition,
 } from "./types";
 import { createGdanskVirtualModulesPlugin, createResolvedClientModuleId } from "./virtual";
-import { loadViteModule } from "./vite-runtime";
 
 const CLIENT_MANIFEST_FILE = "manifest.json";
 const GDANSK_MANIFEST_FILE = "gdansk-manifest.json";
@@ -24,22 +22,6 @@ type ViteManifestEntry = {
   file: string;
   imports?: string[];
 };
-
-export function createPageBuildConfig(options: ResolvedGdanskPageOptions): UserConfig {
-  return {
-    appType: "custom",
-    build: {
-      copyPublicDir: false,
-      emptyOutDir: true,
-      manifest: CLIENT_MANIFEST_FILE,
-      outDir: options.buildDirectory,
-      rollupOptions: {
-        input: createPageModuleId(),
-      },
-      sourcemap: true,
-    },
-  };
-}
 
 export function createBuildConfig(options: ResolvedGdanskOptions, prepared: GdanskPreparedProject): UserConfig {
   return {
@@ -73,7 +55,6 @@ export async function buildWidgets(
   prepared: GdanskPreparedProject,
   config: LoadedProjectConfig = {},
 ): Promise<GdanskManifest> {
-  const { build, mergeConfig } = await loadViteModule();
   await rm(options.buildDirectoryPath, { force: true, recursive: true });
   await mkdir(options.buildDirectoryPath, { recursive: true });
 

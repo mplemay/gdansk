@@ -27,131 +27,16 @@ Then use:
 
 - Python: `gdansk` currently requires `>=3.12,<3.15`.
 - Frontend package: use an ESM package with `@gdansk/vite`, `vite`, `@vitejs/plugin-react`, `react`, `react-dom`,
-  and `@modelcontextprotocol/ext-apps`. Inertia page mode targets `@inertiajs/react@3.0.3`.
+  and `@modelcontextprotocol/ext-apps`.
 - Runtime tooling: gdansk starts the frontend through `uv run deno ...`. If you run frontend package scripts directly,
   the published `@gdansk/vite` package currently declares Node `>=22`.
 
 ## Examples
 
 - **[FastAPI](examples/fastapi):** Mounting the MCP app inside an existing FastAPI service.
-- **[inertia](examples/inertia):** Ship-backed Inertia pages for FastAPI with `gdanskPages()`.
 - **[get-time](examples/get-time):** Small copyable widget example for first-time adoption in another repo.
 - **[production](examples/production):** Minimal production-rendered and hydrated widget example with a single tool.
 - **[shadcn](examples/shadcn):** Multi-tool todo app with `structured_output=True` and `shadcn/ui`.
-
-## Inertia Pages
-
-`Ship` can serve convention-driven Inertia v3 pages directly: the first request returns an HTML shell, follow-up
-requests use the Inertia JSON protocol, and production assets still come from `ship.assets`.
-
-Page mode is convention-driven. Put the root page at `app/page.tsx`, nested pages at `app/**/page.tsx`, and
-co-located layouts at `app/**/layout.tsx`. Decorate matching routes with `@ship.page()` to infer the component from
-the route path, or use an explicit id like `@ship.page("dashboard/reports")` when the backend route and frontend page
-key intentionally differ.
-
-For FastAPI pages, decorate a route with `@ship.page(...)`, return a Pydantic model or mapping, and run the frontend
-with `ship.lifespan(...)`. Page routes may also return `None` for empty props or an `InertiaResponse` such as
-`page.location("/#activity")`. Pass `inertia=Inertia(...)` to `Ship` to configure page settings such as a custom root
-id, explicit version, or default encrypted history.
-
-```python
-from pydantic import BaseModel, Field
-
-from gdansk import Metadata, Ship, Vite
-from gdansk.inertia import Defer, Inertia, Merge
-
-
-class HomeProps(BaseModel):
-    activity: Defer[list[str]]
-    announcements: Merge[list[dict[str, str]]]
-    headline: str
-    updated_at: str = Field(serialization_alias="updatedAt")
-
-
-ship = Ship(vite=Vite("frontend"), inertia=Inertia(id="app"))
-
-
-@app.get("/")
-@ship.page(metadata=Metadata(title="Home"))
-async def home() -> HomeProps:
-    return HomeProps(
-        activity=Defer(value=load_activity, group="activity"),
-        announcements=Merge(value=load_announcements(), match_on="id"),
-        headline="FastAPI + Inertia",
-        updated_at="May 5, 2026",
-    )
-```
-
-If a rendered route needs imperative page control for flash, history flags, or per-request shared props, combine the
-decorator with `Depends(ship.page)`, mutate the injected page, and return props from the route.
-
-Pair the backend with `gdanskPages()` in your frontend `vite.config.ts`:
-
-```ts
-import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
-import { gdanskPages } from "@gdansk/vite";
-
-export default defineConfig({
-  plugins: [gdanskPages({ refresh: true }), react()],
-});
-```
-
-For a full FastAPI example with validation errors, flash messages, deferred props, once props, merge helpers, scroll
-props, and fragment redirects, see
-[`examples/inertia`](examples/inertia).
-
-The backend prop wrappers are close to the official non-SSR Inertia protocol:
-
-- `Prop(value=...)` is the advanced escape hatch for combining prop behaviors.
-- `OptionalProp(value=...)`, `Always(value=...)`, and `Defer(value=..., group=...)` control eager vs partial/deferred
-  loading.
-- `Once(value=..., key=...)` and `page.share_once(...)` emit `onceProps` so the client can reuse previously loaded data.
-- `Merge(value=..., match_on=...)`, `Merge(value=..., deep=True, match_on=...)`, and
-  `Merge(value=..., mode="prepend")` emit merge metadata.
-- `Scroll(value=...)` emits both merge metadata and `scrollProps` for infinite-scroll style payloads.
-- `page.encrypt_history(...)`, `page.clear_history()`, and `page.redirect(..., preserve_fragment=True)` control history
-  and redirect behavior.
-
-```python
-from typing import Annotated
-
-from fastapi import Depends
-from pydantic import BaseModel
-
-from gdansk.inertia import InertiaPage, Merge, Once, OptionalProp, Scroll
-
-type PageDependency = Annotated[InertiaPage, Depends(ship.page)]
-
-
-class DashboardProps(BaseModel):
-    announcements: Merge[list[dict[str, object]]]
-    conversation: Merge[dict[str, object]]
-    feed: Scroll[dict[str, object]]
-    profile: Once[object]
-    stats: OptionalProp[object]
-
-
-@app.get("/")
-@ship.page()
-async def home(page: PageDependency) -> DashboardProps:
-    page.share_once(sessionToken=load_session_token)
-
-    return DashboardProps(
-        announcements=Merge(value=load_announcements(), match_on="id"),
-        conversation=Merge(value=load_conversation(), deep=True, match_on="messages.id"),
-        feed=Scroll(
-            value=load_feed(),
-            items_path="items",
-            current_page_path="pagination.current",
-            next_page_path="pagination.next",
-            previous_page_path="pagination.previous",
-            page_name="feed_page",
-        ),
-        profile=Once(value=load_profile, key="shared-profile"),
-        stats=OptionalProp(value=load_stats),
-    )
-```
 
 ## Quick Start
 
@@ -198,8 +83,8 @@ def greet(name: str) -> list[TextContent]:
 
 
 @asynccontextmanager
-async def lifespan(mcp: MCPServer) -> AsyncIterator[None]:
-    async with ship.lifespan(mcp=mcp, watch=True):
+async def lifespan(app: MCPServer) -> AsyncIterator[None]:
+    async with ship.mcp(app=app, watch=True):
         yield
 
 
@@ -304,7 +189,7 @@ export default defineConfig({
 alias when you want `@` to resolve somewhere else. Use `refresh: true` to trigger full browser reloads when nearby
 Python or Jinja files change during development.
 
-For widget-based MCP apps, `ship.lifespan(..., watch=...)` controls how the frontend is prepared:
+`ship.mcp(..., watch=...)` controls how the frontend is prepared:
 
 - **`watch=True`** — runs the Vite dev server in the background with React refresh; JS/CSS load from the Vite origin.
 - **`watch=False`** (default) — runs `vite build` on startup, then serves static hydration assets and the gdansk
@@ -385,7 +270,7 @@ an interactive greeting tool ready to use.
    hints, build your UI in React/TypeScript. No need to learn a new framework-specific language.
 
 2. **Built for MCP** — Composes with `MCPServer` from the official Python SDK: register widget tools and HTML resources
-   via `Ship`, wire them in with `ship.lifespan(mcp=...)`, and integrate with Claude Desktop and other MCP clients.
+   via `Ship`, wire them in with `ship.mcp(app=...)`, and integrate with Claude Desktop and other MCP clients.
 
 3. **Fast bundling with Rolldown** — The Rolldown bundler processes your TypeScript/JSX automatically. Hot-reload in
    development mode means you see changes instantly without manual rebuilds.
@@ -394,7 +279,7 @@ an interactive greeting tool ready to use.
    automatic type checking via ruff and TypeScript compiler.
 
 5. **Developer-Friendly** — Simple decorator API (`@ship.widget()`), automatic resource registration, dev mode on
-   `ship.lifespan(...)`, and comprehensive error messages. Get started in minutes, not hours.
+   `ship.mcp(...)`, and comprehensive error messages. Get started in minutes, not hours.
 
 6. **Production Ready** — Comprehensive test suite covering Python 3.12+ across Linux, macOS, and Windows. Used in
    production MCP servers with proven reliability.

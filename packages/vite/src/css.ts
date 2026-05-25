@@ -1,6 +1,5 @@
 import type { EnvironmentModuleNode, ViteDevServer } from "vite";
-
-import { normalizePath } from "./path";
+import { normalizePath } from "vite";
 
 export function collectCSSFromModuleGraph(server: ViteDevServer, entry: string): string[] {
   const entryModule = resolveEntryModule(server, entry);
