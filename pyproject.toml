@@ -9,7 +9,7 @@ authors = [
 ]
 requires-python = ">=3.12,<3.15"
 dependencies = [
-    "deno>=2.7.12,<3",
+    "deno>=2.8.2,<3",
     "mcp>=1.25.1.dev114,<1.26",
     "minijinja>=2,<3",
     "pydantic>=2.12.5",
@@ -37,10 +37,12 @@ module-name = "gdansk._core"
 python-packages = ["gdansk"]
 python-source = "src"
 exclude = ["**/__tests__/**"]
+features = ["extension-module"]
 
 [tool.uv]
 cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.rs" }, { file = "Cargo.toml" }, { file = "Cargo.lock" }]
 exclude-newer = "7 days"
+exclude-newer-package = { deno = false }
 
 [tool.uv.sources]
 mcp = { git = "https://github.com/modelcontextprotocol/python-sdk.git", rev = "main" }

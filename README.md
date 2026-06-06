@@ -259,6 +259,35 @@ cd frontend
 uv run deno install
 ```
 
+## Embedded Deno Runtime
+
+Gdansk also exposes a small Python API for executing JavaScript and TypeScript through the embedded Deno runtime:
+
+```python
+from gdansk import Runtime, Script
+
+script = Script("export default function run(input) { return input.value + 1; }")
+
+with Runtime(cwd=".")(script) as run:
+    assert run({"value": 41}) == 42
+```
+
+Use `[gdansk.dependencies]` and `[gdansk.dev-dependencies]` in `pyproject.toml` when embedded scripts need npm or JSR
+packages:
+
+```toml
+[gdansk.dependencies]
+react = "^19"
+std_path = "jsr:@std/path@^1"
+
+[gdansk.dev-dependencies]
+"@types/react" = "^19"
+```
+
+Unprefixed values are treated as npm version requirements for the table key, so `react = "^19"` becomes
+`npm:react@^19`. Use `lock_packages()`, `install_packages()`, or `update_packages()` from `gdansk` to resolve those
+dependencies and write Deno's native `deno.lock` next to `pyproject.toml`.
+
 Gdansk mounts your default export into `#root` automatically and wraps it with `React.StrictMode`.
 
 Run the server with `uv run python server.py`, configure it in your MCP client (like Claude Desktop), and you'll have
