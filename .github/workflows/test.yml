@@ -35,7 +35,11 @@ jobs:
             (cd "$d" && deno install)
           done
 
-      - uses: j178/prek-action@v1
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: j178/prek-action@v2
 
   test-python:
     name: test (python ${{ matrix.python-version }}, ${{ matrix.os }})
