@@ -52,16 +52,10 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v7
 
-      - name: Install V8 build dependencies
-        run: sudo apt-get update && sudo apt-get install -yq --no-install-recommends libglib2.0-dev pkg-config
-
       - name: Bump version
         run: uv version "${{ needs.prepare_release.outputs.version }}"
 
       - name: Build
-        env:
-          V8_FROM_SOURCE: "1"
-          GN_ARGS: v8_monolithic_for_shared_library=true
         run: uv build
 
       - name: Publish
