@@ -409,19 +409,22 @@ async def test_widget_resource_raises_when_manifest_is_missing_widget(views_path
         await ship.render_widget_page(metadata=None, widget_key="hello")
 
 
-async def test_build_uses_embedded_frontend_runtime(views_path: Path, monkeypatch: pytest.MonkeyPatch):
-    captured: tuple[Path, str] | None = None
+async def test_build_uses_task_runner(views_path: Path, monkeypatch: pytest.MonkeyPatch):
+    captured: dict[str, object] | None = None
 
-    async def fake_build_frontend(root: Path, build_directory: str) -> None:
+    async def fake_run_task(task_cwd: Path, script: str, **kwargs: object) -> None:
         nonlocal captured
-        captured = (root, build_directory)
+        captured = {"task_cwd": task_cwd, "script": script, **kwargs}
 
     ship = Ship(vite=Vite(views_path))
-    monkeypatch.setattr("gdansk.vite.build_frontend", fake_build_frontend)
+    monkeypatch.setattr("gdansk.vite.run_task", fake_run_task)
 
     await ship._vite.build()
 
-    assert captured == (views_path, "dist")
+    assert captured is not None
+    assert captured["task_cwd"] == views_path
+    assert captured["script"] == "build"
+    assert captured["argv"] == ["--outDir", "dist"]
 
 
 async def test_wait_for_vite_timeout_mentions_matching_vite_and_plugin_config(

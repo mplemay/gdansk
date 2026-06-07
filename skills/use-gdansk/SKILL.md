@@ -39,15 +39,13 @@ Fail early on missing package structure before writing feature code.
   - `vite.config.ts`
   - `widgets/`
 - Confirm the frontend package is ESM with `"type": "module"`.
-- Confirm `package.json` includes:
-  - `@gdansk/vite`
-  - `vite`
-  - `@vitejs/plugin-react`
-  - `react`
-  - `react-dom`
-  - `@modelcontextprotocol/ext-apps`
-- After changing frontend dependencies, run `uv run deno install` from that package directory and update `deno.lock`
-  when the repo tracks it.
+- Confirm the Python project's `pyproject.toml` includes:
+  - `[gdansk.dependencies]` with `@gdansk/vite`, `vite`, `@vitejs/plugin-react`, `react`, and `react-dom`
+  - `[gdansk.scripts]` with at least `build = "vite build"` and `dev = "vite"`
+- Confirm `package.json` in the frontend package root still exists for editor/tooling compatibility when needed.
+- After changing frontend dependencies, run `lock_packages(cwd=<pyproject-dir>)` or `uv run deno install` against the
+  Python project root and update `deno.lock` when the repo tracks it.
+- Confirm `deno` is available on `PATH` (or set `GDANSK_DENO`) because frontend builds run through `deno task`.
 
 Use [quickstart.md](references/quickstart.md) for the canonical baseline layout and minimum files.
 Use [adoption-checklist.md](references/adoption-checklist.md) for compatibility and dependency expectations.

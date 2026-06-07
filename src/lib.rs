@@ -1,11 +1,11 @@
 mod binding;
 mod embed;
 mod exceptions;
-mod frontend;
 mod options;
 mod packages;
 mod runtime;
 mod script;
+mod task;
 mod types;
 mod utils;
 
@@ -24,15 +24,15 @@ fn _core(py: Python<'_>, m: &pyo3::Bound<'_, pyo3::types::PyModule>) -> pyo3::Py
     m.add_class::<binding::PyPackageInstallResult>()?;
     m.add_class::<binding::PyPackageUpdateChange>()?;
     m.add_class::<binding::PyPackageUpdateResult>()?;
-    m.add_class::<binding::PyFrontendDevServer>()?;
+    m.add_class::<binding::PyTaskRunner>()?;
+    m.add_class::<binding::PyRunTaskOptions>()?;
+    m.add_class::<binding::PyTaskProcess>()?;
     m.add_function(wrap_pyfunction!(binding::py_install_packages, m)?)?;
     m.add_function(wrap_pyfunction!(binding::py_lock_packages, m)?)?;
     m.add_function(wrap_pyfunction!(binding::py_update_packages, m)?)?;
     m.add_function(wrap_pyfunction!(binding::py_ainstall_packages, m)?)?;
     m.add_function(wrap_pyfunction!(binding::py_alock_packages, m)?)?;
     m.add_function(wrap_pyfunction!(binding::py_aupdate_packages, m)?)?;
-    m.add_function(wrap_pyfunction!(binding::py_build_frontend, m)?)?;
-    m.add_function(wrap_pyfunction!(binding::py_start_frontend_dev, m)?)?;
     m.add("GdanskError", py.get_type::<exceptions::GdanskError>())?;
     m.add(
         "GdanskRuntimeError",

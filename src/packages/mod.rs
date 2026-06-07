@@ -70,6 +70,7 @@ struct PyprojectManifest {
     path: PathBuf,
     document: DocumentMut,
     dependencies: Vec<PackageDependency>,
+    scripts: BTreeMap<String, String>,
 }
 
 impl PackageEnvironment {
@@ -96,12 +97,20 @@ impl PackageEnvironment {
         cwd: PathBuf,
         dependencies: Vec<PackageDependency>,
     ) -> Result<Self, AnyError> {
+        Self::from_manifest_parts(cwd, dependencies, BTreeMap::new())
+    }
+
+    fn from_manifest_parts(
+        cwd: PathBuf,
+        dependencies: Vec<PackageDependency>,
+        scripts: BTreeMap<String, String>,
+    ) -> Result<Self, AnyError> {
         let temp_dir = tempfile::Builder::new()
             .prefix("gdansk-packages-")
             .tempdir()
             .context("Failed to create temporary Deno package config directory")?;
         let config_file = temp_dir.path().join("deno.json");
-        write_synthetic_config(&config_file, &dependencies)?;
+        write_synthetic_config(&config_file, &dependencies, &scripts)?;
         let lockfile = cwd.join("deno.lock");
         Ok(Self {
             inner: Rc::new(PackageEnvironmentInner {
@@ -115,20 +124,21 @@ impl PackageEnvironment {
         })
     }
 
-    pub(crate) fn from_imports(
-        cwd: PathBuf,
-        imports: Vec<(String, String)>,
-    ) -> Result<Self, AnyError> {
-        let dependencies = imports
-            .into_iter()
-            .map(|(alias, specifier)| PackageDependency {
-                alias,
-                specifier,
-                kind: DependencyKind::Dependency,
-                value_kind: PyprojectValueKind::FullSpecifier,
-            })
-            .collect();
-        Self::from_dependencies(cwd, dependencies)
+    pub(crate) fn for_task(task_cwd: &Path, script_name: &str) -> Result<Self, AnyError> {
+        let pyproject_dir = find_pyproject_dir(task_cwd)?;
+        let manifest = read_manifest(&pyproject_dir, true)?.ok_or_else(|| {
+            anyhow!(
+                "No pyproject.toml with [gdansk] configuration found near {}",
+                task_cwd.display()
+            )
+        })?;
+        if !manifest.scripts.contains_key(script_name) {
+            bail!(
+                "No [gdansk.scripts] entry '{script_name}' in {}",
+                manifest.path.display()
+            );
+        }
+        Self::from_manifest_parts(pyproject_dir, manifest.dependencies, manifest.scripts)
     }
 
     pub(crate) fn cwd(&self) -> &Path {
@@ -253,11 +263,59 @@ fn read_manifest(cwd: &Path, include_dev: bool) -> Result<Option<PyprojectManife
     if include_dev {
         collect_table_deps(&document, DependencyKind::DevDependency, &mut dependencies)?;
     }
+    let mut scripts = BTreeMap::new();
+    collect_scripts(&document, &mut scripts)?;
     Ok(Some(PyprojectManifest {
         path,
         document,
         dependencies,
+        scripts,
     }))
+}
+
+pub(crate) fn find_pyproject_dir(start: &Path) -> Result<PathBuf, AnyError> {
+    let start = start.canonicalize().unwrap_or_else(|_| start.to_path_buf());
+    let mut searched = Vec::new();
+    for dir in start.ancestors() {
+        let path = dir.join("pyproject.toml");
+        searched.push(path.display().to_string());
+        if !path.is_file() {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path)
+            .with_context(|| format!("Reading {}", path.display()))?;
+        let document = text
+            .parse::<DocumentMut>()
+            .with_context(|| format!("Parsing {}", path.display()))?;
+        if document.get("gdansk").is_some() {
+            return Ok(dir.to_path_buf());
+        }
+    }
+    bail!(
+        "Could not find pyproject.toml with a [gdansk] table. Searched: {}",
+        searched.join(", ")
+    )
+}
+
+fn collect_scripts(
+    document: &DocumentMut,
+    scripts: &mut BTreeMap<String, String>,
+) -> Result<(), AnyError> {
+    let Some(table) = document
+        .get("gdansk")
+        .and_then(|gdansk| gdansk.get("scripts"))
+        .and_then(|scripts| scripts.as_table())
+    else {
+        return Ok(());
+    };
+
+    for (name, item) in table.iter() {
+        let command = item.as_str().ok_or_else(|| {
+            anyhow!("[gdansk.scripts] entry '{name}' must be a string shell command")
+        })?;
+        scripts.insert(name.to_string(), command.to_string());
+    }
+    Ok(())
 }
 
 fn collect_table_deps(
@@ -311,15 +369,22 @@ fn normalize_dependency(
     })
 }
 
-fn write_synthetic_config(path: &Path, dependencies: &[PackageDependency]) -> Result<(), AnyError> {
+fn write_synthetic_config(
+    path: &Path,
+    dependencies: &[PackageDependency],
+    scripts: &BTreeMap<String, String>,
+) -> Result<(), AnyError> {
     let imports = dependencies
         .iter()
         .map(|dep| (dep.alias.clone(), dep.specifier.clone()))
         .collect::<BTreeMap<_, _>>();
-    let config = serde_json::json!({
+    let mut config = serde_json::json!({
       "imports": imports,
       "nodeModulesDir": "none",
     });
+    if !scripts.is_empty() {
+        config["tasks"] = serde_json::json!(scripts);
+    }
     let text = serde_json::to_string_pretty(&config)?;
     std::fs::write(path, format!("{text}\n"))
         .with_context(|| format!("Writing {}", path.display()))?;
@@ -457,7 +522,7 @@ std_path = "jsr:@std/path@^1"
         let dependencies =
             vec![normalize_dependency("react", "^19", DependencyKind::Dependency).unwrap()];
 
-        write_synthetic_config(&config_path, &dependencies).unwrap();
+        write_synthetic_config(&config_path, &dependencies, &BTreeMap::new()).unwrap();
 
         let text = fs::read_to_string(config_path).unwrap();
         let config: serde_json::Value = serde_json::from_str(&text).unwrap();
@@ -503,5 +568,64 @@ std_path = "jsr:@std/path@^1"
         let pyproject = fs::read_to_string(cwd.join("pyproject.toml")).unwrap();
         assert!(pyproject.contains("react = \"^19\""));
         assert!(pyproject.contains("std_path = \"jsr:@std/path@^2\""));
+    }
+
+    #[test]
+    fn reads_pyproject_script_table() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        fs::write(
+            temp_dir.path().join("pyproject.toml"),
+            r#"[project]
+name = "example"
+
+[gdansk.dependencies]
+vite = "^8"
+
+[gdansk.scripts]
+build = "vite build"
+dev = "vite"
+"#,
+        )
+        .unwrap();
+
+        let manifest = read_manifest(temp_dir.path(), true).unwrap().unwrap();
+
+        assert_eq!(
+            manifest.scripts.get("build"),
+            Some(&"vite build".to_string())
+        );
+        assert_eq!(manifest.scripts.get("dev"), Some(&"vite".to_string()));
+    }
+
+    #[test]
+    fn synthetic_config_includes_tasks_from_scripts() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let config_path = temp_dir.path().join("deno.json");
+        let dependencies =
+            vec![normalize_dependency("vite", "^8", DependencyKind::Dependency).unwrap()];
+        let mut scripts = BTreeMap::new();
+        scripts.insert("build".to_string(), "vite build".to_string());
+
+        write_synthetic_config(&config_path, &dependencies, &scripts).unwrap();
+
+        let config: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(config_path).unwrap()).unwrap();
+        assert_eq!(config["tasks"]["build"], "vite build");
+    }
+
+    #[test]
+    fn find_pyproject_dir_walks_ancestors() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let nested = temp_dir.path().join("src").join("app").join("views");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(
+            temp_dir.path().join("pyproject.toml"),
+            "[gdansk.dependencies]\nvite = \"^8\"\n",
+        )
+        .unwrap();
+
+        let found = find_pyproject_dir(&nested).unwrap();
+
+        assert_eq!(found, temp_dir.path());
     }
 }

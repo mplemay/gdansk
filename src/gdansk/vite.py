@@ -4,14 +4,17 @@ from asyncio import sleep
 from http import HTTPStatus
 from os import PathLike
 from pathlib import Path, PurePosixPath
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from httpx import AsyncClient, RequestError
 from pydantic import ValidationError
 
-from gdansk._core import FrontendDevServer, build_frontend, start_frontend_dev
 from gdansk.manifest import GdanskManifest, WidgetManifest
+from gdansk.task import run_task, start_task
 from gdansk.utils import join_url
+
+if TYPE_CHECKING:
+    from gdansk._core import TaskProcess
 
 type PathType = str | PathLike[str]
 
@@ -55,7 +58,7 @@ class Vite:
         self._widgets_root: Final[Path] = self._root / "widgets"
 
         self._frontend_running = False
-        self._frontend: FrontendDevServer | None = None
+        self._frontend: TaskProcess | None = None
         self._manifest: GdanskManifest | None = None
         self._origin: str | None = None
 
@@ -152,14 +155,20 @@ class Vite:
 
     async def build(self) -> None:
         self.clear_manifest()
-        await build_frontend(self._root, self._build_directory)
+        await run_task(self._root, "build", argv=["--outDir", self._build_directory])
 
     async def start_dev(self) -> None:
         if self._frontend is not None:
             return
 
         self.clear_manifest()
-        frontend = await start_frontend_dev(self._root, self._host, self._port)
+        frontend = await start_task(
+            self._root,
+            "dev",
+            argv=["--host", self._host, "--port", str(self._port)],
+            host=self._host,
+            port=self._port,
+        )
         self._frontend = frontend
         self._origin = frontend.origin
         self._frontend_running = True
