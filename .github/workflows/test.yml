@@ -17,9 +17,12 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Install V8 build dependencies
+        run: sudo apt-get update && sudo apt-get install -yq --no-install-recommends libglib2.0-dev pkg-config
+
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: lint-v8-149.2.0-prebuilt
+          shared-key: lint-v8-149.2.0-source-icu-inline
 
       - uses: astral-sh/setup-uv@v7
         with:
@@ -32,6 +35,9 @@ jobs:
           cache: true
 
       - name: Install python dependencies
+        env:
+          GN_ARGS: v8_monolithic_for_shared_library=true icu_use_data_file=false
+          V8_FROM_SOURCE: "1"
         run: uv sync --all-groups --all-extras --all-packages
 
       - name: Install TypeScript package dependencies (Deno)
@@ -60,6 +66,10 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - name: Install V8 build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -yq --no-install-recommends libglib2.0-dev pkg-config
+
       - name: Configure Windows build environment
         if: runner.os == 'Windows'
         shell: pwsh
@@ -70,7 +80,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: test-python-${{ matrix.os }}-v8-149.2.0-prebuilt-${{ runner.arch }}
+          shared-key: test-python-${{ matrix.os }}-v8-149.2.0-${{ runner.os == 'Linux' && 'source-icu-inline' || 'prebuilt' }}-${{ runner.arch }}
 
       - uses: astral-sh/setup-uv@v7
         with:
@@ -83,6 +93,9 @@ jobs:
           cache: true
 
       - name: Install dependencies
+        env:
+          GN_ARGS: ${{ runner.os == 'Linux' && 'v8_monolithic_for_shared_library=true icu_use_data_file=false' || '' }}
+          V8_FROM_SOURCE: ${{ runner.os == 'Linux' && '1' || '' }}
         run: uv sync --all-groups --all-extras --all-packages
 
       - name: Install example views dependencies (Deno)
