@@ -22,7 +22,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: lint-v8-149.2.0-source-icu-data
+          shared-key: lint-v8-149.2.0-source-no-temporal-icu-data
 
       - uses: astral-sh/setup-uv@v7
         with:
@@ -48,7 +48,7 @@ jobs:
 
       - name: Install python dependencies
         env:
-          GN_ARGS: v8_monolithic_for_shared_library=true icu_use_data_file=false
+          GN_ARGS: v8_monolithic_for_shared_library=true icu_use_data_file=false v8_enable_temporal_support=false
           V8_FROM_SOURCE: "1"
         run: uv sync --all-groups --all-extras --all-packages
 
@@ -92,7 +92,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: test-python-${{ matrix.os }}-v8-149.2.0-${{ runner.os == 'Linux' && 'source-icu-data' || 'prebuilt' }}-${{ runner.arch }}
+          shared-key: test-python-${{ matrix.os }}-v8-149.2.0-${{ runner.os == 'Linux' && 'source-no-temporal-icu-data' || 'prebuilt' }}-${{ runner.arch }}
 
       - uses: astral-sh/setup-uv@v7
         with:
@@ -119,7 +119,7 @@ jobs:
 
       - name: Install dependencies
         env:
-          GN_ARGS: ${{ runner.os == 'Linux' && 'v8_monolithic_for_shared_library=true icu_use_data_file=false' || '' }}
+          GN_ARGS: ${{ runner.os == 'Linux' && 'v8_monolithic_for_shared_library=true icu_use_data_file=false v8_enable_temporal_support=false' || '' }}
           V8_FROM_SOURCE: ${{ runner.os == 'Linux' && '1' || '' }}
         run: uv sync --all-groups --all-extras --all-packages
 

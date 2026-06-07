@@ -72,7 +72,7 @@ jobs:
 
       - name: Build
         env:
-          GN_ARGS: v8_monolithic_for_shared_library=true icu_use_data_file=false
+          GN_ARGS: v8_monolithic_for_shared_library=true icu_use_data_file=false v8_enable_temporal_support=false
           V8_FROM_SOURCE: "1"
         run: uv build
 
