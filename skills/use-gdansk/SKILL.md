@@ -40,11 +40,12 @@ Fail early on missing package structure before writing feature code.
   - `widgets/`
 - Confirm the frontend package is ESM with `"type": "module"`.
 - Confirm the Python project's `pyproject.toml` includes:
+  - `[gdansk] frontend = "<path-to-frontend-package>"`
   - `[gdansk.dependencies]` with `@gdansk/vite`, `vite`, `@vitejs/plugin-react`, `react`, and `react-dom`
   - `[gdansk.scripts]` with at least `build = "vite build"` and `dev = "vite"`
 - Confirm `package.json` in the frontend package root still exists for editor/tooling compatibility when needed.
-- After changing frontend dependencies, run `lock_packages(cwd=<pyproject-dir>)` or `uv run deno install` against the
-  Python project root and update `deno.lock` when the repo tracks it.
+- After changing frontend dependencies, run `uv run gdansk install` from the Python project root and update
+  `deno.lock` when the repo tracks it.
 - Confirm `deno` is available on `PATH` (or set `GDANSK_DENO`) because frontend builds run through `deno task`.
 
 Use [quickstart.md](references/quickstart.md) for the canonical baseline layout and minimum files.

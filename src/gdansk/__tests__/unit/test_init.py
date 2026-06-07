@@ -1,0 +1,234 @@
+from __future__ import annotations
+
+from importlib import resources
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+from gdansk.__tests__.conftest import write_pyproject
+from gdansk.cli import main
+
+
+def _run_init(
+    argv: list[str],
+    *,
+    monkeypatch: pytest.MonkeyPatch,
+    cwd: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> tuple[int, str, str]:
+    monkeypatch.chdir(cwd)
+    exit_code = 0
+    try:
+        main(argv)
+    except SystemExit as exc:
+        exit_code = exc.code if isinstance(exc.code, int) else 0
+    captured = capsys.readouterr()
+    return exit_code, captured.out, captured.err
+
+
+def test_init_creates_scaffold_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    target = tmp_path / "new-project"
+    monkeypatch.setattr(
+        "gdansk.cli.lock_packages",
+        lambda **_kwargs: SimpleNamespace(lockfile=str(target / "deno.lock"), dependencies=4, dev_dependencies=0),
+    )
+
+    code, stdout, _stderr = _run_init(
+        ["init", "--path", str(target), "--no-install"],
+        monkeypatch=monkeypatch,
+        cwd=tmp_path,
+        capsys=capsys,
+    )
+
+    assert code == 0
+    assert (target / "pyproject.toml").exists()
+    assert (target / "server.py").exists()
+    assert (target / "frontend" / "package.json").exists()
+    assert (target / "frontend" / "vite.config.ts").exists()
+    assert (target / "frontend" / "widgets" / "hello" / "widget.tsx").exists()
+    assert "Initialized gdansk project" in stdout
+
+
+def test_init_pyproject_contains_gdansk_tables(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    target = tmp_path / "new-project"
+    monkeypatch.setattr(
+        "gdansk.cli.lock_packages",
+        lambda **_kwargs: SimpleNamespace(lockfile=str(target / "deno.lock"), dependencies=4, dev_dependencies=0),
+    )
+
+    _run_init(["init", "--path", str(target), "--no-install"], monkeypatch=monkeypatch, cwd=tmp_path, capsys=capsys)
+
+    text = (target / "pyproject.toml").read_text(encoding="utf-8")
+    assert "[project]" in text
+    assert "[gdansk]" in text
+    assert 'frontend = "frontend"' in text
+    assert "[gdansk.dependencies]" in text
+    assert "[gdansk.scripts]" in text
+
+
+def test_init_appends_gdansk_to_existing_pyproject(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    target = tmp_path / "existing"
+    target.mkdir()
+    (target / "pyproject.toml").write_text(
+        '[project]\nname = "existing"\nversion = "0.1.0"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "gdansk.cli.lock_packages",
+        lambda **_kwargs: SimpleNamespace(lockfile=str(target / "deno.lock"), dependencies=4, dev_dependencies=0),
+    )
+
+    _run_init(["init", "--path", str(target), "--no-install"], monkeypatch=monkeypatch, cwd=tmp_path, capsys=capsys)
+
+    text = (target / "pyproject.toml").read_text(encoding="utf-8")
+    assert 'name = "existing"' in text
+    assert "[gdansk.dependencies]" in text
+
+
+def test_init_refuses_existing_gdansk_without_force(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    target = tmp_path / "existing"
+    target.mkdir()
+    write_pyproject(target)
+
+    code, _stdout, stderr = _run_init(
+        ["init", "--path", str(target), "--no-install"],
+        monkeypatch=monkeypatch,
+        cwd=tmp_path,
+        capsys=capsys,
+    )
+
+    assert code == 1
+    assert "already present" in stderr
+
+
+def test_init_force_replaces_gdansk_tables(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    target = tmp_path / "existing"
+    target.mkdir()
+    write_pyproject(target, frontend="old-frontend")
+    monkeypatch.setattr(
+        "gdansk.cli.lock_packages",
+        lambda **_kwargs: SimpleNamespace(lockfile=str(target / "deno.lock"), dependencies=4, dev_dependencies=0),
+    )
+
+    _run_init(
+        ["init", "--path", str(target), "--force", "--no-install"],
+        monkeypatch=monkeypatch,
+        cwd=tmp_path,
+        capsys=capsys,
+    )
+
+    text = (target / "pyproject.toml").read_text(encoding="utf-8")
+    assert 'frontend = "frontend"' in text
+    assert "old-frontend" not in text
+    assert 'name = "example"' in text
+
+
+def test_init_refuses_existing_server_without_force(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    target = tmp_path / "existing"
+    target.mkdir()
+    (target / "server.py").write_text("print('server')\n", encoding="utf-8")
+
+    code, _stdout, stderr = _run_init(
+        ["init", "--path", str(target), "--no-install"],
+        monkeypatch=monkeypatch,
+        cwd=tmp_path,
+        capsys=capsys,
+    )
+
+    assert code == 1
+    assert "server.py" in stderr
+
+
+def test_init_runs_lock_by_default(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    target = tmp_path / "new-project"
+    calls: list[Path] = []
+
+    def fake_lock_packages(**kwargs: object) -> SimpleNamespace:
+        calls.append(Path(str(kwargs["cwd"])))
+        return SimpleNamespace(lockfile=str(target / "deno.lock"), dependencies=4, dev_dependencies=0)
+
+    monkeypatch.setattr("gdansk.cli.lock_packages", fake_lock_packages)
+
+    _run_init(["init", "--path", str(target)], monkeypatch=monkeypatch, cwd=tmp_path, capsys=capsys)
+
+    assert calls == [target.resolve()]
+
+
+def test_init_no_install_skips_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    target = tmp_path / "new-project"
+
+    def fail_lock_packages(**_kwargs: object) -> SimpleNamespace:
+        msg = "lock should not run"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr("gdansk.cli.lock_packages", fail_lock_packages)
+
+    _run_init(["init", "--path", str(target), "--no-install"], monkeypatch=monkeypatch, cwd=tmp_path, capsys=capsys)
+
+
+def test_init_custom_frontend_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    target = tmp_path / "new-project"
+    monkeypatch.setattr(
+        "gdansk.cli.lock_packages",
+        lambda **_kwargs: SimpleNamespace(lockfile=str(target / "deno.lock"), dependencies=4, dev_dependencies=0),
+    )
+
+    _run_init(
+        ["init", "--path", str(target), "--frontend", "views", "--no-install"],
+        monkeypatch=monkeypatch,
+        cwd=tmp_path,
+        capsys=capsys,
+    )
+
+    text = (target / "pyproject.toml").read_text(encoding="utf-8")
+    assert 'frontend = "views"' in text
+    assert (target / "views" / "vite.config.ts").exists()
+
+
+def test_templates_are_loadable():
+    names = {item.name for item in resources.files("gdansk._cli_templates").iterdir()}
+    assert {
+        "server.py",
+        "package.json",
+        "vite.config.ts",
+        "widget.tsx",
+        "pyproject.toml",
+        "gdansk_tables.toml",
+    } <= names

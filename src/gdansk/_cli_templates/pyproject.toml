@@ -1,0 +1,23 @@
+[project]
+name = "my-mcp-server"
+version = "0.1.0"
+requires-python = ">=3.12,<3.15"
+dependencies = [
+    "gdansk",
+    "mcp>=1.25",
+    "uvicorn",
+]
+
+[gdansk]
+frontend = "{{FRONTEND_DIR}}"
+
+[gdansk.dependencies]
+vite = "8.0.14"
+"@gdansk/vite" = "^0.1.0"
+"@vitejs/plugin-react" = "6.0.2"
+react = "19.2.6"
+react-dom = "19.2.6"
+
+[gdansk.scripts]
+build = "vite build"
+dev = "vite"

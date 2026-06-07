@@ -62,14 +62,13 @@ The frontend package should declare at least:
 }
 ```
 
-After dependency changes inside the frontend package:
+After dependency changes in `pyproject.toml`:
 
 ```bash
-cd frontend
-uv run deno install
+uv run gdansk install
 ```
 
-If the repo tracks `deno.lock`, keep it in sync with the edited dependencies.
+If the repo tracks `deno.lock`, keep it at the Python project root and in sync with the edited dependencies.
 
 ## Public API checklist
 

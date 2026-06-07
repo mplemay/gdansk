@@ -252,12 +252,36 @@ export default defineConfig({
 });
 ```
 
-Install the frontend package dependencies from `frontend/` after editing them:
+Install frontend dependencies from the Python project root after editing them:
 
 ```bash
-cd frontend
-uv run deno install
+uv run gdansk install
 ```
+
+## CLI
+
+Gdansk ships a CLI for project setup and frontend tooling:
+
+```bash
+uv run gdansk init
+uv run gdansk install
+uv run gdansk lock
+uv run gdansk update
+uv run gdansk build
+uv run gdansk dev
+uv run gdansk run <script>
+uv run gdansk scripts
+uv run gdansk doctor
+```
+
+Point the CLI at your frontend package root with `[gdansk] frontend` in `pyproject.toml`:
+
+```toml
+[gdansk]
+frontend = "frontend"
+```
+
+Override that path per command with `--frontend` when needed.
 
 ## Embedded Deno Runtime
 
@@ -276,6 +300,9 @@ Use `[gdansk.dependencies]`, `[gdansk.dev-dependencies]`, and `[gdansk.scripts]`
 scripts or frontend builds need npm or JSR packages:
 
 ```toml
+[gdansk]
+frontend = "frontend"
+
 [gdansk.dependencies]
 react = "^19"
 vite = "^8"
@@ -291,7 +318,7 @@ dev = "vite"
 ```
 
 Unprefixed values are treated as npm version requirements for the table key, so `react = "^19"` becomes
-`npm:react@^19`. Use `lock_packages()`, `install_packages()`, or `update_packages()` from `gdansk` to resolve those
+`npm:react@^19`. Use `uv run gdansk install`, `uv run gdansk lock`, or `uv run gdansk update` to resolve those
 dependencies and write Deno's native `deno.lock` next to `pyproject.toml`. Frontend builds and dev servers run the
 `build` and `dev` entries from `[gdansk.scripts]` through the Deno CLI (`deno task`), so the `deno` executable must be
 available on `PATH` or via the `GDANSK_DENO` environment variable.

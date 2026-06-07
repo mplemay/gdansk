@@ -16,6 +16,9 @@ dependencies = [
     "watchfiles>=1.1.1",
 ]
 
+[project.scripts]
+gdansk = "gdansk.cli:main"
+
 [dependency-groups]
 dev = [
     "anyio>=4",
@@ -64,6 +67,16 @@ select = ["ALL"]
 ]
 "main.py" = ["D"]
 "src/gdansk/**/*.py" = ["D"]
+"src/gdansk/cli.py" = [
+    "D",
+    "T201",   # CLI intentionally writes operational output to stdout
+    "C901",   # doctor aggregates many independent checks
+    "PLR0912",
+    "PLR0915",
+]
+"src/gdansk/_cli_templates/**" = [
+    "INP001", # template snippets are not importable package modules
+]
 "examples/fastapi/main.py" = [
     "INP001", # example entrypoint is intentionally not part of a package
 ]
@@ -81,6 +94,12 @@ select = ["ALL"]
     "S101",    # use of assert (tests typically use assert directly)
     "S106",    # possible hardcoded password (test secrets are fine)
     "SLF001",  # private member accessed
+    "ANN401",  # mock helpers intentionally accept flexible kwargs
+    "ARG001",  # fixtures used only for skip side effects
+    "PT017",   # SystemExit assertions in CLI harness helpers
+    "RUF043",  # pytest match patterns for CLI error messages
+    "TC002",   # pytest imported at runtime in test modules
+    "TC003",   # pathlib imported at runtime in test modules
 ]
 
 [tool.ruff.lint.flake8-quotes]

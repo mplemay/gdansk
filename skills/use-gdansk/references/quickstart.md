@@ -188,12 +188,11 @@ export default defineConfig({
 });
 ```
 
-After editing dependencies, install from `frontend/` with `uv run deno install` and commit `deno.lock` when it
-changes:
+After editing dependencies, install from the Python project root with `uv run gdansk install` and commit `deno.lock`
+when it changes:
 
 ```bash
-cd frontend
-uv run deno install
+uv run gdansk install
 ```
 
 ## Run commands
@@ -202,7 +201,7 @@ Standard server:
 
 ```bash
 uv sync
-( cd frontend && uv run deno install )
+uv run gdansk install
 uv run python server.py
 ```
 
