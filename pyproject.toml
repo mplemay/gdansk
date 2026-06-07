@@ -9,7 +9,6 @@ authors = [
 ]
 requires-python = ">=3.12,<3.15"
 dependencies = [
-    "deno>=2.7.12,<3",
     "mcp>=1.25.1.dev114,<1.26",
     "minijinja>=2,<3",
     "pydantic>=2.12.5",
@@ -30,13 +29,15 @@ dev = [
 
 [build-system]
 requires = ["maturin>=1.0,<2.0"]
-build-backend = "maturin"
+build-backend = "gdansk_build_backend"
+backend-path = ["."]
 
 [tool.maturin]
 module-name = "gdansk._core"
 python-packages = ["gdansk"]
 python-source = "src"
 exclude = ["**/__tests__/**"]
+features = ["extension-module"]
 
 [tool.uv]
 cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.rs" }, { file = "Cargo.toml" }, { file = "Cargo.lock" }]
@@ -56,6 +57,10 @@ select = ["ALL"]
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = [
     "F401", # imported but unused (common in __init__.py to re-export symbols)
+]
+"gdansk_build_backend.py" = [
+    "ANN401", # PEP 517 backend hooks intentionally proxy arbitrary args/kwargs
+    "D",      # backend hook names are dictated by the packaging spec
 ]
 "main.py" = ["D"]
 "src/gdansk/**/*.py" = ["D"]

@@ -27,8 +27,8 @@ jobs:
 
       - uses: denoland/setup-deno@v2
         with:
-          # Match the `deno` PyPI package version in uv.lock so the action CLI and find_deno_bin agree.
-          deno-version: 2.8.0
+          # Deno CLI is only used for repository TypeScript tooling.
+          deno-version: 2.8.2
           cache: true
 
       - name: Install python dependencies
@@ -77,8 +77,8 @@ jobs:
 
       - uses: denoland/setup-deno@v2
         with:
-          # Match the `deno` PyPI package version in uv.lock so the action CLI and find_deno_bin agree.
-          deno-version: 2.8.0
+          # Deno CLI is only used for repository TypeScript tooling.
+          deno-version: 2.8.2
           cache: true
 
       - name: Install dependencies

@@ -28,8 +28,8 @@ Then use:
 - Python: `gdansk` currently requires `>=3.12,<3.15`.
 - Frontend package: use an ESM package with `@gdansk/vite`, `vite`, `@vitejs/plugin-react`, `react`, `react-dom`,
   and `@modelcontextprotocol/ext-apps`.
-- Runtime tooling: gdansk starts the frontend through `uv run deno ...`. If you run frontend package scripts directly,
-  the published `@gdansk/vite` package currently declares Node `>=22`.
+- Runtime tooling: gdansk runs frontend builds through its embedded Rust-backed Deno runtime. If you run frontend
+  package scripts directly, the published `@gdansk/vite` package currently declares Node `>=22`.
 
 ## Examples
 

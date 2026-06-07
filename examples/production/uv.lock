@@ -10,9 +10,6 @@ resolution-markers = [
 exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for backwards compatibility when using relative exclude-newer values.
 exclude-newer-span = "P7D"
 
-[options.exclude-newer-package]
-deno = false
-
 [[package]]
 name = "annotated-types"
 version = "0.7.0"
@@ -185,24 +182,10 @@ wheels = [
 ]
 
 [[package]]
-name = "deno"
-version = "2.8.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/43/eb/b743a520cdd668e070a4535296123f1c62d054b00699f58e49c32ab5925c/deno-2.8.1.tar.gz", hash = "sha256:fb65e568bef30b1a7e63f033713f1a6792a8456e339febdb7d638c6bb2c4c008", size = 8167, upload-time = "2026-05-27T13:01:06.508Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d1/71/f9dc8ad874dcc26cf1a154c8f89d77e1155ced1f6a64be9d21127bd555ce/deno-2.8.1-py3-none-macosx_10_12_x86_64.whl", hash = "sha256:733e24e4883c9516534cae7a10277048ffea7cc034f9f726e8c145d48ba75d19", size = 42749443, upload-time = "2026-05-27T13:00:49.439Z" },
-    { url = "https://files.pythonhosted.org/packages/f5/db/1721aca1a9bd132a3f721bd547022534fcdd6221701561c5e33705cdfb6d/deno-2.8.1-py3-none-macosx_11_0_arm64.whl", hash = "sha256:7b4638504f3730f9b25229db08d1bce87bc64f52498f9f8f5aeba702c7ff2115", size = 39460813, upload-time = "2026-05-27T13:00:52.578Z" },
-    { url = "https://files.pythonhosted.org/packages/1a/20/b50646f865562b8f21532cad6f9804b126efd4030cfd0c5e1d11217b15ca/deno-2.8.1-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:91f29a2df4cb6135872d68f38005c08fe0c389c84cb7349d7399eedbfbe19829", size = 43893026, upload-time = "2026-05-27T13:00:55.939Z" },
-    { url = "https://files.pythonhosted.org/packages/0d/1e/75b84e7096b53f077ac01f9b5c979b7b42b0a6497f56d7c4ae072381e059/deno-2.8.1-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:f0958910ffa88f6b6e142129ab34b7a3aec361fc63904ff803ce1594beca230a", size = 46038250, upload-time = "2026-05-27T13:00:59.662Z" },
-    { url = "https://files.pythonhosted.org/packages/14/d6/14f6cf25025644bb8b7d9b4606780b5ec6ee429a55c0d1f05681718c7fc0/deno-2.8.1-py3-none-win_amd64.whl", hash = "sha256:71ec55c0a0944beee376aa824722734cf3e617661bca5e143caa83991921e4f5", size = 41962337, upload-time = "2026-05-27T13:01:03.453Z" },
-]
-
-[[package]]
 name = "gdansk"
 version = "0.1.0"
 source = { editable = "../../" }
 dependencies = [
-    { name = "deno" },
     { name = "mcp" },
     { name = "minijinja" },
     { name = "pydantic" },
@@ -212,7 +195,6 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "deno", specifier = ">=2.7.12,<3" },
     { name = "mcp", git = "https://github.com/modelcontextprotocol/python-sdk.git?rev=main" },
     { name = "minijinja", specifier = ">=2,<3" },
     { name = "pydantic", specifier = ">=2.12.5" },
@@ -223,6 +205,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "anyio", specifier = ">=4" },
+    { name = "httpx2" },
     { name = "prek", specifier = ">=0.3.6" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "ruff", specifier = ">=0.15.1" },

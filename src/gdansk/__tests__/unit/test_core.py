@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 import httpx
 import pytest
@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from starlette.applications import Starlette
 from starlette.staticfiles import StaticFiles
 
-from gdansk.__tests__.unit.conftest import FakeManagedProcess, FakeProcess, write_manifest
+from gdansk.__tests__.unit.conftest import write_manifest
 from gdansk.core import Ship
 from gdansk.manifest import GdanskManifest
 from gdansk.metadata import Metadata
@@ -306,7 +306,7 @@ async def test_wait_for_vite_reads_vite_client_endpoint(views_path: Path):
     transport = httpx.MockTransport(handler)
     async with httpx.AsyncClient(transport=transport) as client:
         ship = Ship(vite=Vite(views_path), client=client)
-        ship._vite._frontend = cast("Any", FakeProcess())
+        ship._vite._frontend_running = True
         ship._vite._origin = "http://runtime.test"
 
         await ship._vite.wait_until_ready(client)
@@ -409,38 +409,19 @@ async def test_widget_resource_raises_when_manifest_is_missing_widget(views_path
         await ship.render_widget_page(metadata=None, widget_key="hello")
 
 
-async def test_build_uses_the_root_vite_entrypoint(views_path: Path, monkeypatch: pytest.MonkeyPatch):
-    captured_args: tuple[str, ...] | None = None
-    captured_kwargs: dict[str, object] | None = None
+async def test_build_uses_embedded_frontend_runtime(views_path: Path, monkeypatch: pytest.MonkeyPatch):
+    captured: tuple[Path, str] | None = None
 
-    class FakeBuildProcess:
-        returncode = 0
-
-        async def communicate(self) -> tuple[bytes, bytes]:
-            return b"", b""
-
-    async def fake_create_subprocess_exec(*args: str, **kwargs: object) -> FakeBuildProcess:
-        nonlocal captured_args, captured_kwargs
-        captured_args = args
-        captured_kwargs = kwargs
-        return FakeBuildProcess()
+    async def fake_build_frontend(root: Path, build_directory: str) -> None:
+        nonlocal captured
+        captured = (root, build_directory)
 
     ship = Ship(vite=Vite(views_path))
-    monkeypatch.setattr("gdansk.vite.create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr("gdansk.vite.build_frontend", fake_build_frontend)
 
     await ship._vite.build()
 
-    assert captured_args == (
-        ship._vite._deno,
-        "run",
-        "-A",
-        "--node-modules-dir=auto",
-        "npm:vite",
-        "build",
-    )
-    assert captured_kwargs is not None
-    assert captured_kwargs["cwd"] == views_path
-    assert "env" not in captured_kwargs
+    assert captured == (views_path, "dist")
 
 
 async def test_wait_for_vite_timeout_mentions_matching_vite_and_plugin_config(
@@ -461,7 +442,7 @@ async def test_wait_for_vite_timeout_mentions_matching_vite_and_plugin_config(
             vite=Vite(views_path, host="localhost", port=43123),
             client=client,
         )
-        ship._vite._frontend = cast("Any", FakeProcess())
+        ship._vite._frontend_running = True
         ship._vite._origin = "http://localhost:43123"
         monkeypatch.setattr("gdansk.vite.sleep", fake_sleep)
 
@@ -474,59 +455,53 @@ async def test_wait_for_vite_timeout_mentions_matching_vite_and_plugin_config(
 
 
 async def test_ship_mcp_cleans_up_runtime_on_exit(views_path: Path, monkeypatch: pytest.MonkeyPatch):
-    process = FakeManagedProcess()
     ship = Ship(vite=Vite(views_path))
 
-    async def fake_create_subprocess_exec(*_args: str, **_kwargs: object) -> FakeManagedProcess:
-        return process
+    async def fake_start_dev() -> None:
+        ship._vite._origin = "http://127.0.0.1:13714"
+        ship._vite._frontend_running = True
 
     async def fake_wait_until_ready(_client: httpx.AsyncClient) -> None:
         return None
 
-    monkeypatch.setattr("gdansk.vite.create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(ship._vite, "start_dev", fake_start_dev)
     monkeypatch.setattr(ship._vite, "wait_until_ready", fake_wait_until_ready)
 
     async with ship.mcp(app=_app(), watch=True):
         assert ship._active is True
         assert ship._dev is True
-        assert ship._vite._frontend is process
+        assert ship._vite._frontend_running is True
         assert ship._vite._origin == "http://127.0.0.1:13714"
 
-    assert process.terminated is True
-    assert process.killed is False
-    assert process.waited is False
     assert ship._active is False
     assert ship._dev is False
-    assert ship._vite._frontend is None
+    assert ship._vite._frontend_running is False
     assert ship._vite._origin is None
     assert ship._vite._manifest is None
     assert ship._session_client is None
 
 
 async def test_ship_mcp_cleans_up_runtime_on_start_failure(views_path: Path, monkeypatch: pytest.MonkeyPatch):
-    process = FakeManagedProcess()
     ship = Ship(vite=Vite(views_path))
 
-    async def fake_create_subprocess_exec(*_args: str, **_kwargs: object) -> FakeManagedProcess:
-        return process
+    async def fake_start_dev() -> None:
+        ship._vite._origin = "http://127.0.0.1:13714"
+        ship._vite._frontend_running = True
 
     async def fake_wait_until_ready(_client: httpx.AsyncClient) -> None:
         msg = "boom"
         raise RuntimeError(msg)
 
-    monkeypatch.setattr("gdansk.vite.create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(ship._vite, "start_dev", fake_start_dev)
     monkeypatch.setattr(ship._vite, "wait_until_ready", fake_wait_until_ready)
 
     with pytest.raises(RuntimeError, match="boom"):
         async with ship.mcp(app=_app(), watch=True):
             pytest.fail("Ship session should not yield after startup failure")
 
-    assert process.terminated is True
-    assert process.killed is False
-    assert process.waited is False
     assert ship._active is False
     assert ship._dev is False
-    assert ship._vite._frontend is None
+    assert ship._vite._frontend_running is False
     assert ship._vite._origin is None
     assert ship._vite._manifest is None
     assert ship._session_client is None
@@ -536,87 +511,59 @@ async def test_ship_mcp_preserves_startup_error_when_runtime_exits_during_cleanu
     views_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    class VanishedProcess:
-        def __init__(self) -> None:
-            self.kill_calls = 0
-            self.returncode: int | None = None
-            self.terminate_calls = 0
-            self.wait_calls = 0
+    stop_called = False
 
-        def terminate(self) -> None:
-            self.terminate_calls += 1
-            raise ProcessLookupError
-
-        def kill(self) -> None:
-            self.kill_calls += 1
-            raise ProcessLookupError
-
-        async def wait(self) -> int:
-            self.wait_calls += 1
-            self.returncode = 1
-            return self.returncode
-
-    async def fake_create_subprocess_exec(*_args: str, **_kwargs: object) -> VanishedProcess:
-        return process
-
-    async def fake_sleep(_: float) -> None:
-        return None
+    async def fake_start_dev() -> None:
+        ship._vite._origin = "http://127.0.0.1:13714"
+        ship._vite._frontend_running = True
 
     async def fake_wait_until_ready(_client: httpx.AsyncClient) -> None:
         msg = "boom"
         raise RuntimeError(msg)
 
-    process = VanishedProcess()
     ship = Ship(vite=Vite(views_path))
-    monkeypatch.setattr("gdansk.vite.create_subprocess_exec", fake_create_subprocess_exec)
-    monkeypatch.setattr("gdansk.vite.sleep", fake_sleep)
+
+    async def fake_stop() -> None:
+        nonlocal stop_called
+        stop_called = True
+        await Vite.stop(ship._vite)
+
+    monkeypatch.setattr(ship._vite, "start_dev", fake_start_dev)
     monkeypatch.setattr(ship._vite, "wait_until_ready", fake_wait_until_ready)
+    monkeypatch.setattr(ship._vite, "stop", fake_stop)
 
     with pytest.raises(RuntimeError, match="boom"):
         async with ship.mcp(app=_app(), watch=True):
             pytest.fail("Ship session should not yield after startup failure")
 
-    assert process.terminate_calls == 1
-    assert process.kill_calls == 1
-    assert process.wait_calls == 1
+    assert stop_called is True
     assert ship._active is False
     assert ship._dev is False
-    assert ship._vite._frontend is None
+    assert ship._vite._frontend_running is False
     assert ship._vite._origin is None
     assert ship._vite._manifest is None
 
 
 async def test_start_dev_uses_runtime_port(views_path: Path, monkeypatch: pytest.MonkeyPatch):
-    captured_args: tuple[str, ...] | None = None
+    captured_origin: str | None = None
 
-    async def fake_create_subprocess_exec(*args: str, **_kwargs: object) -> FakeManagedProcess:
-        nonlocal captured_args
-        captured_args = args
-        return FakeManagedProcess()
+    async def fake_start_dev() -> None:
+        nonlocal captured_origin
+        captured_origin = f"http://{ship._vite._host}:{ship._vite._port}"
+        ship._vite._origin = captured_origin
+        ship._vite._frontend_running = True
 
     async def fake_wait_until_ready(_client: httpx.AsyncClient) -> None:
         return None
 
     ship = Ship(vite=Vite(views_path, port=43123))
-    monkeypatch.setattr("gdansk.vite.create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(ship._vite, "start_dev", fake_start_dev)
     monkeypatch.setattr(ship._vite, "wait_until_ready", fake_wait_until_ready)
 
     async with ship.mcp(app=_app(), watch=True):
         pass
 
-    assert captured_args == (
-        ship._vite._deno,
-        "run",
-        "-A",
-        "--node-modules-dir=auto",
-        "npm:vite",
-        "dev",
-        "--host",
-        "127.0.0.1",
-        "--port",
-        "43123",
-        "--strictPort",
-    )
+    assert captured_origin == "http://127.0.0.1:43123"
 
 
 async def test_start_production_builds_and_loads_manifest(views_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -628,7 +575,7 @@ async def test_start_production_builds_and_loads_manifest(views_path: Path, monk
     monkeypatch.setattr(ship._vite, "build", fake_build)
 
     async with ship.mcp(app=_app(), watch=False):
-        assert ship._vite._frontend is None
+        assert ship._vite._frontend_running is False
         assert ship._vite.require_manifest().widgets["hello"].client == "dist/hello/client.js"
         assert ship._vite._origin is None
 
@@ -658,7 +605,7 @@ async def test_start_prebuilt_loads_manifest_without_build(views_path: Path, mon
     monkeypatch.setattr(ship._vite, "build", fail_build)
 
     async with ship.mcp(app=_app(), watch=None):
-        assert ship._vite._frontend is None
+        assert ship._vite._frontend_running is False
         assert ship._vite.require_manifest().widgets["hello"].client == "dist/hello/client.js"
         assert ship._vite._origin is None
         assert ship._dev is False
@@ -674,19 +621,19 @@ async def test_start_prebuilt_requires_manifest(views_path: Path):
             pytest.fail("manifest load should fail before yield")
 
 
-async def test_ship_mcp_open_prebuilt_skips_subprocess(views_path: Path, monkeypatch: pytest.MonkeyPatch):
+async def test_ship_mcp_open_prebuilt_skips_runtime_start(views_path: Path, monkeypatch: pytest.MonkeyPatch):
     write_manifest(views_path)
     ship = Ship(vite=Vite(views_path))
 
-    async def fail_create_subprocess_exec(*_args: str, **_kwargs: object) -> FakeManagedProcess:
-        pytest.fail("create_subprocess_exec should not run when watch is None")
+    async def fail_start_dev() -> None:
+        pytest.fail("start_dev should not run when watch is None")
 
-    monkeypatch.setattr("gdansk.vite.create_subprocess_exec", fail_create_subprocess_exec)
+    monkeypatch.setattr(ship._vite, "start_dev", fail_start_dev)
 
     async with ship.mcp(app=_app(), watch=None):
         assert ship._active is True
         assert ship._dev is False
-        assert ship._vite._frontend is None
+        assert ship._vite._frontend_running is False
         assert ship._vite.require_manifest().widgets["hello"].client == "dist/hello/client.js"
         assert ship._vite._origin is None
 

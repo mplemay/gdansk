@@ -1,17 +1,15 @@
 from __future__ import annotations
 
 from asyncio import sleep
-from asyncio.subprocess import DEVNULL, PIPE, Process, create_subprocess_exec
-from contextlib import suppress
 from http import HTTPStatus
 from os import PathLike
 from pathlib import Path, PurePosixPath
 from typing import Final
 
-from deno import find_deno_bin
 from httpx import AsyncClient, RequestError
 from pydantic import ValidationError
 
+from gdansk._core import FrontendDevServer, build_frontend, start_frontend_dev
 from gdansk.manifest import GdanskManifest, WidgetManifest
 from gdansk.utils import join_url
 
@@ -51,13 +49,13 @@ class Vite:
             name="build",
         )
         self._build_directory_path: Final[Path] = root.absolute().resolve() / self._build_directory
-        self._deno: Final[str] = find_deno_bin()
         self._host: Final[str] = host
         self._port: Final[int] = port
         self._root: Final[Path] = root.absolute().resolve()
         self._widgets_root: Final[Path] = self._root / "widgets"
 
-        self._frontend: Process | None = None
+        self._frontend_running = False
+        self._frontend: FrontendDevServer | None = None
         self._manifest: GdanskManifest | None = None
         self._origin: str | None = None
 
@@ -101,7 +99,7 @@ class Vite:
         return PurePosixPath("/@gdansk/client", f"{widget_key}.tsx").as_posix()
 
     def has_runtime(self) -> bool:
-        return self._frontend is not None or self._origin is not None
+        return self._frontend is not None or self._frontend_running or self._origin is not None
 
     def load_manifest(self) -> GdanskManifest:
         path = self.manifest_path
@@ -154,94 +152,36 @@ class Vite:
 
     async def build(self) -> None:
         self.clear_manifest()
-
-        proc = await create_subprocess_exec(
-            self._deno,
-            "run",
-            "-A",
-            "--node-modules-dir=auto",
-            "npm:vite",
-            "build",
-            cwd=self._root,
-            stdin=DEVNULL,
-            stdout=PIPE,
-            stderr=PIPE,
-        )
-        stdout, stderr = await proc.communicate()
-
-        if proc.returncode == 0:
-            return
-
-        stdout_text = stdout.decode("utf-8", errors="replace").strip()
-        stderr_text = stderr.decode("utf-8", errors="replace").strip()
-        output = "\n".join(part for part in (stdout_text, stderr_text) if part)
-        msg = "Failed to build the frontend"
-        if output:
-            msg = f"{msg}:\n{output}"
-        raise RuntimeError(msg)
+        await build_frontend(self._root, self._build_directory)
 
     async def start_dev(self) -> None:
-        self.clear_manifest()
-        self._origin = f"http://{self._host}:{self._port}"
-        command = (
-            self._deno,
-            "run",
-            "-A",
-            "--node-modules-dir=auto",
-            "npm:vite",
-            "dev",
-            "--host",
-            self._host,
-            "--port",
-            str(self._port),
-            "--strictPort",
-        )
-        self._frontend = await create_subprocess_exec(
-            *command,
-            cwd=self._root,
-            stdin=DEVNULL,
-            stdout=DEVNULL,
-            stderr=DEVNULL,
-        )
-
-    async def stop(self) -> None:
-        self._origin = None
-
-        frontend = self._frontend
-        self._frontend = None
-
-        if frontend is None:
+        if self._frontend is not None:
             return
 
-        if frontend.returncode is None:
-            with suppress(ProcessLookupError):
-                frontend.terminate()
+        self.clear_manifest()
+        frontend = await start_frontend_dev(self._root, self._host, self._port)
+        self._frontend = frontend
+        self._origin = frontend.origin
+        self._frontend_running = True
 
-            for _ in range(20):
-                if frontend.returncode is not None:
-                    break
-                await sleep(0.05)
-
-            if frontend.returncode is None:
-                with suppress(ProcessLookupError):
-                    frontend.kill()
-                await frontend.wait()
+    async def stop(self) -> None:
+        frontend = self._frontend
+        self._frontend = None
+        try:
+            if frontend is not None:
+                await frontend.stop()
+        finally:
+            self._origin = None
+            self._frontend_running = False
 
     async def wait_until_ready(self, client: AsyncClient) -> None:
-        if self._frontend is None or self._origin is None:
-            msg = "The frontend dev server process has not been started"
+        if self._origin is None:
+            msg = "The frontend dev server has not been started"
             raise RuntimeError(msg)
 
         client_url = join_url(self._origin, "/@vite/client")
 
         for _ in range(1200):
-            if self._frontend.returncode is not None:
-                msg = (
-                    "The frontend dev server exited before the Vite client became available "
-                    f"(exit code {self._frontend.returncode})"
-                )
-                raise RuntimeError(msg)
-
             try:
                 response = await client.get(client_url, timeout=0.2)
             except RequestError:

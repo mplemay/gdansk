@@ -20,7 +20,6 @@ build-backend = "uv_build"
 
 [tool.uv]
 exclude-newer = "7 days"
-exclude-newer-package = { deno = false }
 
 [tool.uv.sources]
 gdansk = { path = "../../", editable = true }

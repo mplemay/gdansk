@@ -9,32 +9,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-class FakeProcess:
-    returncode: int | None = None
-
-
-class FakeManagedProcess:
-    def __init__(self) -> None:
-        self.killed = False
-        self.returncode: int | None = None
-        self.terminated = False
-        self.waited = False
-
-    def terminate(self) -> None:
-        self.terminated = True
-        self.returncode = 0
-
-    def kill(self) -> None:
-        self.killed = True
-        self.returncode = -9
-
-    async def wait(self) -> int:
-        self.waited = True
-        if self.returncode is None:
-            self.returncode = 0
-        return self.returncode
-
-
 @pytest.fixture
 def views_path(tmp_path: Path) -> Path:
     views = tmp_path / "views"
@@ -42,6 +16,35 @@ def views_path(tmp_path: Path) -> Path:
     (views / "widgets" / "hello" / "widget.tsx").write_text("export default function App() { return null; }\n")
     (views / "dist").mkdir(parents=True, exist_ok=True)
     return views
+
+
+@pytest.fixture
+def write_script(tmp_path: Path):
+    def write_script_file(source: str, name: str = "main.js") -> Path:
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(source, encoding="utf-8")
+        return path
+
+    return write_script_file
+
+
+@pytest.fixture
+def default_export_source() -> str:
+    return """
+export default function run(input) {
+  return { ok: true, input };
+}
+"""
+
+
+@pytest.fixture
+def named_run_source() -> str:
+    return """
+export function run(input) {
+  return { ok: true, input };
+}
+"""
 
 
 def write_manifest(views: Path, *, assets_dir: str = "dist", manifest_out_dir: str | None = None) -> None:
