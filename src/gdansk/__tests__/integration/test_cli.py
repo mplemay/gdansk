@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from gdansk.__tests__.conftest import write_frontend_tree, write_pyproject
+from gdansk.__tests__.conftest import write_pyproject, write_src_layout_project
 from gdansk.cli import main
 
 
@@ -111,11 +111,10 @@ def test_cli_build_smoke(
 ):
     project_root = tmp_path / "project"
     project_root.mkdir()
-    write_pyproject(
+    write_src_layout_project(
         project_root,
         dependencies={"std_path": "jsr:@std/path@^1"},
         scripts={"build": "deno eval 'Deno.exit(0)'"},
     )
-    write_frontend_tree(project_root)
     assert _invoke(["install"], monkeypatch=monkeypatch, cwd=project_root) == 0
     assert _invoke(["build"], monkeypatch=monkeypatch, cwd=project_root) == 0

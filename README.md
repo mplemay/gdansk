@@ -274,14 +274,8 @@ uv run gdansk scripts
 uv run gdansk doctor
 ```
 
-Point the CLI at your frontend package root with `[gdansk] frontend` in `pyproject.toml`:
-
-```toml
-[gdansk]
-frontend = "frontend"
-```
-
-Override that path per command with `--frontend` when needed.
+The CLI auto-discovers the frontend package at `src/<package>/views`, using `[project.scripts]` entry points to
+identify the Python package. Override that path per command with `--frontend` when needed.
 
 ## Embedded Deno Runtime
 
@@ -300,9 +294,6 @@ Use `[gdansk.dependencies]`, `[gdansk.dev-dependencies]`, and `[gdansk.scripts]`
 scripts or frontend builds need npm or JSR packages:
 
 ```toml
-[gdansk]
-frontend = "frontend"
-
 [gdansk.dependencies]
 react = "^19"
 vite = "^8"

@@ -9,8 +9,8 @@ from starlette.middleware.cors import CORSMiddleware
 
 from gdansk import Ship, Vite
 
-frontend_path = Path(__file__).parent / "{{FRONTEND_DIR}}"
-ship = Ship(vite=Vite(frontend_path))
+views_path = Path(__file__).parent / "views"
+ship = Ship(vite=Vite(views_path))
 
 
 @ship.widget(path=Path("hello/widget.tsx"), name="hello")

@@ -40,7 +40,7 @@ Fail early on missing package structure before writing feature code.
   - `widgets/`
 - Confirm the frontend package is ESM with `"type": "module"`.
 - Confirm the Python project's `pyproject.toml` includes:
-  - `[gdansk] frontend = "<path-to-frontend-package>"`
+  - `[project.scripts]` pointing at the application package (CLI resolves `src/<package>/views` automatically)
   - `[gdansk.dependencies]` with `@gdansk/vite`, `vite`, `@vitejs/plugin-react`, `react`, and `react-dom`
   - `[gdansk.scripts]` with at least `build = "vite build"` and `dev = "vite"`
 - Confirm `package.json` in the frontend package root still exists for editor/tooling compatibility when needed.

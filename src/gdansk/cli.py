@@ -34,9 +34,31 @@ PYTHON_MIN = (3, 12)
 PYTHON_MAX = (3, 15)
 
 
-def _template_text(name: str, *, frontend_dir: str = "frontend") -> str:
+def _normalize_package_name(name: str) -> str:
+    return name.replace("-", "_")
+
+
+def _template_text(name: str, *, package: str = "my_mcp_server") -> str:
     raw = resources.files("gdansk._cli_templates").joinpath(name).read_text(encoding="utf-8")
-    return raw.replace("{{FRONTEND_DIR}}", frontend_dir)
+    return raw.replace("{{PACKAGE}}", package)
+
+
+def _default_init_package(target_dir: Path) -> str:
+    pyproject_path = target_dir / "pyproject.toml"
+    if pyproject_path.is_file():
+        document = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+        project = document.get("project")
+        if isinstance(project, dict):
+            name = project.get("name")
+            if isinstance(name, str) and name.strip():
+                return _normalize_package_name(name.strip())
+    return _normalize_package_name("my-mcp-server")
+
+
+def _resolve_init_package(args: argparse.Namespace, target_dir: Path) -> str:
+    if args.package is not None:
+        return args.package
+    return _default_init_package(target_dir)
 
 
 def _eprint(message: str) -> None:
@@ -333,7 +355,7 @@ def _strip_gdansk_sections(text: str) -> str:
     return "\n".join(kept) + "\n"
 
 
-def _write_init_pyproject(target: Path, *, frontend_dir: str, force: bool) -> None:
+def _write_init_pyproject(target: Path, *, package: str, force: bool) -> None:
     if target.exists():
         text = target.read_text(encoding="utf-8")
         if _pyproject_has_gdansk(target) and not force:
@@ -341,14 +363,14 @@ def _write_init_pyproject(target: Path, *, frontend_dir: str, force: bool) -> No
             raise ProjectError(msg)
         if _pyproject_has_gdansk(target) and force:
             text = _strip_gdansk_sections(text)
-            text = text.rstrip() + "\n\n" + _template_text("gdansk_tables.toml", frontend_dir=frontend_dir)
+            text = text.rstrip() + "\n\n" + _template_text("gdansk_tables.toml", package=package)
             target.write_text(text, encoding="utf-8")
             return
-        text = text.rstrip() + "\n\n" + _template_text("gdansk_tables.toml", frontend_dir=frontend_dir)
+        text = text.rstrip() + "\n\n" + _template_text("gdansk_tables.toml", package=package)
         target.write_text(text, encoding="utf-8")
         return
 
-    target.write_text(_template_text("pyproject.toml", frontend_dir=frontend_dir), encoding="utf-8")
+    target.write_text(_template_text("pyproject.toml", package=package), encoding="utf-8")
 
 
 def _write_scaffold_file(path: Path, content: str, *, force: bool) -> None:
@@ -361,40 +383,47 @@ def _write_scaffold_file(path: Path, content: str, *, force: bool) -> None:
 
 def cmd_init(args: argparse.Namespace) -> None:
     target_dir = Path(args.path).resolve()
-    frontend_dir = args.frontend
-    frontend_path = target_dir / frontend_dir
+    package = _resolve_init_package(args, target_dir)
+    package_root = target_dir / "src" / package
+    main_path = package_root / "__main__.py"
+    views_path = package_root / "views"
 
-    if (target_dir / "server.py").exists() and not args.force:
-        msg = f"Refusing to overwrite existing server.py in {target_dir}"
+    if main_path.exists() and not args.force:
+        msg = f"Refusing to overwrite existing entrypoint: {main_path}"
         _eprint(msg)
         raise SystemExit(1)
 
-    if frontend_path.exists() and any(frontend_path.iterdir()) and not args.force:
-        msg = f"Refusing to scaffold into non-empty frontend directory: {frontend_path}"
+    if views_path.exists() and any(views_path.iterdir()) and not args.force:
+        msg = f"Refusing to scaffold into non-empty views directory: {views_path}"
         _eprint(msg)
         raise SystemExit(1)
 
     target_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        _write_init_pyproject(target_dir / "pyproject.toml", frontend_dir=frontend_dir, force=args.force)
+        _write_init_pyproject(target_dir / "pyproject.toml", package=package, force=args.force)
         _write_scaffold_file(
-            target_dir / "server.py",
-            _template_text("server.py", frontend_dir=frontend_dir),
+            package_root / "__init__.py",
+            _template_text("__init__.py", package=package),
             force=args.force,
         )
         _write_scaffold_file(
-            frontend_path / "package.json",
+            main_path,
+            _template_text("__main__.py", package=package),
+            force=args.force,
+        )
+        _write_scaffold_file(
+            views_path / "package.json",
             _template_text("package.json"),
             force=args.force,
         )
         _write_scaffold_file(
-            frontend_path / "vite.config.ts",
+            views_path / "vite.config.ts",
             _template_text("vite.config.ts"),
             force=args.force,
         )
         _write_scaffold_file(
-            frontend_path / "widgets" / "hello" / "widget.tsx",
+            views_path / "widgets" / "hello" / "widget.tsx",
             _template_text("widget.tsx"),
             force=args.force,
         )
@@ -414,7 +443,7 @@ def cmd_init(args: argparse.Namespace) -> None:
     print("Next steps:")
     print("  uv run gdansk install")
     print("  uv run gdansk dev")
-    print("  uv run python server.py")
+    print(f"  uv run python -m {package}")
 
 
 def _split_task_args(argv: Sequence[str]) -> tuple[list[str], list[str]]:
@@ -440,7 +469,7 @@ def _add_frontend_args(parser: argparse.ArgumentParser) -> None:
         "--frontend",
         type=Path,
         default=None,
-        help="Frontend package root (overrides [gdansk] frontend)",
+        help="Frontend package root (overrides auto-discovered src/<package>/views)",
     )
 
 
@@ -504,7 +533,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     init = subparsers.add_parser("init", help="Scaffold a minimal gdansk MCP app")
     init.add_argument("--path", type=Path, default=Path(), help="Directory to initialize")
-    init.add_argument("--frontend", default="frontend", help="Frontend directory name")
+    init.add_argument(
+        "--package",
+        default=None,
+        help="Python package directory name under src/ (default: normalized [project].name)",
+    )
     init.add_argument("--force", action="store_true", help="Overwrite existing scaffold files")
     init.add_argument("--no-install", action="store_true", help="Skip post-init lock")
     init.set_defaults(func=cmd_init)

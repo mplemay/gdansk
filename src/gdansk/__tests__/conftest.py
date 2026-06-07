@@ -11,24 +11,27 @@ if TYPE_CHECKING:
 def write_pyproject(
     root: Path,
     *,
-    frontend: str | None = "frontend",
     scripts: dict[str, str] | None = None,
     dependencies: dict[str, str] | None = None,
     include_project: bool = True,
+    project_scripts: dict[str, str] | None = None,
+    project_name: str = "example",
 ) -> Path:
     lines: list[str] = []
     if include_project:
         lines.extend(
             [
                 "[project]",
-                'name = "example"',
+                f'name = "{project_name}"',
                 'version = "0.1.0"',
                 "",
             ],
         )
-
-    if frontend is not None:
-        lines.extend(["[gdansk]", f'frontend = "{frontend}"', ""])
+        entry_scripts = project_scripts if project_scripts is not None else {"main": "example.__main__:main"}
+        if entry_scripts:
+            lines.append("[project.scripts]")
+            lines.extend(f'{name} = "{target}"' for name, target in entry_scripts.items())
+            lines.append("")
 
     deps = dependencies if dependencies is not None else {"vite": "8.0.14"}
     if deps:
@@ -69,6 +72,26 @@ def write_frontend_tree(
     return frontend
 
 
+def write_src_layout_project(
+    root: Path,
+    *,
+    package: str = "example",
+    scripts: dict[str, str] | None = None,
+    dependencies: dict[str, str] | None = None,
+    project_name: str = "example",
+    include_package_json: bool = True,
+) -> tuple[Path, Path]:
+    write_pyproject(
+        root,
+        scripts=scripts,
+        dependencies=dependencies,
+        project_name=project_name,
+        project_scripts={"main": f"{package}.__main__:main"},
+    )
+    frontend_root = write_frontend_tree(root / "src" / package, "views", include_package_json=include_package_json)
+    return root, frontend_root
+
+
 @pytest.fixture
 def views_path(tmp_path: Path) -> Path:
     views = tmp_path / "views"
@@ -85,6 +108,4 @@ def views_path(tmp_path: Path) -> Path:
 def gdansk_project(tmp_path: Path) -> tuple[Path, Path]:
     project_root = tmp_path / "project"
     project_root.mkdir()
-    write_pyproject(project_root)
-    frontend_root = write_frontend_tree(project_root)
-    return project_root, frontend_root
+    return write_src_layout_project(project_root)

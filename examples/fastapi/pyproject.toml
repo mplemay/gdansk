@@ -23,9 +23,6 @@ exclude-newer = "7 days"
 [tool.uv.sources]
 gdansk = { path = "../../", editable = true }
 
-[gdansk]
-frontend = "src/mount/views"
-
 [gdansk.dependencies]
 vite = "8.0.14"
 "@gdansk/vite" = "file:../../packages/vite"

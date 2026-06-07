@@ -47,10 +47,10 @@ def test_init_creates_scaffold_files(
 
     assert code == 0
     assert (target / "pyproject.toml").exists()
-    assert (target / "server.py").exists()
-    assert (target / "frontend" / "package.json").exists()
-    assert (target / "frontend" / "vite.config.ts").exists()
-    assert (target / "frontend" / "widgets" / "hello" / "widget.tsx").exists()
+    assert (target / "src" / "my_mcp_server" / "__main__.py").exists()
+    assert (target / "src" / "my_mcp_server" / "views" / "package.json").exists()
+    assert (target / "src" / "my_mcp_server" / "views" / "vite.config.ts").exists()
+    assert (target / "src" / "my_mcp_server" / "views" / "widgets" / "hello" / "widget.tsx").exists()
     assert "Initialized gdansk project" in stdout
 
 
@@ -69,10 +69,27 @@ def test_init_pyproject_contains_gdansk_tables(
 
     text = (target / "pyproject.toml").read_text(encoding="utf-8")
     assert "[project]" in text
-    assert "[gdansk]" in text
-    assert 'frontend = "frontend"' in text
+    assert 'main = "my_mcp_server.__main__:main"' in text
+    assert "frontend =" not in text
     assert "[gdansk.dependencies]" in text
     assert "[gdansk.scripts]" in text
+
+
+def test_init_main_uses_views_sibling_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    target = tmp_path / "new-project"
+    monkeypatch.setattr(
+        "gdansk.cli.lock_packages",
+        lambda **_kwargs: SimpleNamespace(lockfile=str(target / "deno.lock"), dependencies=4, dev_dependencies=0),
+    )
+
+    _run_init(["init", "--path", str(target), "--no-install"], monkeypatch=monkeypatch, cwd=tmp_path, capsys=capsys)
+
+    text = (target / "src" / "my_mcp_server" / "__main__.py").read_text(encoding="utf-8")
+    assert 'Path(__file__).parent / "views"' in text
 
 
 def test_init_appends_gdansk_to_existing_pyproject(
@@ -96,6 +113,7 @@ def test_init_appends_gdansk_to_existing_pyproject(
     text = (target / "pyproject.toml").read_text(encoding="utf-8")
     assert 'name = "existing"' in text
     assert "[gdansk.dependencies]" in text
+    assert (target / "src" / "existing" / "views" / "vite.config.ts").exists()
 
 
 def test_init_refuses_existing_gdansk_without_force(
@@ -125,7 +143,7 @@ def test_init_force_replaces_gdansk_tables(
 ):
     target = tmp_path / "existing"
     target.mkdir()
-    write_pyproject(target, frontend="old-frontend")
+    write_pyproject(target, dependencies={"old": "1.0.0"})
     monkeypatch.setattr(
         "gdansk.cli.lock_packages",
         lambda **_kwargs: SimpleNamespace(lockfile=str(target / "deno.lock"), dependencies=4, dev_dependencies=0),
@@ -139,19 +157,21 @@ def test_init_force_replaces_gdansk_tables(
     )
 
     text = (target / "pyproject.toml").read_text(encoding="utf-8")
-    assert 'frontend = "frontend"' in text
-    assert "old-frontend" not in text
+    assert "frontend =" not in text
+    assert '"old"' not in text
     assert 'name = "example"' in text
 
 
-def test_init_refuses_existing_server_without_force(
+def test_init_refuses_existing_main_without_force(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ):
     target = tmp_path / "existing"
     target.mkdir()
-    (target / "server.py").write_text("print('server')\n", encoding="utf-8")
+    main_path = target / "src" / "my_mcp_server" / "__main__.py"
+    main_path.parent.mkdir(parents=True)
+    main_path.write_text("print('main')\n", encoding="utf-8")
 
     code, _stdout, stderr = _run_init(
         ["init", "--path", str(target), "--no-install"],
@@ -161,7 +181,7 @@ def test_init_refuses_existing_server_without_force(
     )
 
     assert code == 1
-    assert "server.py" in stderr
+    assert "__main__.py" in stderr
 
 
 def test_init_runs_lock_by_default(
@@ -199,7 +219,7 @@ def test_init_no_install_skips_lock(
     _run_init(["init", "--path", str(target), "--no-install"], monkeypatch=monkeypatch, cwd=tmp_path, capsys=capsys)
 
 
-def test_init_custom_frontend_directory(
+def test_init_custom_package_directory(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -211,21 +231,22 @@ def test_init_custom_frontend_directory(
     )
 
     _run_init(
-        ["init", "--path", str(target), "--frontend", "views", "--no-install"],
+        ["init", "--path", str(target), "--package", "custom_pkg", "--no-install"],
         monkeypatch=monkeypatch,
         cwd=tmp_path,
         capsys=capsys,
     )
 
     text = (target / "pyproject.toml").read_text(encoding="utf-8")
-    assert 'frontend = "views"' in text
-    assert (target / "views" / "vite.config.ts").exists()
+    assert 'main = "custom_pkg.__main__:main"' in text
+    assert (target / "src" / "custom_pkg" / "views" / "vite.config.ts").exists()
 
 
 def test_templates_are_loadable():
     names = {item.name for item in resources.files("gdansk._cli_templates").iterdir()}
     assert {
-        "server.py",
+        "__main__.py",
+        "__init__.py",
         "package.json",
         "vite.config.ts",
         "widget.tsx",

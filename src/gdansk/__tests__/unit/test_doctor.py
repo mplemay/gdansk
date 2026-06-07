@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from gdansk.__tests__.conftest import write_frontend_tree, write_pyproject
+from gdansk.__tests__.conftest import write_pyproject, write_src_layout_project
 from gdansk.cli import main
 
 
@@ -65,8 +65,7 @@ def test_doctor_fails_without_dependencies_table(
 ):
     project_root = tmp_path / "project"
     project_root.mkdir()
-    write_pyproject(project_root, dependencies={})
-    write_frontend_tree(project_root)
+    write_src_layout_project(project_root, dependencies={})
     monkeypatch.setattr("gdansk.cli._check_deno_available", lambda: ("ok", "deno executable"))
 
     code, stdout, _stderr = _run_doctor(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
@@ -75,21 +74,21 @@ def test_doctor_fails_without_dependencies_table(
     assert "fail No [gdansk.dependencies]" in stdout
 
 
-def test_doctor_fails_without_frontend_config(
+def test_doctor_fails_without_frontend_layout(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ):
     project_root = tmp_path / "project"
     project_root.mkdir()
-    write_pyproject(project_root, frontend=None)
+    write_pyproject(project_root)
     monkeypatch.setattr("gdansk.cli._check_deno_available", lambda: ("ok", "deno executable"))
 
     code, stdout, _stderr = _run_doctor(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
     assert code == 1
     assert "fail" in stdout
-    assert "--frontend" in stdout
+    assert "Frontend root does not exist" in stdout
 
 
 def test_doctor_fails_without_vite_config(
@@ -146,8 +145,7 @@ def test_doctor_warns_when_scripts_missing(
 ):
     project_root = tmp_path / "project"
     project_root.mkdir()
-    write_pyproject(project_root, scripts={"build": "vite build"})
-    write_frontend_tree(project_root)
+    write_src_layout_project(project_root, scripts={"build": "vite build"})
     monkeypatch.setattr("gdansk.cli._check_deno_available", lambda: ("ok", "deno executable"))
 
     code, stdout, stderr = _run_doctor(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
