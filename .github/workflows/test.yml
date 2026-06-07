@@ -19,7 +19,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: lint
+          shared-key: lint-v8-149.2.0
 
       - uses: astral-sh/setup-uv@v7
         with:
@@ -60,16 +60,17 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Shorten Cargo home on Windows
+      - name: Configure Windows build environment
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path 'D:\.cargo' | Out-Null
-          "CARGO_HOME=D:\.cargo" >> $env:GITHUB_ENV
+          git config --global core.longpaths true
+          New-Item -ItemType Directory -Force -Path 'C:\c' | Out-Null
+          "CARGO_HOME=C:\c" >> $env:GITHUB_ENV
 
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: test-python-${{ matrix.os }}-${{ runner.arch }}
+          shared-key: test-python-${{ matrix.os }}-v8-149.2.0-${{ runner.arch }}
 
       - uses: astral-sh/setup-uv@v7
         with:

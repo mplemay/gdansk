@@ -56,6 +56,9 @@ jobs:
         run: uv version "${{ needs.prepare_release.outputs.version }}"
 
       - name: Build
+        env:
+          V8_FROM_SOURCE: "1"
+          GN_ARGS: v8_monolithic_for_shared_library=true
         run: uv build
 
       - name: Publish
