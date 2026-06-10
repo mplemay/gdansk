@@ -1,13 +1,9 @@
-use std::path::PathBuf;
-
 use pyo3::prelude::*;
 
 use crate::{
-    binding::task_options::PyRunTaskOptions,
     binding::task_process::PyTaskProcess,
-    exceptions::GdanskRuntimeError,
+    binding::{blocking, task_options::PyRunTaskOptions},
     task::TaskRunner,
-    types::error::BindingError,
     utils::normalize_task_options::{ensure_task_success, normalize_run_task_options},
     utils::py_error,
 };
@@ -30,11 +26,11 @@ impl PyTaskRunner {
     ) -> PyResult<Bound<'py, PyAny>> {
         let normalized = normalized_options_from_py(options)?;
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let result = tokio::task::spawn_blocking(move || TaskRunner.run_blocking(normalized))
-                .await
-                .map_err(|error| GdanskRuntimeError::new_err(format!("Task run failed: {error}")))?
-                .map_err(|error| BindingError::runtime(error.to_string()))
-                .map_err(py_error::from_binding_error)?;
+            let result = blocking::run_on_blocking_thread(
+                move || TaskRunner.run_blocking(normalized),
+                "Task run failed",
+            )
+            .await?;
             ensure_task_success(result).map_err(py_error::from_binding_error)
         })
     }
@@ -46,14 +42,12 @@ impl PyTaskRunner {
     ) -> PyResult<Bound<'py, PyAny>> {
         let normalized = normalized_options_from_py(options)?;
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            tokio::task::spawn_blocking(move || TaskRunner.start_blocking(normalized))
-                .await
-                .map_err(|error| {
-                    GdanskRuntimeError::new_err(format!("Task start failed: {error}"))
-                })?
-                .map_err(|error| BindingError::runtime(error.to_string()))
-                .map_err(py_error::from_binding_error)
-                .map(PyTaskProcess::new)
+            blocking::run_on_blocking_thread(
+                move || TaskRunner.start_blocking(normalized),
+                "Task start failed",
+            )
+            .await
+            .map(PyTaskProcess::new)
         })
     }
 
@@ -65,7 +59,7 @@ impl PyTaskRunner {
 fn normalized_options_from_py(
     options: PyRef<'_, PyRunTaskOptions>,
 ) -> PyResult<crate::task::RunTaskOptions> {
-    let task_cwd = PathBuf::from(&options.task_cwd);
+    let task_cwd = std::path::PathBuf::from(&options.task_cwd);
     normalize_run_task_options(
         task_cwd,
         options.script.clone(),

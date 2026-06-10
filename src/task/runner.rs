@@ -15,7 +15,7 @@ use crate::task::types::{RunTaskOptions, TaskResult};
 const STDERR_CAPTURE_LIMIT: usize = 8 * 1024;
 const TERMINATE_GRACE_PERIOD: Duration = Duration::from_secs(5);
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct TaskProcess {
     inner: Arc<TaskProcessInner>,
 }
@@ -126,12 +126,7 @@ pub(crate) fn build_deno_task_argv(
     options: &RunTaskOptions,
     config_file: &Path,
     lockfile: &Path,
-    pyproject_dir: &Path,
 ) -> Vec<String> {
-    let task_cwd = options
-        .task_cwd
-        .canonicalize()
-        .unwrap_or_else(|_| options.task_cwd.clone());
     let mut argv = vec![
         "task".to_string(),
         "--config".to_string(),
@@ -139,14 +134,13 @@ pub(crate) fn build_deno_task_argv(
         "--lock".to_string(),
         lockfile.to_string_lossy().into_owned(),
         "--cwd".to_string(),
-        task_cwd.to_string_lossy().into_owned(),
+        options.task_cwd.to_string_lossy().into_owned(),
         options.script.clone(),
     ];
     if !options.argv.is_empty() {
         argv.push("--".to_string());
         argv.extend(options.argv.clone());
     }
-    let _ = pyproject_dir;
     argv
 }
 
@@ -157,7 +151,7 @@ fn spawn_deno_task(options: &RunTaskOptions, background: bool) -> Result<Child, 
     let deno_exe = resolve_deno_exe()?;
 
     let mut command = Command::new(deno_exe);
-    for arg in build_deno_task_argv(options, &config_file, env.lockfile(), &pyproject_dir) {
+    for arg in build_deno_task_argv(options, &config_file, env.lockfile()) {
         command.arg(arg);
     }
     command.current_dir(&pyproject_dir).stdin(Stdio::inherit());
@@ -280,7 +274,6 @@ mod tests {
             &options,
             Path::new("/proj/.gdansk/deno.json"),
             Path::new("/proj/deno.lock"),
-            Path::new("/proj"),
         );
 
         assert_eq!(
@@ -308,7 +301,6 @@ mod tests {
             &options,
             Path::new("/proj/.gdansk/deno.json"),
             Path::new("/proj/deno.lock"),
-            Path::new("/proj"),
         );
 
         assert_eq!(

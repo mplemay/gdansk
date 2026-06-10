@@ -23,15 +23,13 @@ from gdansk._project import (
     resolve_frontend_path,
     validate_frontend_root,
 )
-from gdansk.task import dev_task_argv, run_task, start_task
+from gdansk.task import DEFAULT_HOST, DEFAULT_PORT, dev_start_kwargs, run_task, start_task
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Generator, Sequence
 
     from gdansk._core import PackageInstallResult, TaskProcess
 
-DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 13_714
 PYTHON_MIN = (3, 12)
 PYTHON_MAX = (3, 15)
 
@@ -178,22 +176,22 @@ def _run_task_command(
     with _runtime_errors():
         if long_running:
             if script == "dev":
-                host = getattr(args, "host", None) or DEFAULT_HOST
-                port = getattr(args, "port", None) or DEFAULT_PORT
-                task_argv = dev_task_argv(host, port) + argv
-                task_host = host
-                task_port = port
+                dev_params = dev_start_kwargs(args.host, args.port, argv)
+                task_coro = start_task(
+                    frontend_path,
+                    script,
+                    argv=dev_params.argv,
+                    host=dev_params.host,
+                    port=dev_params.port,
+                )
             else:
-                task_argv = argv
-                task_host = getattr(args, "host", None)
-                task_port = getattr(args, "port", None)
-            task_coro = start_task(
-                frontend_path,
-                script,
-                argv=task_argv,
-                host=task_host,
-                port=task_port,
-            )
+                task_coro = start_task(
+                    frontend_path,
+                    script,
+                    argv=argv,
+                    host=getattr(args, "host", None),
+                    port=getattr(args, "port", None),
+                )
             asyncio.run(_run_until_signal(task_coro))
         else:
             asyncio.run(run_task(frontend_path, script, argv=argv))

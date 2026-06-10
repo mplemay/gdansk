@@ -17,9 +17,9 @@ pub(crate) fn normalize_run_task_options(
         return Err(BindingError::runtime("Task script name must not be empty"));
     }
 
-    if host.as_ref().is_some_and(|value| value.trim().is_empty()) {
-        return Err(BindingError::runtime("Task host must not be empty"));
-    }
+    let host = host
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
 
     if let Some(port) = port
         && !(1..=65_535).contains(&port)
@@ -29,9 +29,6 @@ pub(crate) fn normalize_run_task_options(
         ));
     }
 
-    let host = host
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty());
     if host.is_some() ^ port.is_some() {
         return Err(BindingError::runtime(
             "Long-running tasks require both host and port",

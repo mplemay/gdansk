@@ -45,6 +45,11 @@ def _stub_frontend(origin: str) -> TaskProcess:
     return cast("TaskProcess", StubFrontend(origin))
 
 
+def _stub_vite_runtime(vite: Vite, origin: str) -> None:
+    vite._frontend = _stub_frontend(origin)
+    vite._origin = origin
+
+
 def test_ship_defaults_to_vite_under_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     views = tmp_path / "views"
     (views / "dist").mkdir(parents=True)
@@ -320,7 +325,7 @@ async def test_wait_for_vite_reads_vite_client_endpoint(views_path: Path):
     transport = httpx.MockTransport(handler)
     async with httpx.AsyncClient(transport=transport) as client:
         ship = Ship(vite=Vite(views_path), client=client)
-        ship._vite._frontend = _stub_frontend("http://runtime.test")
+        _stub_vite_runtime(ship._vite, "http://runtime.test")
 
         await ship._vite.wait_until_ready(client)
 
@@ -340,7 +345,7 @@ async def test_widget_resource_renders_complete_document(views_path: Path):
         return None
 
     ship._dev = True
-    ship._vite._frontend = _stub_frontend("http://render.test")
+    _stub_vite_runtime(ship._vite, "http://render.test")
 
     html = await ship._widget_manager[Path("hello/widget.tsx")].resource.read()
     assert isinstance(html, str)
@@ -458,7 +463,7 @@ async def test_wait_for_vite_timeout_mentions_matching_vite_and_plugin_config(
             vite=Vite(views_path, host="localhost", port=43123),
             client=client,
         )
-        ship._vite._frontend = _stub_frontend("http://localhost:43123")
+        _stub_vite_runtime(ship._vite, "http://localhost:43123")
         monkeypatch.setattr("gdansk.vite.sleep", fake_sleep)
 
         with pytest.raises(RuntimeError) as exc_info:
@@ -473,7 +478,7 @@ async def test_ship_mcp_cleans_up_runtime_on_exit(views_path: Path, monkeypatch:
     ship = Ship(vite=Vite(views_path))
 
     async def fake_start_dev() -> None:
-        ship._vite._frontend = _stub_frontend("http://127.0.0.1:13714")
+        _stub_vite_runtime(ship._vite, "http://127.0.0.1:13714")
 
     async def fake_wait_until_ready(_client: httpx.AsyncClient) -> None:
         return None
@@ -498,7 +503,7 @@ async def test_ship_mcp_cleans_up_runtime_on_start_failure(views_path: Path, mon
     ship = Ship(vite=Vite(views_path))
 
     async def fake_start_dev() -> None:
-        ship._vite._frontend = _stub_frontend("http://127.0.0.1:13714")
+        _stub_vite_runtime(ship._vite, "http://127.0.0.1:13714")
 
     async def fake_wait_until_ready(_client: httpx.AsyncClient) -> None:
         msg = "boom"
@@ -525,7 +530,7 @@ async def test_ship_mcp_preserves_startup_error_when_runtime_exits_during_cleanu
     stop_called = False
 
     async def fake_start_dev() -> None:
-        ship._vite._frontend = _stub_frontend("http://127.0.0.1:13714")
+        _stub_vite_runtime(ship._vite, "http://127.0.0.1:13714")
 
     async def fake_wait_until_ready(_client: httpx.AsyncClient) -> None:
         msg = "boom"
@@ -559,7 +564,7 @@ async def test_start_dev_uses_runtime_port(views_path: Path, monkeypatch: pytest
     async def fake_start_dev() -> None:
         nonlocal captured_origin
         captured_origin = f"http://{ship._vite._host}:{ship._vite._port}"
-        ship._vite._frontend = _stub_frontend(captured_origin)
+        _stub_vite_runtime(ship._vite, captured_origin)
 
     async def fake_wait_until_ready(_client: httpx.AsyncClient) -> None:
         return None

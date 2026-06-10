@@ -1,19 +1,15 @@
-use std::sync::Arc;
-
 use pyo3::prelude::*;
 
-use crate::{exceptions::GdanskRuntimeError, task::TaskProcess};
+use crate::{binding::blocking, task::TaskProcess};
 
 #[pyclass(name = "TaskProcess", module = "gdansk._core")]
 pub(crate) struct PyTaskProcess {
-    inner: Arc<TaskProcess>,
+    inner: TaskProcess,
 }
 
 impl PyTaskProcess {
     pub(crate) fn new(process: TaskProcess) -> Self {
-        Self {
-            inner: Arc::new(process),
-        }
+        Self { inner: process }
     }
 }
 
@@ -32,18 +28,16 @@ impl PyTaskProcess {
     fn stop<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let process = self.inner.clone();
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            tokio::task::spawn_blocking(move || process.stop_blocking())
+            blocking::run_on_blocking_thread(move || process.stop_blocking(), "Task stop failed")
                 .await
-                .map_err(|error| GdanskRuntimeError::new_err(format!("Task stop failed: {error}")))?
-                .map_err(|error| GdanskRuntimeError::new_err(error.to_string()))
         })
     }
 
     fn __repr__(&self) -> String {
+        let is_running = self.inner.is_running_blocking();
         format!(
-            "TaskProcess(origin={:?}, is_running={})",
+            "TaskProcess(origin={:?}, is_running={is_running})",
             self.inner.origin(),
-            self.inner.is_running_blocking()
         )
     }
 }

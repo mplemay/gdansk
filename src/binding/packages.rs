@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use pyo3::{Bound, PyAny, PyResult, Python, pyclass, pyfunction, pymethods, types::PyAnyMethods};
 
-use crate::{exceptions::GdanskRuntimeError, packages, utils::normalize_path};
+use crate::{binding::blocking, packages, utils::normalize_path};
 
 #[pyclass(
     name = "PackageInstallResult",
@@ -228,7 +228,7 @@ where
 {
     let cwd = normalize_path::normalize_cwd(py, cwd)?;
     py.detach(|| pyo3_async_runtimes::tokio::get_runtime().block_on(operation(cwd)))
-        .map_err(package_error_to_py)
+        .map_err(blocking::any_error_to_py)
 }
 
 async fn run_packages_on_blocking_thread<T, F>(operation: F) -> PyResult<T>
@@ -236,12 +236,7 @@ where
     T: Send + 'static,
     F: FnOnce() -> Result<T, deno_core::error::AnyError> + Send + 'static,
 {
-    tokio::task::spawn_blocking(operation)
-        .await
-        .map_err(|error| {
-            GdanskRuntimeError::new_err(format!("Gdansk package operation failed: {error}"))
-        })?
-        .map_err(package_error_to_py)
+    blocking::run_on_blocking_thread(operation, "Gdansk package operation failed").await
 }
 
 fn normalize_package_filters(packages: Option<&Bound<'_, PyAny>>) -> PyResult<Vec<String>> {
@@ -249,10 +244,6 @@ fn normalize_package_filters(packages: Option<&Bound<'_, PyAny>>) -> PyResult<Ve
         Some(value) if !value.is_none() => value.extract(),
         _ => Ok(Vec::new()),
     }
-}
-
-fn package_error_to_py(error: deno_core::error::AnyError) -> pyo3::PyErr {
-    GdanskRuntimeError::new_err(error.to_string())
 }
 
 impl From<packages::PackageInstallResult> for PyPackageInstallResult {

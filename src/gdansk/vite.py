@@ -10,7 +10,7 @@ from httpx import AsyncClient, RequestError
 from pydantic import ValidationError
 
 from gdansk.manifest import GdanskManifest, WidgetManifest
-from gdansk.task import dev_task_argv, run_task, start_task
+from gdansk.task import DEFAULT_HOST, DEFAULT_PORT, dev_start_kwargs, run_task, start_task, task_origin
 from gdansk.utils import join_url
 
 if TYPE_CHECKING:
@@ -25,8 +25,8 @@ class Vite:
         root: PathType | None = None,
         *,
         build_directory: str = "dist",
-        host: str = "127.0.0.1",
-        port: int = 13_714,
+        host: str = DEFAULT_HOST,
+        port: int = DEFAULT_PORT,
     ) -> None:
         if root is None:
             root = Path.cwd() / "views"
@@ -59,6 +59,7 @@ class Vite:
 
         self._frontend: TaskProcess | None = None
         self._manifest: GdanskManifest | None = None
+        self._origin: str | None = None
 
     @property
     def assets_path(self) -> str:
@@ -100,7 +101,7 @@ class Vite:
         return PurePosixPath("/@gdansk/client", f"{widget_key}.tsx").as_posix()
 
     def has_runtime(self) -> bool:
-        return self._frontend is not None and self._frontend.is_running
+        return self._frontend is not None
 
     def load_manifest(self) -> GdanskManifest:
         path = self.manifest_path
@@ -145,11 +146,11 @@ class Vite:
         return manifest.widgets[widget_key]
 
     def require_origin(self) -> str:
-        if self._frontend is None or not self._frontend.is_running:
+        if self._origin is None:
             msg = "The frontend dev server is not running"
             raise RuntimeError(msg)
 
-        return self._frontend.origin
+        return self._origin
 
     async def build(self) -> None:
         self.clear_manifest()
@@ -160,28 +161,32 @@ class Vite:
             if self._frontend.is_running:
                 return
             self._frontend = None
+            self._origin = None
 
         self.clear_manifest()
+        dev_params = dev_start_kwargs(self._host, self._port)
         self._frontend = await start_task(
             self._root,
             "dev",
-            argv=dev_task_argv(self._host, self._port),
-            host=self._host,
-            port=self._port,
+            argv=dev_params.argv,
+            host=dev_params.host,
+            port=dev_params.port,
         )
+        self._origin = task_origin(self._host, self._port)
 
     async def stop(self) -> None:
         frontend = self._frontend
         self._frontend = None
+        self._origin = None
         if frontend is not None:
             await frontend.stop()
 
     async def wait_until_ready(self, client: AsyncClient) -> None:
-        if self._frontend is None:
+        if self._origin is None:
             msg = "The frontend dev server has not been started"
             raise RuntimeError(msg)
 
-        client_url = join_url(self._frontend.origin, "/@vite/client")
+        client_url = join_url(self._origin, "/@vite/client")
 
         for _ in range(1200):
             try:
