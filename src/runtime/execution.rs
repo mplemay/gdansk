@@ -6,8 +6,7 @@ use std::{
 };
 
 use deno_core::{
-    JsRuntime, ModuleId, ModuleSpecifier, PollEventLoopOptions, RuntimeOptions, error::CoreError,
-    v8,
+    JsRuntime, ModuleSpecifier, PollEventLoopOptions, RuntimeOptions, error::CoreError, v8,
 };
 use tokio::sync::oneshot;
 
@@ -179,7 +178,6 @@ struct DenoExecutionContext {
     bound: BoundRuntime,
     js_runtime: JsRuntime,
     main_module: ModuleSpecifier,
-    module_id: Option<ModuleId>,
     run_function: Option<v8::Global<v8::Function>>,
     uses_package_loader: bool,
 }
@@ -203,7 +201,6 @@ impl DenoExecutionContext {
             bound,
             js_runtime,
             main_module,
-            module_id: None,
             run_function: None,
             uses_package_loader,
         })
@@ -270,7 +267,6 @@ impl DenoExecutionContext {
         let description = self.bound.description();
         let run_function = resolve_run_function(&mut self.js_runtime, namespace, &description)?;
 
-        self.module_id = Some(module_id);
         self.run_function = Some(run_function);
         Ok(())
     }

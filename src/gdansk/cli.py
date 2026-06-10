@@ -3,11 +3,13 @@ from __future__ import annotations
 import argparse
 import asyncio
 import importlib.metadata
+import os
 import re
 import shutil
 import signal
 import sys
 import tomllib
+from contextlib import contextmanager
 from importlib import resources
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -21,12 +23,12 @@ from gdansk._project import (
     resolve_frontend_path,
     validate_frontend_root,
 )
-from gdansk.task import run_task, start_task
+from gdansk.task import dev_task_argv, run_task, start_task
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Sequence
+    from collections.abc import Awaitable, Generator, Sequence
 
-    from gdansk._core import TaskProcess
+    from gdansk._core import PackageInstallResult, TaskProcess
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 13_714
@@ -65,6 +67,20 @@ def _eprint(message: str) -> None:
     print(message, file=sys.stderr)
 
 
+@contextmanager
+def _runtime_errors() -> Generator[None, None, None]:
+    try:
+        yield
+    except GdanskRuntimeError as error:
+        _eprint(str(error))
+        raise SystemExit(1) from error
+
+
+def _format_package_result(action: str, result: PackageInstallResult) -> str:
+    dev_suffix = f" (+{result.dev_dependencies} dev)" if result.dev_dependencies else ""
+    return f"{action} {result.dependencies} dependencies{dev_suffix}. Lockfile: {result.lockfile}"
+
+
 def _resolve_project(project: Path | None, start: Path | None = None) -> GdanskProject:
     return discover_project(project=project, start=start or Path.cwd())
 
@@ -92,10 +108,6 @@ def _require_script(project: GdanskProject, script: str) -> None:
     raise SystemExit(1)
 
 
-def _dev_argv(host: str, port: int) -> list[str]:
-    return ["--host", host, "--port", str(port)]
-
-
 async def _run_until_signal(coro: Awaitable[TaskProcess]) -> None:
     process: TaskProcess | None = None
     stop_event = asyncio.Event()
@@ -120,35 +132,25 @@ async def _run_until_signal(coro: Awaitable[TaskProcess]) -> None:
 
 def cmd_install(args: argparse.Namespace) -> None:
     project = _resolve_project(args.project)
-    try:
+    with _runtime_errors():
         result = install_packages(
             cwd=project.root,
             include_dev=not args.no_dev,
             lockfile_only=args.lock_only,
         )
-    except GdanskRuntimeError as error:
-        _eprint(str(error))
-        raise SystemExit(1) from error
-
-    dev_suffix = f" (+{result.dev_dependencies} dev)" if result.dev_dependencies else ""
-    print(f"Installed {result.dependencies} dependencies{dev_suffix}. Lockfile: {result.lockfile}")
+        print(_format_package_result("Installed", result))
 
 
 def cmd_lock(args: argparse.Namespace) -> None:
     project = _resolve_project(args.project)
-    try:
+    with _runtime_errors():
         result = lock_packages(cwd=project.root, include_dev=not args.no_dev)
-    except GdanskRuntimeError as error:
-        _eprint(str(error))
-        raise SystemExit(1) from error
-
-    dev_suffix = f" (+{result.dev_dependencies} dev)" if result.dev_dependencies else ""
-    print(f"Locked {result.dependencies} dependencies{dev_suffix}. Lockfile: {result.lockfile}")
+        print(_format_package_result("Locked", result))
 
 
 def cmd_update(args: argparse.Namespace) -> None:
     project = _resolve_project(args.project)
-    try:
+    with _runtime_errors():
         result = update_packages(
             cwd=project.root,
             packages=args.packages or None,
@@ -156,13 +158,9 @@ def cmd_update(args: argparse.Namespace) -> None:
             latest=args.latest,
             lockfile_only=args.lock_only,
         )
-    except GdanskRuntimeError as error:
-        _eprint(str(error))
-        raise SystemExit(1) from error
-
-    for change in result.changes:
-        print(f"{change.name}: {change.previous} -> {change.updated}")
-    print(f"Lockfile: {result.lockfile}")
+        for change in result.changes:
+            print(f"{change.name}: {change.previous} -> {change.updated}")
+        print(f"Lockfile: {result.lockfile}")
 
 
 def _run_task_command(
@@ -179,9 +177,9 @@ def _run_task_command(
     host = getattr(args, "host", DEFAULT_HOST)
     port = getattr(args, "port", DEFAULT_PORT)
 
-    try:
+    with _runtime_errors():
         if long_running:
-            task_argv = _dev_argv(host, port) + argv if script == "dev" else argv
+            task_argv = dev_task_argv(host, port) + argv if script == "dev" else argv
             task_coro = start_task(
                 frontend_path,
                 script,
@@ -192,9 +190,6 @@ def _run_task_command(
             asyncio.run(_run_until_signal(task_coro))
         else:
             asyncio.run(run_task(frontend_path, script, argv=argv))
-    except GdanskRuntimeError as error:
-        _eprint(str(error))
-        raise SystemExit(1) from error
 
 
 def cmd_build(args: argparse.Namespace) -> None:
@@ -222,7 +217,7 @@ def cmd_scripts(args: argparse.Namespace) -> None:
 
 
 def _check_deno_available() -> tuple[str, str]:
-    deno_env = __import__("os").environ.get("GDANSK_DENO")
+    deno_env = os.environ.get("GDANSK_DENO")
     if deno_env:
         path = Path(deno_env)
         if path.is_file():
@@ -276,20 +271,13 @@ def cmd_doctor(args: argparse.Namespace) -> None:
             frontend_path = None
 
         if frontend_path is not None:
-            if frontend_path.exists() and frontend_path.is_dir():
-                print(f"ok   frontend root ({frontend_path})")
-            else:
-                message = f"Frontend root does not exist: {frontend_path}"
-                print(f"fail {message}")
-                failures.append(message)
-
             try:
                 frontend_warnings = validate_frontend_root(frontend_path)
             except ProjectError as error:
                 print(f"fail {error}")
                 failures.append(str(error))
-                frontend_warnings = []
             else:
+                print(f"ok   frontend root ({frontend_path})")
                 print(f"ok   vite.config.ts and widgets/ in {frontend_path}")
                 warnings.extend(frontend_warnings)
 
@@ -361,11 +349,8 @@ def _write_init_pyproject(target: Path, *, package: str, force: bool) -> None:
         if _pyproject_has_gdansk(target) and not force:
             msg = f"[gdansk] already present in {target}; use --force to replace gdansk tables"
             raise ProjectError(msg)
-        if _pyproject_has_gdansk(target) and force:
+        if force:
             text = _strip_gdansk_sections(text)
-            text = text.rstrip() + "\n\n" + _template_text("gdansk_tables.toml", package=package)
-            target.write_text(text, encoding="utf-8")
-            return
         text = text.rstrip() + "\n\n" + _template_text("gdansk_tables.toml", package=package)
         target.write_text(text, encoding="utf-8")
         return
@@ -433,11 +418,8 @@ def cmd_init(args: argparse.Namespace) -> None:
 
     project = load_project(target_dir)
     if not args.no_install:
-        try:
+        with _runtime_errors():
             lock_packages(cwd=project.root)
-        except GdanskRuntimeError as error:
-            _eprint(str(error))
-            raise SystemExit(1) from error
 
     print(f"Initialized gdansk project in {target_dir}")
     print("Next steps:")

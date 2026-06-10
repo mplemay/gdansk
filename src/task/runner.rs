@@ -53,7 +53,7 @@ pub(crate) struct TaskRunner;
 
 impl TaskRunner {
     pub(crate) fn run_blocking(&self, options: RunTaskOptions) -> Result<TaskResult, AnyError> {
-        let (mut child, _env) = spawn_deno_task(&options, false)?;
+        let mut child = spawn_deno_task(&options, false)?;
         let status = child.wait().context("Failed to wait for task subprocess")?;
         Ok(TaskResult {
             exit_code: status.code().unwrap_or(1),
@@ -62,7 +62,7 @@ impl TaskRunner {
 
     pub(crate) fn start_blocking(&self, options: RunTaskOptions) -> Result<TaskProcess, AnyError> {
         let origin = task_origin(&options)?;
-        let (child, _env) = spawn_deno_task(&options, true)?;
+        let child = spawn_deno_task(&options, true)?;
         Ok(TaskProcess {
             inner: Arc::new(TaskProcessInner {
                 origin,
@@ -79,10 +79,7 @@ fn task_origin(options: &RunTaskOptions) -> Result<String, AnyError> {
     bail!("Long-running tasks require both host and port in task options")
 }
 
-fn spawn_deno_task(
-    options: &RunTaskOptions,
-    background: bool,
-) -> Result<(Child, PackageEnvironment), AnyError> {
+fn spawn_deno_task(options: &RunTaskOptions, background: bool) -> Result<Child, AnyError> {
     let env = PackageEnvironment::for_task(&options.task_cwd, &options.script)?;
     let pyproject_dir = env.cwd().to_path_buf();
     let config_file = persist_task_config(&env, &pyproject_dir)?;
@@ -120,7 +117,7 @@ fn spawn_deno_task(
     let child = command
         .spawn()
         .with_context(|| format!("Failed to spawn deno task '{}'", options.script))?;
-    Ok((child, env))
+    Ok(child)
 }
 
 fn persist_task_config(

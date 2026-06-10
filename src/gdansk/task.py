@@ -12,6 +12,10 @@ if TYPE_CHECKING:
 type PathType = str | PathLike[str]
 
 
+def dev_task_argv(host: str, port: int) -> list[str]:
+    return ["--host", host, "--port", str(port)]
+
+
 def build_run_task_options(  # noqa: PLR0913
     task_cwd: PathType,
     script: str,

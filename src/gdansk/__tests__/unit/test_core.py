@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import httpx
 import pytest
@@ -19,6 +19,7 @@ from gdansk.metadata import Metadata
 from gdansk.vite import Vite
 
 if TYPE_CHECKING:
+    from gdansk._core import TaskProcess
     from gdansk.widget import WidgetMeta
 
 
@@ -29,6 +30,18 @@ class SearchFilters(BaseModel):
 
 def _app() -> MCPServer:
     return MCPServer(name="test")
+
+
+def _stub_frontend(origin: str) -> TaskProcess:
+    class StubFrontend:
+        def __init__(self, origin: str) -> None:
+            self.origin = origin
+            self.stopped = False
+
+        async def stop(self) -> None:
+            self.stopped = True
+
+    return cast("TaskProcess", StubFrontend(origin))
 
 
 def test_ship_defaults_to_vite_under_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -306,8 +319,7 @@ async def test_wait_for_vite_reads_vite_client_endpoint(views_path: Path):
     transport = httpx.MockTransport(handler)
     async with httpx.AsyncClient(transport=transport) as client:
         ship = Ship(vite=Vite(views_path), client=client)
-        ship._vite._frontend_running = True
-        ship._vite._origin = "http://runtime.test"
+        ship._vite._frontend = _stub_frontend("http://runtime.test")
 
         await ship._vite.wait_until_ready(client)
 
@@ -327,7 +339,7 @@ async def test_widget_resource_renders_complete_document(views_path: Path):
         return None
 
     ship._dev = True
-    ship._vite._origin = "http://render.test"
+    ship._vite._frontend = _stub_frontend("http://render.test")
 
     html = await ship._widget_manager[Path("hello/widget.tsx")].resource.read()
     assert isinstance(html, str)
@@ -445,8 +457,7 @@ async def test_wait_for_vite_timeout_mentions_matching_vite_and_plugin_config(
             vite=Vite(views_path, host="localhost", port=43123),
             client=client,
         )
-        ship._vite._frontend_running = True
-        ship._vite._origin = "http://localhost:43123"
+        ship._vite._frontend = _stub_frontend("http://localhost:43123")
         monkeypatch.setattr("gdansk.vite.sleep", fake_sleep)
 
         with pytest.raises(RuntimeError) as exc_info:
@@ -461,8 +472,7 @@ async def test_ship_mcp_cleans_up_runtime_on_exit(views_path: Path, monkeypatch:
     ship = Ship(vite=Vite(views_path))
 
     async def fake_start_dev() -> None:
-        ship._vite._origin = "http://127.0.0.1:13714"
-        ship._vite._frontend_running = True
+        ship._vite._frontend = _stub_frontend("http://127.0.0.1:13714")
 
     async def fake_wait_until_ready(_client: httpx.AsyncClient) -> None:
         return None
@@ -473,13 +483,12 @@ async def test_ship_mcp_cleans_up_runtime_on_exit(views_path: Path, monkeypatch:
     async with ship.mcp(app=_app(), watch=True):
         assert ship._active is True
         assert ship._dev is True
-        assert ship._vite._frontend_running is True
-        assert ship._vite._origin == "http://127.0.0.1:13714"
+        assert ship._vite.has_runtime() is True
+        assert ship._vite.require_origin() == "http://127.0.0.1:13714"
 
     assert ship._active is False
     assert ship._dev is False
-    assert ship._vite._frontend_running is False
-    assert ship._vite._origin is None
+    assert ship._vite.has_runtime() is False
     assert ship._vite._manifest is None
     assert ship._session_client is None
 
@@ -488,8 +497,7 @@ async def test_ship_mcp_cleans_up_runtime_on_start_failure(views_path: Path, mon
     ship = Ship(vite=Vite(views_path))
 
     async def fake_start_dev() -> None:
-        ship._vite._origin = "http://127.0.0.1:13714"
-        ship._vite._frontend_running = True
+        ship._vite._frontend = _stub_frontend("http://127.0.0.1:13714")
 
     async def fake_wait_until_ready(_client: httpx.AsyncClient) -> None:
         msg = "boom"
@@ -504,8 +512,7 @@ async def test_ship_mcp_cleans_up_runtime_on_start_failure(views_path: Path, mon
 
     assert ship._active is False
     assert ship._dev is False
-    assert ship._vite._frontend_running is False
-    assert ship._vite._origin is None
+    assert ship._vite.has_runtime() is False
     assert ship._vite._manifest is None
     assert ship._session_client is None
 
@@ -517,8 +524,7 @@ async def test_ship_mcp_preserves_startup_error_when_runtime_exits_during_cleanu
     stop_called = False
 
     async def fake_start_dev() -> None:
-        ship._vite._origin = "http://127.0.0.1:13714"
-        ship._vite._frontend_running = True
+        ship._vite._frontend = _stub_frontend("http://127.0.0.1:13714")
 
     async def fake_wait_until_ready(_client: httpx.AsyncClient) -> None:
         msg = "boom"
@@ -542,8 +548,7 @@ async def test_ship_mcp_preserves_startup_error_when_runtime_exits_during_cleanu
     assert stop_called is True
     assert ship._active is False
     assert ship._dev is False
-    assert ship._vite._frontend_running is False
-    assert ship._vite._origin is None
+    assert ship._vite.has_runtime() is False
     assert ship._vite._manifest is None
 
 
@@ -553,8 +558,7 @@ async def test_start_dev_uses_runtime_port(views_path: Path, monkeypatch: pytest
     async def fake_start_dev() -> None:
         nonlocal captured_origin
         captured_origin = f"http://{ship._vite._host}:{ship._vite._port}"
-        ship._vite._origin = captured_origin
-        ship._vite._frontend_running = True
+        ship._vite._frontend = _stub_frontend(captured_origin)
 
     async def fake_wait_until_ready(_client: httpx.AsyncClient) -> None:
         return None
@@ -578,9 +582,8 @@ async def test_start_production_builds_and_loads_manifest(views_path: Path, monk
     monkeypatch.setattr(ship._vite, "build", fake_build)
 
     async with ship.mcp(app=_app(), watch=False):
-        assert ship._vite._frontend_running is False
+        assert ship._vite.has_runtime() is False
         assert ship._vite.require_manifest().widgets["hello"].client == "dist/hello/client.js"
-        assert ship._vite._origin is None
 
     assert ship._vite._manifest is None
 
@@ -608,9 +611,8 @@ async def test_start_prebuilt_loads_manifest_without_build(views_path: Path, mon
     monkeypatch.setattr(ship._vite, "build", fail_build)
 
     async with ship.mcp(app=_app(), watch=None):
-        assert ship._vite._frontend_running is False
+        assert ship._vite.has_runtime() is False
         assert ship._vite.require_manifest().widgets["hello"].client == "dist/hello/client.js"
-        assert ship._vite._origin is None
         assert ship._dev is False
 
     assert ship._vite._manifest is None
@@ -636,9 +638,8 @@ async def test_ship_mcp_open_prebuilt_skips_runtime_start(views_path: Path, monk
     async with ship.mcp(app=_app(), watch=None):
         assert ship._active is True
         assert ship._dev is False
-        assert ship._vite._frontend_running is False
+        assert ship._vite.has_runtime() is False
         assert ship._vite.require_manifest().widgets["hello"].client == "dist/hello/client.js"
-        assert ship._vite._origin is None
 
     assert ship._active is False
     assert ship._vite._manifest is None

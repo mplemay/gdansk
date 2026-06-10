@@ -119,16 +119,10 @@ pub fn py_install_packages(
     include_dev: bool,
     lockfile_only: bool,
 ) -> PyResult<PyPackageInstallResult> {
-    let cwd = normalize_path::normalize_cwd(py, cwd)?;
-    py.detach(|| {
-        pyo3_async_runtimes::tokio::get_runtime().block_on(packages::install_packages(
-            cwd,
-            include_dev,
-            lockfile_only,
-        ))
+    run_packages_sync(py, cwd, move |cwd| {
+        packages::install_packages(cwd, include_dev, lockfile_only)
     })
     .map(Into::into)
-    .map_err(package_error_to_py)
 }
 
 #[pyfunction(name = "lock_packages", signature = (cwd = None, *, include_dev = true))]
@@ -137,13 +131,10 @@ pub fn py_lock_packages(
     cwd: Option<&Bound<'_, PyAny>>,
     include_dev: bool,
 ) -> PyResult<PyPackageInstallResult> {
-    let cwd = normalize_path::normalize_cwd(py, cwd)?;
-    py.detach(|| {
-        pyo3_async_runtimes::tokio::get_runtime()
-            .block_on(packages::lock_packages(cwd, include_dev))
+    run_packages_sync(py, cwd, move |cwd| {
+        packages::lock_packages(cwd, include_dev)
     })
     .map(Into::into)
-    .map_err(package_error_to_py)
 }
 
 #[pyfunction(name = "update_packages", signature = (cwd = None, packages = None, *, include_dev = true, latest = false, lockfile_only = false))]
@@ -155,19 +146,11 @@ pub fn py_update_packages(
     latest: bool,
     lockfile_only: bool,
 ) -> PyResult<PyPackageUpdateResult> {
-    let cwd = normalize_path::normalize_cwd(py, cwd)?;
     let filters = normalize_package_filters(packages)?;
-    py.detach(|| {
-        pyo3_async_runtimes::tokio::get_runtime().block_on(packages::update_packages(
-            cwd,
-            filters,
-            include_dev,
-            latest,
-            lockfile_only,
-        ))
+    run_packages_sync(py, cwd, move |cwd| {
+        packages::update_packages(cwd, filters, include_dev, latest, lockfile_only)
     })
     .map(Into::into)
-    .map_err(package_error_to_py)
 }
 
 #[pyfunction(name = "ainstall_packages", signature = (cwd = None, *, include_dev = true, lockfile_only = false))]
@@ -232,6 +215,20 @@ pub fn py_aupdate_packages<'py>(
         .await?;
         Ok(PyPackageUpdateResult::from(result))
     })
+}
+
+fn run_packages_sync<T, Fut>(
+    py: Python<'_>,
+    cwd: Option<&Bound<'_, PyAny>>,
+    operation: impl FnOnce(PathBuf) -> Fut + Send,
+) -> PyResult<T>
+where
+    Fut: std::future::Future<Output = Result<T, deno_core::error::AnyError>>,
+    T: Send + 'static,
+{
+    let cwd = normalize_path::normalize_cwd(py, cwd)?;
+    py.detach(|| pyo3_async_runtimes::tokio::get_runtime().block_on(operation(cwd)))
+        .map_err(package_error_to_py)
 }
 
 async fn run_packages_on_blocking_thread<T, F>(operation: F) -> PyResult<T>

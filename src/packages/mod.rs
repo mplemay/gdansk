@@ -391,20 +391,27 @@ fn write_synthetic_config(
     Ok(())
 }
 
+pub(crate) fn read_synthetic_config_imports(
+    config_file: &Path,
+) -> Result<serde_json::Map<String, serde_json::Value>, AnyError> {
+    let text = std::fs::read_to_string(config_file)
+        .with_context(|| format!("Reading {}", config_file.display()))?;
+    let config: serde_json::Value = serde_json::from_str(&text)
+        .with_context(|| format!("Parsing {}", config_file.display()))?;
+    config
+        .get("imports")
+        .and_then(|value| value.as_object())
+        .cloned()
+        .ok_or_else(|| anyhow!("Synthetic gdansk Deno config is missing an imports table"))
+}
+
 fn apply_updates_to_pyproject(
     cwd: &Path,
     env: &PackageEnvironment,
 ) -> Result<Vec<PackageUpdateChange>, AnyError> {
     let mut manifest = read_manifest(cwd, true)?
         .ok_or_else(|| anyhow!("Missing {}", cwd.join("pyproject.toml").display()))?;
-    let text = std::fs::read_to_string(env.config_file())
-        .with_context(|| format!("Reading {}", env.config_file().display()))?;
-    let config: serde_json::Value = serde_json::from_str(&text)
-        .with_context(|| format!("Parsing {}", env.config_file().display()))?;
-    let imports = config
-        .get("imports")
-        .and_then(|value| value.as_object())
-        .ok_or_else(|| anyhow!("Synthetic gdansk Deno config is missing an imports table"))?;
+    let imports = read_synthetic_config_imports(env.config_file())?;
 
     let mut changes = Vec::new();
     for dep in env.dependencies() {

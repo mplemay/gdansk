@@ -7,9 +7,8 @@ use crate::{
     binding::task_process::PyTaskProcess,
     exceptions::GdanskRuntimeError,
     task::TaskRunner,
-    utils::normalize_task_options::{
-        ensure_task_success, map_task_error, normalize_run_task_options,
-    },
+    types::error::BindingError,
+    utils::normalize_task_options::{ensure_task_success, normalize_run_task_options},
     utils::py_error,
 };
 
@@ -31,14 +30,11 @@ impl PyTaskRunner {
     ) -> PyResult<Bound<'py, PyAny>> {
         let normalized = normalized_options_from_py(options)?;
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            let result =
-                tokio::task::spawn_blocking(move || TaskRunner.run_blocking(normalized.inner))
-                    .await
-                    .map_err(|error| {
-                        GdanskRuntimeError::new_err(format!("Task run failed: {error}"))
-                    })?
-                    .map_err(map_task_error)
-                    .map_err(py_error::from_binding_error)?;
+            let result = tokio::task::spawn_blocking(move || TaskRunner.run_blocking(normalized))
+                .await
+                .map_err(|error| GdanskRuntimeError::new_err(format!("Task run failed: {error}")))?
+                .map_err(|error| BindingError::runtime(error.to_string()))
+                .map_err(py_error::from_binding_error)?;
             ensure_task_success(result).map_err(py_error::from_binding_error)
         })
     }
@@ -50,12 +46,12 @@ impl PyTaskRunner {
     ) -> PyResult<Bound<'py, PyAny>> {
         let normalized = normalized_options_from_py(options)?;
         pyo3_async_runtimes::tokio::future_into_py(py, async move {
-            tokio::task::spawn_blocking(move || TaskRunner.start_blocking(normalized.inner))
+            tokio::task::spawn_blocking(move || TaskRunner.start_blocking(normalized))
                 .await
                 .map_err(|error| {
                     GdanskRuntimeError::new_err(format!("Task start failed: {error}"))
                 })?
-                .map_err(map_task_error)
+                .map_err(|error| BindingError::runtime(error.to_string()))
                 .map_err(py_error::from_binding_error)
                 .map(PyTaskProcess::new)
         })
@@ -68,7 +64,7 @@ impl PyTaskRunner {
 
 fn normalized_options_from_py(
     options: PyRef<'_, PyRunTaskOptions>,
-) -> PyResult<crate::utils::normalize_task_options::NormalizedRunTaskOptions> {
+) -> PyResult<crate::task::RunTaskOptions> {
     let task_cwd = PathBuf::from(&options.task_cwd);
     normalize_run_task_options(
         task_cwd,

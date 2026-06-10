@@ -4,11 +4,6 @@ use std::path::PathBuf;
 use crate::task::RunTaskOptions;
 use crate::types::error::BindingError;
 
-#[derive(Clone, Debug)]
-pub(crate) struct NormalizedRunTaskOptions {
-    pub inner: RunTaskOptions,
-}
-
 pub(crate) fn normalize_run_task_options(
     task_cwd: PathBuf,
     script: String,
@@ -16,7 +11,7 @@ pub(crate) fn normalize_run_task_options(
     env: BTreeMap<String, String>,
     host: Option<String>,
     port: Option<u16>,
-) -> Result<NormalizedRunTaskOptions, BindingError> {
+) -> Result<RunTaskOptions, BindingError> {
     let script = script.trim().to_string();
     if script.is_empty() {
         return Err(BindingError::runtime("Task script name must not be empty"));
@@ -54,20 +49,14 @@ pub(crate) fn normalize_run_task_options(
         )));
     }
 
-    Ok(NormalizedRunTaskOptions {
-        inner: RunTaskOptions {
-            task_cwd,
-            script,
-            argv,
-            env,
-            host,
-            port,
-        },
+    Ok(RunTaskOptions {
+        task_cwd,
+        script,
+        argv,
+        env,
+        host,
+        port,
     })
-}
-
-pub(crate) fn map_task_error(error: deno_core::error::AnyError) -> BindingError {
-    BindingError::runtime(error.to_string())
 }
 
 pub(crate) fn ensure_task_success(result: crate::task::TaskResult) -> Result<(), BindingError> {

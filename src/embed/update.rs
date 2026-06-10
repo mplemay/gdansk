@@ -31,16 +31,19 @@ pub(crate) async fn update_packages(
 ) -> Result<(), AnyError> {
     let context = EmbedContext::new(cwd.clone(), config_file.clone(), lockfile.clone())?;
     let filter_entries = parse_filters(&filters);
-    let aliases_to_update = resolve_aliases_to_update(&config_file, &filter_entries)?;
+    let text = std::fs::read_to_string(&config_file)
+        .with_context(|| format!("Reading {}", config_file.display()))?;
+    let mut config: serde_json::Value = serde_json::from_str(&text)
+        .with_context(|| format!("Parsing {}", config_file.display()))?;
+    let imports_snapshot = config
+        .get("imports")
+        .and_then(|value| value.as_object())
+        .ok_or_else(|| anyhow!("Synthetic gdansk Deno config is missing an imports table"))?;
+    let aliases_to_update = resolve_aliases_to_update(imports_snapshot, &filter_entries)?;
     if aliases_to_update.is_empty() {
         return Ok(());
     }
 
-    let mut config: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(&config_file)
-            .with_context(|| format!("Reading {}", config_file.display()))?,
-    )
-    .with_context(|| format!("Parsing {}", config_file.display()))?;
     let imports = config
         .get_mut("imports")
         .and_then(|value| value.as_object_mut())
@@ -94,18 +97,9 @@ fn parse_filters(filters: &[String]) -> Vec<FilterEntry> {
 }
 
 fn resolve_aliases_to_update(
-    config_file: &PathBuf,
+    imports: &serde_json::Map<String, serde_json::Value>,
     filters: &[FilterEntry],
 ) -> Result<Vec<String>, AnyError> {
-    let text = std::fs::read_to_string(config_file)
-        .with_context(|| format!("Reading {}", config_file.display()))?;
-    let config: serde_json::Value = serde_json::from_str(&text)
-        .with_context(|| format!("Parsing {}", config_file.display()))?;
-    let imports = config
-        .get("imports")
-        .and_then(|value| value.as_object())
-        .ok_or_else(|| anyhow!("Synthetic gdansk Deno config is missing an imports table"))?;
-
     if filters.is_empty() {
         return Ok(imports.keys().cloned().collect());
     }
