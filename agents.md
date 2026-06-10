@@ -63,6 +63,13 @@
   (for example `# noqa: ARG002`), not a whole-file waiver. This refers to pragmas in `.py` files, not to path-based
   rules in `pyproject.toml` (which should stay minimal and justified).
 - For type aliases, prefer Python's modern syntax: `type MyAlias = SomeType` (PEP 695 style), especially in new code.
+- Constants:
+  - Module-level runtime constants must be public (no leading underscore), `SCREAMING_SNAKE_CASE`, and annotated with
+    `Final[T]` from `typing`.
+  - Example: `DEFAULT_HOST: Final[str] = "127.0.0.1"`
+  - Does not apply to type aliases (`type Foo = ...`), TypedDict assignments, class instance attributes (including those
+    annotated with `Final` in `__init__`), application wiring globals (`ship`, `mcp`, etc.), or special dunders
+    (`__all__`, etc.).
 - URL construction:
   - Use `urllib.parse` methods for URL manipulation (don't use string concatenation or f-strings for query params)
   - Use `urlencode()` for query parameters

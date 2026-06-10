@@ -3,15 +3,15 @@ from __future__ import annotations
 import os
 import platform
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 import maturin
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
-_RUSTFLAGS_SEPARATOR = "\x1f"
-_MACOS_ARM64_PYO3_RUSTFLAGS = (
+RUSTFLAGS_SEPARATOR: Final[str] = "\x1f"
+MACOS_ARM64_PYO3_RUSTFLAGS: Final[tuple[str, ...]] = (
     "-C",
     "link-arg=-undefined",
     "-C",
@@ -34,8 +34,8 @@ def _standalone_python_build_rustflags() -> Iterator[None]:
     if _is_macos_arm64():
         # This crate is a standalone Python extension. Avoid inheriting the
         # repo-level Deno CLI linker choice, which Apple clang rejects.
-        os.environ["CARGO_ENCODED_RUSTFLAGS"] = _RUSTFLAGS_SEPARATOR.join(
-            _MACOS_ARM64_PYO3_RUSTFLAGS,
+        os.environ["CARGO_ENCODED_RUSTFLAGS"] = RUSTFLAGS_SEPARATOR.join(
+            MACOS_ARM64_PYO3_RUSTFLAGS,
         )
 
     try:

@@ -12,7 +12,7 @@ import tomllib
 from contextlib import contextmanager
 from importlib import resources
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from gdansk import GdanskRuntimeError, install_packages, lock_packages, update_packages
 from gdansk._project import (
@@ -30,8 +30,8 @@ if TYPE_CHECKING:
 
     from gdansk._core import PackageInstallResult, TaskProcess
 
-PYTHON_MIN = (3, 12)
-PYTHON_MAX = (3, 15)
+PYTHON_MIN: Final[tuple[int, int]] = (3, 12)
+PYTHON_MAX: Final[tuple[int, int]] = (3, 15)
 
 
 def _normalize_package_name(name: str) -> str:

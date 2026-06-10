@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any, cast
+from typing import Any, Final, cast
 
-_MISSING = object()
+MISSING: Final[object] = object()
 type JsonSchema = dict[str, Any]
 
 
@@ -85,7 +85,7 @@ def _normalize_all_of(schema: JsonSchema, *, root: JsonSchema) -> None:
 
 
 def _remove_null_default(schema: JsonSchema) -> None:
-    if schema.get("default", _MISSING) is None:
+    if schema.get("default", MISSING) is None:
         schema.pop("default")
 
 

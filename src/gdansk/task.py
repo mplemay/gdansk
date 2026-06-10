@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from os import PathLike
 from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Final, NamedTuple
 
 from gdansk._core import RunTaskOptions, TaskProcess, TaskRunner
 
@@ -11,8 +11,8 @@ if TYPE_CHECKING:
 
 type PathType = str | PathLike[str]
 
-DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 13_714
+DEFAULT_HOST: Final[str] = "127.0.0.1"
+DEFAULT_PORT: Final[int] = 13_714
 
 
 class DevStartParams(NamedTuple):
