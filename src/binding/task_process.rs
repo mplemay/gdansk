@@ -21,7 +21,12 @@ impl PyTaskProcess {
 impl PyTaskProcess {
     #[getter]
     fn origin(&self) -> String {
-        self.inner.origin().to_string()
+        self.inner.origin().unwrap_or_default().to_string()
+    }
+
+    #[getter]
+    fn is_running(&self) -> bool {
+        self.inner.is_running_blocking()
     }
 
     fn stop<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
@@ -35,6 +40,10 @@ impl PyTaskProcess {
     }
 
     fn __repr__(&self) -> String {
-        format!("TaskProcess(origin={:?})", self.inner.origin())
+        format!(
+            "TaskProcess(origin={:?}, is_running={})",
+            self.inner.origin(),
+            self.inner.is_running_blocking()
+        )
     }
 }

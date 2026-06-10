@@ -174,18 +174,25 @@ def _run_task_command(
 
     frontend_path = _resolve_task_frontend(project, args.frontend)
     argv = list(args.task_args)
-    host = getattr(args, "host", DEFAULT_HOST)
-    port = getattr(args, "port", DEFAULT_PORT)
 
     with _runtime_errors():
         if long_running:
-            task_argv = dev_task_argv(host, port) + argv if script == "dev" else argv
+            if script == "dev":
+                host = getattr(args, "host", None) or DEFAULT_HOST
+                port = getattr(args, "port", None) or DEFAULT_PORT
+                task_argv = dev_task_argv(host, port) + argv
+                task_host = host
+                task_port = port
+            else:
+                task_argv = argv
+                task_host = getattr(args, "host", None)
+                task_port = getattr(args, "port", None)
             task_coro = start_task(
                 frontend_path,
                 script,
                 argv=task_argv,
-                host=host,
-                port=port,
+                host=task_host,
+                port=task_port,
             )
             asyncio.run(_run_until_signal(task_coro))
         else:
@@ -460,6 +467,11 @@ def _add_dev_runtime_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="Dev server port")
 
 
+def _add_optional_runtime_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--host", default=None, help="Optional HTTP host for long-running tasks")
+    parser.add_argument("--port", type=int, default=None, help="Optional HTTP port for long-running tasks")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="gdansk", description="Gdansk project tooling")
     parser.add_argument("--version", action="version", version=f"gdansk {importlib.metadata.version('gdansk')}")
@@ -499,7 +511,7 @@ def build_parser() -> argparse.ArgumentParser:
     run = subparsers.add_parser("run", help="Run a [gdansk.scripts] entry")
     _add_project_args(run)
     _add_frontend_args(run)
-    _add_dev_runtime_args(run)
+    _add_optional_runtime_args(run)
     run.add_argument("script", help="Script name from [gdansk.scripts]")
     run.add_argument("--watch", action="store_true", help="Keep the task running until interrupted")
     run.set_defaults(func=cmd_run)

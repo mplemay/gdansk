@@ -100,7 +100,7 @@ class Vite:
         return PurePosixPath("/@gdansk/client", f"{widget_key}.tsx").as_posix()
 
     def has_runtime(self) -> bool:
-        return self._frontend is not None
+        return self._frontend is not None and self._frontend.is_running
 
     def load_manifest(self) -> GdanskManifest:
         path = self.manifest_path
@@ -145,7 +145,7 @@ class Vite:
         return manifest.widgets[widget_key]
 
     def require_origin(self) -> str:
-        if self._frontend is None:
+        if self._frontend is None or not self._frontend.is_running:
             msg = "The frontend dev server is not running"
             raise RuntimeError(msg)
 
@@ -157,7 +157,9 @@ class Vite:
 
     async def start_dev(self) -> None:
         if self._frontend is not None:
-            return
+            if self._frontend.is_running:
+                return
+            self._frontend = None
 
         self.clear_manifest()
         self._frontend = await start_task(

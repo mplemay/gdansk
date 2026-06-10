@@ -61,11 +61,62 @@ pub(crate) fn normalize_run_task_options(
 
 pub(crate) fn ensure_task_success(result: crate::task::TaskResult) -> Result<(), BindingError> {
     if result.success() {
-        Ok(())
-    } else {
-        Err(BindingError::runtime(format!(
-            "Task exited with status {}",
-            result.exit_code
-        )))
+        return Ok(());
+    }
+
+    let mut message = format!("Task exited with status {}", result.exit_code);
+    if let Some(stderr) = result.stderr {
+        message.push_str(":\n");
+        message.push_str(&stderr);
+    }
+    Err(BindingError::runtime(message))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn accepts_missing_host_and_port() {
+        let options = normalize_run_task_options(
+            PathBuf::from("."),
+            "idle".to_string(),
+            vec![],
+            BTreeMap::new(),
+            None,
+            None,
+        )
+        .expect("options should normalize");
+
+        assert!(options.host.is_none());
+        assert!(options.port.is_none());
+    }
+
+    #[test]
+    fn rejects_partial_host_and_port() {
+        let error = normalize_run_task_options(
+            PathBuf::from("."),
+            "idle".to_string(),
+            vec![],
+            BTreeMap::new(),
+            Some("127.0.0.1".to_string()),
+            None,
+        )
+        .expect_err("partial host/port should fail");
+
+        assert!(error.message().contains("both host and port"));
+    }
+
+    #[test]
+    fn ensure_task_success_includes_stderr() {
+        let error = ensure_task_success(crate::task::TaskResult {
+            exit_code: 1,
+            stderr: Some("vite failed".to_string()),
+        })
+        .expect_err("non-zero exit should fail");
+
+        assert!(error.message().contains("status 1"));
+        assert!(error.message().contains("vite failed"));
     }
 }

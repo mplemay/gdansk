@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import shutil
+import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -118,3 +120,62 @@ def test_cli_build_smoke(
     )
     assert _invoke(["install"], monkeypatch=monkeypatch, cwd=project_root) == 0
     assert _invoke(["build"], monkeypatch=monkeypatch, cwd=project_root) == 0
+
+
+@pytest.mark.integration
+def test_cli_build_from_nested_frontend_cwd(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    deno_on_path: None,
+):
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    _, frontend_root = write_src_layout_project(
+        project_root,
+        package="example",
+        dependencies={"std_path": "jsr:@std/path@^1"},
+        scripts={"build": "deno eval 'Deno.exit(0)'"},
+    )
+
+    assert _invoke(["install"], monkeypatch=monkeypatch, cwd=project_root) == 0
+    assert _invoke(["build"], monkeypatch=monkeypatch, cwd=frontend_root) == 0
+
+
+@pytest.mark.integration
+def test_cli_run_watch_smoke(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    deno_on_path: None,
+):
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    write_src_layout_project(
+        project_root,
+        dependencies={"std_path": "jsr:@std/path@^1"},
+        scripts={
+            "build": "deno eval 'Deno.exit(0)'",
+            "idle": "deno eval 'await new Promise(() => {})'",
+        },
+    )
+    assert _invoke(["install"], monkeypatch=monkeypatch, cwd=project_root) == 0
+
+    command = [sys.executable, "-m", "gdansk", "run", "idle", "--watch"]
+    process = subprocess.Popen(  # noqa: S603
+        command,
+        cwd=project_root,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        time.sleep(1)
+        assert process.poll() is None
+        process.send_signal(signal.SIGTERM)
+        stdout, stderr = process.communicate(timeout=30)
+        assert process.returncode == 0
+        assert "both host and port" not in stderr
+        assert "both host and port" not in stdout
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=10)

@@ -14,6 +14,7 @@ pub(crate) struct RunTaskOptions {
 #[derive(Clone, Debug)]
 pub(crate) struct TaskResult {
     pub exit_code: i32,
+    pub stderr: Option<String>,
 }
 
 impl TaskResult {

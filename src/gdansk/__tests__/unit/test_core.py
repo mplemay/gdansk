@@ -36,6 +36,7 @@ def _stub_frontend(origin: str) -> TaskProcess:
     class StubFrontend:
         def __init__(self, origin: str) -> None:
             self.origin = origin
+            self.is_running = True
             self.stopped = False
 
         async def stop(self) -> None:
