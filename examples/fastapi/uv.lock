@@ -11,6 +11,9 @@ resolution-markers = [
 exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for backwards compatibility when using relative exclude-newer values.
 exclude-newer-span = "P7D"
 
+[options.exclude-newer-package]
+mcp = false
+
 [[package]]
 name = "annotated-doc"
 version = "0.0.4"
@@ -377,7 +380,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "mcp", git = "https://github.com/modelcontextprotocol/python-sdk.git?rev=main" },
+    { name = "mcp", specifier = "==2.0.0a1" },
     { name = "minijinja", specifier = ">=2,<3" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "starlette", specifier = ">=1.0.0" },
@@ -595,8 +598,8 @@ wheels = [
 
 [[package]]
 name = "mcp"
-version = "1.25.1.dev164+616476f"
-source = { git = "https://github.com/modelcontextprotocol/python-sdk.git?rev=main#616476f6927a5c64213ea97bbd36a7466f410775" }
+version = "2.0.0a1"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
     { name = "httpx" },
@@ -613,6 +616,10 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "typing-inspection" },
     { name = "uvicorn", marker = "sys_platform != 'emscripten'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0c/9d/03de56c15a048fed3243fe6445b77373d741fb8e42ec260a4108e8c5d8bc/mcp-2.0.0a1.tar.gz", hash = "sha256:5732805e45a4460a533a7373e3ad8bb299ad831fc6edc882e0ea1a974d4ca063", size = 808712, upload-time = "2026-06-11T09:55:48.791Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/13/42/42cf79af8d14b74d93275d783d77c7052f831e4f9fd2f417c249cb4a1146/mcp-2.0.0a1-py3-none-any.whl", hash = "sha256:31c630849fd75c19df3197ba4c0501cdc060055972985d5ca6e246f81880dbc3", size = 238739, upload-time = "2026-06-11T09:55:46.823Z" },
 ]
 
 [[package]]
