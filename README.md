@@ -28,7 +28,7 @@ Then use:
 - Python: `gdansk` currently requires `>=3.12,<3.15`.
 - Frontend package: use an ESM package with `@gdansk/vite`, `vite`, `@vitejs/plugin-react`, `react`, `react-dom`,
   and `@modelcontextprotocol/ext-apps`.
-- Runtime tooling: gdansk runs frontend builds through its embedded Rust-backed Deno runtime. If you run frontend
+- Runtime tooling: gdansk runs frontend builds through its belgie-backed Deno runtime. If you run frontend
   package scripts directly, the published `@gdansk/vite` package currently declares Node `>=22`.
 
 ## Examples
@@ -290,20 +290,20 @@ with Runtime(cwd=".")(script) as run:
     assert run({"value": 41}) == 42
 ```
 
-Use `[gdansk.dependencies]`, `[gdansk.dev-dependencies]`, and `[gdansk.scripts]` in `pyproject.toml` when embedded
+Use `[belgie.dependencies]`, `[belgie.dev-dependencies]`, and `[belgie.scripts]` in `pyproject.toml` when embedded
 scripts or frontend builds need npm or JSR packages:
 
 ```toml
-[gdansk.dependencies]
+[belgie.dependencies]
 react = "^19"
 vite = "^8"
 "@gdansk/vite" = "file:../../packages/vite"
 std_path = "jsr:@std/path@^1"
 
-[gdansk.dev-dependencies]
+[belgie.dev-dependencies]
 "@types/react" = "^19"
 
-[gdansk.scripts]
+[belgie.scripts]
 build = "vite build"
 dev = "vite"
 ```
@@ -311,8 +311,8 @@ dev = "vite"
 Unprefixed values are treated as npm version requirements for the table key, so `react = "^19"` becomes
 `npm:react@^19`. Use `uv run gdansk install`, `uv run gdansk lock`, or `uv run gdansk update` to resolve those
 dependencies and write Deno's native `deno.lock` next to `pyproject.toml`. Frontend builds and dev servers run the
-`build` and `dev` entries from `[gdansk.scripts]` through the Deno CLI (`deno task`), so the `deno` executable must be
-available on `PATH` or via the `GDANSK_DENO` environment variable.
+`build` and `dev` entries from `[belgie.scripts]` through the Deno CLI (`deno task`), so the `deno` executable must be
+available on `PATH` or via the `BELGIE_DENO` environment variable.
 
 Gdansk mounts your default export into `#root` automatically and wraps it with `React.StrictMode`.
 

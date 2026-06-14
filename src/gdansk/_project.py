@@ -28,10 +28,10 @@ def find_project_root(start: Path | None = None) -> Path:
             continue
 
         document = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
-        if "gdansk" in document:
+        if "belgie" in document:
             return directory
 
-    msg = f"Could not find pyproject.toml with a [gdansk] table. Searched: {', '.join(searched)}"
+    msg = f"Could not find pyproject.toml with a [belgie] table. Searched: {', '.join(searched)}"
     raise ProjectError(msg)
 
 
@@ -42,20 +42,20 @@ def load_project(root: Path) -> GdanskProject:
         raise ProjectError(msg)
 
     document = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
-    gdansk = document.get("gdansk")
-    if not isinstance(gdansk, dict):
-        msg = f"No [gdansk] configuration found in {pyproject_path}"
+    belgie = document.get("belgie")
+    if not isinstance(belgie, dict):
+        msg = f"No [belgie] configuration found in {pyproject_path}"
         raise ProjectError(msg)
 
-    dependencies = gdansk.get("dependencies")
+    dependencies = belgie.get("dependencies")
     has_dependencies = isinstance(dependencies, dict) and bool(dependencies)
 
-    scripts_table = gdansk.get("scripts")
+    scripts_table = belgie.get("scripts")
     scripts: dict[str, str] = {}
     if isinstance(scripts_table, dict):
         for name, command in scripts_table.items():
             if not isinstance(command, str):
-                msg = f"[gdansk.scripts] entry '{name}' must be a string shell command"
+                msg = f"[belgie.scripts] entry '{name}' must be a string shell command"
                 raise ProjectError(msg)
             scripts[name] = command
 

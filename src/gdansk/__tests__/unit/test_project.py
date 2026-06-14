@@ -51,7 +51,7 @@ def test_find_project_root_errors_when_missing(tmp_path: Path):
         find_project_root(tmp_path)
 
 
-def test_find_project_root_errors_without_gdansk_table(tmp_path: Path):
+def test_find_project_root_errors_without_belgie_table(tmp_path: Path):
     root = tmp_path / "project"
     root.mkdir()
     (root / "pyproject.toml").write_text('[project]\nname = "example"\n', encoding="utf-8")

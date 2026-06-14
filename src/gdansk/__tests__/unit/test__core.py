@@ -3,7 +3,10 @@ from __future__ import annotations
 import inspect
 from typing import TYPE_CHECKING, Any, cast
 
+import belgie
 import pytest
+from belgie.dependencies import ainstall, alock, aupdate, install, lock, update
+from belgie.errors import BelgieError, BelgieJavaScriptError, BelgieModuleError, BelgieRuntimeError
 
 import gdansk
 from gdansk import (
@@ -31,6 +34,9 @@ if TYPE_CHECKING:
 
 
 def test_runtime_api_is_exported_from_top_level_gdansk() -> None:
+    assert gdansk.Runtime is belgie.Runtime
+    assert gdansk.RuntimeOptions is belgie.RuntimeOptions
+    assert gdansk.Script is belgie.Script
     assert gdansk.Runtime is Runtime
     assert gdansk.RuntimeOptions is RuntimeOptions
     assert gdansk.Script is Script
@@ -46,9 +52,22 @@ def test_runtime_api_is_exported_from_top_level_gdansk() -> None:
 
 
 def test_gdansk_exception_hierarchy_is_exported() -> None:
+    assert GdanskError is BelgieError
+    assert GdanskRuntimeError is BelgieRuntimeError
+    assert GdanskModuleError is BelgieModuleError
+    assert GdanskJavaScriptError is BelgieJavaScriptError
     assert issubclass(GdanskRuntimeError, GdanskError)
     assert issubclass(GdanskModuleError, GdanskError)
     assert issubclass(GdanskJavaScriptError, GdanskError)
+
+
+def test_gdansk_package_helpers_alias_belgie_helpers() -> None:
+    assert install_packages is install
+    assert lock_packages is lock
+    assert update_packages is update
+    assert ainstall_packages is ainstall
+    assert alock_packages is alock
+    assert aupdate_packages is aupdate
 
 
 def test_runtime_options_accept_memory_limits() -> None:
@@ -150,41 +169,41 @@ def test_runtime_rejects_non_runtime_options(tmp_path: Path) -> None:
         Runtime(cwd=tmp_path, options=cast("Any", object()))
 
 
-def test_package_helpers_require_gdansk_dependency_tables(tmp_path: Path) -> None:
+def test_package_helpers_require_belgie_dependency_tables(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "example"\n', encoding="utf-8")
 
-    with pytest.raises(GdanskRuntimeError, match="No gdansk package dependencies"):
+    with pytest.raises(GdanskRuntimeError, match="No belgie package dependencies"):
         install_packages(cwd=tmp_path)
 
 
 async def test_async_package_helpers_are_exported_and_renamed(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "example"\n', encoding="utf-8")
 
-    with pytest.raises(GdanskRuntimeError, match="No gdansk package dependencies"):
+    with pytest.raises(GdanskRuntimeError, match="No belgie package dependencies"):
         await ainstall_packages(cwd=tmp_path)
-    with pytest.raises(GdanskRuntimeError, match="No gdansk package dependencies"):
+    with pytest.raises(GdanskRuntimeError, match="No belgie package dependencies"):
         await alock_packages(cwd=tmp_path)
-    with pytest.raises(GdanskRuntimeError, match="No gdansk package dependencies"):
+    with pytest.raises(GdanskRuntimeError, match="No belgie package dependencies"):
         await aupdate_packages(cwd=tmp_path)
 
 
-def test_package_helpers_read_gdansk_dependency_table_errors(tmp_path: Path) -> None:
+def test_package_helpers_read_belgie_dependency_table_errors(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text(
         """
-[gdansk.dependencies]
+[belgie.dependencies]
 react = ["^19"]
 """,
         encoding="utf-8",
     )
 
-    with pytest.raises(GdanskRuntimeError, match=r"\[gdansk\.dependencies\].*string dependency specifier"):
+    with pytest.raises(GdanskRuntimeError, match=r"\[belgie\.dependencies\].*string dependency specifier"):
         lock_packages(cwd=tmp_path)
 
 
 def test_package_update_accepts_empty_filter_but_requires_dependencies(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "example"\n', encoding="utf-8")
 
-    with pytest.raises(GdanskRuntimeError, match="No gdansk package dependencies"):
+    with pytest.raises(GdanskRuntimeError, match="No belgie package dependencies"):
         update_packages(cwd=tmp_path, packages=[])
 
 

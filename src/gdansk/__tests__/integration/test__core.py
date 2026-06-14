@@ -236,10 +236,10 @@ export default function run() {
         run_script(tmp_path, source)
 
 
-def test_lock_packages_resolves_pyproject_gdansk_dependency(tmp_path: Path):
+def test_lock_packages_resolves_pyproject_belgie_dependency(tmp_path: Path):
     (tmp_path / "pyproject.toml").write_text(
         """
-[gdansk.dependencies]
+[belgie.dependencies]
 std_path = "jsr:@std/path@^1"
 """,
         encoding="utf-8",

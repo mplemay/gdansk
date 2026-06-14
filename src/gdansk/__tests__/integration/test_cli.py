@@ -24,7 +24,7 @@ def _invoke(argv: list[str], *, monkeypatch: pytest.MonkeyPatch, cwd: Path) -> i
 
 @pytest.fixture
 def deno_on_path() -> None:
-    if shutil.which("deno") is None and not __import__("os").environ.get("GDANSK_DENO"):
+    if shutil.which("deno") is None and not __import__("os").environ.get("BELGIE_DENO"):
         pytest.skip("deno executable is not available")
 
 

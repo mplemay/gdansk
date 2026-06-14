@@ -71,7 +71,7 @@ def test_doctor_fails_without_dependencies_table(
     code, stdout, _stderr = _run_doctor(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
     assert code == 1
-    assert "fail No [gdansk.dependencies]" in stdout
+    assert "fail No [belgie.dependencies]" in stdout
 
 
 def test_doctor_fails_without_frontend_layout(
@@ -151,5 +151,5 @@ def test_doctor_warns_when_scripts_missing(
     code, stdout, stderr = _run_doctor(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
     assert code == 0
-    assert "warn Missing [gdansk.scripts].dev" in stdout
+    assert "warn Missing [belgie.scripts].dev" in stdout
     assert "warning:" in stderr

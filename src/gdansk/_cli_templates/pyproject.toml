@@ -15,13 +15,13 @@ main = "{{PACKAGE}}.__main__:main"
 requires = ["uv_build>=0.11,<0.12"]
 build-backend = "uv_build"
 
-[gdansk.dependencies]
+[belgie.dependencies]
 vite = "8.0.14"
 "@gdansk/vite" = "^0.1.0"
 "@vitejs/plugin-react" = "6.0.2"
 react = "19.2.6"
 react-dom = "19.2.6"
 
-[gdansk.scripts]
+[belgie.scripts]
 build = "vite build"
 dev = "vite"

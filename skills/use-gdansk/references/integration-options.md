@@ -166,7 +166,7 @@ The default production output is:
 
 Style widgets with normal frontend tooling in the frontend package (for example PostCSS, Tailwind, or component
 libraries). Put Vite-specific setup in `vite.config.ts`, import `@gdansk/vite` there, and keep framework plugins in
-that same file. Declare dependencies in `pyproject.toml` under `[gdansk.dependencies]`, run `uv run gdansk install`
+that same file. Declare dependencies in `pyproject.toml` under `[belgie.dependencies]`, run `uv run gdansk install`
 from the Python project root,
 and commit `deno.lock` when it changes.
 

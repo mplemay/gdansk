@@ -13,52 +13,20 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
-      - name: Install V8 build dependencies
-        run: sudo apt-get update && sudo apt-get install -yq --no-install-recommends libglib2.0-dev pkg-config
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: lint-v8-149.2.0-source-no-temporal-icu-data
-
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
-      - uses: denoland/setup-deno@v2
-        with:
-          # Deno CLI is only used for repository TypeScript tooling.
-          deno-version: 2.8.2
-          cache: true
-
-      - name: Prepare V8 source ICU data
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo fetch --locked
-          v8_src="$(find "${CARGO_HOME:-$HOME/.cargo}/registry/src" -type d -path '*/v8-149.2.0' -print -quit)"
-          test -n "$v8_src"
-          mkdir -p "$v8_src/third_party/icu/common"
-          curl -fsSL "https://chromium.googlesource.com/chromium/deps/icu.git/+/ee5f27adc28bd3f15b2c293f726d14d2e336cbd5/common/icudtl.dat?format=TEXT" \
-            | base64 -d > "$v8_src/third_party/icu/common/icudtl.dat"
-          test -s "$v8_src/third_party/icu/common/icudtl.dat"
-
       - name: Install python dependencies
-        env:
-          GN_ARGS: v8_monolithic_for_shared_library=true icu_use_data_file=false v8_enable_temporal_support=false
-          V8_FROM_SOURCE: "1"
         run: uv sync --all-groups --all-extras --all-packages
 
       - name: Install TypeScript package dependencies (Deno)
         shell: bash
         run: |
           set -euo pipefail
-          deno install
+          uv run deno install
           for d in packages/vite examples/fastapi/src/mount/views examples/get-time/src/get_time/views examples/production/src/production/views examples/shadcn/src/shadcn/views; do
-            (cd "$d" && deno install)
+            (cd "$d" && uv run --project "$GITHUB_WORKSPACE" deno install)
           done
 
       - uses: j178/prek-action@v2
@@ -66,8 +34,6 @@ jobs:
   test-python:
     name: test (python ${{ matrix.python-version }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    env:
-      CARGO_TARGET_DIR: ${{ github.workspace }}/target
     strategy:
       fail-fast: false
       matrix:
@@ -76,51 +42,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Install V8 build dependencies
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -yq --no-install-recommends libglib2.0-dev pkg-config
-
-      - name: Configure Windows build environment
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          git config --global core.longpaths true
-          New-Item -ItemType Directory -Force -Path 'C:\c' | Out-Null
-          "CARGO_HOME=C:\c" >> $env:GITHUB_ENV
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: test-python-${{ matrix.os }}-v8-149.2.0-${{ runner.os == 'Linux' && 'source-no-temporal-icu-data' || 'prebuilt' }}-${{ runner.arch }}
-
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ matrix.python-version }}
 
-      - uses: denoland/setup-deno@v2
-        with:
-          # Deno CLI is only used for repository TypeScript tooling.
-          deno-version: 2.8.2
-          cache: true
-
-      - name: Prepare V8 source ICU data
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo fetch --locked
-          v8_src="$(find "${CARGO_HOME:-$HOME/.cargo}/registry/src" -type d -path '*/v8-149.2.0' -print -quit)"
-          test -n "$v8_src"
-          mkdir -p "$v8_src/third_party/icu/common"
-          curl -fsSL "https://chromium.googlesource.com/chromium/deps/icu.git/+/ee5f27adc28bd3f15b2c293f726d14d2e336cbd5/common/icudtl.dat?format=TEXT" \
-            | base64 -d > "$v8_src/third_party/icu/common/icudtl.dat"
-          test -s "$v8_src/third_party/icu/common/icudtl.dat"
-
       - name: Install dependencies
-        env:
-          GN_ARGS: ${{ runner.os == 'Linux' && 'v8_monolithic_for_shared_library=true icu_use_data_file=false v8_enable_temporal_support=false' || '' }}
-          V8_FROM_SOURCE: ${{ runner.os == 'Linux' && '1' || '' }}
         run: uv sync --all-groups --all-extras --all-packages
 
       - name: Install example views dependencies (Deno)
@@ -128,7 +54,7 @@ jobs:
         run: |
           set -euo pipefail
           for d in examples/fastapi/src/mount/views examples/get-time/src/get_time/views examples/shadcn/src/shadcn/views; do
-            (cd "$d" && deno install)
+            (cd "$d" && uv run --project "$GITHUB_WORKSPACE" deno install)
           done
 
       - name: Run tests

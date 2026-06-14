@@ -96,7 +96,7 @@ def _require_script(project: GdanskProject, script: str) -> None:
     if script in project.scripts:
         return
 
-    _eprint(f"No [gdansk.scripts] entry '{script}' in {project.root / 'pyproject.toml'}")
+    _eprint(f"No [belgie.scripts] entry '{script}' in {project.root / 'pyproject.toml'}")
     if project.scripts:
         _eprint("Available scripts:")
         for name, command in sorted(project.scripts.items()):
@@ -213,7 +213,7 @@ def cmd_run(args: argparse.Namespace) -> None:
 def cmd_scripts(args: argparse.Namespace) -> None:
     project = _resolve_project(args.project)
     if not project.scripts:
-        _eprint("No [gdansk.scripts] entries configured.")
+        _eprint("No [belgie.scripts] entries configured.")
         raise SystemExit(1)
 
     width = max(len(name) for name in project.scripts)
@@ -222,17 +222,17 @@ def cmd_scripts(args: argparse.Namespace) -> None:
 
 
 def _check_deno_available() -> tuple[str, str]:
-    deno_env = os.environ.get("GDANSK_DENO")
+    deno_env = os.environ.get("BELGIE_DENO")
     if deno_env:
         path = Path(deno_env)
         if path.is_file():
             return ("ok", f"deno executable ({path})")
-        return ("fail", f"GDANSK_DENO points to a missing executable: {path}")
+        return ("fail", f"BELGIE_DENO points to a missing executable: {path}")
 
     deno = shutil.which("deno")
     if deno:
         return ("ok", f"deno executable ({deno})")
-    return ("fail", "deno executable not found on PATH (set GDANSK_DENO or install Deno)")
+    return ("fail", "deno executable not found on PATH (set BELGIE_DENO or install Deno)")
 
 
 def cmd_doctor(args: argparse.Namespace) -> None:
@@ -262,9 +262,9 @@ def cmd_doctor(args: argparse.Namespace) -> None:
 
     if project is not None:
         if project.has_dependencies:
-            print(f"ok   [gdansk.dependencies] in {project.root / 'pyproject.toml'}")
+            print(f"ok   [belgie.dependencies] in {project.root / 'pyproject.toml'}")
         else:
-            message = "No [gdansk.dependencies] table found"
+            message = "No [belgie.dependencies] table found"
             print(f"fail {message}")
             failures.append(message)
 
@@ -303,9 +303,9 @@ def cmd_doctor(args: argparse.Namespace) -> None:
 
             for script_name in ("build", "dev"):
                 if script_name in project.scripts:
-                    print(f"ok   [gdansk.scripts].{script_name}")
+                    print(f"ok   [belgie.scripts].{script_name}")
                 else:
-                    message = f"Missing [gdansk.scripts].{script_name}"
+                    message = f"Missing [belgie.scripts].{script_name}"
                     print(f"warn {message}")
                     warnings.append(message)
 
@@ -322,23 +322,23 @@ def cmd_doctor(args: argparse.Namespace) -> None:
         print("doctor: all checks passed")
 
 
-def _pyproject_has_gdansk(path: Path) -> bool:
+def _pyproject_has_belgie(path: Path) -> bool:
     if not path.is_file():
         return False
     document = tomllib.loads(path.read_text(encoding="utf-8"))
-    return "gdansk" in document
+    return "belgie" in document
 
 
-def _strip_gdansk_sections(text: str) -> str:
+def _strip_belgie_sections(text: str) -> str:
     lines = text.splitlines()
     kept: list[str] = []
     skipping = False
 
     for line in lines:
-        if re.match(r"^\[gdansk(?:\.[^\]]+)?\]\s*$", line):
+        if re.match(r"^\[belgie(?:\.[^\]]+)?\]\s*$", line):
             skipping = True
             continue
-        if line.startswith("[") and not line.startswith("[gdansk"):
+        if line.startswith("[") and not line.startswith("[belgie"):
             skipping = False
         if not skipping:
             kept.append(line)
@@ -351,12 +351,12 @@ def _strip_gdansk_sections(text: str) -> str:
 def _write_init_pyproject(target: Path, *, package: str, force: bool) -> None:
     if target.exists():
         text = target.read_text(encoding="utf-8")
-        if _pyproject_has_gdansk(target) and not force:
-            msg = f"[gdansk] already present in {target}; use --force to replace gdansk tables"
+        if _pyproject_has_belgie(target) and not force:
+            msg = f"[belgie] already present in {target}; use --force to replace belgie tables"
             raise ProjectError(msg)
         if force:
-            text = _strip_gdansk_sections(text)
-        text = text.rstrip() + "\n\n" + _template_text("gdansk_tables.toml", package=package)
+            text = _strip_belgie_sections(text)
+        text = text.rstrip() + "\n\n" + _template_text("belgie_tables.toml", package=package)
         target.write_text(text, encoding="utf-8")
         return
 
@@ -446,7 +446,7 @@ def _add_project_args(parser: argparse.ArgumentParser) -> None:
         "--project",
         type=Path,
         default=None,
-        help="Project root containing pyproject.toml with [gdansk] configuration",
+        help="Project root containing pyproject.toml with [belgie] configuration",
     )
 
 
@@ -476,45 +476,45 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    install = subparsers.add_parser("install", help="Install [gdansk.dependencies]")
+    install = subparsers.add_parser("install", help="Install [belgie.dependencies]")
     _add_project_args(install)
-    install.add_argument("--no-dev", action="store_true", help="Skip [gdansk.dev-dependencies]")
+    install.add_argument("--no-dev", action="store_true", help="Skip [belgie.dev-dependencies]")
     install.add_argument("--lock-only", action="store_true", help="Update deno.lock without caching packages")
     install.set_defaults(func=cmd_install)
 
     lock = subparsers.add_parser("lock", help="Update deno.lock without installing packages")
     _add_project_args(lock)
-    lock.add_argument("--no-dev", action="store_true", help="Skip [gdansk.dev-dependencies]")
+    lock.add_argument("--no-dev", action="store_true", help="Skip [belgie.dev-dependencies]")
     lock.set_defaults(func=cmd_lock)
 
-    update = subparsers.add_parser("update", help="Update [gdansk.dependencies]")
+    update = subparsers.add_parser("update", help="Update [belgie.dependencies]")
     _add_project_args(update)
     update.add_argument("packages", nargs="*", help="Optional package names to update")
-    update.add_argument("--no-dev", action="store_true", help="Skip [gdansk.dev-dependencies]")
+    update.add_argument("--no-dev", action="store_true", help="Skip [belgie.dev-dependencies]")
     update.add_argument("--latest", action="store_true", help="Update to the latest versions")
     update.add_argument("--lock-only", action="store_true", help="Update lockfile without caching packages")
     update.set_defaults(func=cmd_update)
 
-    build = subparsers.add_parser("build", help="Run [gdansk.scripts].build")
+    build = subparsers.add_parser("build", help="Run [belgie.scripts].build")
     _add_project_args(build)
     _add_frontend_args(build)
     build.set_defaults(func=cmd_build)
 
-    dev = subparsers.add_parser("dev", help="Run [gdansk.scripts].dev")
+    dev = subparsers.add_parser("dev", help="Run [belgie.scripts].dev")
     _add_project_args(dev)
     _add_frontend_args(dev)
     _add_dev_runtime_args(dev)
     dev.set_defaults(func=cmd_dev)
 
-    run = subparsers.add_parser("run", help="Run a [gdansk.scripts] entry")
+    run = subparsers.add_parser("run", help="Run a [belgie.scripts] entry")
     _add_project_args(run)
     _add_frontend_args(run)
     _add_optional_runtime_args(run)
-    run.add_argument("script", help="Script name from [gdansk.scripts]")
+    run.add_argument("script", help="Script name from [belgie.scripts]")
     run.add_argument("--watch", action="store_true", help="Keep the task running until interrupted")
     run.set_defaults(func=cmd_run)
 
-    scripts = subparsers.add_parser("scripts", help="List [gdansk.scripts] entries")
+    scripts = subparsers.add_parser("scripts", help="List [belgie.scripts] entries")
     _add_project_args(scripts)
     scripts.set_defaults(func=cmd_scripts)
 

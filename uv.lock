@@ -11,6 +11,7 @@ exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for 
 exclude-newer-span = "P7D"
 
 [options.exclude-newer-package]
+deno = false
 belgie = false
 mcp = false
 
@@ -199,11 +200,25 @@ wheels = [
 ]
 
 [[package]]
+name = "deno"
+version = "2.8.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/db/ec/98f972cca4ca734534947bdf28b86a99e9ed8a5a31a061be2dec9b4105c2/deno-2.8.3.tar.gz", hash = "sha256:5413f4a1814ac3b8e441ca7fe9eb677a4152a42eef05efd56a61d750088a7fc8", size = 8163, upload-time = "2026-06-11T16:13:53.129Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/52/42/71f88d6c04c7f4335f94c1c9eb5aee7e928e1a53056bb9b20c0c4d889f48/deno-2.8.3-py3-none-macosx_10_12_x86_64.whl", hash = "sha256:57825615e8d4182160401b56907b2e36712aed55a5dfdef2c0e3089379bb6988", size = 42314540, upload-time = "2026-06-11T16:13:39.134Z" },
+    { url = "https://files.pythonhosted.org/packages/df/95/032101e28532fa9ed28ca7dc737934d4631544fa3b11f4efe3573970a05a/deno-2.8.3-py3-none-macosx_11_0_arm64.whl", hash = "sha256:05dbbbd8edf1907abcbcf55395e63f00d74c2672b6039dd1ecd5656baebaa56c", size = 38101511, upload-time = "2026-06-11T16:13:42.192Z" },
+    { url = "https://files.pythonhosted.org/packages/23/24/68c1d2d79933738acb8e5ef3a4584f57c6d5deb56c84073a5f4079c24647/deno-2.8.3-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:9fdb7574a6437fdd59f668e745dc3b3e32725fa360b64204a6b000689fa534e9", size = 42053660, upload-time = "2026-06-11T16:13:45.006Z" },
+    { url = "https://files.pythonhosted.org/packages/d2/56/0d23c6daa1b139c31591df801feda3ac7d0d6225f1686cbf5caaa5db5c27/deno-2.8.3-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:9ca5727e5650f8459f39875f0af4b2242ead77da4ce8a8d52e86647036f3d63a", size = 43800396, upload-time = "2026-06-11T16:13:47.821Z" },
+    { url = "https://files.pythonhosted.org/packages/6f/aa/e35b736205b89c98f31ed4abeebaa7846774e51006b14601e4edb7728e67/deno-2.8.3-py3-none-win_amd64.whl", hash = "sha256:37da75ee91448e4e6f5626f0d5cb18e295dbb6cff5cf780fab1f92ebbbd44071", size = 41552180, upload-time = "2026-06-11T16:13:50.711Z" },
+]
+
+[[package]]
 name = "gdansk"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "belgie" },
+    { name = "deno" },
     { name = "mcp" },
     { name = "minijinja" },
     { name = "pydantic" },
@@ -225,6 +240,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "belgie", specifier = ">=0.2.3" },
+    { name = "deno", specifier = ">=2.8.2,<3" },
     { name = "mcp", specifier = "==2.0.0a1" },
     { name = "minijinja", specifier = ">=2,<3" },
     { name = "pydantic", specifier = ">=2.12.5" },

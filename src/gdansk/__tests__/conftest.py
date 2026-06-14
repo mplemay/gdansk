@@ -35,13 +35,13 @@ def write_pyproject(
 
     deps = dependencies if dependencies is not None else {"vite": "8.0.14"}
     if deps:
-        lines.append("[gdansk.dependencies]")
+        lines.append("[belgie.dependencies]")
         lines.extend(f'{name} = "{value}"' for name, value in deps.items())
         lines.append("")
 
     script_map = scripts if scripts is not None else {"build": "vite build", "dev": "vite"}
     if script_map:
-        lines.append("[gdansk.scripts]")
+        lines.append("[belgie.scripts]")
         lines.extend(f'{name} = "{command}"' for name, command in script_map.items())
         lines.append("")
 

@@ -54,7 +54,7 @@ def test_init_creates_scaffold_files(
     assert "Initialized gdansk project" in stdout
 
 
-def test_init_pyproject_contains_gdansk_tables(
+def test_init_pyproject_contains_belgie_tables(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -71,8 +71,8 @@ def test_init_pyproject_contains_gdansk_tables(
     assert "[project]" in text
     assert 'main = "my_mcp_server.__main__:main"' in text
     assert "frontend =" not in text
-    assert "[gdansk.dependencies]" in text
-    assert "[gdansk.scripts]" in text
+    assert "[belgie.dependencies]" in text
+    assert "[belgie.scripts]" in text
 
 
 def test_init_main_uses_views_sibling_path(
@@ -92,7 +92,7 @@ def test_init_main_uses_views_sibling_path(
     assert 'Path(__file__).parent / "views"' in text
 
 
-def test_init_appends_gdansk_to_existing_pyproject(
+def test_init_appends_belgie_to_existing_pyproject(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -112,11 +112,11 @@ def test_init_appends_gdansk_to_existing_pyproject(
 
     text = (target / "pyproject.toml").read_text(encoding="utf-8")
     assert 'name = "existing"' in text
-    assert "[gdansk.dependencies]" in text
+    assert "[belgie.dependencies]" in text
     assert (target / "src" / "existing" / "views" / "vite.config.ts").exists()
 
 
-def test_init_refuses_existing_gdansk_without_force(
+def test_init_refuses_existing_belgie_without_force(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -136,7 +136,7 @@ def test_init_refuses_existing_gdansk_without_force(
     assert "already present" in stderr
 
 
-def test_init_force_replaces_gdansk_tables(
+def test_init_force_replaces_belgie_tables(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -251,5 +251,5 @@ def test_templates_are_loadable():
         "vite.config.ts",
         "widget.tsx",
         "pyproject.toml",
-        "gdansk_tables.toml",
+        "belgie_tables.toml",
     } <= names

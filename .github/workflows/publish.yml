@@ -52,28 +52,10 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v7
 
-      - name: Install V8 build dependencies
-        run: sudo apt-get update && sudo apt-get install -yq --no-install-recommends libglib2.0-dev pkg-config
-
       - name: Bump version
         run: uv version "${{ needs.prepare_release.outputs.version }}"
 
-      - name: Prepare V8 source ICU data
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo fetch --locked
-          v8_src="$(find "${CARGO_HOME:-$HOME/.cargo}/registry/src" -type d -path '*/v8-149.2.0' -print -quit)"
-          test -n "$v8_src"
-          mkdir -p "$v8_src/third_party/icu/common"
-          curl -fsSL "https://chromium.googlesource.com/chromium/deps/icu.git/+/ee5f27adc28bd3f15b2c293f726d14d2e336cbd5/common/icudtl.dat?format=TEXT" \
-            | base64 -d > "$v8_src/third_party/icu/common/icudtl.dat"
-          test -s "$v8_src/third_party/icu/common/icudtl.dat"
-
       - name: Build
-        env:
-          GN_ARGS: v8_monolithic_for_shared_library=true icu_use_data_file=false v8_enable_temporal_support=false
-          V8_FROM_SOURCE: "1"
         run: uv build
 
       - name: Publish
