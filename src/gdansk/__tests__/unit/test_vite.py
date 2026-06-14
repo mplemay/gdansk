@@ -9,7 +9,7 @@ from gdansk.vite import Vite
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from gdansk._core import TaskProcess
+    from belgie._core import TaskProcess
 
 
 def test_vite_rejects_invalid_runtime_port(views_path: Path):

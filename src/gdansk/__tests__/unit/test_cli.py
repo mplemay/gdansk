@@ -7,8 +7,8 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from belgie.errors import BelgieRuntimeError
 
-from gdansk import GdanskRuntimeError
 from gdansk.cli import main
 
 
@@ -146,7 +146,7 @@ def test_install_maps_runtime_error_to_exit_1(
 
     def fake_install_packages(**_kwargs: Any) -> SimpleNamespace:
         msg = "install failed"
-        raise GdanskRuntimeError(msg)
+        raise BelgieRuntimeError(msg)
 
     monkeypatch.setattr("gdansk.cli.install_packages", fake_install_packages)
 

@@ -9,7 +9,7 @@ Use this file when the task is to make gdansk work cleanly in another repository
   - ESM package with `"type": "module"`.
   - React 19 and Vite 8 in the current examples and published plugin package.
 - Runtime tooling:
-  - gdansk runs frontend builds through its belgie-backed Deno runtime.
+  - gdansk runs frontend builds through configured Deno tasks.
   - `uv run deno ...` is still used for repository and frontend package tooling such as dependency installation.
   - If the repo uses package scripts directly, the published `@gdansk/vite` package currently declares Node `>=22`.
 

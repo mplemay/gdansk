@@ -28,8 +28,8 @@ Then use:
 - Python: `gdansk` currently requires `>=3.12,<3.15`.
 - Frontend package: use an ESM package with `@gdansk/vite`, `vite`, `@vitejs/plugin-react`, `react`, `react-dom`,
   and `@modelcontextprotocol/ext-apps`.
-- Runtime tooling: gdansk runs frontend builds through its belgie-backed Deno runtime. If you run frontend
-  package scripts directly, the published `@gdansk/vite` package currently declares Node `>=22`.
+- Runtime tooling: gdansk runs frontend builds through configured frontend scripts. If you run frontend package scripts
+  directly, the published `@gdansk/vite` package currently declares Node `>=22`.
 
 ## Examples
 
@@ -277,21 +277,10 @@ uv run gdansk doctor
 The CLI auto-discovers the frontend package at `src/<package>/views`, using `[project.scripts]` entry points to
 identify the Python package. Override that path per command with `--frontend` when needed.
 
-## Embedded Deno Runtime
+## Frontend Dependencies
 
-Gdansk also exposes a small Python API for executing JavaScript and TypeScript through the embedded Deno runtime:
-
-```python
-from gdansk import Runtime, Script
-
-script = Script("export default function run(input) { return input.value + 1; }")
-
-with Runtime(cwd=".")(script) as run:
-    assert run({"value": 41}) == 42
-```
-
-Use `[belgie.dependencies]`, `[belgie.dev-dependencies]`, and `[belgie.scripts]` in `pyproject.toml` when embedded
-scripts or frontend builds need npm or JSR packages:
+Use `[belgie.dependencies]`, `[belgie.dev-dependencies]`, and `[belgie.scripts]` in `pyproject.toml` when frontend
+builds need npm or JSR packages:
 
 ```toml
 [belgie.dependencies]
@@ -311,8 +300,7 @@ dev = "vite"
 Unprefixed values are treated as npm version requirements for the table key, so `react = "^19"` becomes
 `npm:react@^19`. Use `uv run gdansk install`, `uv run gdansk lock`, or `uv run gdansk update` to resolve those
 dependencies and write Deno's native `deno.lock` next to `pyproject.toml`. Frontend builds and dev servers run the
-`build` and `dev` entries from `[belgie.scripts]` through the Deno CLI (`deno task`), so the `deno` executable must be
-available on `PATH` or via the `BELGIE_DENO` environment variable.
+`build` and `dev` entries from `[belgie.scripts]`, so keep the `deno` executable available on `PATH`.
 
 Gdansk mounts your default export into `#root` automatically and wraps it with `React.StrictMode`.
 

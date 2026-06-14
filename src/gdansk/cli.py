@@ -14,7 +14,9 @@ from importlib import resources
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
-from gdansk import GdanskRuntimeError, install_packages, lock_packages, update_packages
+from belgie.dependencies import install as install_packages, lock as lock_packages, update as update_packages
+from belgie.errors import BelgieRuntimeError
+
 from gdansk._project import (
     GdanskProject,
     ProjectError,
@@ -28,7 +30,8 @@ from gdansk.task import DEFAULT_HOST, DEFAULT_PORT, dev_start_kwargs, run_task, 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Generator, Sequence
 
-    from gdansk._core import PackageInstallResult, TaskProcess
+    from belgie._core import TaskProcess
+    from belgie.dependencies import PackageInstallResult
 
 PYTHON_MIN: Final[tuple[int, int]] = (3, 12)
 PYTHON_MAX: Final[tuple[int, int]] = (3, 15)
@@ -69,7 +72,7 @@ def _eprint(message: str) -> None:
 def _runtime_errors() -> Generator[None, None, None]:
     try:
         yield
-    except GdanskRuntimeError as error:
+    except BelgieRuntimeError as error:
         _eprint(str(error))
         raise SystemExit(1) from error
 
@@ -226,13 +229,13 @@ def _check_deno_available() -> tuple[str, str]:
     if deno_env:
         path = Path(deno_env)
         if path.is_file():
-            return ("ok", f"deno executable ({path})")
-        return ("fail", f"BELGIE_DENO points to a missing executable: {path}")
+            return ("ok", f"configured deno executable ({path})")
+        return ("fail", f"configured deno executable is missing: {path}")
 
     deno = shutil.which("deno")
     if deno:
         return ("ok", f"deno executable ({deno})")
-    return ("fail", "deno executable not found on PATH (set BELGIE_DENO or install Deno)")
+    return ("fail", "deno executable not found on PATH")
 
 
 def cmd_doctor(args: argparse.Namespace) -> None:

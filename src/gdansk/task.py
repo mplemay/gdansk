@@ -4,7 +4,7 @@ from os import PathLike
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, NamedTuple
 
-from gdansk._core import RunTaskOptions, TaskProcess, TaskRunner
+from belgie._core import RunTaskOptions, TaskProcess, TaskRunner
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
