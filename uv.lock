@@ -47,15 +47,15 @@ wheels = [
 
 [[package]]
 name = "belgie"
-version = "0.2.3"
+version = "0.20.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/2e/9e/256e9eebbb5e255f36172351767b7f609ddf457ed2e8e207789d7ab686d9/belgie-0.2.3.tar.gz", hash = "sha256:9cfb52c6781a62948948b46944fd23311fce11153632d35b372a72aa596dcff4", size = 113739, upload-time = "2026-06-14T16:39:21.024Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d9/4b/99db62bc6a8433cb30c1238f313648c85b9f8bc7bd57a7fc8eccf1c7da4e/belgie-0.20.0.tar.gz", hash = "sha256:e286af06b7d3ba54f2da39a484754e8b3f30ed899bbe5a2e71072f59be0bdbdd", size = 119733, upload-time = "2026-06-15T18:00:03.665Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c1/43/65873385ad5d6fd4cc9f14ffc3abed2f1970428cfd6a317d5aba4db65281/belgie-0.2.3-cp312-abi3-macosx_10_12_x86_64.whl", hash = "sha256:e780e70c024c75c6c1fa296d351dc85edb04f9bdc92ba7a55734fdce97f27b13", size = 33289244, upload-time = "2026-06-14T16:39:16.347Z" },
-    { url = "https://files.pythonhosted.org/packages/3e/c7/f82a45aeaac67c3529fb1a9ca50c3823aa54418320a3c38f999bbcc494c7/belgie-0.2.3-cp312-abi3-macosx_11_0_arm64.whl", hash = "sha256:21bf23218166aea237d71e4e107bf6f2b0f498f2e02e677ee8d1279e2cb5686e", size = 32015460, upload-time = "2026-06-14T16:39:08.096Z" },
-    { url = "https://files.pythonhosted.org/packages/a3/af/4f47e643609899401532b9f4983809e4059b33e148fb9da8d87f042b9555/belgie-0.2.3-cp312-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:0a2bfe7241620b6027109cf27cbab65d2a70ebe247cc4a8f9ce6496806ffaa28", size = 36079988, upload-time = "2026-06-14T16:39:10.849Z" },
-    { url = "https://files.pythonhosted.org/packages/6a/fd/767de2c71e5848aabe1cc59c132bcccfb1a04cc354a37b96e50932b1a0b9/belgie-0.2.3-cp312-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:ffe70fbe155fe8ece18e3169cfa3bfc132e84568eeb4433b233490a3b3ccdfba", size = 36034057, upload-time = "2026-06-14T16:39:13.833Z" },
-    { url = "https://files.pythonhosted.org/packages/82/bb/bb2059338a8bd998df35fd1cd7354514a40755d9e80f8aa86c7d58be130e/belgie-0.2.3-cp312-abi3-win_amd64.whl", hash = "sha256:b62eed4b75498a583e4f86567a96e0b0e9c990c98e8e3bfabc8b035d0bd116f6", size = 32244187, upload-time = "2026-06-14T16:39:18.877Z" },
+    { url = "https://files.pythonhosted.org/packages/9b/cb/c8544048fac1c684609a9bb0cd705b06d0f7ef6dc799bc15140b7d255a41/belgie-0.20.0-cp312-abi3-macosx_10_12_x86_64.whl", hash = "sha256:8d1c769428236a44a0c595b1b88531615deb096d0767945501d2b8b5901382ca", size = 33781629, upload-time = "2026-06-15T18:00:01.25Z" },
+    { url = "https://files.pythonhosted.org/packages/1a/fa/d0057154e528c755bd03eb601d3af290fda0822809c375516fd077d2efb5/belgie-0.20.0-cp312-abi3-macosx_11_0_arm64.whl", hash = "sha256:ba24eef731d925118c8c416abcb34f752ea80862366c9698cb6eee4bc629b5ab", size = 32472273, upload-time = "2026-06-15T18:00:05.391Z" },
+    { url = "https://files.pythonhosted.org/packages/3f/03/ead49096a83cae99c95cb97002f1a502b38ae2a77eb255b2132067a9d8d5/belgie-0.20.0-cp312-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:be1283943375aabfac68bfd23dc0d9aeae7fff92d6f845cd5c0d30a4d669ad49", size = 36584662, upload-time = "2026-06-15T17:59:58.004Z" },
+    { url = "https://files.pythonhosted.org/packages/c3/60/d214e7ba3e8f4f0fab95bcc8debaee1ae5ec87b40f3aa9da756cd21ae27e/belgie-0.20.0-cp312-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:c31525a1acde96456538581bb8977c6aa6c48234b84d2148244bd615d828e1c6", size = 36519007, upload-time = "2026-06-15T18:00:08.55Z" },
+    { url = "https://files.pythonhosted.org/packages/54/e8/101eab77eab00471f28d0566e6bf5121ae1cb7fd8a2af513ffb171ff565d/belgie-0.20.0-cp312-abi3-win_amd64.whl", hash = "sha256:3d87f70677ca3d311268aca890442d5ac3e6c0d99ead931bf771c9e7783dbcd8", size = 32660775, upload-time = "2026-06-15T17:59:54.708Z" },
 ]
 
 [[package]]
@@ -224,7 +224,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "belgie", specifier = ">=0.2.3" },
+    { name = "belgie", specifier = ">=0.20.0" },
     { name = "mcp", specifier = "==2.0.0a1" },
     { name = "minijinja", specifier = ">=2,<3" },
     { name = "pydantic", specifier = ">=2.12.5" },
