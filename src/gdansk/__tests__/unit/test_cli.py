@@ -9,24 +9,8 @@ from typing import Any
 import pytest
 from belgie.errors import BelgieRuntimeError
 
+from gdansk.__tests__.conftest import run_cli
 from gdansk.cli import main
-
-
-def _run_main(
-    argv: list[str],
-    *,
-    monkeypatch: pytest.MonkeyPatch,
-    cwd: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> tuple[int, str, str]:
-    monkeypatch.chdir(cwd)
-    exit_code = 0
-    try:
-        main(argv)
-    except SystemExit as exc:
-        exit_code = exc.code if isinstance(exc.code, int) else 0
-    captured = capsys.readouterr()
-    return exit_code, captured.out, captured.err
 
 
 def test_version_prints_package_version(capsys: pytest.CaptureFixture[str]):
@@ -62,7 +46,7 @@ def test_install_dispatches_to_install_packages(
 
     monkeypatch.setattr("gdansk.cli.install_packages", fake_install_packages)
 
-    code, stdout, _stderr = _run_main(["install"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    code, stdout, _stderr = run_cli(["install"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
     assert code == 0
     assert calls["cwd"] == project_root
@@ -85,7 +69,7 @@ def test_install_no_dev_flag(
 
     monkeypatch.setattr("gdansk.cli.install_packages", fake_install_packages)
 
-    _run_main(["install", "--no-dev"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    run_cli(["install", "--no-dev"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
     assert calls["groups"] == ["default"]
 
@@ -104,7 +88,7 @@ def test_lock_dispatches_to_lock_packages(
 
     monkeypatch.setattr("gdansk.cli.lock_packages", fake_lock_packages)
 
-    _run_main(["lock"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    run_cli(["lock"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
     assert calls["cwd"] == project_root
     assert calls["groups"] == ["default", "dev"]
@@ -127,7 +111,7 @@ def test_update_dispatches_packages_and_latest(
 
     monkeypatch.setattr("gdansk.cli.update_packages", fake_update_packages)
 
-    _run_main(
+    run_cli(
         ["update", "vite", "react", "--latest"],
         monkeypatch=monkeypatch,
         cwd=project_root,
@@ -152,7 +136,7 @@ def test_install_maps_runtime_error_to_exit_1(
 
     monkeypatch.setattr("gdansk.cli.install_packages", fake_install_packages)
 
-    code, _stdout, stderr = _run_main(["install"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    code, _stdout, stderr = run_cli(["install"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
     assert code == 1
     assert "install failed" in stderr
@@ -173,7 +157,7 @@ def test_build_dispatches_run_task(
 
     monkeypatch.setattr("gdansk.cli._run_task_command", fake_run_task_command)
 
-    _run_main(["build"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    run_cli(["build"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
     assert calls["script"] == "build"
     assert calls["long_running"] is False
@@ -193,7 +177,7 @@ def test_build_forwards_task_args(
 
     monkeypatch.setattr("gdansk.cli._run_task_command", fake_run_task_command)
 
-    _run_main(["build", "--", "--outDir", "dist"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    run_cli(["build", "--", "--outDir", "dist"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
     assert calls["task_args"] == ["--outDir", "dist"]
 
@@ -214,7 +198,7 @@ def test_dev_dispatches_start_task(
 
     monkeypatch.setattr("gdansk.cli._run_task_command", fake_run_task_command)
 
-    _run_main(["dev"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    run_cli(["dev"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
     assert calls["script"] == "dev"
     assert calls["long_running"] is True
@@ -229,7 +213,7 @@ def test_run_unknown_script_suggests_scripts(
 ):
     project_root, _ = gdansk_project
 
-    code, _stdout, stderr = _run_main(["run", "missing"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    code, _stdout, stderr = run_cli(["run", "missing"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
     assert code == 1
     assert "Available scripts" in stderr
@@ -249,7 +233,7 @@ def test_run_build_uses_run_task(
 
     monkeypatch.setattr("gdansk.cli._run_task_command", fake_run_task_command)
 
-    _run_main(["run", "build"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    run_cli(["run", "build"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
     assert calls["script"] == "build"
     assert calls["long_running"] is False
@@ -269,7 +253,7 @@ def test_run_dev_uses_start_task(
 
     monkeypatch.setattr("gdansk.cli._run_task_command", fake_run_task_command)
 
-    _run_main(["run", "dev"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    run_cli(["run", "dev"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
     assert calls["script"] == "dev"
     assert calls["long_running"] is True
@@ -315,7 +299,7 @@ def test_run_watch_does_not_pass_dev_host_port(
     monkeypatch.setattr("gdansk.cli._run_until_signal", fake_run_until_signal)
     monkeypatch.setattr("gdansk.cli.asyncio.run", fake_asyncio_run)
 
-    _run_main(
+    run_cli(
         ["run", "build", "--watch"],
         monkeypatch=monkeypatch,
         cwd=project_root,
@@ -334,7 +318,7 @@ def test_scripts_lists_entries(
 ):
     project_root, _ = gdansk_project
 
-    code, stdout, _stderr = _run_main(["scripts"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    code, stdout, _stderr = run_cli(["scripts"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
     assert code == 0
     assert "build" in stdout

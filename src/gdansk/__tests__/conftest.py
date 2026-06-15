@@ -5,8 +5,27 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from gdansk.cli import main
+
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+def run_cli(
+    argv: list[str],
+    *,
+    monkeypatch: pytest.MonkeyPatch,
+    cwd: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> tuple[int, str, str]:
+    monkeypatch.chdir(cwd)
+    exit_code = 0
+    try:
+        main(argv)
+    except SystemExit as exc:
+        exit_code = exc.code if isinstance(exc.code, int) else 0
+    captured = capsys.readouterr()
+    return exit_code, captured.out, captured.err
 
 
 def write_pyproject(
@@ -55,8 +74,6 @@ def write_pyproject(
 def write_frontend_tree(
     root: Path,
     name: str = "frontend",
-    *,
-    include_package_json: bool = False,
 ) -> Path:
     frontend = root / name
     (frontend / "widgets" / "hello").mkdir(parents=True, exist_ok=True)
@@ -68,8 +85,6 @@ def write_frontend_tree(
         "export default {};\n",
         encoding="utf-8",
     )
-    if include_package_json:
-        (frontend / "package.json").write_text("{}\n", encoding="utf-8")
     return frontend
 
 
@@ -80,7 +95,6 @@ def write_src_layout_project(
     scripts: dict[str, str] | None = None,
     dependencies: dict[str, str] | None = None,
     project_name: str = "example",
-    include_package_json: bool = False,
 ) -> tuple[Path, Path]:
     write_pyproject(
         root,
@@ -89,7 +103,7 @@ def write_src_layout_project(
         project_name=project_name,
         project_scripts={"main": f"{package}.__main__:main"},
     )
-    frontend_root = write_frontend_tree(root / "src" / package, "views", include_package_json=include_package_json)
+    frontend_root = write_frontend_tree(root / "src" / package, "views")
     return root, frontend_root
 
 

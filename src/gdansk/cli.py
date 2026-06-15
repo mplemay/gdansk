@@ -20,6 +20,7 @@ from gdansk._project import (
     ProjectError,
     discover_project,
     load_project,
+    read_pyproject_document,
     resolve_frontend_path,
     validate_frontend_root,
 )
@@ -47,7 +48,7 @@ def _template_text(name: str, *, package: str = "my_mcp_server") -> str:
 def _default_init_package(target_dir: Path) -> str:
     pyproject_path = target_dir / "pyproject.toml"
     if pyproject_path.is_file():
-        document = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+        document = read_pyproject_document(target_dir)
         project = document.get("project")
         if isinstance(project, dict):
             name = project.get("name")
@@ -267,14 +268,13 @@ def cmd_doctor(args: argparse.Namespace) -> None:
 
         if frontend_path is not None:
             try:
-                frontend_warnings = validate_frontend_root(frontend_path)
+                validate_frontend_root(frontend_path)
             except ProjectError as error:
                 print(f"fail {error}")
                 failures.append(str(error))
             else:
                 print(f"ok   frontend root ({frontend_path})")
                 print(f"ok   vite.config.ts and widgets/ in {frontend_path}")
-                warnings.extend(frontend_warnings)
 
             root_lock = project.root / "deno.lock"
             if root_lock.is_file():
@@ -284,12 +284,11 @@ def cmd_doctor(args: argparse.Namespace) -> None:
                 print(f"warn {message}")
                 warnings.append(message)
 
-            if frontend_path is not None:
-                legacy_lock = frontend_path / "deno.lock"
-                if legacy_lock.is_file() and not root_lock.is_file():
-                    message = f"Legacy deno.lock found under frontend ({legacy_lock}); move it to the project root"
-                    print(f"warn {message}")
-                    warnings.append(message)
+            legacy_lock = frontend_path / "deno.lock"
+            if legacy_lock.is_file() and not root_lock.is_file():
+                message = f"Legacy deno.lock found under frontend ({legacy_lock}); move it to the project root"
+                print(f"warn {message}")
+                warnings.append(message)
 
             for script_name in ("build", "dev"):
                 if script_name in project.scripts:
@@ -312,13 +311,6 @@ def cmd_doctor(args: argparse.Namespace) -> None:
         print("doctor: all checks passed")
 
 
-def _pyproject_has_belgie(path: Path) -> bool:
-    if not path.is_file():
-        return False
-    document = tomllib.loads(path.read_text(encoding="utf-8"))
-    return "belgie" in document
-
-
 def _strip_belgie_sections(text: str) -> str:
     lines = text.splitlines()
     kept: list[str] = []
@@ -339,18 +331,21 @@ def _strip_belgie_sections(text: str) -> str:
 
 
 def _write_init_pyproject(target: Path, *, package: str, force: bool) -> None:
+    belgie_tables = _template_text("belgie_tables.toml", package=package)
+
     if target.exists():
         text = target.read_text(encoding="utf-8")
-        if _pyproject_has_belgie(target) and not force:
+        if "belgie" in tomllib.loads(text) and not force:
             msg = f"[belgie] already present in {target}; use --force to replace belgie tables"
             raise ProjectError(msg)
         if force:
             text = _strip_belgie_sections(text)
-        text = text.rstrip() + "\n\n" + _template_text("belgie_tables.toml", package=package)
+        text = text.rstrip() + "\n\n" + belgie_tables
         target.write_text(text, encoding="utf-8")
         return
 
-    target.write_text(_template_text("pyproject.toml", package=package), encoding="utf-8")
+    text = _template_text("pyproject.toml", package=package).rstrip() + "\n\n" + belgie_tables
+    target.write_text(text, encoding="utf-8")
 
 
 def _write_scaffold_file(path: Path, content: str, *, force: bool) -> None:

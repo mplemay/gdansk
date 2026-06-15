@@ -4,25 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from gdansk.__tests__.conftest import write_pyproject, write_src_layout_project
-from gdansk.cli import main
-
-
-def _run_doctor(
-    argv: list[str],
-    *,
-    monkeypatch: pytest.MonkeyPatch,
-    cwd: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> tuple[int, str, str]:
-    monkeypatch.chdir(cwd)
-    exit_code = 0
-    try:
-        main(argv)
-    except SystemExit as exc:
-        exit_code = exc.code if isinstance(exc.code, int) else 0
-    captured = capsys.readouterr()
-    return exit_code, captured.out, captured.err
+from gdansk.__tests__.conftest import run_cli, write_pyproject, write_src_layout_project
 
 
 def test_doctor_passes_for_valid_project(
@@ -33,7 +15,7 @@ def test_doctor_passes_for_valid_project(
     project_root, _ = gdansk_project
     (project_root / "deno.lock").write_text("{}\n", encoding="utf-8")
 
-    code, stdout, _stderr = _run_doctor(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    code, stdout, _stderr = run_cli(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
     assert code == 0
     assert "ok   Python" in stdout
@@ -49,7 +31,7 @@ def test_doctor_fails_without_dependencies_table(
     project_root.mkdir()
     write_src_layout_project(project_root, dependencies={})
 
-    code, stdout, _stderr = _run_doctor(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    code, stdout, _stderr = run_cli(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
     assert code == 1
     assert "fail No [belgie.dependencies]" in stdout
@@ -64,7 +46,7 @@ def test_doctor_fails_without_frontend_layout(
     project_root.mkdir()
     write_pyproject(project_root)
 
-    code, stdout, _stderr = _run_doctor(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    code, stdout, _stderr = run_cli(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
     assert code == 1
     assert "fail" in stdout
@@ -79,7 +61,7 @@ def test_doctor_fails_without_vite_config(
     project_root, frontend_root = gdansk_project
     (frontend_root / "vite.config.ts").unlink()
 
-    code, stdout, _stderr = _run_doctor(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    code, stdout, _stderr = run_cli(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
     assert code == 1
     assert "fail" in stdout
@@ -93,7 +75,7 @@ def test_doctor_warns_when_root_lock_missing(
 ):
     project_root, _ = gdansk_project
 
-    code, stdout, stderr = _run_doctor(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    code, stdout, stderr = run_cli(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
     assert code == 0
     assert "warn deno.lock missing" in stdout
@@ -108,7 +90,7 @@ def test_doctor_warns_about_legacy_frontend_lock(
     project_root, frontend_root = gdansk_project
     (frontend_root / "deno.lock").write_text("{}\n", encoding="utf-8")
 
-    code, stdout, stderr = _run_doctor(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    code, stdout, stderr = run_cli(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
     assert code == 0
     assert "Legacy deno.lock" in stdout
@@ -124,7 +106,7 @@ def test_doctor_warns_when_scripts_missing(
     project_root.mkdir()
     write_src_layout_project(project_root, scripts={"build": "vite build"})
 
-    code, stdout, stderr = _run_doctor(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    code, stdout, stderr = run_cli(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
     assert code == 0
     assert "warn Missing [belgie.scripts].dev" in stdout

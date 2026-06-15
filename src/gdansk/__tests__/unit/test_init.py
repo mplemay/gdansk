@@ -6,25 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from gdansk.__tests__.conftest import write_pyproject
-from gdansk.cli import main
-
-
-def _run_init(
-    argv: list[str],
-    *,
-    monkeypatch: pytest.MonkeyPatch,
-    cwd: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> tuple[int, str, str]:
-    monkeypatch.chdir(cwd)
-    exit_code = 0
-    try:
-        main(argv)
-    except SystemExit as exc:
-        exit_code = exc.code if isinstance(exc.code, int) else 0
-    captured = capsys.readouterr()
-    return exit_code, captured.out, captured.err
+from gdansk.__tests__.conftest import run_cli, write_pyproject
 
 
 def test_init_creates_scaffold_files(
@@ -44,7 +26,7 @@ def test_init_creates_scaffold_files(
         fake_lock_packages,
     )
 
-    code, stdout, _stderr = _run_init(
+    code, stdout, _stderr = run_cli(
         ["init", "--path", str(target), "--no-install"],
         monkeypatch=monkeypatch,
         cwd=tmp_path,
@@ -78,7 +60,7 @@ def test_init_pyproject_contains_belgie_tables(
         fake_lock_packages,
     )
 
-    _run_init(["init", "--path", str(target)], monkeypatch=monkeypatch, cwd=tmp_path, capsys=capsys)
+    run_cli(["init", "--path", str(target)], monkeypatch=monkeypatch, cwd=tmp_path, capsys=capsys)
 
     assert calls["cwd"] == target
     assert calls["groups"] == ["default", "dev"]
@@ -102,7 +84,7 @@ def test_init_main_uses_views_sibling_path(
         lambda **_kwargs: SimpleNamespace(lockfile=str(target / "deno.lock"), dependencies=4, dev_dependencies=0),
     )
 
-    _run_init(["init", "--path", str(target), "--no-install"], monkeypatch=monkeypatch, cwd=tmp_path, capsys=capsys)
+    run_cli(["init", "--path", str(target), "--no-install"], monkeypatch=monkeypatch, cwd=tmp_path, capsys=capsys)
 
     text = (target / "src" / "my_mcp_server" / "__main__.py").read_text(encoding="utf-8")
     assert 'Path(__file__).parent / "views"' in text
@@ -124,7 +106,7 @@ def test_init_appends_belgie_to_existing_pyproject(
         lambda **_kwargs: SimpleNamespace(lockfile=str(target / "deno.lock"), dependencies=4, dev_dependencies=0),
     )
 
-    _run_init(["init", "--path", str(target), "--no-install"], monkeypatch=monkeypatch, cwd=tmp_path, capsys=capsys)
+    run_cli(["init", "--path", str(target), "--no-install"], monkeypatch=monkeypatch, cwd=tmp_path, capsys=capsys)
 
     text = (target / "pyproject.toml").read_text(encoding="utf-8")
     assert 'name = "existing"' in text
@@ -141,7 +123,7 @@ def test_init_refuses_existing_belgie_without_force(
     target.mkdir()
     write_pyproject(target)
 
-    code, _stdout, stderr = _run_init(
+    code, _stdout, stderr = run_cli(
         ["init", "--path", str(target), "--no-install"],
         monkeypatch=monkeypatch,
         cwd=tmp_path,
@@ -165,7 +147,7 @@ def test_init_force_replaces_belgie_tables(
         lambda **_kwargs: SimpleNamespace(lockfile=str(target / "deno.lock"), dependencies=4, dev_dependencies=0),
     )
 
-    _run_init(
+    run_cli(
         ["init", "--path", str(target), "--force", "--no-install"],
         monkeypatch=monkeypatch,
         cwd=tmp_path,
@@ -189,7 +171,7 @@ def test_init_refuses_existing_main_without_force(
     main_path.parent.mkdir(parents=True)
     main_path.write_text("print('main')\n", encoding="utf-8")
 
-    code, _stdout, stderr = _run_init(
+    code, _stdout, stderr = run_cli(
         ["init", "--path", str(target), "--no-install"],
         monkeypatch=monkeypatch,
         cwd=tmp_path,
@@ -214,7 +196,7 @@ def test_init_runs_lock_by_default(
 
     monkeypatch.setattr("gdansk.cli.lock_packages", fake_lock_packages)
 
-    _run_init(["init", "--path", str(target)], monkeypatch=monkeypatch, cwd=tmp_path, capsys=capsys)
+    run_cli(["init", "--path", str(target)], monkeypatch=monkeypatch, cwd=tmp_path, capsys=capsys)
 
     assert calls == [target.resolve()]
 
@@ -232,7 +214,7 @@ def test_init_no_install_skips_lock(
 
     monkeypatch.setattr("gdansk.cli.lock_packages", fail_lock_packages)
 
-    _run_init(["init", "--path", str(target), "--no-install"], monkeypatch=monkeypatch, cwd=tmp_path, capsys=capsys)
+    run_cli(["init", "--path", str(target), "--no-install"], monkeypatch=monkeypatch, cwd=tmp_path, capsys=capsys)
 
 
 def test_init_custom_package_directory(
@@ -246,7 +228,7 @@ def test_init_custom_package_directory(
         lambda **_kwargs: SimpleNamespace(lockfile=str(target / "deno.lock"), dependencies=4, dev_dependencies=0),
     )
 
-    _run_init(
+    run_cli(
         ["init", "--path", str(target), "--package", "custom_pkg", "--no-install"],
         monkeypatch=monkeypatch,
         cwd=tmp_path,

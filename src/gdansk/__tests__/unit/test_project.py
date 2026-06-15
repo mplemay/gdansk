@@ -134,13 +134,7 @@ def test_resolve_frontend_uses_override(gdansk_project: tuple[Path, Path]):
 def test_validate_frontend_root_happy_path(gdansk_project: tuple[Path, Path]):
     _, frontend_root = gdansk_project
 
-    assert validate_frontend_root(frontend_root) == []
-
-
-def test_validate_frontend_root_allows_missing_package_json(tmp_path: Path):
-    frontend_root = write_frontend_tree(tmp_path)
-
-    assert validate_frontend_root(frontend_root) == []
+    validate_frontend_root(frontend_root)
 
 
 def test_validate_frontend_root_errors_without_vite_config(tmp_path: Path):
