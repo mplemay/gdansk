@@ -151,17 +151,28 @@ def test_cli_run_watch_smoke(
     assert code == 0
 
     command = [sys.executable, "-m", "gdansk", "run", "idle", "--watch"]
-    process = subprocess.Popen(  # noqa: S603
-        command,
-        cwd=project_root,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
+    if sys.platform == "win32":
+        process = subprocess.Popen(  # noqa: S603
+            command,
+            cwd=project_root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+        )
+    else:
+        process = subprocess.Popen(  # noqa: S603
+            command,
+            cwd=project_root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
     try:
         time.sleep(1)
         assert process.poll() is None
-        process.send_signal(signal.SIGTERM)
+        stop_signal = signal.CTRL_C_EVENT if sys.platform == "win32" else signal.SIGTERM
+        process.send_signal(stop_signal)
         stdout, stderr = process.communicate(timeout=30)
         assert process.returncode == 0
         assert "both host and port" not in stderr
