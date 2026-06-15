@@ -18,6 +18,7 @@ from belgie.errors import BelgieRuntimeError
 from gdansk._project import (
     GdanskProject,
     ProjectError,
+    _belgie_table,
     discover_project,
     load_project,
     read_pyproject_document,
@@ -89,10 +90,6 @@ def _dependency_groups(*, with_dev: bool) -> list[str]:
     return ["default"]
 
 
-def _resolve_project(project: Path | None, start: Path | None = None) -> GdanskProject:
-    return discover_project(project=project, start=start or Path.cwd())
-
-
 def _resolve_task_frontend(
     project: GdanskProject,
     frontend: Path | None,
@@ -139,7 +136,7 @@ async def _run_until_signal(coro: Awaitable[TaskProcess]) -> None:
 
 
 def cmd_install(args: argparse.Namespace) -> None:
-    project = _resolve_project(args.project)
+    project = discover_project(project=args.project)
     with _runtime_errors():
         result = install_packages(
             cwd=project.root,
@@ -150,14 +147,14 @@ def cmd_install(args: argparse.Namespace) -> None:
 
 
 def cmd_lock(args: argparse.Namespace) -> None:
-    project = _resolve_project(args.project)
+    project = discover_project(project=args.project)
     with _runtime_errors():
         result = lock_packages(cwd=project.root, groups=_dependency_groups(with_dev=not args.no_dev))
         print(_format_package_result("Locked", result))
 
 
 def cmd_update(args: argparse.Namespace) -> None:
-    project = _resolve_project(args.project)
+    project = discover_project(project=args.project)
     with _runtime_errors():
         result = update_packages(
             cwd=project.root,
@@ -177,7 +174,7 @@ def _run_task_command(
     script: str,
     long_running: bool,
 ) -> None:
-    project = _resolve_project(args.project)
+    project = discover_project(project=args.project)
     _require_script(project, script)
 
     frontend_path = _resolve_task_frontend(project, args.frontend)
@@ -186,7 +183,11 @@ def _run_task_command(
     with _runtime_errors():
         if long_running:
             if script == "dev":
-                dev_params = dev_start_kwargs(args.host, args.port, argv)
+                dev_params = dev_start_kwargs(
+                    args.host or DEFAULT_HOST,
+                    args.port or DEFAULT_PORT,
+                    argv,
+                )
                 task_coro = start_task(
                     frontend_path,
                     script,
@@ -221,7 +222,7 @@ def cmd_run(args: argparse.Namespace) -> None:
 
 
 def cmd_scripts(args: argparse.Namespace) -> None:
-    project = _resolve_project(args.project)
+    project = discover_project(project=args.project)
     if not project.scripts:
         _eprint("No [belgie.scripts] entries configured.")
         raise SystemExit(1)
@@ -245,7 +246,7 @@ def cmd_doctor(args: argparse.Namespace) -> None:
         print(f"ok   Python {version.major}.{version.minor}.{version.micro}")
 
     try:
-        project = _resolve_project(args.project)
+        project = discover_project(project=args.project)
     except ProjectError as error:
         print(f"fail {error}")
         failures.append(str(error))
@@ -260,21 +261,15 @@ def cmd_doctor(args: argparse.Namespace) -> None:
             failures.append(message)
 
         try:
-            frontend_path = resolve_frontend_path(project, args.frontend)
+            frontend_path = _resolve_task_frontend(project, args.frontend)
         except ProjectError as error:
             print(f"fail {error}")
             failures.append(str(error))
             frontend_path = None
 
         if frontend_path is not None:
-            try:
-                validate_frontend_root(frontend_path)
-            except ProjectError as error:
-                print(f"fail {error}")
-                failures.append(str(error))
-            else:
-                print(f"ok   frontend root ({frontend_path})")
-                print(f"ok   vite.config.ts and widgets/ in {frontend_path}")
+            print(f"ok   frontend root ({frontend_path})")
+            print(f"ok   vite.config.ts and widgets/ in {frontend_path}")
 
             root_lock = project.root / "deno.lock"
             if root_lock.is_file():
@@ -335,7 +330,7 @@ def _write_init_pyproject(target: Path, *, package: str, force: bool) -> None:
 
     if target.exists():
         text = target.read_text(encoding="utf-8")
-        if "belgie" in tomllib.loads(text) and not force:
+        if _belgie_table(tomllib.loads(text)) is not None and not force:
             msg = f"[belgie] already present in {target}; use --force to replace belgie tables"
             raise ProjectError(msg)
         if force:

@@ -81,7 +81,7 @@ def test_init_main_uses_views_sibling_path(
     target = tmp_path / "new-project"
     monkeypatch.setattr(
         "gdansk.cli.lock_packages",
-        lambda **_kwargs: SimpleNamespace(lockfile=str(target / "deno.lock"), dependencies=4, dev_dependencies=0),
+        lambda **_kwargs: SimpleNamespace(lockfile=str(target / "deno.lock"), groups={"default": 4}),
     )
 
     run_cli(["init", "--path", str(target), "--no-install"], monkeypatch=monkeypatch, cwd=tmp_path, capsys=capsys)
@@ -103,7 +103,7 @@ def test_init_appends_belgie_to_existing_pyproject(
     )
     monkeypatch.setattr(
         "gdansk.cli.lock_packages",
-        lambda **_kwargs: SimpleNamespace(lockfile=str(target / "deno.lock"), dependencies=4, dev_dependencies=0),
+        lambda **_kwargs: SimpleNamespace(lockfile=str(target / "deno.lock"), groups={"default": 4}),
     )
 
     run_cli(["init", "--path", str(target), "--no-install"], monkeypatch=monkeypatch, cwd=tmp_path, capsys=capsys)
@@ -144,7 +144,7 @@ def test_init_force_replaces_belgie_tables(
     write_pyproject(target, dependencies={"old": "1.0.0"})
     monkeypatch.setattr(
         "gdansk.cli.lock_packages",
-        lambda **_kwargs: SimpleNamespace(lockfile=str(target / "deno.lock"), dependencies=4, dev_dependencies=0),
+        lambda **_kwargs: SimpleNamespace(lockfile=str(target / "deno.lock"), groups={"default": 4}),
     )
 
     run_cli(
@@ -192,7 +192,7 @@ def test_init_runs_lock_by_default(
 
     def fake_lock_packages(**kwargs: object) -> SimpleNamespace:
         calls.append(Path(str(kwargs["cwd"])))
-        return SimpleNamespace(lockfile=str(target / "deno.lock"), dependencies=4, dev_dependencies=0)
+        return SimpleNamespace(lockfile=str(target / "deno.lock"), groups={"default": 4})
 
     monkeypatch.setattr("gdansk.cli.lock_packages", fake_lock_packages)
 
@@ -225,7 +225,7 @@ def test_init_custom_package_directory(
     target = tmp_path / "new-project"
     monkeypatch.setattr(
         "gdansk.cli.lock_packages",
-        lambda **_kwargs: SimpleNamespace(lockfile=str(target / "deno.lock"), dependencies=4, dev_dependencies=0),
+        lambda **_kwargs: SimpleNamespace(lockfile=str(target / "deno.lock"), groups={"default": 4}),
     )
 
     run_cli(

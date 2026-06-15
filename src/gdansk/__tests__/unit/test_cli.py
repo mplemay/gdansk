@@ -11,6 +11,7 @@ from belgie.errors import BelgieRuntimeError
 
 from gdansk.__tests__.conftest import run_cli
 from gdansk.cli import main
+from gdansk.task import DEFAULT_HOST, DEFAULT_PORT
 
 
 def test_version_prints_package_version(capsys: pytest.CaptureFixture[str]):
@@ -257,6 +258,53 @@ def test_run_dev_uses_start_task(
 
     assert calls["script"] == "dev"
     assert calls["long_running"] is True
+
+
+def test_run_dev_uses_default_host_port(
+    gdansk_project: tuple[Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    project_root, _ = gdansk_project
+    captured: dict[str, object] = {}
+
+    class FakeTaskProcess:
+        origin = ""
+        is_running = True
+
+        async def stop(self) -> None:
+            return None
+
+    async def fake_start_task(
+        task_cwd: Path,
+        script: str,
+        **kwargs: object,
+    ) -> FakeTaskProcess:
+        captured["script"] = script
+        captured.update(kwargs)
+        return FakeTaskProcess()
+
+    async def fake_run_until_signal(coro: Awaitable[FakeTaskProcess]) -> None:
+        process = await coro
+        await process.stop()
+
+    def fake_asyncio_run(coro: Awaitable[FakeTaskProcess]) -> None:
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(coro)
+        finally:
+            loop.close()
+
+    monkeypatch.setattr("gdansk.cli.start_task", fake_start_task)
+    monkeypatch.setattr("gdansk.cli._run_until_signal", fake_run_until_signal)
+    monkeypatch.setattr("gdansk.cli.asyncio.run", fake_asyncio_run)
+
+    run_cli(["run", "dev"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+
+    assert captured["script"] == "dev"
+    assert captured["host"] == DEFAULT_HOST
+    assert captured["port"] == DEFAULT_PORT
+    assert captured["argv"] == ["--host", DEFAULT_HOST, "--port", str(DEFAULT_PORT)]
 
 
 def test_run_watch_does_not_pass_dev_host_port(

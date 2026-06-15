@@ -9,17 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from gdansk.__tests__.conftest import write_pyproject, write_src_layout_project
-from gdansk.cli import main
-
-
-def _invoke(argv: list[str], *, monkeypatch: pytest.MonkeyPatch, cwd: Path) -> int:
-    monkeypatch.chdir(cwd)
-    try:
-        main(argv)
-    except SystemExit as exc:
-        return exc.code if isinstance(exc.code, int) else 0
-    return 0
+from gdansk.__tests__.conftest import run_cli, write_pyproject, write_src_layout_project
 
 
 def _python_command(source: str) -> str:
@@ -30,6 +20,7 @@ def _python_command(source: str) -> str:
 def test_cli_install_writes_root_lockfile(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ):
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -38,7 +29,8 @@ def test_cli_install_writes_root_lockfile(
         dependencies={"std_path": "jsr:@std/path@^1"},
     )
 
-    assert _invoke(["install"], monkeypatch=monkeypatch, cwd=project_root) == 0
+    code, _stdout, _stderr = run_cli(["install"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    assert code == 0
     assert (project_root / "deno.lock").is_file()
 
 
@@ -46,6 +38,7 @@ def test_cli_install_writes_root_lockfile(
 def test_cli_lock_is_idempotent(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ):
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -53,8 +46,10 @@ def test_cli_lock_is_idempotent(
         project_root,
         dependencies={"std_path": "jsr:@std/path@^1"},
     )
-    assert _invoke(["lock"], monkeypatch=monkeypatch, cwd=project_root) == 0
-    assert _invoke(["lock"], monkeypatch=monkeypatch, cwd=project_root) == 0
+    code, _stdout, _stderr = run_cli(["lock"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    assert code == 0
+    code, _stdout, _stderr = run_cli(["lock"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    assert code == 0
 
 
 @pytest.mark.integration
@@ -64,10 +59,10 @@ def test_cli_scripts_lists_configured_entries(
     capsys: pytest.CaptureFixture[str],
 ):
     project_root, _ = gdansk_project
-    assert _invoke(["scripts"], monkeypatch=monkeypatch, cwd=project_root) == 0
-    captured = capsys.readouterr()
-    assert "build" in captured.out
-    assert "dev" in captured.out
+    code, stdout, _stderr = run_cli(["scripts"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    assert code == 0
+    assert "build" in stdout
+    assert "dev" in stdout
 
 
 @pytest.mark.integration
@@ -78,13 +73,9 @@ def test_cli_doctor_passes_for_valid_fixture(
 ):
     project_root, _ = gdansk_project
     (project_root / "deno.lock").write_text("{}\n", encoding="utf-8")
-    monkeypatch.chdir(project_root)
-    try:
-        main(["doctor"])
-    except SystemExit as exc:
-        assert not isinstance(exc.code, int) or exc.code == 0
-    captured = capsys.readouterr()
-    assert "doctor:" in captured.out
+    code, stdout, _stderr = run_cli(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    assert code == 0
+    assert "doctor:" in stdout
 
 
 @pytest.mark.integration
@@ -104,6 +95,7 @@ def test_module_entrypoint_version():
 def test_cli_build_smoke(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ):
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -112,14 +104,17 @@ def test_cli_build_smoke(
         dependencies={"std_path": "jsr:@std/path@^1"},
         scripts={"build": _python_command("import sys; sys.exit(0)")},
     )
-    assert _invoke(["install"], monkeypatch=monkeypatch, cwd=project_root) == 0
-    assert _invoke(["build"], monkeypatch=monkeypatch, cwd=project_root) == 0
+    code, _stdout, _stderr = run_cli(["install"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    assert code == 0
+    code, _stdout, _stderr = run_cli(["build"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    assert code == 0
 
 
 @pytest.mark.integration
 def test_cli_build_from_nested_frontend_cwd(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ):
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -130,14 +125,17 @@ def test_cli_build_from_nested_frontend_cwd(
         scripts={"build": _python_command("import sys; sys.exit(0)")},
     )
 
-    assert _invoke(["install"], monkeypatch=monkeypatch, cwd=project_root) == 0
-    assert _invoke(["build"], monkeypatch=monkeypatch, cwd=frontend_root) == 0
+    code, _stdout, _stderr = run_cli(["install"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    assert code == 0
+    code, _stdout, _stderr = run_cli(["build"], monkeypatch=monkeypatch, cwd=frontend_root, capsys=capsys)
+    assert code == 0
 
 
 @pytest.mark.integration
 def test_cli_run_watch_smoke(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ):
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -149,7 +147,8 @@ def test_cli_run_watch_smoke(
             "idle": _python_command("import time; time.sleep(60)"),
         },
     )
-    assert _invoke(["install"], monkeypatch=monkeypatch, cwd=project_root) == 0
+    code, _stdout, _stderr = run_cli(["install"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    assert code == 0
 
     command = [sys.executable, "-m", "gdansk", "run", "idle", "--watch"]
     process = subprocess.Popen(  # noqa: S603
