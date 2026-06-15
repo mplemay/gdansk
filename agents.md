@@ -10,9 +10,11 @@
 - **`deno`:** The typescript / javascript package manager.
   - *Usage:* `uv run deno`
   - *Rules:*
-    - **Never run deno directy (i.e. `deno ...`), always executing it using `uv` (i.e. `uv run deno ...`).**
+    - **Never run deno directly (i.e. `deno ...`), always executing it using `uv` (i.e. `uv run deno ...`).**
     - **Don't use other package managers for javascript / typescript dependencies (ex: `bun`, `npm`, etc.)**
-    - **Always use `package.json` for specifying dependencies and not `deno.json`.**
+    - **Use `[belgie.dependencies]` tables in `pyproject.toml` for app and example frontend dependencies.**
+    - **Don't add `package.json` or `deno.json` files to app/example frontend roots.**
+    - **Keep `package.json` only for separately published JavaScript packages, such as `packages/vite`.**
 
 ## Conventions
 
@@ -63,6 +65,13 @@
   (for example `# noqa: ARG002`), not a whole-file waiver. This refers to pragmas in `.py` files, not to path-based
   rules in `pyproject.toml` (which should stay minimal and justified).
 - For type aliases, prefer Python's modern syntax: `type MyAlias = SomeType` (PEP 695 style), especially in new code.
+- Constants:
+  - Module-level runtime constants must be public (no leading underscore), `SCREAMING_SNAKE_CASE`, and annotated with
+    `Final[T]` from `typing`.
+  - Example: `DEFAULT_HOST: Final[str] = "127.0.0.1"`
+  - Does not apply to type aliases (`type Foo = ...`), TypedDict assignments, class instance attributes (including those
+    annotated with `Final` in `__init__`), application wiring globals (`ship`, `mcp`, etc.), or special dunders
+    (`__all__`, etc.).
 - URL construction:
   - Use `urllib.parse` methods for URL manipulation (don't use string concatenation or f-strings for query params)
   - Use `urlencode()` for query parameters

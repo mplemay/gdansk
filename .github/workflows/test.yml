@@ -17,25 +17,10 @@ jobs:
         with:
           enable-cache: true
 
-      - uses: denoland/setup-deno@v2
-        with:
-          # Match the `deno` PyPI package version in uv.lock so the action CLI and find_deno_bin agree.
-          deno-version: 2.8.0
-          cache: true
-
       - name: Install python dependencies
         run: uv sync --all-groups --all-extras --all-packages
 
-      - name: Install TypeScript package dependencies (Deno)
-        shell: bash
-        run: |
-          set -euo pipefail
-          deno install
-          for d in packages/vite examples/fastapi/src/mount/views examples/get-time/src/get_time/views examples/production/src/production/views examples/shadcn/src/shadcn/views; do
-            (cd "$d" && deno install)
-          done
-
-      - uses: j178/prek-action@v1
+      - uses: j178/prek-action@v2
 
   test-python:
     name: test (python ${{ matrix.python-version }}, ${{ matrix.os }})
@@ -52,22 +37,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - uses: denoland/setup-deno@v2
-        with:
-          # Match the `deno` PyPI package version in uv.lock so the action CLI and find_deno_bin agree.
-          deno-version: 2.8.0
-          cache: true
-
       - name: Install dependencies
         run: uv sync --all-groups --all-extras --all-packages
-
-      - name: Install example views dependencies (Deno)
-        shell: bash
-        run: |
-          set -euo pipefail
-          for d in examples/fastapi/src/mount/views examples/get-time/src/get_time/views examples/shadcn/src/shadcn/views; do
-            (cd "$d" && deno install)
-          done
 
       - name: Run tests
         run: uv run pytest

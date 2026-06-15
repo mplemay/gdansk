@@ -1,0 +1,535 @@
+from __future__ import annotations
+
+import argparse
+import asyncio
+import importlib.metadata
+import re
+import signal
+import sys
+import tomllib
+from contextlib import contextmanager
+from importlib import resources
+from pathlib import Path
+from typing import TYPE_CHECKING, Final
+
+from belgie.dependencies import install as install_packages, lock as lock_packages, update as update_packages
+from belgie.errors import BelgieRuntimeError
+
+from gdansk._project import (
+    GdanskProject,
+    ProjectError,
+    _belgie_table,
+    discover_project,
+    load_project,
+    read_pyproject_document,
+    resolve_frontend_path,
+    validate_frontend_root,
+)
+from gdansk.task import DEFAULT_HOST, DEFAULT_PORT, dev_start_kwargs, run_task, start_task
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Generator, Sequence
+
+    from belgie.dependencies import PackageInstallResult
+    from belgie.tasks import TaskProcess
+
+PYTHON_MIN: Final[tuple[int, int]] = (3, 12)
+PYTHON_MAX: Final[tuple[int, int]] = (3, 15)
+
+
+def _normalize_package_name(name: str) -> str:
+    return name.replace("-", "_")
+
+
+def _template_text(name: str, *, package: str = "my_mcp_server") -> str:
+    raw = resources.files("gdansk._cli_templates").joinpath(name).read_text(encoding="utf-8")
+    return raw.replace("{{PACKAGE}}", package)
+
+
+def _default_init_package(target_dir: Path) -> str:
+    pyproject_path = target_dir / "pyproject.toml"
+    if pyproject_path.is_file():
+        document = read_pyproject_document(target_dir)
+        project = document.get("project")
+        if isinstance(project, dict):
+            name = project.get("name")
+            if isinstance(name, str) and name.strip():
+                return _normalize_package_name(name.strip())
+    return _normalize_package_name("my-mcp-server")
+
+
+def _resolve_init_package(args: argparse.Namespace, target_dir: Path) -> str:
+    if args.package is not None:
+        return args.package
+    return _default_init_package(target_dir)
+
+
+def _eprint(message: str) -> None:
+    print(message, file=sys.stderr)
+
+
+@contextmanager
+def _runtime_errors() -> Generator[None, None, None]:
+    try:
+        yield
+    except BelgieRuntimeError as error:
+        _eprint(str(error))
+        raise SystemExit(1) from error
+
+
+def _format_package_result(action: str, result: PackageInstallResult) -> str:
+    total = sum(result.groups.values())
+    group_summary = ", ".join(f"{name}: {count}" for name, count in result.groups.items())
+    suffix = f" ({group_summary})" if group_summary else ""
+    return f"{action} {total} dependencies{suffix}. Lockfile: {result.lockfile}"
+
+
+def _dependency_groups(*, with_dev: bool) -> list[str]:
+    if with_dev:
+        return ["default", "dev"]
+    return ["default"]
+
+
+def _resolve_task_frontend(
+    project: GdanskProject,
+    frontend: Path | None,
+) -> Path:
+    frontend_path = resolve_frontend_path(project, frontend)
+    validate_frontend_root(frontend_path)
+    return frontend_path
+
+
+def _require_script(project: GdanskProject, script: str) -> None:
+    if script in project.scripts:
+        return
+
+    _eprint(f"No [belgie.scripts] entry '{script}' in {project.root / 'pyproject.toml'}")
+    if project.scripts:
+        _eprint("Available scripts:")
+        for name, command in sorted(project.scripts.items()):
+            print(f"  {name}  {command}", file=sys.stderr)
+    else:
+        _eprint("Run `gdansk scripts` to list configured scripts.")
+    raise SystemExit(1)
+
+
+async def _run_until_signal(coro: Awaitable[TaskProcess]) -> None:
+    process: TaskProcess | None = None
+    stop_event = asyncio.Event()
+    loop = asyncio.get_running_loop()
+
+    def request_stop() -> None:
+        loop.call_soon_threadsafe(stop_event.set)
+
+    signals: list[signal.Signals] = [signal.SIGINT, signal.SIGTERM]
+    if sys.platform == "win32":
+        signals.append(signal.SIGBREAK)
+
+    for sig in signals:
+        try:
+            loop.add_signal_handler(sig, request_stop)
+        except NotImplementedError:
+            signal.signal(sig, lambda _signum, _frame: request_stop())
+
+    try:
+        process = await coro
+        await stop_event.wait()
+    finally:
+        if process is not None:
+            await process.stop()
+
+
+def cmd_install(args: argparse.Namespace) -> None:
+    project = discover_project(project=args.project)
+    with _runtime_errors():
+        result = install_packages(
+            cwd=project.root,
+            groups=_dependency_groups(with_dev=not args.no_dev),
+            lockfile_only=args.lock_only,
+        )
+        print(_format_package_result("Installed", result))
+
+
+def cmd_lock(args: argparse.Namespace) -> None:
+    project = discover_project(project=args.project)
+    with _runtime_errors():
+        result = lock_packages(cwd=project.root, groups=_dependency_groups(with_dev=not args.no_dev))
+        print(_format_package_result("Locked", result))
+
+
+def cmd_update(args: argparse.Namespace) -> None:
+    project = discover_project(project=args.project)
+    with _runtime_errors():
+        result = update_packages(
+            cwd=project.root,
+            packages=args.packages or None,
+            groups=_dependency_groups(with_dev=not args.no_dev),
+            latest=args.latest,
+            lockfile_only=args.lock_only,
+        )
+        for change in result.changes:
+            print(f"{change.name}: {change.previous} -> {change.updated}")
+        print(f"Lockfile: {result.lockfile}")
+
+
+def _run_task_command(
+    args: argparse.Namespace,
+    *,
+    script: str,
+    long_running: bool,
+) -> None:
+    project = discover_project(project=args.project)
+    _require_script(project, script)
+
+    frontend_path = _resolve_task_frontend(project, args.frontend)
+    argv = list(args.task_args)
+
+    with _runtime_errors():
+        if long_running:
+            if script == "dev":
+                dev_params = dev_start_kwargs(
+                    args.host or DEFAULT_HOST,
+                    args.port or DEFAULT_PORT,
+                    argv,
+                )
+                task_coro = start_task(
+                    frontend_path,
+                    script,
+                    argv=dev_params.argv,
+                    host=dev_params.host,
+                    port=dev_params.port,
+                )
+            else:
+                task_coro = start_task(
+                    frontend_path,
+                    script,
+                    argv=argv,
+                    host=getattr(args, "host", None),
+                    port=getattr(args, "port", None),
+                )
+            asyncio.run(_run_until_signal(task_coro))
+        else:
+            asyncio.run(run_task(frontend_path, script, argv=argv))
+
+
+def cmd_build(args: argparse.Namespace) -> None:
+    _run_task_command(args, script="build", long_running=False)
+
+
+def cmd_dev(args: argparse.Namespace) -> None:
+    _run_task_command(args, script="dev", long_running=True)
+
+
+def cmd_run(args: argparse.Namespace) -> None:
+    long_running = args.script == "dev" or args.watch
+    _run_task_command(args, script=args.script, long_running=long_running)
+
+
+def cmd_scripts(args: argparse.Namespace) -> None:
+    project = discover_project(project=args.project)
+    if not project.scripts:
+        _eprint("No [belgie.scripts] entries configured.")
+        raise SystemExit(1)
+
+    width = max(len(name) for name in project.scripts)
+    for name, command in sorted(project.scripts.items()):
+        print(f"{name:<{width}}  {command}")
+
+
+def cmd_doctor(args: argparse.Namespace) -> None:
+    failures: list[str] = []
+    warnings: list[str] = []
+
+    version = sys.version_info
+    if version < PYTHON_MIN or version >= PYTHON_MAX:
+        failures.append(
+            f"Python {version.major}.{version.minor} (requires >={PYTHON_MIN[0]}.{PYTHON_MIN[1]},"
+            f"<{PYTHON_MAX[0]}.{PYTHON_MAX[1]})",
+        )
+    else:
+        print(f"ok   Python {version.major}.{version.minor}.{version.micro}")
+
+    try:
+        project = discover_project(project=args.project)
+    except ProjectError as error:
+        print(f"fail {error}")
+        failures.append(str(error))
+        project = None
+
+    if project is not None:
+        if project.has_dependencies:
+            print(f"ok   [belgie.dependencies] in {project.root / 'pyproject.toml'}")
+        else:
+            message = "No [belgie.dependencies] table found"
+            print(f"fail {message}")
+            failures.append(message)
+
+        try:
+            frontend_path = _resolve_task_frontend(project, args.frontend)
+        except ProjectError as error:
+            print(f"fail {error}")
+            failures.append(str(error))
+            frontend_path = None
+
+        if frontend_path is not None:
+            print(f"ok   frontend root ({frontend_path})")
+            print(f"ok   vite.config.ts and widgets/ in {frontend_path}")
+
+            root_lock = project.root / "deno.lock"
+            if root_lock.is_file():
+                print(f"ok   deno.lock at project root ({root_lock})")
+            else:
+                message = f"deno.lock missing at project root ({root_lock})"
+                print(f"warn {message}")
+                warnings.append(message)
+
+            legacy_lock = frontend_path / "deno.lock"
+            if legacy_lock.is_file() and not root_lock.is_file():
+                message = f"Legacy deno.lock found under frontend ({legacy_lock}); move it to the project root"
+                print(f"warn {message}")
+                warnings.append(message)
+
+            for script_name in ("build", "dev"):
+                if script_name in project.scripts:
+                    print(f"ok   [belgie.scripts].{script_name}")
+                else:
+                    message = f"Missing [belgie.scripts].{script_name}"
+                    print(f"warn {message}")
+                    warnings.append(message)
+
+    for warning in warnings:
+        _eprint(f"warning: {warning}")
+
+    if failures:
+        _eprint(f"doctor: {len(failures)} check(s) failed")
+        raise SystemExit(1)
+
+    if warnings:
+        print(f"doctor: {len(warnings)} warning(s)")
+    else:
+        print("doctor: all checks passed")
+
+
+def _strip_belgie_sections(text: str) -> str:
+    lines = text.splitlines()
+    kept: list[str] = []
+    skipping = False
+
+    for line in lines:
+        if re.match(r"^\[belgie(?:\.[^\]]+)?\]\s*$", line):
+            skipping = True
+            continue
+        if line.startswith("[") and not line.startswith("[belgie"):
+            skipping = False
+        if not skipping:
+            kept.append(line)
+
+    while kept and not kept[-1].strip():
+        kept.pop()
+    return "\n".join(kept) + "\n"
+
+
+def _write_init_pyproject(target: Path, *, package: str, force: bool) -> None:
+    belgie_tables = _template_text("belgie_tables.toml", package=package)
+
+    if target.exists():
+        text = target.read_text(encoding="utf-8")
+        if _belgie_table(tomllib.loads(text)) is not None and not force:
+            msg = f"[belgie] already present in {target}; use --force to replace belgie tables"
+            raise ProjectError(msg)
+        if force:
+            text = _strip_belgie_sections(text)
+        text = text.rstrip() + "\n\n" + belgie_tables
+        target.write_text(text, encoding="utf-8")
+        return
+
+    text = _template_text("pyproject.toml", package=package).rstrip() + "\n\n" + belgie_tables
+    target.write_text(text, encoding="utf-8")
+
+
+def _write_scaffold_file(path: Path, content: str, *, force: bool) -> None:
+    if path.exists() and not force:
+        msg = f"Refusing to overwrite existing file: {path}"
+        raise ProjectError(msg)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+
+
+def cmd_init(args: argparse.Namespace) -> None:
+    target_dir = Path(args.path).resolve()
+    package = _resolve_init_package(args, target_dir)
+    package_root = target_dir / "src" / package
+    main_path = package_root / "__main__.py"
+    views_path = package_root / "views"
+
+    if main_path.exists() and not args.force:
+        msg = f"Refusing to overwrite existing entrypoint: {main_path}"
+        _eprint(msg)
+        raise SystemExit(1)
+
+    if views_path.exists() and any(views_path.iterdir()) and not args.force:
+        msg = f"Refusing to scaffold into non-empty views directory: {views_path}"
+        _eprint(msg)
+        raise SystemExit(1)
+
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        _write_init_pyproject(target_dir / "pyproject.toml", package=package, force=args.force)
+        _write_scaffold_file(
+            package_root / "__init__.py",
+            _template_text("__init__.py", package=package),
+            force=args.force,
+        )
+        _write_scaffold_file(
+            main_path,
+            _template_text("__main__.py", package=package),
+            force=args.force,
+        )
+        _write_scaffold_file(
+            views_path / "vite.config.ts",
+            _template_text("vite.config.ts"),
+            force=args.force,
+        )
+        _write_scaffold_file(
+            views_path / "widgets" / "hello" / "widget.tsx",
+            _template_text("widget.tsx"),
+            force=args.force,
+        )
+    except ProjectError as error:
+        _eprint(str(error))
+        raise SystemExit(1) from error
+
+    project = load_project(target_dir)
+    if not args.no_install:
+        with _runtime_errors():
+            lock_packages(cwd=project.root, groups=_dependency_groups(with_dev=True))
+
+    print(f"Initialized gdansk project in {target_dir}")
+    print("Next steps:")
+    print("  uv run gdansk install")
+    print("  uv run gdansk dev")
+    print(f"  uv run python -m {package}")
+
+
+def _split_task_args(argv: Sequence[str]) -> tuple[list[str], list[str]]:
+    if "--" not in argv:
+        return list(argv), []
+    index = argv.index("--")
+    return list(argv[:index]), list(argv[index + 1 :])
+
+
+def _add_project_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "-C",
+        "--project",
+        type=Path,
+        default=None,
+        help="Project root containing pyproject.toml with [belgie] configuration",
+    )
+
+
+def _add_frontend_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "-F",
+        "--frontend",
+        type=Path,
+        default=None,
+        help="Frontend root (overrides auto-discovered src/<package>/views)",
+    )
+
+
+def _add_dev_runtime_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--host", default=DEFAULT_HOST, help="Dev server host")
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="Dev server port")
+
+
+def _add_optional_runtime_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--host", default=None, help="Optional HTTP host for long-running tasks")
+    parser.add_argument("--port", type=int, default=None, help="Optional HTTP port for long-running tasks")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="gdansk", description="Gdansk project tooling")
+    parser.add_argument("--version", action="version", version=f"gdansk {importlib.metadata.version('gdansk')}")
+
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    install = subparsers.add_parser("install", help="Install [belgie.dependencies]")
+    _add_project_args(install)
+    install.add_argument("--no-dev", action="store_true", help="Skip [belgie.dependencies.dev]")
+    install.add_argument("--lock-only", action="store_true", help="Update deno.lock without caching packages")
+    install.set_defaults(func=cmd_install)
+
+    lock = subparsers.add_parser("lock", help="Update deno.lock without installing packages")
+    _add_project_args(lock)
+    lock.add_argument("--no-dev", action="store_true", help="Skip [belgie.dependencies.dev]")
+    lock.set_defaults(func=cmd_lock)
+
+    update = subparsers.add_parser("update", help="Update [belgie.dependencies]")
+    _add_project_args(update)
+    update.add_argument("packages", nargs="*", help="Optional package names to update")
+    update.add_argument("--no-dev", action="store_true", help="Skip [belgie.dependencies.dev]")
+    update.add_argument("--latest", action="store_true", help="Update to the latest versions")
+    update.add_argument("--lock-only", action="store_true", help="Update lockfile without caching packages")
+    update.set_defaults(func=cmd_update)
+
+    build = subparsers.add_parser("build", help="Run [belgie.scripts].build")
+    _add_project_args(build)
+    _add_frontend_args(build)
+    build.set_defaults(func=cmd_build)
+
+    dev = subparsers.add_parser("dev", help="Run [belgie.scripts].dev")
+    _add_project_args(dev)
+    _add_frontend_args(dev)
+    _add_dev_runtime_args(dev)
+    dev.set_defaults(func=cmd_dev)
+
+    run = subparsers.add_parser("run", help="Run a [belgie.scripts] entry")
+    _add_project_args(run)
+    _add_frontend_args(run)
+    _add_optional_runtime_args(run)
+    run.add_argument("script", help="Script name from [belgie.scripts]")
+    run.add_argument("--watch", action="store_true", help="Keep the task running until interrupted")
+    run.set_defaults(func=cmd_run)
+
+    scripts = subparsers.add_parser("scripts", help="List [belgie.scripts] entries")
+    _add_project_args(scripts)
+    scripts.set_defaults(func=cmd_scripts)
+
+    doctor = subparsers.add_parser("doctor", help="Validate environment and project layout")
+    _add_project_args(doctor)
+    _add_frontend_args(doctor)
+    doctor.set_defaults(func=cmd_doctor)
+
+    init = subparsers.add_parser("init", help="Scaffold a minimal gdansk MCP app")
+    init.add_argument("--path", type=Path, default=Path(), help="Directory to initialize")
+    init.add_argument(
+        "--package",
+        default=None,
+        help="Python package directory name under src/ (default: normalized [project].name)",
+    )
+    init.add_argument("--force", action="store_true", help="Overwrite existing scaffold files")
+    init.add_argument("--no-install", action="store_true", help="Skip post-init lock")
+    init.set_defaults(func=cmd_init)
+
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    cli_argv, task_args = _split_task_args(raw_argv)
+
+    parser = build_parser()
+    args = parser.parse_args(cli_argv)
+    args.task_args = task_args
+
+    try:
+        args.func(args)
+    except ProjectError as error:
+        _eprint(str(error))
+        raise SystemExit(1) from error
+
+
+if __name__ == "__main__":
+    main()

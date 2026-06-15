@@ -26,10 +26,9 @@ Then use:
 ## Compatibility
 
 - Python: `gdansk` currently requires `>=3.12,<3.15`.
-- Frontend package: use an ESM package with `@gdansk/vite`, `vite`, `@vitejs/plugin-react`, `react`, `react-dom`,
-  and `@modelcontextprotocol/ext-apps`.
-- Runtime tooling: gdansk starts the frontend through `uv run deno ...`. If you run frontend package scripts directly,
-  the published `@gdansk/vite` package currently declares Node `>=22`.
+- Frontend dependencies: declare npm and JSR packages in `[belgie.dependencies]` tables in `pyproject.toml`.
+- Runtime tooling: gdansk runs frontend builds through configured frontend scripts. If you run package scripts
+  directly, the published `@gdansk/vite` package currently declares Node `>=22`.
 
 ## Examples
 
@@ -47,16 +46,16 @@ Here's a complete example showing how to build a simple greeting tool with a Rea
 ```text
 my-mcp-server/
 ├── server.py
+├── pyproject.toml
 └── frontend/
-    ├── package.json
     ├── vite.config.ts
     └── widgets/
         └── hello/
             └── widget.tsx
 ```
 
-The `frontend` folder name is only an example. Pass any frontend package root to `Vite(...)`.
-That frontend package owns its own `vite.config.ts`; import `@gdansk/vite` there alongside any framework plugins.
+The `frontend` folder name is only an example. Pass any frontend root to `Vite(...)`.
+That frontend root owns its own `vite.config.ts`; dependencies live in the Python project `pyproject.toml`.
 
 **server.py:**
 
@@ -151,28 +150,6 @@ export default function App() {
 }
 ```
 
-**frontend/package.json:**
-
-```json
-{
-  "name": "my-mcp-frontend",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "@gdansk/vite": "^0.1.0",
-    "@modelcontextprotocol/ext-apps": "^1.5.0",
-    "@vitejs/plugin-react": "^6.0.1",
-    "react": "^19.2.5",
-    "react-dom": "^19.2.5",
-    "vite": "^8.0.8"
-  },
-  "devDependencies": {
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3"
-  }
-}
-```
-
 **frontend/vite.config.ts:**
 
 ```ts
@@ -185,7 +162,7 @@ export default defineConfig({
 });
 ```
 
-`@gdansk/vite` now provides a default `@` alias that points at the frontend package root, so you only need a manual
+`@gdansk/vite` now provides a default `@` alias that points at the frontend root, so you only need a manual
 alias when you want `@` to resolve somewhere else. Use `refresh: true` to trigger full browser reloads when nearby
 Python or Jinja files change during development.
 
@@ -198,7 +175,7 @@ Python or Jinja files change during development.
   Use this when assets are prebuilt (for example in CI) to avoid cold-start build cost.
 
 If you need a non-default build output directory, keep the Vite plugin and Python runtime aligned. Widget sources
-always live under `widgets/` at the frontend package root (`Vite(root=...)` / Vite `root`).
+always live under `widgets/` at the frontend root (`Vite(root=...)` / Vite `root`).
 
 ```python
 ship = Ship(
@@ -252,12 +229,55 @@ export default defineConfig({
 });
 ```
 
-Install the frontend package dependencies from `frontend/` after editing them:
+Install frontend dependencies from the Python project root after editing them:
 
 ```bash
-cd frontend
-uv run deno install
+uv run gdansk install
 ```
+
+## CLI
+
+Gdansk ships a CLI for project setup and frontend tooling:
+
+```bash
+uv run gdansk init
+uv run gdansk install
+uv run gdansk lock
+uv run gdansk update
+uv run gdansk build
+uv run gdansk dev
+uv run gdansk run <script>
+uv run gdansk scripts
+uv run gdansk doctor
+```
+
+The CLI auto-discovers the frontend root at `src/<package>/views`, using `[project.scripts]` entry points to
+identify the Python package. Override that path per command with `--frontend` when needed.
+
+## Frontend Dependencies
+
+Use `[belgie.dependencies]`, grouped dependency tables such as `[belgie.dependencies.dev]`, and `[belgie.scripts]` in
+`pyproject.toml` when frontend builds need npm or JSR packages:
+
+```toml
+[belgie.dependencies]
+react = "^19"
+vite = "8.0.8"
+"@gdansk/vite" = "^0.1.0"
+std_path = "jsr:@std/path@^1"
+
+[belgie.dependencies.dev]
+"@types/react" = "^19"
+
+[belgie.scripts]
+build = "vite build"
+dev = "vite"
+```
+
+Unprefixed values are treated as npm version requirements for the table key, so `react = "^19"` becomes
+`npm:react@^19`. Use `uv run gdansk install`, `uv run gdansk lock`, or `uv run gdansk update` to resolve those
+dependencies and write `deno.lock` next to `pyproject.toml`. Frontend builds and dev servers run the `build` and `dev`
+entries from `[belgie.scripts]`.
 
 Gdansk mounts your default export into `#root` automatically and wraps it with `React.StrictMode`.
 
@@ -293,7 +313,6 @@ Gdansk builds on the shoulders of giants:
   MCP apps
 - **[Rolldown](https://rolldown.rs/)** — Fast JavaScript bundler
 - **[mcp/python-sdk](https://github.com/modelcontextprotocol/python-sdk)** — Python SDK for MCP server development
-- **[Deno](https://deno.com/)** — JavaScript/TypeScript runtime used by the embedded Deno tooling
 
 Special thanks to the Model Context Protocol team at Anthropic for creating the MCP standard and the
 `@modelcontextprotocol/ext-apps` package.

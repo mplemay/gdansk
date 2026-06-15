@@ -1,0 +1,16 @@
+[project]
+name = "my-mcp-server"
+version = "0.1.0"
+requires-python = ">=3.12,<3.15"
+dependencies = [
+    "gdansk",
+    "mcp>=2.0.0a1,<2",
+    "uvicorn",
+]
+
+[project.scripts]
+main = "{{PACKAGE}}.__main__:main"
+
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"

@@ -2,7 +2,7 @@
 
 This is the smallest copyable gdansk example in the repo. It demonstrates:
 
-- one `Ship` instance pointed at a local frontend package
+- one `Ship` instance pointed at a local frontend root
 - one `@ship.widget(...)` tool
 - a React widget calling the MCP tool through `@modelcontextprotocol/ext-apps`
 
@@ -15,11 +15,10 @@ uv sync
 uv run main
 ```
 
-If you change frontend dependencies under `src/get_time/views/`, re-run:
+If you change frontend dependencies in `pyproject.toml`, re-run:
 
 ```bash
-cd src/get_time/views
-uv run deno install
+uv run gdansk install
 ```
 
 For agent-driven setup, prefer `$use-gdansk`.

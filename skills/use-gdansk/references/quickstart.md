@@ -7,8 +7,8 @@ Use this file for a minimal, working gdansk setup before adding complexity.
 ```text
 my-server/
 ├── server.py
+├── pyproject.toml
 └── frontend/
-    ├── package.json
     ├── vite.config.ts
     ├── deno.lock
     └── widgets/
@@ -16,8 +16,8 @@ my-server/
             └── widget.tsx
 ```
 
-The `frontend` directory name is arbitrary: `Vite(...)` accepts any path to the package root (the directory that
-contains `package.json`).
+The `frontend` directory name is arbitrary: `Vite(...)` accepts any path to the frontend root that contains
+`vite.config.ts` and `widgets/`.
 
 ## Minimal Python server
 
@@ -108,31 +108,29 @@ export default function App() {
 }
 ```
 
-## Baseline frontend package.json
+## Baseline pyproject.toml frontend dependencies
 
-`frontend/package.json`
+`pyproject.toml`
 
-```json
-{
-  "name": "gdansk-frontend",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "@gdansk/vite": "^0.1.0",
-    "@modelcontextprotocol/ext-apps": "^1.5.0",
-    "@vitejs/plugin-react": "^6.0.1",
-    "react": "^19.2.5",
-    "react-dom": "^19.2.5",
-    "vite": "^8.0.8"
-  },
-  "devDependencies": {
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3"
-  }
-}
+```toml
+[belgie.dependencies]
+vite = "8.0.8"
+"@gdansk/vite" = "^0.1.0"
+"@modelcontextprotocol/ext-apps" = "^1.5.0"
+"@vitejs/plugin-react" = "6.0.2"
+react = "19.2.6"
+react-dom = "19.2.6"
+
+[belgie.dependencies.dev]
+"@types/react" = "^19.2.14"
+"@types/react-dom" = "^19.2.3"
+
+[belgie.scripts]
+build = "vite build"
+dev = "vite"
 ```
 
-Add a `vite.config.ts` in the same package and import `@gdansk/vite` there alongside any framework plugins:
+Add a `vite.config.ts` in the frontend root and import `@gdansk/vite` there alongside any framework plugins:
 
 `frontend/vite.config.ts`
 
@@ -146,12 +144,12 @@ export default defineConfig({
 });
 ```
 
-`@gdansk/vite` provides a default `@` alias to the frontend package root, so you only need a manual `@` alias if the
+`@gdansk/vite` provides a default `@` alias to the frontend root, so you only need a manual `@` alias if the
 repo wants `@` to resolve somewhere else. `refresh: true` adds Laravel-style full reloads for nearby Python and Jinja
 files during `vite dev`.
 
-If you need a non-default build output directory, keep Python and Vite aligned. Put widget sources in `widgets/` at
-the frontend package root.
+If you need a non-default build output directory, keep Python and Vite aligned. Put widget sources in `widgets/` at the
+frontend root.
 
 ```python
 ship = Ship(
@@ -188,12 +186,11 @@ export default defineConfig({
 });
 ```
 
-After editing dependencies, install from `frontend/` with `uv run deno install` and commit `deno.lock` when it
-changes:
+After editing dependencies, install from the Python project root with `uv run gdansk install` and commit `deno.lock`
+when it changes:
 
 ```bash
-cd frontend
-uv run deno install
+uv run gdansk install
 ```
 
 ## Run commands
@@ -202,7 +199,7 @@ Standard server:
 
 ```bash
 uv sync
-( cd frontend && uv run deno install )
+uv run gdansk install
 uv run python server.py
 ```
 

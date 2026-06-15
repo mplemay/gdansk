@@ -9,13 +9,16 @@ authors = [
 ]
 requires-python = ">=3.12,<3.15"
 dependencies = [
-    "deno>=2.7.12,<3",
-    "mcp>=1.25.1.dev114,<1.26",
+    "belgie>=0.20.0",
+    "mcp==2.0.0a1",
     "minijinja>=2,<3",
     "pydantic>=2.12.5",
     "starlette>=1.0.0",
     "watchfiles>=1.1.1",
 ]
+
+[project.scripts]
+gdansk = "gdansk.cli:main"
 
 [dependency-groups]
 dev = [
@@ -34,10 +37,16 @@ build-backend = "uv_build"
 
 [tool.uv]
 exclude-newer = "7 days"
-exclude-newer-package = { deno = false }
+exclude-newer-package = { belgie = false, mcp = false }
 
-[tool.uv.sources]
-mcp = { git = "https://github.com/modelcontextprotocol/python-sdk.git", rev = "main" }
+[belgie.dependencies.dev]
+oxfmt = "0.53.0"
+oxlint = "1.68.0"
+"oxlint-tsgolint" = "0.23.0"
+
+[belgie.scripts]
+oxfmt = "oxfmt"
+oxlint = "oxlint --fix"
 
 [tool.ruff]
 target-version = "py312"
@@ -53,6 +62,16 @@ select = ["ALL"]
 ]
 "main.py" = ["D"]
 "src/gdansk/**/*.py" = ["D"]
+"src/gdansk/cli.py" = [
+    "D",
+    "T201",   # CLI intentionally writes operational output to stdout
+    "C901",   # doctor aggregates many independent checks
+    "PLR0912",
+    "PLR0915",
+]
+"src/gdansk/_cli_templates/**" = [
+    "INP001", # template snippets are not importable package modules
+]
 "examples/fastapi/main.py" = [
     "INP001", # example entrypoint is intentionally not part of a package
 ]
@@ -70,6 +89,12 @@ select = ["ALL"]
     "S101",    # use of assert (tests typically use assert directly)
     "S106",    # possible hardcoded password (test secrets are fine)
     "SLF001",  # private member accessed
+    "ANN401",  # mock helpers intentionally accept flexible kwargs
+    "ARG001",  # fixtures used only for skip side effects
+    "PT017",   # SystemExit assertions in CLI harness helpers
+    "RUF043",  # pytest match patterns for CLI error messages
+    "TC002",   # pytest imported at runtime in test modules
+    "TC003",   # pathlib imported at runtime in test modules
 ]
 
 [tool.ruff.lint.flake8-quotes]

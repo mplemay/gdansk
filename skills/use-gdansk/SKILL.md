@@ -1,6 +1,6 @@
 ---
 name: use-gdansk
-description: Adoption and implementation guide for using gdansk in any repository. Use when bootstrapping a new gdansk-backed MCP app, adding a `Ship` widget UI, wiring `ship.mcp(app=...)` with `MCPServer`, configuring the frontend package with `@gdansk/vite`, adding metadata or structured output, registering extra `@mcp.tool` tools on the same server, or mounting the MCP app inside FastAPI.
+description: Adoption and implementation guide for using gdansk in any repository. Use when bootstrapping a new gdansk-backed MCP app, adding a `Ship` widget UI, wiring `ship.mcp(app=...)` with `MCPServer`, configuring the frontend root with `@gdansk/vite`, adding metadata or structured output, registering extra `@mcp.tool` tools on the same server, or mounting the MCP app inside FastAPI.
 ---
 
 # Use Gdansk
@@ -15,7 +15,7 @@ Choose one primary path before making edits:
 
 1. Bootstrap gdansk in a new repo:
    - Add the Python dependency.
-   - Create the frontend package root and Vite config.
+   - Create the frontend root and Vite config.
    - Add the first `@ship.widget(...)` tool and widget entry.
 2. Add another widget to an existing repo:
    - Define the tool function.
@@ -31,23 +31,18 @@ If the request is primarily about a broken existing integration, switch to `$deb
 
 ## 2) Establish the repo layout and dependency baseline first
 
-Fail early on missing package structure before writing feature code.
+Fail early on missing project structure before writing feature code.
 
 - Confirm the Python project installs `gdansk` and targets a supported Python version.
-- Confirm the frontend package root exists and contains:
-  - `package.json`
+- Confirm the frontend root exists and contains:
   - `vite.config.ts`
   - `widgets/`
-- Confirm the frontend package is ESM with `"type": "module"`.
-- Confirm `package.json` includes:
-  - `@gdansk/vite`
-  - `vite`
-  - `@vitejs/plugin-react`
-  - `react`
-  - `react-dom`
-  - `@modelcontextprotocol/ext-apps`
-- After changing frontend dependencies, run `uv run deno install` from that package directory and update `deno.lock`
-  when the repo tracks it.
+- Confirm the Python project's `pyproject.toml` includes:
+  - `[project.scripts]` pointing at the application package (CLI resolves `src/<package>/views` automatically)
+  - `[belgie.dependencies]` with `@gdansk/vite`, `vite`, `@vitejs/plugin-react`, `react`, and `react-dom`
+  - `[belgie.scripts]` with at least `build = "vite build"` and `dev = "vite"`
+- After changing frontend dependencies, run `uv run gdansk install` from the Python project root and update
+  `deno.lock` when the repo tracks it.
 
 Use [quickstart.md](references/quickstart.md) for the canonical baseline layout and minimum files.
 Use [adoption-checklist.md](references/adoption-checklist.md) for compatibility and dependency expectations.
@@ -56,23 +51,23 @@ Use [adoption-checklist.md](references/adoption-checklist.md) for compatibility 
 
 Use the public integration points directly:
 
-- Create `ship = Ship(vite=Vite(Path(...)))` with the frontend package root, not the widget directory.
+- Create `ship = Ship(vite=Vite(Path(...)))` with the frontend root, not the widget directory.
 - Register the UI tool with `@ship.widget(path=Path("hello/widget.tsx"), name="hello")`.
-- Keep `path=` relative to `widgets/` inside the frontend package root.
+- Keep `path=` relative to `widgets/` inside the frontend root.
 - Use an `MCPServer` lifespan that enters `async with ship.mcp(app=app, watch=...)`.
-- In the frontend package, import `@gdansk/vite` in `vite.config.ts` and compose it with the framework plugins you
+- In the frontend root, import `@gdansk/vite` in `vite.config.ts` and compose it with the framework plugins you
   need.
-- The Vite plugin now provides a default `@` alias to the frontend package root; only add a manual `@` alias when you
+- The Vite plugin now provides a default `@` alias to the frontend root; only add a manual `@` alias when you
   need a different target.
 - Prefer `gdansk({ refresh: true })` in real app repos so nearby Python or Jinja edits trigger a full browser reload.
 - If you customize the runtime host or port, pass `Vite(Path(...), host=..., port=...)` to `Ship` and use the same
   values in `gdansk(...)`.
 - If you customize the build output directory, keep `Vite(Path(...), build_directory=...)` aligned with
-  `gdansk({ buildDirectory: ... })`. Widget sources always use `widgets/` under the frontend package root.
+  `gdansk({ buildDirectory: ... })`. Widget sources always use `widgets/` under the frontend root.
 - Ensure the widget file default-exports the React component.
 
-Do not use filesystem-absolute paths for widget registration. Do not assume the frontend package directory must be
-named `views`; any directory passed to `Vite(...)` is valid.
+Do not use filesystem-absolute paths for widget registration. Do not assume the frontend directory must be named
+`views`; any directory passed to `Vite(...)` is valid.
 
 ## 4) Apply optional integrations only when requested
 

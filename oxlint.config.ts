@@ -1,9 +1,6 @@
 import { defineConfig } from "oxlint";
 
 export default defineConfig({
-  options: {
-    typeAware: true,
-    typeCheck: true,
-  },
+  ignorePatterns: ["src/gdansk/_cli_templates/**"],
   plugins: ["react", "react-perf", "import"],
 });

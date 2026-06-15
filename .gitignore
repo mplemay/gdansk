@@ -66,6 +66,10 @@ Temporary Items
 
 ### JavaScript / Node (root tooling) ###
 node_modules/
+.gdansk/
+
+### Cursor ###
+.cursor/plans/
 
 ### Python ###
 # Byte-compiled / optimized / DLL files
