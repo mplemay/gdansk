@@ -279,8 +279,8 @@ identify the Python package. Override that path per command with `--frontend` wh
 
 ## Frontend Dependencies
 
-Use `[belgie.dependencies]`, `[belgie.dev-dependencies]`, and `[belgie.scripts]` in `pyproject.toml` when frontend
-builds need npm or JSR packages:
+Use `[belgie.dependencies]`, grouped dependency tables such as `[belgie.dependencies.dev]`, and `[belgie.scripts]` in
+`pyproject.toml` when frontend builds need npm or JSR packages:
 
 ```toml
 [belgie.dependencies]
@@ -289,7 +289,7 @@ vite = "^8"
 "@gdansk/vite" = "file:../../packages/vite"
 std_path = "jsr:@std/path@^1"
 
-[belgie.dev-dependencies]
+[belgie.dependencies.dev]
 "@types/react" = "^19"
 
 [belgie.scripts]

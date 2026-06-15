@@ -19,7 +19,7 @@ from gdansk.metadata import Metadata
 from gdansk.vite import Vite
 
 if TYPE_CHECKING:
-    from belgie._core import TaskProcess
+    from belgie.tasks import TaskProcess
 
     from gdansk.widget import WidgetMeta
 

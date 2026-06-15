@@ -30,8 +30,8 @@ from gdansk.task import DEFAULT_HOST, DEFAULT_PORT, dev_start_kwargs, run_task, 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Generator, Sequence
 
-    from belgie._core import TaskProcess
     from belgie.dependencies import PackageInstallResult
+    from belgie.tasks import TaskProcess
 
 PYTHON_MIN: Final[tuple[int, int]] = (3, 12)
 PYTHON_MAX: Final[tuple[int, int]] = (3, 15)
@@ -78,8 +78,16 @@ def _runtime_errors() -> Generator[None, None, None]:
 
 
 def _format_package_result(action: str, result: PackageInstallResult) -> str:
-    dev_suffix = f" (+{result.dev_dependencies} dev)" if result.dev_dependencies else ""
-    return f"{action} {result.dependencies} dependencies{dev_suffix}. Lockfile: {result.lockfile}"
+    total = sum(result.groups.values())
+    group_summary = ", ".join(f"{name}: {count}" for name, count in result.groups.items())
+    suffix = f" ({group_summary})" if group_summary else ""
+    return f"{action} {total} dependencies{suffix}. Lockfile: {result.lockfile}"
+
+
+def _dependency_groups(*, with_dev: bool) -> list[str]:
+    if with_dev:
+        return ["default", "dev"]
+    return ["default"]
 
 
 def _resolve_project(project: Path | None, start: Path | None = None) -> GdanskProject:
@@ -136,7 +144,7 @@ def cmd_install(args: argparse.Namespace) -> None:
     with _runtime_errors():
         result = install_packages(
             cwd=project.root,
-            include_dev=not args.no_dev,
+            groups=_dependency_groups(with_dev=not args.no_dev),
             lockfile_only=args.lock_only,
         )
         print(_format_package_result("Installed", result))
@@ -145,7 +153,7 @@ def cmd_install(args: argparse.Namespace) -> None:
 def cmd_lock(args: argparse.Namespace) -> None:
     project = _resolve_project(args.project)
     with _runtime_errors():
-        result = lock_packages(cwd=project.root, include_dev=not args.no_dev)
+        result = lock_packages(cwd=project.root, groups=_dependency_groups(with_dev=not args.no_dev))
         print(_format_package_result("Locked", result))
 
 
@@ -155,7 +163,7 @@ def cmd_update(args: argparse.Namespace) -> None:
         result = update_packages(
             cwd=project.root,
             packages=args.packages or None,
-            include_dev=not args.no_dev,
+            groups=_dependency_groups(with_dev=not args.no_dev),
             latest=args.latest,
             lockfile_only=args.lock_only,
         )
@@ -481,19 +489,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     install = subparsers.add_parser("install", help="Install [belgie.dependencies]")
     _add_project_args(install)
-    install.add_argument("--no-dev", action="store_true", help="Skip [belgie.dev-dependencies]")
+    install.add_argument("--no-dev", action="store_true", help="Skip [belgie.dependencies.dev]")
     install.add_argument("--lock-only", action="store_true", help="Update deno.lock without caching packages")
     install.set_defaults(func=cmd_install)
 
     lock = subparsers.add_parser("lock", help="Update deno.lock without installing packages")
     _add_project_args(lock)
-    lock.add_argument("--no-dev", action="store_true", help="Skip [belgie.dev-dependencies]")
+    lock.add_argument("--no-dev", action="store_true", help="Skip [belgie.dependencies.dev]")
     lock.set_defaults(func=cmd_lock)
 
     update = subparsers.add_parser("update", help="Update [belgie.dependencies]")
     _add_project_args(update)
     update.add_argument("packages", nargs="*", help="Optional package names to update")
-    update.add_argument("--no-dev", action="store_true", help="Skip [belgie.dev-dependencies]")
+    update.add_argument("--no-dev", action="store_true", help="Skip [belgie.dependencies.dev]")
     update.add_argument("--latest", action="store_true", help="Update to the latest versions")
     update.add_argument("--lock-only", action="store_true", help="Update lockfile without caching packages")
     update.set_defaults(func=cmd_update)

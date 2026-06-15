@@ -14,7 +14,7 @@ from gdansk.task import DEFAULT_HOST, DEFAULT_PORT, dev_start_kwargs, run_task, 
 from gdansk.utils import join_url
 
 if TYPE_CHECKING:
-    from belgie._core import TaskProcess
+    from belgie.tasks import TaskProcess
 
 type PathType = str | PathLike[str]
 

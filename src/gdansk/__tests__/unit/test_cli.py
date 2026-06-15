@@ -58,7 +58,7 @@ def test_install_dispatches_to_install_packages(
 
     def fake_install_packages(**kwargs: Any) -> SimpleNamespace:
         calls.update(kwargs)
-        return SimpleNamespace(lockfile=str(project_root / "deno.lock"), dependencies=2, dev_dependencies=1)
+        return SimpleNamespace(lockfile=str(project_root / "deno.lock"), groups={"default": 2, "dev": 1})
 
     monkeypatch.setattr("gdansk.cli.install_packages", fake_install_packages)
 
@@ -66,9 +66,9 @@ def test_install_dispatches_to_install_packages(
 
     assert code == 0
     assert calls["cwd"] == project_root
-    assert calls["include_dev"] is True
+    assert calls["groups"] == ["default", "dev"]
     assert calls["lockfile_only"] is False
-    assert "Installed 2 dependencies (+1 dev)" in stdout
+    assert "Installed 3 dependencies (default: 2, dev: 1)" in stdout
 
 
 def test_install_no_dev_flag(
@@ -81,13 +81,13 @@ def test_install_no_dev_flag(
 
     def fake_install_packages(**kwargs: Any) -> SimpleNamespace:
         calls.update(kwargs)
-        return SimpleNamespace(lockfile=str(project_root / "deno.lock"), dependencies=1, dev_dependencies=0)
+        return SimpleNamespace(lockfile=str(project_root / "deno.lock"), groups={"default": 1})
 
     monkeypatch.setattr("gdansk.cli.install_packages", fake_install_packages)
 
     _run_main(["install", "--no-dev"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
-    assert calls["include_dev"] is False
+    assert calls["groups"] == ["default"]
 
 
 def test_lock_dispatches_to_lock_packages(
@@ -100,13 +100,14 @@ def test_lock_dispatches_to_lock_packages(
 
     def fake_lock_packages(**kwargs: Any) -> SimpleNamespace:
         calls.update(kwargs)
-        return SimpleNamespace(lockfile=str(project_root / "deno.lock"), dependencies=1, dev_dependencies=0)
+        return SimpleNamespace(lockfile=str(project_root / "deno.lock"), groups={"default": 1})
 
     monkeypatch.setattr("gdansk.cli.lock_packages", fake_lock_packages)
 
     _run_main(["lock"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
     assert calls["cwd"] == project_root
+    assert calls["groups"] == ["default", "dev"]
 
 
 def test_update_dispatches_packages_and_latest(
@@ -134,6 +135,7 @@ def test_update_dispatches_packages_and_latest(
     )
 
     assert calls["packages"] == ["vite", "react"]
+    assert calls["groups"] == ["default", "dev"]
     assert calls["latest"] is True
 
 
