@@ -3,9 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import importlib.metadata
-import os
 import re
-import shutil
 import signal
 import sys
 import tomllib
@@ -232,20 +230,6 @@ def cmd_scripts(args: argparse.Namespace) -> None:
         print(f"{name:<{width}}  {command}")
 
 
-def _check_deno_available() -> tuple[str, str]:
-    deno_env = os.environ.get("BELGIE_DENO")
-    if deno_env:
-        path = Path(deno_env)
-        if path.is_file():
-            return ("ok", f"configured deno executable ({path})")
-        return ("fail", f"configured deno executable is missing: {path}")
-
-    deno = shutil.which("deno")
-    if deno:
-        return ("ok", f"deno executable ({deno})")
-    return ("fail", "deno executable not found on PATH")
-
-
 def cmd_doctor(args: argparse.Namespace) -> None:
     failures: list[str] = []
     warnings: list[str] = []
@@ -258,11 +242,6 @@ def cmd_doctor(args: argparse.Namespace) -> None:
         )
     else:
         print(f"ok   Python {version.major}.{version.minor}.{version.micro}")
-
-    deno_status, deno_message = _check_deno_available()
-    print(f"{deno_status}  {deno_message}")
-    if deno_status == "fail":
-        failures.append(deno_message)
 
     try:
         project = _resolve_project(args.project)
@@ -414,11 +393,6 @@ def cmd_init(args: argparse.Namespace) -> None:
             force=args.force,
         )
         _write_scaffold_file(
-            views_path / "package.json",
-            _template_text("package.json"),
-            force=args.force,
-        )
-        _write_scaffold_file(
             views_path / "vite.config.ts",
             _template_text("vite.config.ts"),
             force=args.force,
@@ -435,7 +409,7 @@ def cmd_init(args: argparse.Namespace) -> None:
     project = load_project(target_dir)
     if not args.no_install:
         with _runtime_errors():
-            lock_packages(cwd=project.root)
+            lock_packages(cwd=project.root, groups=_dependency_groups(with_dev=True))
 
     print(f"Initialized gdansk project in {target_dir}")
     print("Next steps:")
@@ -467,7 +441,7 @@ def _add_frontend_args(parser: argparse.ArgumentParser) -> None:
         "--frontend",
         type=Path,
         default=None,
-        help="Frontend package root (overrides auto-discovered src/<package>/views)",
+        help="Frontend root (overrides auto-discovered src/<package>/views)",
     )
 
 

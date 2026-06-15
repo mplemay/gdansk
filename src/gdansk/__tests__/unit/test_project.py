@@ -23,7 +23,7 @@ def test_load_project_parses_full_config(tmp_path: Path):
     write_pyproject(
         root,
         scripts={"build": "vite build", "dev": "vite"},
-        dependencies={"vite": "8.0.14", "react": "19.2.6"},
+        dependencies={"vite": "8.0.8", "react": "19.2.6"},
     )
 
     project = load_project(root)
@@ -137,12 +137,10 @@ def test_validate_frontend_root_happy_path(gdansk_project: tuple[Path, Path]):
     assert validate_frontend_root(frontend_root) == []
 
 
-def test_validate_frontend_root_warns_without_package_json(tmp_path: Path):
-    frontend_root = write_frontend_tree(tmp_path, include_package_json=False)
+def test_validate_frontend_root_allows_missing_package_json(tmp_path: Path):
+    frontend_root = write_frontend_tree(tmp_path)
 
-    warnings = validate_frontend_root(frontend_root)
-
-    assert any("package.json" in warning for warning in warnings)
+    assert validate_frontend_root(frontend_root) == []
 
 
 def test_validate_frontend_root_errors_without_vite_config(tmp_path: Path):

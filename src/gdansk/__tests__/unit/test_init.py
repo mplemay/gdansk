@@ -33,9 +33,15 @@ def test_init_creates_scaffold_files(
     capsys: pytest.CaptureFixture[str],
 ):
     target = tmp_path / "new-project"
+    calls: dict[str, object] = {}
+
+    def fake_lock_packages(**kwargs: object) -> SimpleNamespace:
+        calls.update(kwargs)
+        return SimpleNamespace(lockfile=str(target / "deno.lock"), groups={"default": 4, "dev": 2})
+
     monkeypatch.setattr(
         "gdansk.cli.lock_packages",
-        lambda **_kwargs: SimpleNamespace(lockfile=str(target / "deno.lock"), dependencies=4, dev_dependencies=0),
+        fake_lock_packages,
     )
 
     code, stdout, _stderr = _run_init(
@@ -46,9 +52,10 @@ def test_init_creates_scaffold_files(
     )
 
     assert code == 0
+    assert calls == {}
     assert (target / "pyproject.toml").exists()
     assert (target / "src" / "my_mcp_server" / "__main__.py").exists()
-    assert (target / "src" / "my_mcp_server" / "views" / "package.json").exists()
+    assert not (target / "src" / "my_mcp_server" / "views" / "package.json").exists()
     assert (target / "src" / "my_mcp_server" / "views" / "vite.config.ts").exists()
     assert (target / "src" / "my_mcp_server" / "views" / "widgets" / "hello" / "widget.tsx").exists()
     assert "Initialized gdansk project" in stdout
@@ -60,12 +67,21 @@ def test_init_pyproject_contains_belgie_tables(
     capsys: pytest.CaptureFixture[str],
 ):
     target = tmp_path / "new-project"
+    calls: dict[str, object] = {}
+
+    def fake_lock_packages(**kwargs: object) -> SimpleNamespace:
+        calls.update(kwargs)
+        return SimpleNamespace(lockfile=str(target / "deno.lock"), groups={"default": 4, "dev": 2})
+
     monkeypatch.setattr(
         "gdansk.cli.lock_packages",
-        lambda **_kwargs: SimpleNamespace(lockfile=str(target / "deno.lock"), dependencies=4, dev_dependencies=0),
+        fake_lock_packages,
     )
 
-    _run_init(["init", "--path", str(target), "--no-install"], monkeypatch=monkeypatch, cwd=tmp_path, capsys=capsys)
+    _run_init(["init", "--path", str(target)], monkeypatch=monkeypatch, cwd=tmp_path, capsys=capsys)
+
+    assert calls["cwd"] == target
+    assert calls["groups"] == ["default", "dev"]
 
     text = (target / "pyproject.toml").read_text(encoding="utf-8")
     assert "[project]" in text
@@ -247,7 +263,6 @@ def test_templates_are_loadable():
     assert {
         "__main__.py",
         "__init__.py",
-        "package.json",
         "vite.config.ts",
         "widget.tsx",
         "pyproject.toml",

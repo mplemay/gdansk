@@ -32,30 +32,12 @@ def test_doctor_passes_for_valid_project(
 ):
     project_root, _ = gdansk_project
     (project_root / "deno.lock").write_text("{}\n", encoding="utf-8")
-    monkeypatch.setattr("gdansk.cli._check_deno_available", lambda: ("ok", "deno executable (/usr/bin/deno)"))
 
     code, stdout, _stderr = _run_doctor(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
     assert code == 0
     assert "ok   Python" in stdout
     assert "all checks passed" in stdout
-
-
-def test_doctor_fails_when_deno_missing(
-    gdansk_project: tuple[Path, Path],
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-):
-    project_root, _ = gdansk_project
-    monkeypatch.setattr(
-        "gdansk.cli._check_deno_available",
-        lambda: ("fail", "deno executable not found on PATH"),
-    )
-
-    code, _stdout, stderr = _run_doctor(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
-
-    assert code == 1
-    assert "doctor: 1 check(s) failed" in stderr
 
 
 def test_doctor_fails_without_dependencies_table(
@@ -66,7 +48,6 @@ def test_doctor_fails_without_dependencies_table(
     project_root = tmp_path / "project"
     project_root.mkdir()
     write_src_layout_project(project_root, dependencies={})
-    monkeypatch.setattr("gdansk.cli._check_deno_available", lambda: ("ok", "deno executable"))
 
     code, stdout, _stderr = _run_doctor(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
@@ -82,7 +63,6 @@ def test_doctor_fails_without_frontend_layout(
     project_root = tmp_path / "project"
     project_root.mkdir()
     write_pyproject(project_root)
-    monkeypatch.setattr("gdansk.cli._check_deno_available", lambda: ("ok", "deno executable"))
 
     code, stdout, _stderr = _run_doctor(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
@@ -98,7 +78,6 @@ def test_doctor_fails_without_vite_config(
 ):
     project_root, frontend_root = gdansk_project
     (frontend_root / "vite.config.ts").unlink()
-    monkeypatch.setattr("gdansk.cli._check_deno_available", lambda: ("ok", "deno executable"))
 
     code, stdout, _stderr = _run_doctor(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
@@ -113,7 +92,6 @@ def test_doctor_warns_when_root_lock_missing(
     capsys: pytest.CaptureFixture[str],
 ):
     project_root, _ = gdansk_project
-    monkeypatch.setattr("gdansk.cli._check_deno_available", lambda: ("ok", "deno executable"))
 
     code, stdout, stderr = _run_doctor(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
@@ -129,7 +107,6 @@ def test_doctor_warns_about_legacy_frontend_lock(
 ):
     project_root, frontend_root = gdansk_project
     (frontend_root / "deno.lock").write_text("{}\n", encoding="utf-8")
-    monkeypatch.setattr("gdansk.cli._check_deno_available", lambda: ("ok", "deno executable"))
 
     code, stdout, stderr = _run_doctor(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
@@ -146,7 +123,6 @@ def test_doctor_warns_when_scripts_missing(
     project_root = tmp_path / "project"
     project_root.mkdir()
     write_src_layout_project(project_root, scripts={"build": "vite build"})
-    monkeypatch.setattr("gdansk.cli._check_deno_available", lambda: ("ok", "deno executable"))
 
     code, stdout, stderr = _run_doctor(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 

@@ -181,7 +181,4 @@ def validate_frontend_root(path: Path) -> list[str]:
         msg = f"Frontend root is missing widgets/: {path}"
         raise ProjectError(msg)
 
-    if not (path / "package.json").is_file():
-        warnings.append(f"Frontend root is missing package.json: {path}")
-
     return warnings

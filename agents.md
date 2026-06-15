@@ -10,9 +10,11 @@
 - **`deno`:** The typescript / javascript package manager.
   - *Usage:* `uv run deno`
   - *Rules:*
-    - **Never run deno directy (i.e. `deno ...`), always executing it using `uv` (i.e. `uv run deno ...`).**
+    - **Never run deno directly (i.e. `deno ...`), always executing it using `uv` (i.e. `uv run deno ...`).**
     - **Don't use other package managers for javascript / typescript dependencies (ex: `bun`, `npm`, etc.)**
-    - **Always use `package.json` for specifying dependencies and not `deno.json`.**
+    - **Use `[belgie.dependencies]` tables in `pyproject.toml` for app and example frontend dependencies.**
+    - **Don't add `package.json` or `deno.json` files to app/example frontend roots.**
+    - **Keep `package.json` only for separately published JavaScript packages, such as `packages/vite`.**
 
 ## Conventions
 

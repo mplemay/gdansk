@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import shutil
 import signal
 import subprocess
 import sys
 import time
+from json import dumps
 from pathlib import Path
 
 import pytest
@@ -22,17 +22,14 @@ def _invoke(argv: list[str], *, monkeypatch: pytest.MonkeyPatch, cwd: Path) -> i
     return 0
 
 
-@pytest.fixture
-def deno_on_path() -> None:
-    if shutil.which("deno") is None and not __import__("os").environ.get("BELGIE_DENO"):
-        pytest.skip("deno executable is not available")
+def _python_command(source: str) -> str:
+    return f"{dumps(sys.executable)} -c {dumps(source)}"
 
 
 @pytest.mark.integration
 def test_cli_install_writes_root_lockfile(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    deno_on_path: None,
 ):
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -49,7 +46,6 @@ def test_cli_install_writes_root_lockfile(
 def test_cli_lock_is_idempotent(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    deno_on_path: None,
 ):
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -82,7 +78,6 @@ def test_cli_doctor_passes_for_valid_fixture(
 ):
     project_root, _ = gdansk_project
     (project_root / "deno.lock").write_text("{}\n", encoding="utf-8")
-    monkeypatch.setattr("gdansk.cli._check_deno_available", lambda: ("ok", "deno executable"))
     monkeypatch.chdir(project_root)
     try:
         main(["doctor"])
@@ -109,14 +104,13 @@ def test_module_entrypoint_version():
 def test_cli_build_smoke(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    deno_on_path: None,
 ):
     project_root = tmp_path / "project"
     project_root.mkdir()
     write_src_layout_project(
         project_root,
         dependencies={"std_path": "jsr:@std/path@^1"},
-        scripts={"build": "deno eval 'Deno.exit(0)'"},
+        scripts={"build": _python_command("import sys; sys.exit(0)")},
     )
     assert _invoke(["install"], monkeypatch=monkeypatch, cwd=project_root) == 0
     assert _invoke(["build"], monkeypatch=monkeypatch, cwd=project_root) == 0
@@ -126,7 +120,6 @@ def test_cli_build_smoke(
 def test_cli_build_from_nested_frontend_cwd(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    deno_on_path: None,
 ):
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -134,7 +127,7 @@ def test_cli_build_from_nested_frontend_cwd(
         project_root,
         package="example",
         dependencies={"std_path": "jsr:@std/path@^1"},
-        scripts={"build": "deno eval 'Deno.exit(0)'"},
+        scripts={"build": _python_command("import sys; sys.exit(0)")},
     )
 
     assert _invoke(["install"], monkeypatch=monkeypatch, cwd=project_root) == 0
@@ -145,7 +138,6 @@ def test_cli_build_from_nested_frontend_cwd(
 def test_cli_run_watch_smoke(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    deno_on_path: None,
 ):
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -153,8 +145,8 @@ def test_cli_run_watch_smoke(
         project_root,
         dependencies={"std_path": "jsr:@std/path@^1"},
         scripts={
-            "build": "deno eval 'Deno.exit(0)'",
-            "idle": "deno eval 'await new Promise(() => {})'",
+            "build": _python_command("import sys; sys.exit(0)"),
+            "idle": _python_command("import time; time.sleep(60)"),
         },
     )
     assert _invoke(["install"], monkeypatch=monkeypatch, cwd=project_root) == 0

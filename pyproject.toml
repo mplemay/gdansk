@@ -39,6 +39,15 @@ build-backend = "uv_build"
 exclude-newer = "7 days"
 exclude-newer-package = { belgie = false, mcp = false }
 
+[belgie.dependencies.dev]
+oxfmt = "0.53.0"
+oxlint = "1.68.0"
+"oxlint-tsgolint" = "0.23.0"
+
+[belgie.scripts]
+oxfmt = "oxfmt"
+oxlint = "oxlint --fix"
+
 [tool.ruff]
 target-version = "py312"
 line-length = 120

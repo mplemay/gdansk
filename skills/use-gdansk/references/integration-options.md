@@ -71,8 +71,8 @@ export default defineConfig({
 
 - `refresh: true` watches nearby Python and Jinja files and triggers a full browser reload during development.
 - `buildDirectory` changes the frontend output directory and should match `Vite(..., build_directory=...)`.
-- Widget entry files are discovered under `widgets/` relative to the frontend package root.
-- The plugin provides a default `@` alias to the frontend package root.
+- Widget entry files are discovered under `widgets/` relative to the frontend root.
+- The plugin provides a default `@` alias to the frontend root.
 
 Example:
 
@@ -164,11 +164,10 @@ The default production output is:
 
 ## Styling and Tailwind
 
-Style widgets with normal frontend tooling in the frontend package (for example PostCSS, Tailwind, or component
+Style widgets with normal frontend tooling in the frontend root (for example PostCSS, Tailwind, or component
 libraries). Put Vite-specific setup in `vite.config.ts`, import `@gdansk/vite` there, and keep framework plugins in
 that same file. Declare dependencies in `pyproject.toml` under `[belgie.dependencies]`, run `uv run gdansk install`
-from the Python project root,
-and commit `deno.lock` when it changes.
+from the Python project root, and commit `deno.lock` when it changes.
 
 ## Decision matrix
 

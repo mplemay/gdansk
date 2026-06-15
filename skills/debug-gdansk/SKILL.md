@@ -31,20 +31,20 @@ If the repo does not have gdansk wired yet and the task is mainly setup, switch 
 
 Start with structure and contract checks:
 
-- Confirm `Vite(...)` points at the frontend package root.
-- Confirm the frontend package contains `package.json`, `vite.config.ts`, and `widgets/`.
+- Confirm `Vite(...)` points at the frontend root.
+- Confirm the frontend root contains `vite.config.ts` and `widgets/`.
 - Confirm the widget file exists at `widgets/**/widget.tsx` or `widget.jsx`.
 - Confirm `@ship.widget(path=...)` uses a path relative to `widgets/`.
 - Confirm the widget default-exports the React component.
-- Confirm the frontend package declares `@gdansk/vite`, `vite`, `@vitejs/plugin-react`, `react`, `react-dom`, and
-  `@modelcontextprotocol/ext-apps`.
+- Confirm the Python project's `pyproject.toml` declares `@gdansk/vite`, `vite`, `@vitejs/plugin-react`, `react`,
+  `react-dom`, and `@modelcontextprotocol/ext-apps` in `[belgie.dependencies]`.
 
 Use [path-contract.md](references/path-contract.md) for accepted and rejected widget path inputs.
 
 ## 3) Match the failure to the smallest likely fix
 
 - For validation errors, fix the path or duplicate registration directly.
-- For build and startup failures, inspect `vite.config.ts`, package dependencies, and bundle outputs under `dist/`.
+- For build and startup failures, inspect `vite.config.ts`, belgie dependencies, and bundle outputs under `dist/`.
 - For runtime host or port issues, keep `Vite(Path(...), host=..., port=...)` on `Ship(vite=...)` and
   `gdansk({ host, port })` aligned.
 - For build output directory mismatches, keep `Vite(Path(...), build_directory=...)` and

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from json import dumps
 from typing import TYPE_CHECKING
 
 import pytest
@@ -30,19 +31,19 @@ def write_pyproject(
         entry_scripts = project_scripts if project_scripts is not None else {"main": "example.__main__:main"}
         if entry_scripts:
             lines.append("[project.scripts]")
-            lines.extend(f'{name} = "{target}"' for name, target in entry_scripts.items())
+            lines.extend(f"{dumps(name)} = {dumps(target)}" for name, target in entry_scripts.items())
             lines.append("")
 
-    deps = dependencies if dependencies is not None else {"vite": "8.0.14"}
+    deps = dependencies if dependencies is not None else {"vite": "8.0.8"}
     if deps:
         lines.append("[belgie.dependencies]")
-        lines.extend(f'{name} = "{value}"' for name, value in deps.items())
+        lines.extend(f"{dumps(name)} = {dumps(value)}" for name, value in deps.items())
         lines.append("")
 
     script_map = scripts if scripts is not None else {"build": "vite build", "dev": "vite"}
     if script_map:
         lines.append("[belgie.scripts]")
-        lines.extend(f'{name} = "{command}"' for name, command in script_map.items())
+        lines.extend(f"{dumps(name)} = {dumps(command)}" for name, command in script_map.items())
         lines.append("")
 
     path = root / "pyproject.toml"
@@ -55,7 +56,7 @@ def write_frontend_tree(
     root: Path,
     name: str = "frontend",
     *,
-    include_package_json: bool = True,
+    include_package_json: bool = False,
 ) -> Path:
     frontend = root / name
     (frontend / "widgets" / "hello").mkdir(parents=True, exist_ok=True)
@@ -79,7 +80,7 @@ def write_src_layout_project(
     scripts: dict[str, str] | None = None,
     dependencies: dict[str, str] | None = None,
     project_name: str = "example",
-    include_package_json: bool = True,
+    include_package_json: bool = False,
 ) -> tuple[Path, Path]:
     write_pyproject(
         root,
