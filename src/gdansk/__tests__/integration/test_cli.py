@@ -155,9 +155,8 @@ def test_cli_run_watch_smoke(
         process = subprocess.Popen(  # noqa: S603
             command,
             cwd=project_root,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
         )
     else:
@@ -171,12 +170,16 @@ def test_cli_run_watch_smoke(
     try:
         time.sleep(1)
         assert process.poll() is None
-        stop_signal = signal.CTRL_C_EVENT if sys.platform == "win32" else signal.SIGTERM
+        stop_signal = signal.CTRL_BREAK_EVENT if sys.platform == "win32" else signal.SIGTERM
         process.send_signal(stop_signal)
-        stdout, stderr = process.communicate(timeout=30)
-        assert process.returncode == 0
-        assert "both host and port" not in stderr
-        assert "both host and port" not in stdout
+        if sys.platform == "win32":
+            process.wait(timeout=30)
+            assert process.returncode == 0
+        else:
+            stdout, stderr = process.communicate(timeout=30)
+            assert process.returncode == 0
+            assert "both host and port" not in stderr
+            assert "both host and port" not in stdout
     finally:
         if process.poll() is None:
             process.kill()

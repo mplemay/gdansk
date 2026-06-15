@@ -119,9 +119,13 @@ async def _run_until_signal(coro: Awaitable[TaskProcess]) -> None:
     loop = asyncio.get_running_loop()
 
     def request_stop() -> None:
-        stop_event.set()
+        loop.call_soon_threadsafe(stop_event.set)
 
-    for sig in (signal.SIGINT, signal.SIGTERM):
+    signals: list[signal.Signals] = [signal.SIGINT, signal.SIGTERM]
+    if sys.platform == "win32":
+        signals.append(signal.SIGBREAK)
+
+    for sig in signals:
         try:
             loop.add_signal_handler(sig, request_stop)
         except NotImplementedError:
