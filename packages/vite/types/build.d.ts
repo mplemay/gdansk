@@ -1,5 +1,6 @@
 import type { UserConfig } from "vite";
 import type { GdanskManifest, GdanskPreparedProject, LoadedProjectConfig, ResolvedGdanskOptions } from "./types";
+export declare const GDANSK_MANIFEST_FILENAME = "gdansk-manifest.json";
 export declare function createBuildConfig(options: ResolvedGdanskOptions, prepared: GdanskPreparedProject): UserConfig;
 export declare function buildWidgets(options: ResolvedGdanskOptions, prepared: GdanskPreparedProject, config?: LoadedProjectConfig): Promise<GdanskManifest>;
 export declare function readManifest(path: string): Promise<GdanskManifest>;

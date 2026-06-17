@@ -30,12 +30,14 @@ export interface WidgetDefinition {
   widgetPath: string;
 }
 
+export type InlineWidgetBundle = {
+  script: string;
+  styles: string[];
+};
+
 export interface ManifestWidget {
   entry: string;
-  inline: {
-    script: string;
-    styles: string[];
-  };
+  inline: InlineWidgetBundle;
 }
 
 export interface GdanskManifest {

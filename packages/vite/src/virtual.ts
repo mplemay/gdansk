@@ -1,7 +1,8 @@
-import { dirname, relative, resolve, sep } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 
 import type { Plugin } from "vite";
 
+import { toPosixPath } from "./context";
 import type { GdanskPreparedProject, ResolvedGdanskOptions, WidgetDefinition } from "./types";
 
 export const GDANSK_DEV_CLIENT_PREFIX = "/@gdansk/client";
@@ -128,8 +129,4 @@ function getSyntheticImporterPath(
 ): string | null {
   const widget = findWidgetByResolvedId(prepared.widgets, importer);
   return widget ? getSyntheticClientPath(options, widget.key) : null;
-}
-
-function toPosixPath(path: string): string {
-  return path.split(sep).join("/");
 }

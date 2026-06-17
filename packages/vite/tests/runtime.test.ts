@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import react from "@vitejs/plugin-react";
@@ -23,7 +23,7 @@ vi.mock("vite", async (importOriginal) => {
 });
 
 import gdansk from "../src";
-import { resolveOptions } from "../src/context";
+import { pathExists, resolveOptions } from "../src/context";
 import { normalizeRefreshConfig, resolveRefreshPaths } from "../src/development";
 import { createGdanskRuntime } from "../src/runtime";
 
@@ -267,35 +267,6 @@ describe("@gdansk/vite", () => {
     expect(manifest.widgets.hello.entry).toBe("hello/widget.tsx");
     expect(manifest.widgets.hello.inline.script).toContain("Hello production");
     expect(manifest.widgets.hello.inline.script).toContain("from plugin");
-    expect(manifest.widgets.hello.inline.styles.join("\n")).toContain(".hello");
-    expect(manifest.widgets["nested/page"].entry).toBe("nested/page/widget.tsx");
-    await expect(pathExists(`${root}/dist-src`)).resolves.toBe(false);
-    await expect(pathExists(`${root}/__gdansk_virtual__`)).resolves.toBe(false);
-
-    await runtime.close();
-  }, 15_000);
-
-  it("builds a manifest when one does not exist yet", async () => {
-    const root = await createFixture({ withLocalPlugin: true });
-    const runtime = await createGdanskRuntime({ root, port: 0 });
-    const manifest = await runtime.loadOrBuildManifest();
-
-    expect(Object.keys(manifest.widgets)).toEqual(["hello", "nested/page"]);
-    expect(await listRelativeFiles(`${root}/dist`)).toEqual(["gdansk-manifest.json"]);
-    expect(manifest.widgets.hello.inline.script).toContain("Hello production");
-    await runtime.close();
-  }, 15_000);
-
-  it("writes inline production payloads to the gdansk manifest", async () => {
-    const root = await createFixture({ withLocalPlugin: true });
-    const runtime = await createGdanskRuntime({ root, port: 0 });
-    expect(runtime.manifestPath).toBe(`${root}/dist/gdansk-manifest.json`);
-
-    const manifest = await runtime.build();
-
-    expect(Object.keys(manifest.widgets)).toEqual(["hello", "nested/page"]);
-    expect(await listRelativeFiles(`${root}/dist`)).toEqual(["gdansk-manifest.json"]);
-    expect(manifest.widgets.hello.entry).toBe("hello/widget.tsx");
     expect(manifest.widgets.hello.inline).toEqual({
       script: expect.stringContaining("Hello production"),
       styles: [expect.stringContaining(".hello")],
@@ -310,6 +281,17 @@ describe("@gdansk/vite", () => {
     await expect(pathExists(`${root}/dist-src`)).resolves.toBe(false);
     await expect(pathExists(`${root}/__gdansk_virtual__`)).resolves.toBe(false);
 
+    await runtime.close();
+  }, 15_000);
+
+  it("builds a manifest when one does not exist yet", async () => {
+    const root = await createFixture({ withLocalPlugin: true });
+    const runtime = await createGdanskRuntime({ root, port: 0 });
+    const manifest = await runtime.loadOrBuildManifest();
+
+    expect(Object.keys(manifest.widgets)).toEqual(["hello", "nested/page"]);
+    expect(await listRelativeFiles(`${root}/dist`)).toEqual(["gdansk-manifest.json"]);
+    expect(manifest.widgets.hello.inline.script).toContain("Hello production");
     await runtime.close();
   }, 15_000);
 
@@ -566,15 +548,6 @@ async function createFixture(options: {
   }
 
   return root;
-}
-
-async function pathExists(path: string): Promise<boolean> {
-  try {
-    await stat(path);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 async function findMatchingFiles(root: string, pattern: RegExp): Promise<string[]> {

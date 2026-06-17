@@ -7,14 +7,16 @@ import type { UserConfig } from "vite";
 import type {
   GdanskManifest,
   GdanskPreparedProject,
+  InlineWidgetBundle,
   LoadedProjectConfig,
   ResolvedGdanskOptions,
   WidgetDefinition,
 } from "./types";
 import { createGdanskVirtualModulesPlugin } from "./virtual";
 
-const GDANSK_MANIFEST_FILE = "gdansk-manifest.json";
+export const GDANSK_MANIFEST_FILENAME = "gdansk-manifest.json";
 const MAX_INLINE_ASSET_SIZE = Number.MAX_SAFE_INTEGER;
+const TEXT_DECODER = new TextDecoder();
 
 type AssetSource = string | Uint8Array;
 
@@ -45,11 +47,6 @@ type InlineBuildOutput = {
   output: InlineBuildArtifact[];
 };
 
-type InlineWidgetBundle = {
-  script: string;
-  styles: string[];
-};
-
 type WidgetBuildFunction = (widget: WidgetDefinition, index: number) => Promise<InlineBuildOutput[]>;
 
 export function createBuildConfig(options: ResolvedGdanskOptions, prepared: GdanskPreparedProject): UserConfig {
@@ -59,9 +56,10 @@ export function createBuildConfig(options: ResolvedGdanskOptions, prepared: Gdan
       sharedPlugins: true,
       async buildApp(builder) {
         await writeInlineManifestFromWidgetBuilds(options, prepared.widgets, async (_widget, index) => {
-          const environment = builder.environments[widgetEnvironmentName(index)];
+          const envName = widgetEnvironmentName(index);
+          const environment = builder.environments[envName];
           if (!environment) {
-            throw new Error(`Gdansk build environment "${widgetEnvironmentName(index)}" was not configured.`);
+            throw new Error(`Gdansk build environment "${envName}" was not configured.`);
           }
 
           return normalizeBuildOutputs(await builder.build(environment));
@@ -149,27 +147,22 @@ async function writeInlineManifestFromWidgetBuilds(
   await rm(options.buildDirectoryPath, { force: true, recursive: true });
   await mkdir(options.buildDirectoryPath, { recursive: true });
 
-  const bundles = new Map<string, InlineWidgetBundle>();
+  const manifestWidgets: GdanskManifest["widgets"] = {};
 
   for (const [index, widget] of widgets.entries()) {
-    bundles.set(widget.key, extractInlineWidgetBundle(widget, await buildWidget(widget, index)));
+    manifestWidgets[widget.key] = {
+      entry: widget.widgetPath,
+      inline: extractInlineWidgetBundle(widget, await buildWidget(widget, index)),
+    };
   }
 
   const manifest: GdanskManifest = {
     outDir: options.buildDirectory,
     root: options.root,
-    widgets: Object.fromEntries(
-      widgets.map((widget) => [
-        widget.key,
-        {
-          entry: widget.widgetPath,
-          inline: requireInlineBundle(widget, bundles),
-        },
-      ]),
-    ),
+    widgets: manifestWidgets,
   };
 
-  await writeJson(resolve(options.buildDirectoryPath, GDANSK_MANIFEST_FILE), manifest);
+  await writeJson(resolve(options.buildDirectoryPath, GDANSK_MANIFEST_FILENAME), manifest);
 
   return manifest;
 }
@@ -244,18 +237,6 @@ function collectInlineStyles(
   });
 }
 
-function requireInlineBundle(
-  widget: WidgetDefinition,
-  bundles: ReadonlyMap<string, InlineWidgetBundle>,
-): InlineWidgetBundle {
-  const bundle = bundles.get(widget.key);
-  if (!bundle) {
-    throw new Error(`Gdansk did not build an inline bundle for widget "${widget.key}".`);
-  }
-
-  return bundle;
-}
-
 function normalizeBuildOutputs(result: unknown): InlineBuildOutput[] {
   if (Array.isArray(result)) {
     return result.map(assertBuildOutput);
@@ -293,10 +274,10 @@ function assetSourceToString(source: AssetSource): string {
     return source;
   }
 
-  return new TextDecoder().decode(source);
+  return TEXT_DECODER.decode(source);
 }
 
 async function writeJson(path: string, value: unknown): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${JSON.stringify(value, null, 2)}\n`);
+  await writeFile(path, `${JSON.stringify(value)}\n`);
 }

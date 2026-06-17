@@ -245,9 +245,13 @@ class Ship:
         return decorator
 
 
+def _escape_inline_closing_tag(value: str, pattern: Pattern[str], replacement: str) -> str:
+    return pattern.sub(replacement, value)
+
+
 def _escape_inline_script(value: str) -> str:
-    return INLINE_SCRIPT_END_TAG_PATTERN.sub("<\\/script", value)
+    return _escape_inline_closing_tag(value, INLINE_SCRIPT_END_TAG_PATTERN, "<\\/script")
 
 
 def _escape_inline_style(value: str) -> str:
-    return INLINE_STYLE_END_TAG_PATTERN.sub("<\\/style", value)
+    return _escape_inline_closing_tag(value, INLINE_STYLE_END_TAG_PATTERN, "<\\/style")

@@ -46,6 +46,7 @@ def write_manifest(
     script: str = 'console.log("hello");\n',
     styles: list[str] | None = None,
 ) -> None:
+    resolved_styles = styles if styles is not None else [".hello { color: red; }\n"]
     out_dir = manifest_out_dir or assets_dir
     manifest: dict[str, Any] = {
         "outDir": out_dir,
@@ -55,7 +56,7 @@ def write_manifest(
                 "entry": "hello/widget.tsx",
                 "inline": {
                     "script": script,
-                    "styles": styles if styles is not None else [".hello { color: red; }\n"],
+                    "styles": resolved_styles,
                 },
             },
         },
