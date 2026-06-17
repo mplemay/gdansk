@@ -78,7 +78,7 @@ def test_doctor_warns_when_root_lock_missing(
     code, stdout, stderr = run_cli(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
     assert code == 0
-    assert "warn deno.lock missing" in stdout
+    assert "warn belgie lockfile (deno.lock) missing" in stdout
     assert "warning:" in stderr
 
 
@@ -93,7 +93,7 @@ def test_doctor_warns_about_legacy_frontend_lock(
     code, stdout, stderr = run_cli(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
     assert code == 0
-    assert "Legacy deno.lock" in stdout
+    assert "Legacy belgie lockfile (deno.lock)" in stdout
     assert "warning:" in stderr
 
 

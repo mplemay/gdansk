@@ -2,7 +2,7 @@
 name = "get-time"
 version = "0.1.0"
 description = "Add your description here"
-readme = "README.md"
+readme = "readme.md"
 authors = [
     { name = "Matt LeMay", email = "mplemay@users.noreply.github.com" }
 ]

@@ -2,13 +2,15 @@
 
 This file defines the strict `path` contract for `@ship.widget(...)`.
 
+For Incorrect/Correct pairs aimed at agents, see [rules/path-contract.md](../rules/path-contract.md).
+
 ## Core rules
 
 1. Pass a relative path only.
 2. Do not include traversal segments (`.` or `..`).
 3. Do not prefix with `widgets/` in decorator input.
 4. The path must end with `widget.tsx` or `widget.jsx`.
-5. Ensure the target file exists under `<frontend-package>/widgets/` relative to the `Ship` views root.
+5. Ensure the target file exists under `<frontend-root>/widgets/` relative to the `Vite(...)` root passed to `Ship`.
 
 ## Contract table
 
