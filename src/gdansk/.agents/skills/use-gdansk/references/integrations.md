@@ -175,7 +175,6 @@ async def lifespan(_: object) -> AsyncIterator[None]:
 
 
 app = FastAPI(lifespan=lifespan)
-app.mount(path=ship.assets_path, app=ship.assets)
 app.mount(path="/mcp", app=mcp_app)
 ```
 
@@ -202,8 +201,8 @@ async def mcp_lifespan(app: MCPServer) -> AsyncIterator[None]:
         yield
 ```
 
-`gdansk` production widgets expect hydration assets at `ship.assets_path`. With the default build directory, mount
-`ship.assets` at `/dist`.
+`gdansk` production widgets render inline JS and CSS in the `ui://` HTML resource, so FastAPI only needs to mount the
+MCP app.
 
 ## Styling and Tailwind
 

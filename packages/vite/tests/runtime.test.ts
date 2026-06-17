@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import react from "@vitejs/plugin-react";
@@ -23,7 +23,7 @@ vi.mock("vite", async (importOriginal) => {
 });
 
 import gdansk from "../src";
-import { resolveOptions } from "../src/context";
+import { pathExists, resolveOptions } from "../src/context";
 import { normalizeRefreshConfig, resolveRefreshPaths } from "../src/development";
 import { createGdanskRuntime } from "../src/runtime";
 
@@ -255,7 +255,7 @@ describe("@gdansk/vite", () => {
     );
   });
 
-  it("builds production client artifacts by default", async () => {
+  it("builds inline production widgets by default", async () => {
     const root = await createFixture({ withLocalPlugin: true });
     const runtime = await createGdanskRuntime({ root, port: 0 });
     expect(runtime.manifestPath).toBe(`${root}/dist/gdansk-manifest.json`);
@@ -263,15 +263,21 @@ describe("@gdansk/vite", () => {
     const manifest = await runtime.build();
 
     expect(Object.keys(manifest.widgets)).toEqual(["hello", "nested/page"]);
-    await expect(pathExists(`${root}/dist/manifest.json`)).resolves.toBe(true);
-    await expect(pathExists(`${root}/dist/gdansk-manifest.json`)).resolves.toBe(true);
-    await expect(pathExists(`${root}/dist/hello/client.js`)).resolves.toBe(true);
-    await expect(pathExists(`${root}/dist/hello/client.css`)).resolves.toBe(true);
-    await expect(pathExists(`${root}/dist/nested/page/client.js`)).resolves.toBe(true);
-    await expect(pathExists(`${root}/dist/render.js`)).resolves.toBe(false);
-    await expect(pathExists(`${root}/dist/server.js`)).resolves.toBe(false);
-    expect(await findMatchingFiles(`${root}/dist/assets`, /\.js$/)).not.toHaveLength(0);
-    expect(manifest.widgets.hello.client).toBe("dist/hello/client.js");
+    expect(await listRelativeFiles(`${root}/dist`)).toEqual(["gdansk-manifest.json"]);
+    expect(manifest.widgets.hello.entry).toBe("hello/widget.tsx");
+    expect(manifest.widgets.hello.inline.script).toContain("Hello production");
+    expect(manifest.widgets.hello.inline.script).toContain("from plugin");
+    expect(manifest.widgets.hello.inline).toEqual({
+      script: expect.stringContaining("Hello production"),
+      styles: [expect.stringContaining(".hello")],
+    });
+    expect(manifest.widgets["nested/page"]).toEqual({
+      entry: "nested/page/widget.tsx",
+      inline: {
+        script: expect.stringContaining("Nested widget"),
+        styles: [],
+      },
+    });
     await expect(pathExists(`${root}/dist-src`)).resolves.toBe(false);
     await expect(pathExists(`${root}/__gdansk_virtual__`)).resolves.toBe(false);
 
@@ -284,69 +290,63 @@ describe("@gdansk/vite", () => {
     const manifest = await runtime.loadOrBuildManifest();
 
     expect(Object.keys(manifest.widgets)).toEqual(["hello", "nested/page"]);
-    await expect(pathExists(`${root}/dist/hello/client.js`)).resolves.toBe(true);
-    await expect(pathExists(`${root}/dist/render.js`)).resolves.toBe(false);
-    await expect(pathExists(`${root}/dist/server.js`)).resolves.toBe(false);
+    expect(await listRelativeFiles(`${root}/dist`)).toEqual(["gdansk-manifest.json"]);
+    expect(manifest.widgets.hello.inline.script).toContain("Hello production");
     await runtime.close();
   }, 15_000);
 
-  it("writes manifest paths for static production assets", async () => {
-    const root = await createFixture({ withLocalPlugin: true });
+  it("inlines imported CSS asset URLs", async () => {
+    const root = await createFixture({ withCssAsset: true, withLocalPlugin: false });
     const runtime = await createGdanskRuntime({ root, port: 0 });
-    expect(runtime.manifestPath).toBe(`${root}/dist/gdansk-manifest.json`);
 
     const manifest = await runtime.build();
 
-    expect(Object.keys(manifest.widgets)).toEqual(["hello", "nested/page"]);
-    await expect(pathExists(`${root}/dist/manifest.json`)).resolves.toBe(true);
-    await expect(pathExists(`${root}/dist/gdansk-manifest.json`)).resolves.toBe(true);
-    await expect(pathExists(`${root}/dist/hello/client.js`)).resolves.toBe(true);
-    await expect(pathExists(`${root}/dist/hello/client.css`)).resolves.toBe(true);
-    await expect(pathExists(`${root}/dist/nested/page/client.js`)).resolves.toBe(true);
-    await expect(pathExists(`${root}/dist/render.js`)).resolves.toBe(false);
-    await expect(pathExists(`${root}/dist/server.js`)).resolves.toBe(false);
-    expect(await findMatchingFiles(`${root}/dist/assets`, /\.js$/)).not.toHaveLength(0);
-    expect(manifest.widgets.hello).toEqual({
-      client: "dist/hello/client.js",
-      css: ["dist/hello/client.css"],
-      entry: "hello/widget.tsx",
-    });
-    expect(manifest.widgets["nested/page"].client).toBe("dist/nested/page/client.js");
-    await expect(pathExists(`${root}/dist-src`)).resolves.toBe(false);
-    await expect(pathExists(`${root}/__gdansk_virtual__`)).resolves.toBe(false);
+    expect(manifest.widgets.hello.inline.styles).toEqual([expect.stringContaining("data:image/svg+xml")]);
+    expect(await listRelativeFiles(`${root}/dist`)).toEqual(["gdansk-manifest.json"]);
 
     await runtime.close();
   }, 15_000);
 
-  it("copies shared transitive CSS into each widget manifest entry", async () => {
+  it("inlines dynamic imports into the production script", async () => {
+    const root = await createFixture({ withDynamicImport: true, withLocalPlugin: false });
+    const runtime = await createGdanskRuntime({ root, port: 0 });
+
+    const manifest = await runtime.build();
+
+    expect(manifest.widgets.hello.inline.script).toContain("from dynamic import");
+    expect(manifest.widgets.hello.inline.script).not.toContain("dynamic-message");
+    expect(await findMatchingFiles(`${root}/dist`, /\.js$/)).toHaveLength(0);
+
+    await runtime.close();
+  }, 15_000);
+
+  it("duplicates shared transitive CSS into each widget manifest entry", async () => {
     const root = await createFixture({ withLocalPlugin: false, withSharedCss: true });
     const runtime = await createGdanskRuntime({ root, port: 0 });
 
     const manifest = await runtime.build();
 
-    expect(manifest.widgets.hello.css).toEqual(["dist/hello/client.css"]);
-    expect(manifest.widgets["nested/page"].css).toEqual(["dist/nested/page/client.css"]);
-    await expect(pathExists(`${root}/dist/hello/client.css`)).resolves.toBe(true);
-    await expect(pathExists(`${root}/dist/nested/page/client.css`)).resolves.toBe(true);
-    expect(await findMatchingFiles(`${root}/dist/assets`, /\.css$/)).not.toHaveLength(0);
+    expect(manifest.widgets.hello.inline.styles).toEqual([expect.stringContaining(".shared")]);
+    expect(manifest.widgets["nested/page"].inline.styles).toEqual([expect.stringContaining(".shared")]);
+    expect(manifest.widgets.hello.inline.styles).toEqual(manifest.widgets["nested/page"].inline.styles);
+    expect(await findMatchingFiles(`${root}/dist`, /\.css$/)).toHaveLength(0);
 
     await runtime.close();
   }, 15_000);
 
-  it("bundles widget dependencies into the production client output", async () => {
+  it("bundles widget dependencies into the inline production script", async () => {
     const root = await createFixture({ withLocalCommonjsDependency: true, withLocalPlugin: false });
     const runtime = await createGdanskRuntime({ root, port: 0 });
 
-    await runtime.build();
+    const manifest = await runtime.build();
 
-    const jsOutputs = await readMatchingFiles(`${root}/dist`, /\.js$/);
-    expect(jsOutputs.join("\n")).not.toContain(`"${RENDER_DEPENDENCY_NAME}"`);
-    expect(jsOutputs.join("\n")).not.toContain(`'${RENDER_DEPENDENCY_NAME}'`);
-    expect(jsOutputs.join("\n")).toContain("from cjs dependency");
+    const script = manifest.widgets.hello.inline.script;
+    expect(script).not.toContain(`"${RENDER_DEPENDENCY_NAME}"`);
+    expect(script).not.toContain(`'${RENDER_DEPENDENCY_NAME}'`);
+    expect(script).toContain("from cjs dependency");
 
     await runtime.close();
   }, 15_000);
-
   it("starts a dev runtime on a single Vite origin", async () => {
     const root = await createFixture({ withLocalPlugin: true });
     const runtime = await createGdanskRuntime({ root, port: 0 });
@@ -399,6 +399,8 @@ describe("@gdansk/vite", () => {
 });
 
 async function createFixture(options: {
+  withCssAsset?: boolean;
+  withDynamicImport?: boolean;
   withLocalCommonjsDependency?: boolean;
   withLocalPlugin: boolean;
   withSharedCss?: boolean;
@@ -445,7 +447,13 @@ async function createFixture(options: {
   if (options.withSharedCss) {
     await writeFile(`${root}/widgets/shared/global.css`, ".shared { color: blue; }\n");
   } else {
-    await writeFile(`${root}/widgets/hello/global.css`, ".hello { color: red; }\n");
+    await writeFile(
+      `${root}/widgets/hello/global.css`,
+      options.withCssAsset ? '.hello { background-image: url("./dot.svg"); }\n' : ".hello { color: red; }\n",
+    );
+  }
+  if (options.withCssAsset) {
+    await writeFile(`${root}/widgets/hello/dot.svg`, '<svg xmlns="http://www.w3.org/2000/svg"></svg>\n');
   }
   if (options.withLocalCommonjsDependency) {
     const dependencyRoot = `${root}/node_modules/${RENDER_DEPENDENCY_NAME}`;
@@ -465,14 +473,21 @@ async function createFixture(options: {
     );
     await writeFile(`${dependencyRoot}/index.js`, 'module.exports = "from cjs dependency";\n');
   }
+  if (options.withDynamicImport) {
+    await writeFile(`${root}/widgets/hello/dynamic-message.ts`, 'export const dynamicMessage = "from dynamic import";\n');
+  }
   const helloCssImport = options.withSharedCss ? 'import "../shared/global.css";' : 'import "./global.css";';
   const helloClassName = options.withSharedCss ? "shared" : "hello";
+  const dynamicImportLines = options.withDynamicImport
+    ? ['void import("./dynamic-message").then(({ dynamicMessage }) => console.log(dynamicMessage));']
+    : [];
   await writeFile(
     `${root}/widgets/hello/widget.tsx`,
     options.withLocalCommonjsDependency
       ? [
           `import message from "${RENDER_DEPENDENCY_NAME}";`,
           helloCssImport,
+          ...dynamicImportLines,
           "",
           "export default function App() {",
           `  return <main className="${helloClassName}"><h1>Hello production</h1><p>{message}</p></main>;`,
@@ -483,6 +498,7 @@ async function createFixture(options: {
         ? [
             'import message from "virtual:message";',
             helloCssImport,
+            ...dynamicImportLines,
             "",
             "export default function App() {",
             `  return <main className="${helloClassName}"><h1>Hello production</h1><p>{message}</p></main>;`,
@@ -491,6 +507,7 @@ async function createFixture(options: {
           ].join("\n")
         : [
             helloCssImport,
+            ...dynamicImportLines,
             "",
             "export default function App() {",
             `  return <main className="${helloClassName}"><h1>Hello production</h1><p>plain widget</p></main>;`,
@@ -533,15 +550,6 @@ async function createFixture(options: {
   return root;
 }
 
-async function pathExists(path: string): Promise<boolean> {
-  try {
-    await stat(path);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 async function findMatchingFiles(root: string, pattern: RegExp): Promise<string[]> {
   if (!(await pathExists(root))) {
     return [];
@@ -563,9 +571,10 @@ async function findMatchingFiles(root: string, pattern: RegExp): Promise<string[
   return matches.flat();
 }
 
-async function readMatchingFiles(root: string, pattern: RegExp): Promise<string[]> {
-  const matches = await findMatchingFiles(root, pattern);
-  return Promise.all(matches.map(async (path) => readFile(path, "utf8")));
+async function listRelativeFiles(root: string): Promise<string[]> {
+  return (await findMatchingFiles(root, /./))
+    .map((path) => path.slice(root.length + 1))
+    .sort();
 }
 
 function flattenPluginOptions(option: PluginOption): Plugin[] {

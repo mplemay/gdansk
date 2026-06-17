@@ -1,6 +1,6 @@
 import { createServer, mergeConfig } from "vite";
 
-import { buildWidgets, readManifest } from "./build";
+import { buildWidgets, GDANSK_MANIFEST_FILENAME, readManifest } from "./build";
 import { loadUserViteConfig, prepareProject, resolveOptions } from "./context";
 import { resolveViteOrigin } from "./css";
 import { createRefreshPlugin } from "./development";
@@ -32,7 +32,7 @@ class GdanskRuntimeImpl implements GdanskRuntime {
   #viteServer?: Awaited<ReturnType<typeof createServer>>;
 
   constructor(options: ResolvedGdanskOptions) {
-    this.manifestPath = `${options.buildDirectoryPath}/gdansk-manifest.json`;
+    this.manifestPath = `${options.buildDirectoryPath}/${GDANSK_MANIFEST_FILENAME}`;
     this.options = options;
   }
 

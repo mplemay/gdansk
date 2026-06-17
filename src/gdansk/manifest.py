@@ -3,12 +3,18 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class InlineWidgetManifest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    script: str
+    styles: list[str]
+
+
 class WidgetManifest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    client: str
-    css: list[str]
     entry: str
+    inline: InlineWidgetManifest
 
 
 class GdanskManifest(BaseModel):

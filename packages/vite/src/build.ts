@@ -1,27 +1,53 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, posix, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 
 import { build, mergeConfig } from "vite";
 import type { UserConfig } from "vite";
 
-import { pathExists, toPosixPath } from "./context";
 import type {
   GdanskManifest,
   GdanskPreparedProject,
+  InlineWidgetBundle,
   LoadedProjectConfig,
   ResolvedGdanskOptions,
   WidgetDefinition,
 } from "./types";
-import { createGdanskVirtualModulesPlugin, createResolvedClientModuleId } from "./virtual";
+import { createGdanskVirtualModulesPlugin } from "./virtual";
 
-const CLIENT_MANIFEST_FILE = "manifest.json";
-const GDANSK_MANIFEST_FILE = "gdansk-manifest.json";
+export const GDANSK_MANIFEST_FILENAME = "gdansk-manifest.json";
+const MAX_INLINE_ASSET_SIZE = Number.MAX_SAFE_INTEGER;
+const TEXT_DECODER = new TextDecoder();
 
-type ViteManifestEntry = {
-  css?: string[];
-  file: string;
-  imports?: string[];
+type AssetSource = string | Uint8Array;
+
+type ViteMetadata = {
+  importedAssets?: Set<string>;
+  importedCss?: Set<string>;
 };
+
+type InlineBuildAsset = {
+  fileName: string;
+  source: AssetSource;
+  type: "asset";
+};
+
+type InlineBuildChunk = {
+  code: string;
+  dynamicImports: string[];
+  fileName: string;
+  imports: string[];
+  isEntry: boolean;
+  type: "chunk";
+  viteMetadata?: ViteMetadata;
+};
+
+type InlineBuildArtifact = InlineBuildAsset | InlineBuildChunk;
+
+type InlineBuildOutput = {
+  output: InlineBuildArtifact[];
+};
+
+type WidgetBuildFunction = (widget: WidgetDefinition, index: number) => Promise<InlineBuildOutput[]>;
 
 export function createBuildConfig(options: ResolvedGdanskOptions, prepared: GdanskPreparedProject): UserConfig {
   return {
@@ -29,24 +55,32 @@ export function createBuildConfig(options: ResolvedGdanskOptions, prepared: Gdan
     builder: {
       sharedPlugins: true,
       async buildApp(builder) {
-        if (prepared.widgets.length > 0) {
-          await builder.build(builder.environments.client);
-        }
+        await writeInlineManifestFromWidgetBuilds(options, prepared.widgets, async (_widget, index) => {
+          const envName = widgetEnvironmentName(index);
+          const environment = builder.environments[envName];
+          if (!environment) {
+            throw new Error(`Gdansk build environment "${envName}" was not configured.`);
+          }
 
-        await finalizeBuildOutputs(options, prepared.widgets);
+          return normalizeBuildOutputs(await builder.build(environment));
+        });
       },
     },
     build: {
       copyPublicDir: false,
-      emptyOutDir: true,
+      emptyOutDir: false,
       outDir: options.buildDirectory,
-      sourcemap: true,
+      sourcemap: false,
+      write: false,
     },
-    environments: {
-      client: {
-        build: createClientBuildOptions(options, prepared),
-      },
-    },
+    environments: Object.fromEntries(
+      prepared.widgets.map((widget, index) => [
+        widgetEnvironmentName(index),
+        {
+          build: createWidgetBuildOptions(options, widget),
+        },
+      ]),
+    ),
   };
 }
 
@@ -55,291 +89,195 @@ export async function buildWidgets(
   prepared: GdanskPreparedProject,
   config: LoadedProjectConfig = {},
 ): Promise<GdanskManifest> {
-  await rm(options.buildDirectoryPath, { force: true, recursive: true });
-  await mkdir(options.buildDirectoryPath, { recursive: true });
-
-  if (prepared.widgets.length > 0) {
-    await build(
+  return writeInlineManifestFromWidgetBuilds(options, prepared.widgets, async (widget) => {
+    const result = await build(
       mergeConfig(config, {
         appType: "custom",
-        build: createClientBuildOptions(options, prepared),
+        build: createWidgetBuildOptions(options, widget),
         configFile: false,
         plugins: [createGdanskVirtualModulesPlugin(options, prepared)],
         root: options.root,
       }),
     );
-  }
 
-  return finalizeBuildOutputs(options, prepared.widgets);
+    return normalizeBuildOutputs(result);
+  });
 }
 
 export async function readManifest(path: string): Promise<GdanskManifest> {
   return JSON.parse(await readFile(path, "utf8")) as GdanskManifest;
 }
 
-function createClientBuildOptions(
-  options: ResolvedGdanskOptions,
-  prepared: GdanskPreparedProject,
-): UserConfig["build"] {
-  const inputs = Object.fromEntries(prepared.widgets.map((widget) => [widget.key, widget.clientModuleId]));
-  const input = Object.keys(inputs).length > 0 ? inputs : undefined;
+function widgetEnvironmentName(index: number): string {
+  return `gdansk-widget-${index}`;
+}
 
+function createWidgetBuildOptions(
+  options: ResolvedGdanskOptions,
+  widget: WidgetDefinition,
+): UserConfig["build"] {
   return {
+    assetsInlineLimit: MAX_INLINE_ASSET_SIZE,
     copyPublicDir: false,
     cssCodeSplit: true,
-    emptyOutDir: true,
-    manifest: CLIENT_MANIFEST_FILE,
+    emptyOutDir: false,
+    manifest: false,
     outDir: options.buildDirectory,
-    rollupOptions: {
-      ...(input ? { input } : {}),
+    rolldownOptions: {
+      input: {
+        [widget.key]: widget.clientModuleId,
+      },
       output: {
-        assetFileNames: (assetInfo: { names?: string[]; originalFileNames?: string[] }) =>
-          resolveClientAssetPath(options, prepared.widgets, assetInfo),
-        chunkFileNames: "assets/[name]-[hash].js",
-        entryFileNames: ({ name }) => `${name}/client.js`,
+        assetFileNames: `${widget.key}/assets/[name][extname]`,
+        chunkFileNames: `${widget.key}/[name].js`,
+        codeSplitting: false,
+        entryFileNames: `${widget.key}/client.js`,
       },
     },
-    sourcemap: true,
+    sourcemap: false,
+    write: false,
   };
 }
 
-async function finalizeBuildOutputs(
+async function writeInlineManifestFromWidgetBuilds(
   options: ResolvedGdanskOptions,
   widgets: WidgetDefinition[],
+  buildWidget: WidgetBuildFunction,
 ): Promise<GdanskManifest> {
-  const clientManifest = await readClientManifest(resolve(options.buildDirectoryPath, CLIENT_MANIFEST_FILE));
-  const widgetBuildData = await Promise.all(
-    widgets.map(async (widget) => {
-      const manifestEntry = getClientManifestEntry(widget, clientManifest);
-      const fallbackCss = (await pathExists(resolve(options.root, widget.clientCss))) ? [widget.clientCss] : [];
+  await rm(options.buildDirectoryPath, { force: true, recursive: true });
+  await mkdir(options.buildDirectoryPath, { recursive: true });
 
-      return {
-        collectedCss: manifestEntry ? collectTransitiveCssHrefs(manifestEntry, clientManifest) : fallbackCss,
-        manifestEntry,
-        widget,
-      };
-    }),
-  );
-  const cssReferenceCounts = countCssReferences(widgetBuildData.map(({ collectedCss }) => collectedCss));
+  const manifestWidgets: GdanskManifest["widgets"] = {};
+
+  for (const [index, widget] of widgets.entries()) {
+    manifestWidgets[widget.key] = {
+      entry: widget.widgetPath,
+      inline: extractInlineWidgetBundle(widget, await buildWidget(widget, index)),
+    };
+  }
 
   const manifest: GdanskManifest = {
     outDir: options.buildDirectory,
     root: options.root,
-    widgets: Object.fromEntries(
-      await Promise.all(
-        widgetBuildData.map(async ({ collectedCss, manifestEntry, widget }) => {
-          const css = await normalizeWidgetCssOutputs(options, widget, collectedCss, cssReferenceCounts);
-
-          return [
-            widget.key,
-            {
-              client: manifestEntry ? toBuildPath(options, manifestEntry.file) : widget.clientEntry,
-              css,
-              entry: widget.widgetPath,
-            },
-          ];
-        }),
-      ),
-    ),
+    widgets: manifestWidgets,
   };
 
-  await writeJson(resolve(options.buildDirectoryPath, GDANSK_MANIFEST_FILE), manifest);
+  await writeJson(resolve(options.buildDirectoryPath, GDANSK_MANIFEST_FILENAME), manifest);
 
   return manifest;
 }
 
-function getClientManifestEntry(
-  widget: WidgetDefinition,
-  manifest: Record<string, ViteManifestEntry>,
-): ViteManifestEntry | undefined {
-  return Object.values(manifest).find((entry) => entry.file === `${widget.key}/client.js`);
-}
+function extractInlineWidgetBundle(widget: WidgetDefinition, outputs: InlineBuildOutput[]): InlineWidgetBundle {
+  const artifacts = outputs.flatMap((output) => output.output);
+  const chunks = artifacts.filter(isChunk);
+  const entryChunks = chunks.filter((chunk) => chunk.isEntry);
 
-function collectTransitiveCssHrefs(
-  manifestEntry: ViteManifestEntry,
-  manifest: Record<string, ViteManifestEntry>,
-): string[] {
-  const css: string[] = [];
-  const seenCss = new Set<string>();
-  const visitedEntries = new Set<string>();
+  if (entryChunks.length !== 1) {
+    throw new Error(`Gdansk expected exactly one entry chunk for widget "${widget.key}".`);
+  }
 
-  const visit = (entry: ViteManifestEntry): void => {
-    if (visitedEntries.has(entry.file)) {
-      return;
-    }
+  const [entry] = entryChunks;
+  const extraChunks = chunks.filter((chunk) => chunk !== entry);
 
-    visitedEntries.add(entry.file);
+  if (extraChunks.length > 0) {
+    throw new Error(
+      `Gdansk widget "${widget.key}" emitted extra JavaScript chunks: ${extraChunks
+        .map((chunk) => chunk.fileName)
+        .join(", ")}`,
+    );
+  }
 
-    for (const imported of entry.imports ?? []) {
-      const importedEntry = resolveImportedManifestEntry(imported, manifest);
-      if (importedEntry) {
-        visit(importedEntry);
-      }
-    }
+  if (entry.imports.length > 0) {
+    throw new Error(
+      `Gdansk widget "${widget.key}" emitted imports that cannot be served as one HTML resource: ${entry.imports.join(
+        ", ",
+      )}`,
+    );
+  }
 
-    for (const href of entry.css ?? []) {
-      if (seenCss.has(href)) {
-        continue;
-      }
+  const assets = artifacts.filter(isAsset);
+  const nonCssAssets = assets.filter((asset) => !isCssFile(asset.fileName));
 
-      seenCss.add(href);
-      css.push(href);
-    }
+  if (nonCssAssets.length > 0) {
+    throw new Error(
+      `Gdansk widget "${widget.key}" emitted non-CSS assets after inlining: ${nonCssAssets
+        .map((asset) => asset.fileName)
+        .join(", ")}`,
+    );
+  }
+
+  return {
+    script: entry.code,
+    styles: collectInlineStyles(widget, entry, assets),
   };
-
-  visit(manifestEntry);
-
-  return css;
 }
 
-function resolveImportedManifestEntry(
-  imported: string,
-  manifest: Record<string, ViteManifestEntry>,
-): ViteManifestEntry | undefined {
-  return manifest[imported] ?? Object.values(manifest).find((entry) => entry.file === imported);
-}
-
-function countCssReferences(hrefLists: string[][]): Map<string, number> {
-  const counts = new Map<string, number>();
-
-  for (const hrefs of hrefLists) {
-    for (const href of hrefs) {
-      counts.set(href, (counts.get(href) ?? 0) + 1);
-    }
-  }
-
-  return counts;
-}
-
-async function readClientManifest(path: string): Promise<Record<string, ViteManifestEntry>> {
-  if (!(await pathExists(path))) {
-    return {};
-  }
-
-  return JSON.parse(await readFile(path, "utf8")) as Record<string, ViteManifestEntry>;
-}
-
-function resolveClientAssetPath(
-  options: ResolvedGdanskOptions,
-  widgets: WidgetDefinition[],
-  assetInfo?: { names?: string[]; originalFileNames?: string[] },
-): string {
-  const fileName = assetInfo?.names?.[0] ?? assetInfo?.originalFileNames?.[0] ?? "";
-
-  if (!fileName.endsWith(".css")) {
-    return "assets/[name]-[hash][extname]";
-  }
-
-  const candidates = [...(assetInfo?.originalFileNames ?? []), ...(assetInfo?.names ?? [])];
-  const widget = findWidgetForAsset(widgets, candidates);
-
-  if (!widget) {
-    return "assets/[name]-[hash][extname]";
-  }
-
-  return toOutputPath(options, widget.clientCss);
-}
-
-function findWidgetForAsset(widgets: WidgetDefinition[], assetCandidates: string[]): WidgetDefinition | undefined {
-  return widgets.find((widget) => {
-    const normalizedModuleId = toPosixPath(widget.clientModuleId);
-    const cssName = `assets/${widget.key}`;
-    const cssNameWithExt = `${cssName}.css`;
-
-    return assetCandidates.map(toPosixPath).some((normalized) => {
-      return (
-        normalized === normalizedModuleId ||
-        normalized === createResolvedClientModuleId(widget.key) ||
-        normalized === cssName ||
-        normalized === cssNameWithExt ||
-        normalized.endsWith(`/${normalizedModuleId}`) ||
-        normalized.endsWith(`/${cssName}`) ||
-        normalized.endsWith(`/${cssNameWithExt}`) ||
-        normalized.endsWith(`/${widget.key}/client.js`)
-      );
-    });
-  });
-}
-
-async function normalizeWidgetCssOutputs(
-  options: ResolvedGdanskOptions,
+function collectInlineStyles(
   widget: WidgetDefinition,
-  hrefs: string[],
-  cssReferenceCounts: ReadonlyMap<string, number>,
-): Promise<string[]> {
-  if (hrefs.length !== 1) {
-    return hrefs.map((href) => toBuildPath(options, href));
-  }
+  entry: InlineBuildChunk,
+  assets: InlineBuildAsset[],
+): string[] {
+  const assetsByFileName = new Map(assets.map((asset) => [asset.fileName, asset]));
+  const cssFromMetadata = [...(entry.viteMetadata?.importedCss ?? [])];
+  const cssFileNames =
+    cssFromMetadata.length > 0
+      ? cssFromMetadata
+      : assets
+          .filter((asset) => isCssFile(asset.fileName))
+          .map((asset) => asset.fileName)
+          .sort();
 
-  const [href] = hrefs;
-  const target = toOutputPath(options, widget.clientCss);
-
-  if (href === target || href === widget.clientCss) {
-    return [toBuildPath(options, target)];
-  }
-
-  const sourcePath = resolve(options.buildDirectoryPath, href);
-  if (!(await pathExists(sourcePath))) {
-    return hrefs.map((entry) => toBuildPath(options, entry));
-  }
-
-  const targetPath = resolve(options.buildDirectoryPath, target);
-  const css = await readFile(sourcePath, "utf8");
-  const rewrittenCss = rewriteRelativeCssUrls(css, posix.dirname(href), posix.dirname(target));
-
-  await mkdir(dirname(targetPath), { recursive: true });
-  await writeFile(targetPath, rewrittenCss);
-  if ((cssReferenceCounts.get(href) ?? 0) <= 1) {
-    await rm(sourcePath, { force: true });
-  }
-
-  return [toBuildPath(options, target)];
-}
-
-function rewriteRelativeCssUrls(css: string, fromDir: string, toDir: string): string {
-  if (fromDir === toDir) {
-    return css;
-  }
-
-  return css.replace(/url\((['"]?)([^'")]+)\1\)/g, (_match, quote: string, value: string) => {
-    if (value.startsWith("/") || value.startsWith("#") || value.startsWith("data:") || /^[a-z]+:/i.test(value)) {
-      return `url(${quote}${value}${quote})`;
+  return [...new Set(cssFileNames)].map((fileName) => {
+    const asset = assetsByFileName.get(fileName);
+    if (!asset) {
+      throw new Error(`Gdansk widget "${widget.key}" referenced missing CSS asset "${fileName}".`);
     }
 
-    const [pathPart, suffix = ""] = splitCssUrl(value);
-    const fromPath = posix.join("/", fromDir, pathPart);
-    let relativePath = posix.relative(posix.join("/", toDir), fromPath);
-
-    if (!relativePath) {
-      relativePath = ".";
-    } else if (!relativePath.startsWith(".")) {
-      relativePath = `./${relativePath}`;
-    }
-
-    return `url(${quote}${relativePath}${suffix}${quote})`;
+    return assetSourceToString(asset.source);
   });
 }
 
-function splitCssUrl(value: string): [string, string] {
-  const match = /^([^?#]+)(.*)$/.exec(value);
-  return match ? [match[1], match[2]] : [value, ""];
+function normalizeBuildOutputs(result: unknown): InlineBuildOutput[] {
+  if (Array.isArray(result)) {
+    return result.map(assertBuildOutput);
+  }
+
+  return [assertBuildOutput(result)];
+}
+
+function assertBuildOutput(value: unknown): InlineBuildOutput {
+  if (!isBuildOutput(value)) {
+    throw new Error("Gdansk inline production builds do not support watch-mode build outputs.");
+  }
+
+  return value;
+}
+
+function isBuildOutput(value: unknown): value is InlineBuildOutput {
+  return typeof value === "object" && value !== null && Array.isArray((value as { output?: unknown }).output);
+}
+
+function isAsset(artifact: InlineBuildArtifact): artifact is InlineBuildAsset {
+  return artifact.type === "asset";
+}
+
+function isChunk(artifact: InlineBuildArtifact): artifact is InlineBuildChunk {
+  return artifact.type === "chunk";
+}
+
+function isCssFile(fileName: string): boolean {
+  return fileName.endsWith(".css");
+}
+
+function assetSourceToString(source: AssetSource): string {
+  if (typeof source === "string") {
+    return source;
+  }
+
+  return TEXT_DECODER.decode(source);
 }
 
 async function writeJson(path: string, value: unknown): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${JSON.stringify(value, null, 2)}\n`);
-}
-
-function toOutputPath(options: ResolvedGdanskOptions, path: string): string {
-  const prefix = `${options.buildDirectory}/`;
-
-  if (path.startsWith(prefix)) {
-    return path.slice(prefix.length);
-  }
-
-  return path;
-}
-
-function toBuildPath(options: ResolvedGdanskOptions, path: string): string {
-  return path.startsWith(`${options.buildDirectory}/`) ? path : `${options.buildDirectory}/${path.replace(/^\/+/, "")}`;
+  await writeFile(path, `${JSON.stringify(value)}\n`);
 }

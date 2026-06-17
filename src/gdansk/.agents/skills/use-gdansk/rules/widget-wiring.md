@@ -6,7 +6,7 @@ Align Python tool registration, React widget code, and frontend dependencies.
 
 - Tool name alignment
 - Default export
-- Asset mounting
+- Production inline bundles
 - belgie dependencies
 
 ---
@@ -57,24 +57,25 @@ export default function App() {
 
 ---
 
-## Asset mounting
+## Production inline bundles
 
 **Incorrect:**
 
-```python
-app = mcp.streamable_http_app()
-uvicorn.run(app, port=3001)
+```text
+Expected production files:
+dist/hello/client.js
+dist/hello/client.css
 ```
 
 **Correct:**
 
 ```python
 app = mcp.streamable_http_app()
-app.mount(path=ship.assets_path, app=ship.assets)
 uvicorn.run(app, port=3001)
 ```
 
-Production widgets load hydration assets from `ship.assets_path` (default `/dist`).
+Production widgets return inline JS/CSS inside the `ui://` HTML resource. The only production file gdansk needs is
+`dist/gdansk-manifest.json`.
 
 ---
 

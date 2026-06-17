@@ -38,16 +38,26 @@ export function run(input) {
 """
 
 
-def write_manifest(views: Path, *, assets_dir: str = "dist", manifest_out_dir: str | None = None) -> None:
+def write_manifest(
+    views: Path,
+    *,
+    assets_dir: str = "dist",
+    manifest_out_dir: str | None = None,
+    script: str = 'console.log("hello");\n',
+    styles: list[str] | None = None,
+) -> None:
+    resolved_styles = styles if styles is not None else [".hello { color: red; }\n"]
     out_dir = manifest_out_dir or assets_dir
     manifest: dict[str, Any] = {
         "outDir": out_dir,
         "root": str(views),
         "widgets": {
             "hello": {
-                "client": f"{out_dir}/hello/client.js",
-                "css": [f"{out_dir}/hello/client.css"],
                 "entry": "hello/widget.tsx",
+                "inline": {
+                    "script": script,
+                    "styles": resolved_styles,
+                },
             },
         },
     }

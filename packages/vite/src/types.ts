@@ -23,19 +23,21 @@ export interface ResolvedGdanskOptions {
 }
 
 export interface WidgetDefinition {
-  clientCss: string;
   clientDevEntry: string;
-  clientEntry: string;
   clientModuleId: string;
   entry: string;
   key: string;
   widgetPath: string;
 }
 
+export type InlineWidgetBundle = {
+  script: string;
+  styles: string[];
+};
+
 export interface ManifestWidget {
-  client: string;
-  css: string[];
   entry: string;
+  inline: InlineWidgetBundle;
 }
 
 export interface GdanskManifest {

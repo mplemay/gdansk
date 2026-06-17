@@ -15,7 +15,7 @@ Python                          Frontend root
 ──────                          ─────────────
 Ship                            vite.config.ts + @gdansk/vite
   └─ Vite(root)                   └─ widgets/<name>/widget.tsx
-  └─ @ship.widget(...)                  └─ dist/<name>/client.js
+  └─ @ship.widget(...)                  └─ dist/gdansk-manifest.json
   └─ ship.mcp(app, watch)               └─ dist/gdansk-manifest.json
        │
        ├─ registers MCP tool (Python function)
@@ -24,7 +24,7 @@ Ship                            vite.config.ts + @gdansk/vite
 
 MCP client
 ──────────
-  ├─ reads ui:// resource → rendered HTML with client.js
+  ├─ reads ui:// resource → rendered HTML with inline JS/CSS
   └─ React widget calls tool via useApp().callServerTool(...)
 ```
 
@@ -49,13 +49,13 @@ Need live HMR during development?
     ├── Yes → ship.mcp(app=app, watch=None)
     │         Skips Vite; loads existing gdansk-manifest.json from dist/.
     └── No → ship.mcp(app=app, watch=False)   [default]
-              Runs vite build on startup; serves static assets from ship.assets.
+              Runs vite build on startup; renders inline bundles from the manifest.
 ```
 
 | `watch` | Behavior | Use when |
 | --- | --- | --- |
 | `True` | Vite dev server with HMR | Local development |
-| `False` | Build on startup, serve from `dist/` | Production without prebuilt assets |
+| `False` | Build on startup, render inline bundles from `dist/gdansk-manifest.json` | Production without prebuilt assets |
 | `None` | Skip build, load existing manifest | CI/CD images with prebuilt `dist/` |
 
 For production deployment details, see [production.md](production.md).
@@ -64,7 +64,7 @@ For production deployment details, see [production.md](production.md).
 
 | Type | Role |
 | --- | --- |
-| `Ship` | Central orchestrator; widget registration, asset serving, MCP wiring |
+| `Ship` | Central orchestrator; widget registration, HTML resource rendering, MCP wiring |
 | `Vite` | Python-side frontend config: root, host, port, build_directory |
 | `@gdansk/vite` | Vite plugin; discovers widgets, emits `gdansk-manifest.json` |
 | `Metadata` | Page metadata (`gdansk.metadata.Metadata` TypedDict) |
@@ -72,8 +72,8 @@ For production deployment details, see [production.md](production.md).
 
 ## `base_url` for cross-origin rendering
 
-When the MCP client renders widget HTML on a different origin than your server, pass `base_url` to `Ship` so
-production asset URLs resolve correctly:
+When the MCP client renders widget HTML on a different origin than your server, pass `base_url` to `Ship` so widget
+metadata can describe the public server origin:
 
 ```python
 ship = Ship(
@@ -119,7 +119,7 @@ Before running, confirm:
 - [ ] `Vite(...)` points at frontend root (not `widgets/`)
 - [ ] `Vite(host, port, build_directory)` matches `gdansk({ host, port, buildDirectory })`
 - [ ] `@ship.widget(path=...)` is relative to `widgets/` without `widgets/` prefix
-- [ ] `ship.assets` mounted at `ship.assets_path` on the HTTP app
+- [ ] Production deploy includes `dist/gdansk-manifest.json`
 - [ ] `[belgie.dependencies]` installed via `uv run gdansk install`
 
 For Incorrect/Correct pairs, see [rules/config-sync.md](../rules/config-sync.md) and

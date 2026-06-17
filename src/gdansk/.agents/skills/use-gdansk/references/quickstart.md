@@ -94,20 +94,15 @@ if __name__ == "__main__":
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.mount(path=ship.assets_path, app=ship.assets)
     uvicorn.run(app, port=3001)
 ```
 
-Production widgets load hydration assets from `ship.assets_path`, so mount `ship.assets` at that path on the public
-app. With the default settings, mount it at `/dist`.
+Production widget resources are self-contained HTML. The generated page includes inline CSS and a single inline module
+script, so the HTTP app only needs to expose the MCP app.
 
-Default production output:
+Default production output is:
 
-- `<frontend-root>/dist/manifest.json`
 - `<frontend-root>/dist/gdansk-manifest.json`
-- `<frontend-root>/dist/hello/client.js`
-- optional `<frontend-root>/dist/hello/client.css`
-- `<frontend-root>/dist/assets/*`
 
 ## Minimal React widget
 
@@ -214,15 +209,12 @@ For production deployment, see [production.md](production.md).
 
 ## Quick checks
 
-After startup, confirm bundle output exists:
+After startup, confirm the inline manifest exists:
 
 ```bash
 find <frontend-root>/dist -maxdepth 3 -type f
 ```
 
-Expected for a basic hello widget:
-
-- `<frontend-root>/dist/hello/client.js`
-- optional `<frontend-root>/dist/hello/client.css`
+Expected for a basic hello widget: `<frontend-root>/dist/gdansk-manifest.json`.
 
 If checks fail, run `uv run gdansk doctor` then see [troubleshooting.md](troubleshooting.md).

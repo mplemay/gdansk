@@ -141,7 +141,7 @@ app.openLink({ url: link });
 
 ## Styling
 
-Import styles from the widget tree — gdansk bundles CSS into `dist/<widget>/client.css`:
+Import styles from the widget tree — gdansk inlines imported CSS into the production widget HTML:
 
 ```tsx
 import styles from "./global.css";
@@ -176,6 +176,6 @@ For full decorator surface (`annotations`, `icons`, `metadata`), see [integratio
 - Named export instead of `export default`
 - Calling server tools before `app` is non-null
 - Missing error/loading states for `useApp`
-- Styles not imported anywhere in the widget tree (no `client.css` emitted)
+- Styles not imported anywhere in the widget tree (no `inline.styles` manifest payload)
 
 For wiring rules, see [rules/widget-wiring.md](../rules/widget-wiring.md).

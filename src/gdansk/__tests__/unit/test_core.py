@@ -9,8 +9,6 @@ import pytest
 from mcp.server import MCPServer
 from mcp.server.mcpserver.tools.base import Tool
 from pydantic import BaseModel
-from starlette.applications import Starlette
-from starlette.staticfiles import StaticFiles
 
 from gdansk.__tests__.unit.conftest import write_manifest
 from gdansk.core import Ship
@@ -53,33 +51,20 @@ def _stub_vite_runtime(vite: Vite, origin: str) -> None:
 
 def test_ship_defaults_to_vite_under_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     views = tmp_path / "views"
-    (views / "dist").mkdir(parents=True)
+    views.mkdir(parents=True)
     monkeypatch.chdir(tmp_path)
 
     ship = Ship()
 
     assert ship._vite.root == views
     assert ship._vite.build_directory_path == views / "dist"
-    assert ship.assets_path == "/dist"
-    assert isinstance(ship.assets, StaticFiles)
-    assert Path(str(ship.assets.directory)) == views / "dist"
 
 
-def test_ship_assets_can_be_mounted_before_build_output_exists(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    views = tmp_path / "views"
-    (views / "widgets" / "hello").mkdir(parents=True)
-    (views / "widgets" / "hello" / "widget.tsx").write_text(
-        "export default function App() { return null; }\n",
-        encoding="utf-8",
-    )
-    monkeypatch.chdir(tmp_path)
+def test_ship_does_not_expose_static_asset_mount_surface(views_path: Path):
+    ship = Ship(vite=Vite(views_path))
 
-    ship = Ship()
-    app = Starlette()
-    app.mount(path=ship.assets_path, app=ship.assets)
-
-    assert ship.assets_path == "/dist"
-    assert Path(str(ship.assets.directory)) == views / "dist"
+    assert not hasattr(ship, "assets")
+    assert not hasattr(ship, "assets_path")
 
 
 def test_widget_rejects_missing_widget_file(views_path: Path):
@@ -94,18 +79,13 @@ def test_ship_uses_default_runtime_host_and_port(views_path: Path):
 
     assert ship._vite._host == "127.0.0.1"
     assert ship._vite._port == 13714
-    assert ship.assets_path == "/dist"
-    assert isinstance(ship.assets, StaticFiles)
-    assert ship.assets is ship.assets
-    assert Path(str(ship.assets.directory)) == views_path / "dist"
 
 
-def test_ship_uses_vite_build_directory_for_assets(views_path: Path):
-    (views_path / "public" / "ui").mkdir(parents=True)
+def test_ship_uses_vite_build_directory_for_manifest(views_path: Path):
     ship = Ship(vite=Vite(views_path, build_directory="public/ui"))
 
-    assert ship.assets_path == "/public/ui"
-    assert Path(str(ship.assets.directory)) == views_path / "public/ui"
+    assert ship._vite.build_directory_path == views_path / "public/ui"
+    assert ship._vite.manifest_path == views_path / "public/ui" / "gdansk-manifest.json"
 
 
 def test_ship_rejects_invalid_base_url(views_path: Path):
@@ -361,7 +341,11 @@ async def test_widget_resource_renders_complete_document(views_path: Path):
 
 
 async def test_widget_resource_renders_production_scripts(views_path: Path):
-    write_manifest(views_path)
+    write_manifest(
+        views_path,
+        script='console.log("hello");\n',
+        styles=[".hello { color: red; }\n"],
+    )
     ship = Ship(vite=Vite(views_path))
 
     @ship.widget(path=Path("hello/widget.tsx"), name="hello")
@@ -376,13 +360,20 @@ async def test_widget_resource_renders_production_scripts(views_path: Path):
     assert "@react-refresh" not in html
     assert "__vite_plugin_react_preamble_installed__" not in html
     assert '<div id="root"></div>' in html
-    assert '<link rel="stylesheet" href="/dist/hello/client.css">' in html
-    assert '<script type="module" src="/dist/hello/client.js"></script>' in html
+    assert "<style>.hello { color: red; }\n</style>" in html
+    assert '<script type="module">console.log("hello");\n</script>' in html
+    assert "/dist/hello/client.css" not in html
+    assert "/dist/hello/client.js" not in html
     assert "/@vite/client" not in html
 
 
-async def test_widget_resource_uses_custom_assets_dir_for_production_scripts(views_path: Path):
-    write_manifest(views_path, assets_dir="public")
+async def test_widget_resource_uses_custom_manifest_dir_for_inline_production(views_path: Path):
+    write_manifest(
+        views_path,
+        assets_dir="public",
+        script='console.log("custom");\n',
+        styles=[".custom { color: blue; }\n"],
+    )
     ship = Ship(vite=Vite(views_path, build_directory="public"))
 
     @ship.widget(path=Path("hello/widget.tsx"), name="hello")
@@ -394,12 +385,18 @@ async def test_widget_resource_uses_custom_assets_dir_for_production_scripts(vie
     html = await ship._widget_manager[Path("hello/widget.tsx")].resource.read()
     assert isinstance(html, str)
 
-    assert '<link rel="stylesheet" href="/public/hello/client.css">' in html
-    assert '<script type="module" src="/public/hello/client.js"></script>' in html
+    assert "<style>.custom { color: blue; }\n</style>" in html
+    assert '<script type="module">console.log("custom");\n</script>' in html
+    assert "/public/hello/client.css" not in html
+    assert "/public/hello/client.js" not in html
 
 
-async def test_widget_resource_uses_base_url_for_production_assets(views_path: Path):
-    write_manifest(views_path)
+async def test_widget_resource_escapes_inline_closing_tags(views_path: Path):
+    write_manifest(
+        views_path,
+        script='console.log("</script>");\n',
+        styles=[".x::before { content: '</style>'; }\n"],
+    )
     ship = Ship(vite=Vite(views_path), base_url="https://example.com/app")
 
     @ship.widget(path=Path("hello/widget.tsx"), name="hello")
@@ -411,8 +408,9 @@ async def test_widget_resource_uses_base_url_for_production_assets(views_path: P
     html = await ship._widget_manager[Path("hello/widget.tsx")].resource.read()
     assert isinstance(html, str)
 
-    assert '<link rel="stylesheet" href="https://example.com/app/dist/hello/client.css">' in html
-    assert '<script type="module" src="https://example.com/app/dist/hello/client.js"></script>' in html
+    assert "<\\/script>" in html
+    assert "<\\/style>" in html
+    assert "https://example.com/app/dist" not in html
 
 
 async def test_widget_resource_raises_when_manifest_is_missing_widget(views_path: Path):
@@ -590,7 +588,7 @@ async def test_start_production_builds_and_loads_manifest(views_path: Path, monk
 
     async with ship.mcp(app=_app(), watch=False):
         assert ship._vite.has_runtime() is False
-        assert ship._vite.require_manifest().widgets["hello"].client == "dist/hello/client.js"
+        assert ship._vite.require_manifest().widgets["hello"].inline.script == 'console.log("hello");\n'
 
     assert ship._vite._manifest is None
 
@@ -619,7 +617,7 @@ async def test_start_prebuilt_loads_manifest_without_build(views_path: Path, mon
 
     async with ship.mcp(app=_app(), watch=None):
         assert ship._vite.has_runtime() is False
-        assert ship._vite.require_manifest().widgets["hello"].client == "dist/hello/client.js"
+        assert ship._vite.require_manifest().widgets["hello"].inline.script == 'console.log("hello");\n'
         assert ship._dev is False
 
     assert ship._vite._manifest is None
@@ -646,7 +644,7 @@ async def test_ship_mcp_open_prebuilt_skips_runtime_start(views_path: Path, monk
         assert ship._active is True
         assert ship._dev is False
         assert ship._vite.has_runtime() is False
-        assert ship._vite.require_manifest().widgets["hello"].client == "dist/hello/client.js"
+        assert ship._vite.require_manifest().widgets["hello"].inline.script == 'console.log("hello");\n'
 
     assert ship._active is False
     assert ship._vite._manifest is None

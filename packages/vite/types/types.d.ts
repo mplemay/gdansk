@@ -1,60 +1,61 @@
 import type { InlineConfig, UserConfig } from "vite";
 export interface RefreshConfig {
-  paths: string | string[];
+    paths: string | string[];
 }
 export interface GdanskPluginOptions {
-  buildDirectory?: string;
-  refresh?: boolean | string | string[] | RefreshConfig | RefreshConfig[];
-  root?: string;
-  host?: string;
-  port?: number;
+    buildDirectory?: string;
+    refresh?: boolean | string | string[] | RefreshConfig | RefreshConfig[];
+    root?: string;
+    host?: string;
+    port?: number;
 }
 export interface ResolvedGdanskOptions {
-  buildDirectory: string;
-  buildDirectoryPath: string;
-  host: string;
-  root: string;
-  port: number;
-  widgetsDirectory: string;
-  widgetsDirectoryPath: string;
+    buildDirectory: string;
+    buildDirectoryPath: string;
+    host: string;
+    root: string;
+    port: number;
+    widgetsDirectory: string;
+    widgetsDirectoryPath: string;
 }
 export interface WidgetDefinition {
-  clientCss: string;
-  clientDevEntry: string;
-  clientEntry: string;
-  clientModuleId: string;
-  entry: string;
-  key: string;
-  widgetPath: string;
+    clientDevEntry: string;
+    clientModuleId: string;
+    entry: string;
+    key: string;
+    widgetPath: string;
 }
+export type InlineWidgetBundle = {
+    script: string;
+    styles: string[];
+};
 export interface ManifestWidget {
-  client: string;
-  css: string[];
-  entry: string;
+    entry: string;
+    inline: InlineWidgetBundle;
 }
 export interface GdanskManifest {
-  outDir: string;
-  root: string;
-  widgets: Record<string, ManifestWidget>;
+    outDir: string;
+    root: string;
+    widgets: Record<string, ManifestWidget>;
 }
 export interface GdanskDevRuntimeMetadata {
-  mode: "development";
-  viteOrigin: string;
-  widgets: Record<string, GdanskRuntimeWidget>;
+    mode: "development";
+    viteOrigin: string;
+    widgets: Record<string, GdanskRuntimeWidget>;
 }
 export interface GdanskRuntimeWidget {
-  clientPath: string;
+    clientPath: string;
 }
 export interface GdanskPreparedProject {
-  widgets: WidgetDefinition[];
+    widgets: WidgetDefinition[];
 }
 export interface GdanskRuntime {
-  build(): Promise<GdanskManifest>;
-  close(): Promise<void>;
-  loadOrBuildManifest(): Promise<GdanskManifest>;
-  manifestPath: string;
-  options: ResolvedGdanskOptions;
-  startDev(): Promise<GdanskDevRuntimeMetadata>;
-  widgets: WidgetDefinition[];
+    build(): Promise<GdanskManifest>;
+    close(): Promise<void>;
+    loadOrBuildManifest(): Promise<GdanskManifest>;
+    manifestPath: string;
+    options: ResolvedGdanskOptions;
+    startDev(): Promise<GdanskDevRuntimeMetadata>;
+    widgets: WidgetDefinition[];
 }
 export type LoadedProjectConfig = InlineConfig | UserConfig;
