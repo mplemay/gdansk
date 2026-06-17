@@ -277,15 +277,18 @@ def cmd_doctor(args: argparse.Namespace) -> None:
 
             root_lock = project.root / "deno.lock"
             if root_lock.is_file():
-                print(f"ok   deno.lock at project root ({root_lock})")
+                print(f"ok   belgie lockfile (deno.lock) at project root ({root_lock})")
             else:
-                message = f"deno.lock missing at project root ({root_lock})"
+                message = f"belgie lockfile (deno.lock) missing at project root ({root_lock})"
                 print(f"warn {message}")
                 warnings.append(message)
 
             legacy_lock = frontend_path / "deno.lock"
             if legacy_lock.is_file() and not root_lock.is_file():
-                message = f"Legacy deno.lock found under frontend ({legacy_lock}); move it to the project root"
+                message = (
+                    f"Legacy belgie lockfile (deno.lock) found under frontend ({legacy_lock}); "
+                    "move it to the project root"
+                )
                 print(f"warn {message}")
                 warnings.append(message)
 
@@ -458,10 +461,14 @@ def build_parser() -> argparse.ArgumentParser:
     install = subparsers.add_parser("install", help="Install [belgie.dependencies]")
     _add_project_args(install)
     install.add_argument("--no-dev", action="store_true", help="Skip [belgie.dependencies.dev]")
-    install.add_argument("--lock-only", action="store_true", help="Update deno.lock without caching packages")
+    install.add_argument(
+        "--lock-only",
+        action="store_true",
+        help="Update belgie lockfile (deno.lock) without caching packages",
+    )
     install.set_defaults(func=cmd_install)
 
-    lock = subparsers.add_parser("lock", help="Update deno.lock without installing packages")
+    lock = subparsers.add_parser("lock", help="Update belgie lockfile (deno.lock) without installing packages")
     _add_project_args(lock)
     lock.add_argument("--no-dev", action="store_true", help="Skip [belgie.dependencies.dev]")
     lock.set_defaults(func=cmd_lock)

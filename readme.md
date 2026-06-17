@@ -19,7 +19,9 @@ npx skills add mplemay/gdansk --skill use-gdansk
 ```
 
 The skill lives at `src/gdansk/.agents/skills/use-gdansk/` in this repository. Use `$use-gdansk` to bootstrap
-integrations, extend widgets and server features, or troubleshoot path, bundling, and render failures.
+integrations, extend widgets and server features, or troubleshoot path, bundling, and render failures. The skill
+includes CLI reference (`gdansk init`, `gdansk doctor`), architecture guidance, in-repo examples, and production
+deployment patterns.
 
 ## Compatibility
 
@@ -169,8 +171,8 @@ Python or Jinja files change during development.
 - **`watch=True`** — runs the Vite dev server in the background with React refresh; JS/CSS load from the Vite origin.
 - **`watch=False`** (default) — runs `vite build` on startup, then serves static hydration assets and the gdansk
   manifest from `ship.assets`.
-- **`watch=None`** — skips Vite/Deno entirely and loads an existing `gdansk-manifest.json` under the assets directory.
-  Use this when assets are prebuilt (for example in CI) to avoid cold-start build cost.
+- **`watch=None`** — skips the frontend build toolchain entirely and loads an existing `gdansk-manifest.json` under the
+  assets directory. Use this when assets are prebuilt (for example in CI) to avoid cold-start build cost.
 
 If you need a non-default build output directory, keep the Vite plugin and Python runtime aligned. Widget sources
 always live under `widgets/` at the frontend root (`Vite(root=...)` / Vite `root`).
@@ -272,9 +274,9 @@ build = "vite build"
 dev = "vite"
 ```
 
-Unprefixed values are treated as npm version requirements for the table key, so `react = "^19"` becomes
-`npm:react@^19`. Use `uv run gdansk install`, `uv run gdansk lock`, or `uv run gdansk update` to resolve those
-dependencies and write `deno.lock` next to `pyproject.toml`. Frontend builds and dev servers run the `build` and `dev`
+Unprefixed values are treated as npm version requirements for the table key, so `react = "^19"` becomes `npm:react@^19`.
+Use `uv run gdansk install`, `uv run gdansk lock`, or `uv run gdansk update` to resolve those dependencies and write the
+belgie lockfile (`deno.lock`) next to `pyproject.toml`. Frontend builds and dev servers run the `build` and `dev`
 entries from `[belgie.scripts]`.
 
 Gdansk mounts your default export into `#root` automatically and wraps it with `React.StrictMode`.

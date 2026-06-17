@@ -7,14 +7,20 @@
   - *Rules:*
     - **Always run `uv` with elevated permissions.**
     - **Don't use other package managers for python dependencies (ex: `pip`, `poetry`, etc.)**
-- **`deno`:** The typescript / javascript package manager.
-  - *Usage:* `uv run deno`
+- **`belgie`:** Frontend dependency management for gdansk apps (declared in `pyproject.toml`, invoked via gdansk CLI).
+  - *Usage:* `uv run gdansk install`, `uv run gdansk lock`, `uv run gdansk update`, `uv run gdansk build`,
+    `uv run gdansk dev`
   - *Rules:*
-    - **Never run deno directly (i.e. `deno ...`), always executing it using `uv` (i.e. `uv run deno ...`).**
-    - **Don't use other package managers for javascript / typescript dependencies (ex: `bun`, `npm`, etc.)**
-    - **Use `[belgie.dependencies]` tables in `pyproject.toml` for app and example frontend dependencies.**
+    - **Declare app/example frontend deps in `[belgie.dependencies]` (and `[belgie.dependencies.dev]`) tables in
+      `pyproject.toml`.**
+    - **Run `uv run gdansk install` after changing belgie dependency tables.**
+    - **Run frontend tasks via `uv run gdansk build` / `uv run gdansk dev`, not raw `vite` commands.**
+    - **Don't use other package managers for javascript / typescript dependencies (ex: `bun`, `npm`, etc.)** in
+      app/example roots.
     - **Don't add `package.json` or `deno.json` files to app/example frontend roots.**
-    - **Keep `package.json` only for separately published JavaScript packages, such as `packages/vite`.**
+    - **Keep `package.json` only for separately published JavaScript packages, such as `packages/vite` (which may use
+      npm/deno in its own CI).**
+    - **Commit `deno.lock` at the Python project root when belgie dependencies change.**
 
 ## Conventions
 
@@ -86,6 +92,12 @@
 - Do not name test files by functionality (e.g. avoid `test_ship_init.py`, `test_template.py`)
 - Tests live under `__tests__/` with `unit/` and `integration/` subdirectories
 - Integration tests are marked with `@pytest.mark.integration`
+
+## Bundled agent skill
+
+The `use-gdansk` skill at `src/gdansk/.agents/skills/use-gdansk/SKILL.md` documents the public integration surface
+for external adoption. Point users and agents to `$use-gdansk` when they need to bootstrap or troubleshoot gdansk MCP
+widget apps.
 
 ## Final Workflow
 

@@ -3,6 +3,17 @@
 Use this file when gdansk is already present but something is broken. Diagnose from the failing boundary outward and
 prefer exact error strings over speculative fixes.
 
+## Step 0: run doctor
+
+Before editing code, validate the project layout:
+
+```bash
+uv run gdansk doctor
+```
+
+This checks Python version, `[belgie.dependencies]`, frontend root, belgie lockfile (`deno.lock`), and `build`/`dev`
+scripts. Fix any `fail` lines before proceeding. See [cli.md](cli.md) for what each check means.
+
 ## Identify the failing boundary first
 
 Classify the issue before editing:
@@ -33,8 +44,10 @@ Before changing behavior:
 - Confirm the widget default-exports the React component.
 - Confirm the Python project's `pyproject.toml` declares `@gdansk/vite`, `vite`, `@vitejs/plugin-react`, `react`,
   `react-dom`, and `@modelcontextprotocol/ext-apps` in `[belgie.dependencies]`.
+- Confirm the belgie lockfile (`deno.lock`) exists at the Python project root (not under the frontend root).
 
 Use [path-contract.md](path-contract.md) for accepted and rejected widget path inputs.
+Use [rules/config-sync.md](../rules/config-sync.md) for host/port/buildDirectory alignment.
 
 ## Match the failure to the smallest likely fix
 
@@ -46,11 +59,16 @@ Use [path-contract.md](path-contract.md) for accepted and rejected widget path i
   `gdansk({ buildDirectory })` aligned.
 - For render errors, isolate the widget's default export and runtime-safe imports first.
 - For CSS issues, confirm the styles are imported from the widget tree and emitted into the bundle.
+- For missing deps, run `uv run gdansk install` instead of `npm install`.
 
 ## Error map
 
 | Symptom or error text | Likely cause | Fix | Quick check |
 | --- | --- | --- | --- |
+| `doctor: N check(s) failed` | Project layout or deps invalid | Fix each `fail` line from `gdansk doctor` output | `uv run gdansk doctor` |
+| `No [belgie.dependencies] table found` | Missing belgie tables | Run `gdansk init` or add tables manually | Inspect `pyproject.toml` |
+| `belgie lockfile (deno.lock) missing at project root` | Lockfile not generated | Run `uv run gdansk install` | Check project root for `deno.lock` |
+| `Legacy belgie lockfile (deno.lock) found under frontend` | Old lockfile location | Move `deno.lock` to Python project root | `find . -name deno.lock` |
 | `The frontend root directory ... does not exist` | `Vite(...)` points at a missing directory | Point `Vite(...)` at the frontend root that contains `vite.config.ts` and `widgets/` | Inspect the server entrypoint and confirm the resolved path |
 | `The frontend root directory ... is not a directory` | `Vite(...)` points at a file | Pass the frontend directory instead of a file path | Inspect the `Vite(...)` argument |
 | `must be a relative path` | Absolute path passed to `path=` | Pass a path relative to the frontend `widgets/` root | Inspect decorator input; remove the absolute prefix |
@@ -64,9 +82,12 @@ Use [path-contract.md](path-contract.md) for accepted and rejected widget path i
 | `The frontend build did not produce a manifest .../dist/gdansk-manifest.json` | Production build did not finish or stale output was reused | Rebuild the frontend and confirm `dist/gdansk-manifest.json` exists | Check `dist/` after a fresh build |
 | `Execution error: ...` during render | HTML rendering threw at runtime | Fix render-unsafe imports or rendering logic in the widget | Reduce the widget to a minimal default export and reintroduce imports incrementally |
 | Widget loads but CSS is missing | CSS import or asset emission issue | Ensure styles are imported from the widget tree and that CSS is emitted into `dist/` | Check for `dist/**/client.css` and whether the widget imports its styles |
+| Widget loads but tool call fails | Tool name mismatch | Align Python `name=` with `callServerTool({ name: ... })` | See [rules/widget-wiring.md](../rules/widget-wiring.md) |
+| Assets 404 in production | Missing asset mount | Mount `ship.assets` at `ship.assets_path` | See [production.md](production.md) |
 
 ## Structured diagnosis flow
 
+0. Run `uv run gdansk doctor` and fix failures.
 1. Validate the `Vite(...)` frontend root target first.
 2. Validate `@ship.widget(path=...)` against the path contract.
 3. Confirm the widget file exists and default-exports the component.
@@ -80,23 +101,27 @@ Use [path-contract.md](path-contract.md) for accepted and rejected widget path i
 
 ## Verify after each fix
 
-1. Restart the server in development if the runtime configuration changed.
-2. Confirm the Vite dev client becomes reachable at `@vite/client`.
-3. Confirm expected bundle outputs exist under `dist/`.
-4. Fetch or open the widget resource and verify the rendered HTML references the expected assets.
-5. Re-run the failing user flow instead of assuming the previous error was the only problem.
+1. Run `uv run gdansk doctor` if layout or deps changed.
+2. Restart the server in development if the runtime configuration changed.
+3. Confirm the Vite dev client becomes reachable at `@vite/client`.
+4. Confirm expected bundle outputs exist under `dist/`.
+5. Fetch or open the widget resource and verify the rendered HTML references the expected assets.
+6. Re-run the failing user flow instead of assuming the previous error was the only problem.
 
 ## Minimal command set
 
 ```bash
+# 0) validate project layout
+uv run gdansk doctor
+
 # 1) list widget entrypoints
-find frontend/widgets -type f | rg "widget\\.(tsx|jsx)$"
+find <frontend-root>/widgets -type f | rg "widget\\.(tsx|jsx)$"
 
 # 2) ensure default exports exist
-rg -n "export default" frontend/widgets
+rg -n "export default" <frontend-root>/widgets
 
 # 3) check generated outputs
-find frontend/dist -type f | sort
+find <frontend-root>/dist -type f | sort
 ```
 
-Replace `frontend/` with the path to your frontend root; widget entry files always live under `<frontend>/widgets/`.
+Replace `<frontend-root>` with your frontend root path (`views/` from `gdansk init`, or `frontend/` in manual setups).

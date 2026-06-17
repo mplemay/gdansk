@@ -2,6 +2,8 @@
 
 This file defines the strict `path` contract for `@ship.widget(...)`.
 
+For Incorrect/Correct pairs aimed at agents, see [rules/path-contract.md](../rules/path-contract.md).
+
 ## Core rules
 
 1. Pass a relative path only.

@@ -2,22 +2,57 @@
 
 Use this file for a minimal, working gdansk setup before adding complexity.
 
-## Canonical layout
+## Path A: `gdansk init` (recommended)
+
+Scaffold a new project with the CLI:
+
+```bash
+uv add gdansk
+uv run gdansk init
+uv run gdansk install
+uv run gdansk doctor
+```
+
+`gdansk init` creates:
+
+```text
+my-server/
+├── pyproject.toml
+└── src/<package>/
+    ├── __main__.py
+    └── views/                  # CLI default frontend root name
+        ├── vite.config.ts
+        └── widgets/
+            └── hello/
+                └── widget.tsx
+```
+
+Run the scaffolded server:
+
+```bash
+uv run python -m <package>
+```
+
+For CLI details, see [cli.md](cli.md).
+
+## Path B: manual layout
+
+Use this when adding gdansk to an existing repo or when you prefer a custom directory name.
 
 ```text
 my-server/
 ├── server.py
 ├── pyproject.toml
-└── frontend/
+└── frontend/                   # name is arbitrary; pass any path to Vite(...)
     ├── vite.config.ts
-    ├── deno.lock
+    ├── deno.lock                 # belgie lockfile at Python project root
     └── widgets/
         └── hello/
             └── widget.tsx
 ```
 
-The `frontend` directory name is arbitrary: `Vite(...)` accepts any path to the frontend root that contains
-`vite.config.ts` and `widgets/`.
+The frontend directory name is arbitrary: `Vite(...)` accepts any path containing `vite.config.ts` and `widgets/`.
+`gdansk init` uses `views/` by default; manual setups often use `frontend/`.
 
 ## Minimal Python server
 
@@ -33,7 +68,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 from gdansk import Ship, Vite
 
-frontend_path = Path(__file__).parent / "frontend"
+frontend_path = Path(__file__).parent / "views"  # or "frontend" for manual layout
 ship = Ship(vite=Vite(frontend_path))
 
 
@@ -68,15 +103,15 @@ app. With the default settings, mount it at `/dist`.
 
 Default production output:
 
-- `frontend/dist/manifest.json`
-- `frontend/dist/gdansk-manifest.json`
-- `frontend/dist/hello/client.js`
-- optional `frontend/dist/hello/client.css`
-- `frontend/dist/assets/*`
+- `<frontend-root>/dist/manifest.json`
+- `<frontend-root>/dist/gdansk-manifest.json`
+- `<frontend-root>/dist/hello/client.js`
+- optional `<frontend-root>/dist/hello/client.css`
+- `<frontend-root>/dist/assets/*`
 
 ## Minimal React widget
 
-`frontend/widgets/hello/widget.tsx`
+`<frontend-root>/widgets/hello/widget.tsx`
 
 ```tsx
 import { useApp } from "@modelcontextprotocol/ext-apps/react";
@@ -108,6 +143,8 @@ export default function App() {
 }
 ```
 
+For richer widget patterns, see [widgets.md](widgets.md).
+
 ## Baseline pyproject.toml frontend dependencies
 
 `pyproject.toml`
@@ -132,7 +169,7 @@ dev = "vite"
 
 Add a `vite.config.ts` in the frontend root and import `@gdansk/vite` there alongside any framework plugins:
 
-`frontend/vite.config.ts`
+`<frontend-root>/vite.config.ts`
 
 ```ts
 import react from "@vitejs/plugin-react";
@@ -148,50 +185,16 @@ export default defineConfig({
 repo wants `@` to resolve somewhere else. `refresh: true` adds Laravel-style full reloads for nearby Python and Jinja
 files during `vite dev`.
 
-If you need a non-default build output directory, keep Python and Vite aligned. Put widget sources in `widgets/` at the
-frontend root.
+If you need a non-default build output directory, keep Python and Vite aligned. See
+[rules/config-sync.md](../rules/config-sync.md) for Incorrect/Correct pairs.
 
-```python
-ship = Ship(
-    vite=Vite(
-        Path(__file__).parent / "frontend",
-        build_directory="public/ui",
-    ),
-)
-```
-
-```ts
-export default defineConfig({
-  plugins: [
-    gdansk({
-      buildDirectory: "public/ui",
-      refresh: true,
-    }),
-    react(),
-  ],
-});
-```
-
-If you need a non-default frontend runtime address, set it on both sides:
-
-```python
-from gdansk import Ship, Vite
-
-ship = Ship(vite=Vite(Path(__file__).parent / "frontend", host="127.0.0.1", port=14000))
-```
-
-```ts
-export default defineConfig({
-  plugins: [gdansk({ host: "127.0.0.1", port: 14000, refresh: true }), react()],
-});
-```
-
-After editing dependencies, install from the Python project root with `uv run gdansk install` and commit `deno.lock`
-when it changes:
+After editing dependencies, install from the Python project root:
 
 ```bash
 uv run gdansk install
 ```
+
+Commit the belgie lockfile (`deno.lock`) when it changes.
 
 ## Run commands
 
@@ -200,20 +203,26 @@ Standard server:
 ```bash
 uv sync
 uv run gdansk install
-uv run python server.py
+uv run gdansk doctor
+uv run python server.py          # manual layout
+# or
+uv run python -m <package>       # gdansk init layout
 ```
 
 For FastAPI mounting, see [integrations.md](integrations.md).
+For production deployment, see [production.md](production.md).
 
 ## Quick checks
 
 After startup, confirm bundle output exists:
 
 ```bash
-find frontend/dist -maxdepth 3 -type f
+find <frontend-root>/dist -maxdepth 3 -type f
 ```
 
 Expected for a basic hello widget:
 
-- `frontend/dist/hello/client.js`
-- optional `frontend/dist/hello/client.css`
+- `<frontend-root>/dist/hello/client.js`
+- optional `<frontend-root>/dist/hello/client.css`
+
+If checks fail, run `uv run gdansk doctor` then see [troubleshooting.md](troubleshooting.md).
