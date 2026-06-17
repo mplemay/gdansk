@@ -1,4 +1,4 @@
-# Adoption checklist
+# Adoption
 
 Use this file when the task is to make gdansk work cleanly in another repository.
 
@@ -84,6 +84,8 @@ If the repo tracks `deno.lock`, keep it at the Python project root and in sync w
 ## Before finishing
 
 - Confirm the server starts with no widget registration errors.
-- Confirm frontend output appears under `<frontend-package>/dist/`.
+- Confirm frontend output appears under `<frontend-root>/dist/`.
 - Confirm the UI resource renders and the client script is present.
 - Confirm the widget can call the intended MCP tool.
+
+For a minimal working layout and run commands, see [QUICKSTART.md](QUICKSTART.md).

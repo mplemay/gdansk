@@ -1,4 +1,4 @@
-# Integration Options
+# Integrations
 
 Use this file when the request goes beyond basic widget wiring.
 
@@ -7,16 +7,19 @@ Use this file when the request goes beyond basic widget wiring.
 `Ship` accepts optional `metadata` using the `Metadata` shape from `gdansk.metadata` (a `TypedDict`).
 
 ```python
+from pathlib import Path
+
 from gdansk import Ship, Vite
 from gdansk.metadata import Metadata
 
+frontend_path = Path(__file__).parent / "frontend"
 meta: Metadata = {
     "title": "Root App",
     "description": "Shared description",
     "openGraph": {"title": "Shared OG"},
 }
 
-ship = Ship(vite=Vite(views_path), metadata=meta)
+ship = Ship(vite=Vite(frontend_path), metadata=meta)
 ```
 
 Per-widget metadata can be passed directly to `@ship.widget(..., metadata=...)`.
@@ -54,9 +57,12 @@ def list_todos() -> list[Todo]:
 The default frontend runtime address is `127.0.0.1:13714`. If you change it, keep Python and Vite in sync:
 
 ```python
+from pathlib import Path
+
 from gdansk import Ship, Vite
 
-ship = Ship(vite=Vite(views_path, host="127.0.0.1", port=14000))
+frontend_path = Path(__file__).parent / "frontend"
+ship = Ship(vite=Vite(frontend_path, host="127.0.0.1", port=14000))
 ```
 
 ```ts
@@ -77,9 +83,10 @@ export default defineConfig({
 Example:
 
 ```python
+frontend_path = Path(__file__).parent / "frontend"
 ship = Ship(
     vite=Vite(
-        views_path,
+        frontend_path,
         build_directory="public/ui",
     ),
 )
@@ -150,6 +157,13 @@ async def lifespan(_: object) -> AsyncIterator[None]:
 app = FastAPI(lifespan=lifespan)
 app.mount(path=ship.assets_path, app=ship.assets)
 app.mount(path="/mcp", app=mcp_app)
+```
+
+Run:
+
+```bash
+uv sync
+uv run fastapi dev main.py
 ```
 
 `gdansk` production widgets expect hydration assets at `ship.assets_path`. With the default build directory, mount

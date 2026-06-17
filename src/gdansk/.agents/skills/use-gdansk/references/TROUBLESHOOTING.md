@@ -1,6 +1,51 @@
 # Troubleshooting
 
-Use exact error text to choose the fastest fix.
+Use this file when gdansk is already present but something is broken. Diagnose from the failing boundary outward and
+prefer exact error strings over speculative fixes.
+
+## Identify the failing boundary first
+
+Classify the issue before editing:
+
+1. **Registration-time failure**
+   - Invalid `Vite(...)` root path.
+   - Invalid `@ship.widget(path=...)` input.
+   - Duplicate widget or tool registration.
+2. **Frontend startup or build failure**
+   - Vite runtime never becomes healthy.
+   - Production server bundle is missing.
+   - Client bundle output is missing.
+3. **Render or browser runtime failure**
+   - Render request returns an execution error.
+   - Rendered HTML is invalid or missing scripts.
+   - CSS is not emitted or not loaded.
+
+If the repo does not have gdansk wired yet, use [QUICKSTART.md](QUICKSTART.md) and [ADOPTION.md](ADOPTION.md) first.
+
+## Validate the public contract
+
+Before changing behavior:
+
+- Confirm `Vite(...)` points at the frontend root.
+- Confirm the frontend root contains `vite.config.ts` and `widgets/`.
+- Confirm the widget file exists at `widgets/**/widget.tsx` or `widget.jsx`.
+- Confirm `@ship.widget(path=...)` uses a path relative to `widgets/`.
+- Confirm the widget default-exports the React component.
+- Confirm the Python project's `pyproject.toml` declares `@gdansk/vite`, `vite`, `@vitejs/plugin-react`, `react`,
+  `react-dom`, and `@modelcontextprotocol/ext-apps` in `[belgie.dependencies]`.
+
+Use [PATH-CONTRACT.md](PATH-CONTRACT.md) for accepted and rejected widget path inputs.
+
+## Match the failure to the smallest likely fix
+
+- For validation errors, fix the path or duplicate registration directly.
+- For build and startup failures, inspect `vite.config.ts`, belgie dependencies, and bundle outputs under `dist/`.
+- For runtime host or port issues, keep `Vite(Path(...), host=..., port=...)` on `Ship(vite=...)` and
+  `gdansk({ host, port })` aligned.
+- For build output directory mismatches, keep `Vite(Path(...), build_directory=...)` and
+  `gdansk({ buildDirectory })` aligned.
+- For render errors, isolate the widget's default export and runtime-safe imports first.
+- For CSS issues, confirm the styles are imported from the widget tree and emitted into the bundle.
 
 ## Error map
 
@@ -32,6 +77,14 @@ Use exact error text to choose the fastest fix.
 7. Confirm bundle outputs exist under `dist/`.
 8. For render failures, isolate runtime-safe imports and the default export first.
 9. For CSS failures, confirm the stylesheet is imported somewhere in the widget tree.
+
+## Verify after each fix
+
+1. Restart the server in development if the runtime configuration changed.
+2. Confirm the Vite dev client becomes reachable at `@vite/client`.
+3. Confirm expected bundle outputs exist under `dist/`.
+4. Fetch or open the widget resource and verify the rendered HTML references the expected assets.
+5. Re-run the failing user flow instead of assuming the previous error was the only problem.
 
 ## Minimal command set
 

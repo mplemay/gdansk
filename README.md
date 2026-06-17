@@ -12,16 +12,14 @@ uv add gdansk
 
 ## Skill for Coding Agents
 
-If you use coding agents such as Claude Code or Cursor, add the gdansk skills to your repository:
+If you use coding agents such as Claude Code or Cursor, add the gdansk skill to your repository:
 
 ```shell
-npx skills add mplemay/gdansk
+npx skills add mplemay/gdansk --skill use-gdansk
 ```
 
-Then use:
-
-- `$use-gdansk` to bootstrap gdansk in a new repo or add another widget to an existing integration.
-- `$debug-gdansk` to diagnose widget path, bundling, render, and runtime failures in an existing gdansk setup.
+The skill lives at `src/gdansk/.agents/skills/use-gdansk/` in this repository. Use `$use-gdansk` to bootstrap
+integrations, extend widgets and server features, or troubleshoot path, bundling, and render failures.
 
 ## Compatibility
 

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Use Gdansk"
-  short_description: "Bootstrap gdansk widgets and MCP wiring in any repo"
-  default_prompt: "Use $use-gdansk to add gdansk widget UI wiring or extend a gdansk integration in this repository."

@@ -203,56 +203,7 @@ uv run gdansk install
 uv run python server.py
 ```
 
-FastAPI mount pattern:
-
-```python
-import importlib
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
-from pathlib import Path
-
-from mcp.server import MCPServer
-from mcp.types import TextContent
-
-from gdansk import Ship, Vite
-
-FastAPI = importlib.import_module("fastapi").FastAPI
-
-ship = Ship(vite=Vite(Path(__file__).parent / "frontend"))
-
-
-@ship.widget(path=Path("hello/widget.tsx"), name="hello")
-def hello(name: str = "world") -> list[TextContent]:
-    return [TextContent(type="text", text=f"Hello, {name}!")]
-
-
-@asynccontextmanager
-async def mcp_lifespan(app: MCPServer) -> AsyncIterator[None]:
-    async with ship.mcp(app=app, watch=True):
-        yield
-
-
-mcp = MCPServer(name="FastAPI Example Server", lifespan=mcp_lifespan)
-mcp_app = mcp.streamable_http_app(streamable_http_path="/")
-
-
-@asynccontextmanager
-async def lifespan(_: object) -> AsyncIterator[None]:
-    async with mcp_app.router.lifespan_context(mcp_app):
-        yield
-
-
-app = FastAPI(lifespan=lifespan)
-app.mount(path=ship.assets_path, app=ship.assets)
-app.mount(path="/mcp", app=mcp_app)
-```
-
-Run:
-
-```bash
-uv sync
-uv run fastapi dev main.py
-```
+For FastAPI mounting, see [INTEGRATIONS.md](INTEGRATIONS.md).
 
 ## Quick checks
 
