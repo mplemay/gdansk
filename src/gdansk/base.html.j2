@@ -26,5 +26,8 @@ window.__vite_plugin_react_preamble_installed__ = true
 {% for script in scripts %}
 <script type="module" src="{{ script|safe }}"></script>
 {% endfor %}
+{% for script in inline_scripts %}
+<script type="module">{{ script|safe }}</script>
+{% endfor %}
 </body>
 </html>

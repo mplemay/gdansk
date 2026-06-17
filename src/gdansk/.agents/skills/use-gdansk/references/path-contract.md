@@ -58,12 +58,12 @@ Examples:
 - `hello/widget.tsx` -> `ui://hello`
 - `nested/page/widget.tsx` -> `ui://nested/page`
 
-## Output file mapping
+## Production output mapping
 
 For `hello/widget.tsx`:
 
-- client bundle: `dist/hello/client.js`
-- optional client css: `dist/hello/client.css`
+- manifest entry: `dist/gdansk-manifest.json` → `widgets.hello.inline.script`
+- optional styles: `dist/gdansk-manifest.json` → `widgets.hello.inline.styles`
 
 ## Guardrail checklist
 

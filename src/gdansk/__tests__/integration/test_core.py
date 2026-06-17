@@ -53,8 +53,10 @@ async def test_widget_resource_renders_through_mcp(views_path: Path):
         assert isinstance(html, str)
         assert "<title>Base title</title>" in html
         assert '<meta name="description" content="Widget description" />' in html
-        assert '<link rel="stylesheet" href="/dist/hello/client.css">' in html
-        assert '<script type="module" src="/dist/hello/client.js"></script>' in html
+        assert "<style>.hello { color: red; }\n</style>" in html
+        assert '<script type="module">console.log("hello");\n</script>' in html
+        assert "/dist/hello/client.css" not in html
+        assert "/dist/hello/client.js" not in html
         assert '<div id="root"></div>' in html
 
 

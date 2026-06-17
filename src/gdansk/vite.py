@@ -62,10 +62,6 @@ class Vite:
         self._origin: str | None = None
 
     @property
-    def assets_path(self) -> str:
-        return PurePosixPath("/", self._build_directory).as_posix()
-
-    @property
     def build_directory(self) -> str:
         return self._build_directory
 

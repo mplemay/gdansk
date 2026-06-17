@@ -30,7 +30,6 @@ def test_vite_rejects_invalid_build_directory(views_path: Path):
 def test_vite_owns_frontend_paths(views_path: Path):
     vite = Vite(views_path, build_directory="public/ui")
 
-    assert vite.assets_path == "/public/ui"
     assert vite.build_directory == "public/ui"
     assert vite.build_directory_path == views_path / "public/ui"
     assert vite.manifest_path == views_path / "public/ui" / "gdansk-manifest.json"
@@ -131,7 +130,6 @@ def test_vite_defaults_to_views_under_cwd(tmp_path: Path, monkeypatch: pytest.Mo
     vite = Vite()
 
     assert vite.root == views
-    assert vite.assets_path == "/dist"
     assert vite.build_directory == "dist"
     assert vite.build_directory_path == views / "dist"
     assert vite.widgets_root == views / "widgets"

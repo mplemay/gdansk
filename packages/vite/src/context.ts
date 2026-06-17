@@ -1,5 +1,5 @@
 import { access, glob as globIterate } from "node:fs/promises";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, resolve, sep } from "node:path";
 
 import { loadConfigFromFile, mergeConfig } from "vite";
 import type { Alias, InlineConfig, Plugin, PluginOption } from "vite";
@@ -49,9 +49,7 @@ export async function discoverWidgets(options: ResolvedGdanskOptions): Promise<W
     const key = toPosixPath(dirname(widgetPath));
 
     return {
-      clientCss: toPosixPath(join(options.buildDirectory, key, "client.css")),
       clientDevEntry: createClientDevEntry(key),
-      clientEntry: toPosixPath(join(options.buildDirectory, key, "client.js")),
       clientModuleId: createClientModuleId(key),
       entry: resolve(options.widgetsDirectoryPath, entry),
       key,

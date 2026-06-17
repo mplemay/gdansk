@@ -50,5 +50,4 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="FastAPI + Gdansk Example", lifespan=lifespan)
-app.mount(path=ship.assets_path, app=ship.assets)
 app.mount(path="/mcp", app=mcp_app)

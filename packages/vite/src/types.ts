@@ -23,9 +23,7 @@ export interface ResolvedGdanskOptions {
 }
 
 export interface WidgetDefinition {
-  clientCss: string;
   clientDevEntry: string;
-  clientEntry: string;
   clientModuleId: string;
   entry: string;
   key: string;
@@ -33,9 +31,11 @@ export interface WidgetDefinition {
 }
 
 export interface ManifestWidget {
-  client: string;
-  css: string[];
   entry: string;
+  inline: {
+    script: string;
+    styles: string[];
+  };
 }
 
 export interface GdanskManifest {

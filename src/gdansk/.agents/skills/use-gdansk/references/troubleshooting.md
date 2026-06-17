@@ -24,12 +24,12 @@ Classify the issue before editing:
    - Duplicate widget or tool registration.
 2. **Frontend startup or build failure**
    - Vite runtime never becomes healthy.
-   - Production server bundle is missing.
-   - Client bundle output is missing.
+   - Production inline manifest is missing.
+   - Manifest widget inline payload is missing.
 3. **Render or browser runtime failure**
    - Render request returns an execution error.
    - Rendered HTML is invalid or missing scripts.
-   - CSS is not emitted or not loaded.
+   - CSS is not imported into the inline widget payload.
 
 If the repo does not have gdansk wired yet, use [quickstart.md](quickstart.md) and [adoption.md](adoption.md) first.
 
@@ -52,13 +52,13 @@ Use [rules/config-sync.md](../rules/config-sync.md) for host/port/buildDirectory
 ## Match the failure to the smallest likely fix
 
 - For validation errors, fix the path or duplicate registration directly.
-- For build and startup failures, inspect `vite.config.ts`, belgie dependencies, and bundle outputs under `dist/`.
+- For build and startup failures, inspect `vite.config.ts`, belgie dependencies, and `dist/gdansk-manifest.json`.
 - For runtime host or port issues, keep `Vite(Path(...), host=..., port=...)` on `Ship(vite=...)` and
   `gdansk({ host, port })` aligned.
 - For build output directory mismatches, keep `Vite(Path(...), build_directory=...)` and
   `gdansk({ buildDirectory })` aligned.
 - For render errors, isolate the widget's default export and runtime-safe imports first.
-- For CSS issues, confirm the styles are imported from the widget tree and emitted into the bundle.
+- For CSS issues, confirm the styles are imported from the widget tree and present in the manifest's `inline.styles`.
 - For missing deps, run `uv run gdansk install` instead of `npm install`.
 
 ## Error map
@@ -81,9 +81,9 @@ Use [rules/config-sync.md](../rules/config-sync.md) for host/port/buildDirectory
 | Backend or template edits do not trigger a browser reload | Full-reload watching is disabled | Enable `gdansk({ refresh: true })` or point `refresh` at explicit backend paths | Check `vite.config.ts` for the plugin `refresh` option |
 | `The frontend build did not produce a manifest .../dist/gdansk-manifest.json` | Production build did not finish or stale output was reused | Rebuild the frontend and confirm `dist/gdansk-manifest.json` exists | Check `dist/` after a fresh build |
 | `Execution error: ...` during render | HTML rendering threw at runtime | Fix render-unsafe imports or rendering logic in the widget | Reduce the widget to a minimal default export and reintroduce imports incrementally |
-| Widget loads but CSS is missing | CSS import or asset emission issue | Ensure styles are imported from the widget tree and that CSS is emitted into `dist/` | Check for `dist/**/client.css` and whether the widget imports its styles |
+| Widget loads but CSS is missing | CSS import or manifest extraction issue | Ensure styles are imported from the widget tree and present in `inline.styles` | Inspect `dist/gdansk-manifest.json` |
 | Widget loads but tool call fails | Tool name mismatch | Align Python `name=` with `callServerTool({ name: ... })` | See [rules/widget-wiring.md](../rules/widget-wiring.md) |
-| Assets 404 in production | Missing asset mount | Mount `ship.assets` at `ship.assets_path` | See [production.md](production.md) |
+| Assets 404 in production | Widget references Vite `public/` files or fetches network resources at runtime | Import assets through the widget graph or serve runtime resources separately | See [production.md](production.md) |
 
 ## Structured diagnosis flow
 
@@ -95,17 +95,18 @@ Use [rules/config-sync.md](../rules/config-sync.md) for host/port/buildDirectory
 5. If the repo customizes the build output directory, confirm `Vite(..., build_directory=...)` and
    `gdansk({ buildDirectory })` match.
 6. Confirm the Python project's `pyproject.toml` has the required `[belgie.dependencies]`.
-7. Confirm bundle outputs exist under `dist/`.
+7. Confirm `dist/gdansk-manifest.json` exists.
 8. For render failures, isolate runtime-safe imports and the default export first.
-9. For CSS failures, confirm the stylesheet is imported somewhere in the widget tree.
+9. For CSS failures, confirm the stylesheet is imported somewhere in the widget tree and appears in `inline.styles`.
 
 ## Verify after each fix
 
 1. Run `uv run gdansk doctor` if layout or deps changed.
 2. Restart the server in development if the runtime configuration changed.
 3. Confirm the Vite dev client becomes reachable at `@vite/client`.
-4. Confirm expected bundle outputs exist under `dist/`.
-5. Fetch or open the widget resource and verify the rendered HTML references the expected assets.
+4. Confirm `dist/gdansk-manifest.json` exists.
+5. Fetch or open the widget resource and verify the rendered HTML contains inline `<style>` and
+   `<script type="module">`.
 6. Re-run the failing user flow instead of assuming the previous error was the only problem.
 
 ## Minimal command set
@@ -120,7 +121,7 @@ find <frontend-root>/widgets -type f | rg "widget\\.(tsx|jsx)$"
 # 2) ensure default exports exist
 rg -n "export default" <frontend-root>/widgets
 
-# 3) check generated outputs
+# 3) check generated output
 find <frontend-root>/dist -type f | sort
 ```
 

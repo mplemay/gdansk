@@ -103,11 +103,10 @@ dependencies.
 - Register widget tools with `@ship.widget(...)`.
 - Use `path=Path("<widget>/widget.tsx")` or `.jsx`, relative to `widgets/`.
 - Enter `async with ship.mcp(app=app, watch=...)` inside the `MCPServer` lifespan (`watch=True` for Vite dev,
-  `watch=False` to build on startup, `watch=None` when assets are prebuilt).
+  `watch=False` to build on startup, `watch=None` when widgets are prebuilt).
 - Import `@gdansk/vite` inside the frontend root's `vite.config.ts`.
 - Rely on the plugin's default `@` alias before adding a manual one.
 - Prefer `gdansk({ refresh: true })` when backend file changes should reload the browser during development.
-- Mount `ship.assets` at `ship.assets_path` on the public HTTP app.
 - If you customize the build output directory, keep `Vite(Path(...), build_directory=...)` aligned with
   `gdansk({ buildDirectory: ... })`.
 
@@ -122,8 +121,8 @@ uv run gdansk doctor
 Then confirm:
 
 - The server starts with no widget registration errors.
-- Frontend output appears under `<frontend-root>/dist/`.
-- The UI resource renders and the client script is present.
+- Frontend output includes `<frontend-root>/dist/gdansk-manifest.json`.
+- The UI resource renders and contains inline JS/CSS.
 - The widget can call the intended MCP tool.
 
 For a minimal working layout and run commands, see [quickstart.md](quickstart.md).

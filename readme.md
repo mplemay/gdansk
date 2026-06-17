@@ -98,7 +98,6 @@ def main() -> None:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.mount(path=ship.assets_path, app=ship.assets)
     uvicorn.run(app, port=3000)
 
 
@@ -169,10 +168,10 @@ Python or Jinja files change during development.
 `ship.mcp(..., watch=...)` controls how the frontend is prepared:
 
 - **`watch=True`** — runs the Vite dev server in the background with React refresh; JS/CSS load from the Vite origin.
-- **`watch=False`** (default) — runs `vite build` on startup, then serves static hydration assets and the gdansk
-  manifest from `ship.assets`.
+- **`watch=False`** (default) — runs `vite build` on startup, then loads the inline gdansk manifest from the build
+  directory.
 - **`watch=None`** — skips the frontend build toolchain entirely and loads an existing `gdansk-manifest.json` under the
-  assets directory. Use this when assets are prebuilt (for example in CI) to avoid cold-start build cost.
+  build directory. Use this when widgets are prebuilt (for example in CI) to avoid cold-start build cost.
 
 If you need a non-default build output directory, keep the Vite plugin and Python runtime aligned. Widget sources
 always live under `widgets/` at the frontend root (`Vite(root=...)` / Vite `root`).
@@ -198,18 +197,18 @@ export default defineConfig({
 });
 ```
 
-Production widgets load their hydration assets from `ship.assets_path`. Mount `ship.assets` at that path on the
-public app; with the default settings this is `/dist`.
+Production widgets are rendered as a single HTML resource. The generated page includes inline `<style>` tags and a
+single inline `<script type="module">`, so no static widget asset mount is required.
 
-The default production output now mirrors Vite/Laravel conventions more closely:
+The default production output is intentionally small:
 
-- standard Vite manifest: `dist/manifest.json`
 - gdansk runtime manifest: `dist/gdansk-manifest.json`
-- stable widget entries: `dist/<widget>/client.js` and `dist/<widget>/client.css`
-- shared hashed assets and chunks: `dist/assets/*`
+- one inline script payload per widget
+- inline CSS payloads per widget
+- imported assets from the Vite graph inlined as data URLs
 
-If your MCP client renders widget HTML on a different origin, pass `base_url` to `Ship` so production asset URLs point
-back to your public app instead of the client host:
+If your MCP client renders widget HTML on a different origin, pass `base_url` to `Ship` so widget metadata can describe
+the public server origin:
 
 ```python
 ship = Ship(vite=Vite(Path(__file__).parent / "frontend"), base_url="https://example.com")

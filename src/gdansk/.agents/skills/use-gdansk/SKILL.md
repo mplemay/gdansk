@@ -58,7 +58,7 @@ These rules are **always enforced**. Each links to Incorrect/Correct pairs.
 ### Widget wiring → [rules/widget-wiring.md](rules/widget-wiring.md)
 
 - Python tool `name` must match `callServerTool({ name: ... })` in the React widget.
-- Mount `ship.assets` at `ship.assets_path` for production hydration.
+- Production `ui://` resources return HTML with inline JS/CSS; there is no static widget asset mount.
 - Declare frontend deps in `[belgie.dependencies]`; run `uv run gdansk install` after changes.
 
 ## Quick-Start Patterns
@@ -93,7 +93,7 @@ async def lifespan(app: MCPServer) -> AsyncIterator[None]:
 mcp = MCPServer(name="Hello Server", lifespan=lifespan)
 ```
 
-Mount `ship.assets` at `ship.assets_path` on the public HTTP app (default `/dist`).
+Production widget HTML is self-contained; mount only the MCP app on your public HTTP app.
 
 ### Minimal React widget
 
@@ -148,12 +148,13 @@ export default defineConfig({
 
 1. **Classify** the request: bootstrap / add widget / extend / debug.
 2. **Bootstrap:** `uv add gdansk` → `uv run gdansk init` → `uv run gdansk install` → `uv run gdansk doctor`.
-3. **Wire server:** `Ship` + lifespan + `ship.mcp(...)` + asset mount — see
+3. **Wire server:** `Ship` + lifespan + `ship.mcp(...)` — see
    [references/quickstart.md](references/quickstart.md).
 4. **Add widget:** Python `@ship.widget` + `widgets/<name>/widget.tsx` — validate
    [rules/path-contract.md](rules/path-contract.md).
 5. **Configure Vite:** `@gdansk/vite` with `refresh: true` for development.
-6. **Run and verify:** start server; confirm `dist/<widget>/client.js` exists.
+6. **Run and verify:** start server; confirm `dist/gdansk-manifest.json` exists and the `ui://` resource renders inline
+   JS/CSS.
 7. **On failure:** run `uv run gdansk doctor`, then follow
    [references/troubleshooting.md](references/troubleshooting.md).
 8. **After fix:** re-verify bundle output and tool calls from the widget UI.
@@ -184,14 +185,15 @@ Load only the most relevant reference first. Read additional references only if 
 - After changing `[belgie.dependencies]`, run `uv run gdansk install` from the Python project root.
 - Run frontend tasks via `uv run gdansk dev` or `uv run gdansk build`, not raw `vite` commands.
 - Prefer `gdansk({ refresh: true })` when nearby Python or Jinja edits should reload the browser during development.
-- Mount `ship.assets` at `ship.assets_path` for production hydration assets.
+- Treat production widget HTML as the serving boundary; JS, CSS, and imported assets are inlined into the
+  manifest-backed page.
 
 ## Common Gotchas
 
 Agents commonly make these mistakes with gdansk:
 
 - Prefixing `@ship.widget(path=...)` with `widgets/` or passing absolute paths.
-- Forgetting to mount `ship.assets` at `ship.assets_path` in production.
+- Looking for production `client.js` or `client.css` files instead of `dist/gdansk-manifest.json`.
 - Mismatching `views/` (CLI scaffold default) with a different frontend dir name without updating `Vite(...)`.
 - Running `vite` directly or using npm/deno instead of `uv run gdansk dev` / `uv run gdansk build`.
 - Python tool `name` not matching `callServerTool({ name: ... })` in the React widget.
