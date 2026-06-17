@@ -104,7 +104,7 @@ Choose one primary path before making edits:
 2. **Add another widget** — tool function, `widgets/<name>/widget.tsx`, `@ship.widget(path=Path("..."))`.
 3. **Extend integration** — metadata, `structured_output=True`, extra `@mcp.tool` tools, FastAPI mounting.
 4. **Debug broken integration** — classify the failing boundary, then load
-   [TROUBLESHOOTING.md](references/TROUBLESHOOTING.md).
+   [troubleshooting.md](references/troubleshooting.md).
 
 After implementation or each fix, verify startup, bundle output under `dist/`, rendered HTML scripts, and tool calls.
 
@@ -114,11 +114,11 @@ Load only the most relevant reference first. Read additional references only if 
 
 | I want to… | Reference |
 | --- | --- |
-| Bootstrap or copy minimal working layout | [QUICKSTART.md](references/QUICKSTART.md) |
-| Check compatibility, deps, verification checklist | [ADOPTION.md](references/ADOPTION.md) |
-| Metadata, structured output, FastAPI, plain tools, styling | [INTEGRATIONS.md](references/INTEGRATIONS.md) |
-| Validate `@ship.widget(path=...)` inputs | [PATH-CONTRACT.md](references/PATH-CONTRACT.md) |
-| Fix errors / missing bundles / render failures | [TROUBLESHOOTING.md](references/TROUBLESHOOTING.md) |
+| Bootstrap or copy minimal working layout | [quickstart.md](references/quickstart.md) |
+| Check compatibility, deps, verification checklist | [adoption.md](references/adoption.md) |
+| Metadata, structured output, FastAPI, plain tools, styling | [integrations.md](references/integrations.md) |
+| Validate `@ship.widget(path=...)` inputs | [path-contract.md](references/path-contract.md) |
+| Fix errors / missing bundles / render failures | [troubleshooting.md](references/troubleshooting.md) |
 
 ## Key Practices
 

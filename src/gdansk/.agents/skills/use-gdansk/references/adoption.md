@@ -88,4 +88,4 @@ If the repo tracks `deno.lock`, keep it at the Python project root and in sync w
 - Confirm the UI resource renders and the client script is present.
 - Confirm the widget can call the intended MCP tool.
 
-For a minimal working layout and run commands, see [QUICKSTART.md](QUICKSTART.md).
+For a minimal working layout and run commands, see [quickstart.md](quickstart.md).

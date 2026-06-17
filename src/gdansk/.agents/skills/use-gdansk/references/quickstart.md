@@ -203,7 +203,7 @@ uv run gdansk install
 uv run python server.py
 ```
 
-For FastAPI mounting, see [INTEGRATIONS.md](INTEGRATIONS.md).
+For FastAPI mounting, see [integrations.md](integrations.md).
 
 ## Quick checks
 

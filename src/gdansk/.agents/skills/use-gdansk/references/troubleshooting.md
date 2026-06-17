@@ -20,7 +20,7 @@ Classify the issue before editing:
    - Rendered HTML is invalid or missing scripts.
    - CSS is not emitted or not loaded.
 
-If the repo does not have gdansk wired yet, use [QUICKSTART.md](QUICKSTART.md) and [ADOPTION.md](ADOPTION.md) first.
+If the repo does not have gdansk wired yet, use [quickstart.md](quickstart.md) and [adoption.md](adoption.md) first.
 
 ## Validate the public contract
 
@@ -34,7 +34,7 @@ Before changing behavior:
 - Confirm the Python project's `pyproject.toml` declares `@gdansk/vite`, `vite`, `@vitejs/plugin-react`, `react`,
   `react-dom`, and `@modelcontextprotocol/ext-apps` in `[belgie.dependencies]`.
 
-Use [PATH-CONTRACT.md](PATH-CONTRACT.md) for accepted and rejected widget path inputs.
+Use [path-contract.md](path-contract.md) for accepted and rejected widget path inputs.
 
 ## Match the failure to the smallest likely fix
 
