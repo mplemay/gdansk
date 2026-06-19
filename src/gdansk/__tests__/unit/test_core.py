@@ -6,11 +6,11 @@ from typing import TYPE_CHECKING, cast
 
 import httpx
 import pytest
-from mcp.server import MCPServer
-from mcp.server.mcpserver.tools.base import Tool
 from pydantic import BaseModel
 
+from gdansk.__tests__.conftest import mcp_mime_type, mcp_uri
 from gdansk.__tests__.unit.conftest import write_manifest
+from gdansk._mcp import MCPServer, Tool
 from gdansk.core import Ship
 from gdansk.manifest import GdanskManifest
 from gdansk.metadata import Metadata
@@ -668,10 +668,10 @@ async def test_ship_mcp_registers_widget_tool_and_resource(
 
     async with ship.mcp(app=app, watch=None):
         resources = await app.list_resources()
-        resource = next((item for item in resources if item.uri == "ui://hello"), None)
+        resource = next((item for item in resources if mcp_uri(item) == "ui://hello"), None)
         assert resource is not None
         assert resource.name == "hello"
-        assert resource.mime_type == "text/html;profile=mcp-app"
+        assert mcp_mime_type(resource) == "text/html;profile=mcp-app"
 
         tools = await app.list_tools()
         tool = next((item for item in tools if item.name == "hello"), None)

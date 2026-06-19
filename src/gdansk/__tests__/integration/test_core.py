@@ -3,10 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from mcp.server import MCPServer
 from pydantic import BaseModel
 
+from gdansk.__tests__.conftest import mcp_mime_type, mcp_tool_input_schema, mcp_uri
 from gdansk.__tests__.unit.conftest import write_manifest
+from gdansk._mcp import MCPServer
 from gdansk.core import Ship
 from gdansk.metadata import Metadata
 from gdansk.vite import Vite
@@ -33,21 +34,21 @@ async def test_widget_resource_renders_through_mcp(views_path: Path):
 
     async with ship.mcp(app=app, watch=None):
         resources = await app.list_resources()
-        resource = next((item for item in resources if item.uri == "ui://hello"), None)
+        resource = next((item for item in resources if mcp_uri(item) == "ui://hello"), None)
         assert resource is not None
         assert resource.name == "hello"
-        assert resource.mime_type == "text/html;profile=mcp-app"
+        assert mcp_mime_type(resource) == "text/html;profile=mcp-app"
 
         tools = await app.list_tools()
         tool = next((item for item in tools if item.name == "hello"), None)
         assert tool is not None
         assert tool.meta is not None
-        assert tool.meta["ui"]["resourceUri"] == resource.uri
+        assert tool.meta["ui"]["resourceUri"] == mcp_uri(resource)
 
-        contents = list(await app.read_resource(resource.uri))
+        contents = list(await app.read_resource(mcp_uri(resource)))
         assert len(contents) == 1
         content = contents[0]
-        assert content.mime_type == resource.mime_type
+        assert mcp_mime_type(content) == mcp_mime_type(resource)
 
         html = content.content
         assert isinstance(html, str)
@@ -79,8 +80,9 @@ async def test_widget_strict_schema_is_exposed_through_list_tools(views_path: Pa
         tool = next((item for item in tools if item.name == "hello"), None)
         assert tool is not None
 
-        assert tool.input_schema["additionalProperties"] is False
-        assert tool.input_schema["required"] == ["filters", "name"]
-        assert "default" not in tool.input_schema["properties"]["name"]
-        assert tool.input_schema["$defs"]["SearchFilters"]["additionalProperties"] is False
-        assert tool.input_schema["$defs"]["SearchFilters"]["required"] == ["city", "radius"]
+        input_schema = mcp_tool_input_schema(tool)
+        assert input_schema["additionalProperties"] is False
+        assert input_schema["required"] == ["filters", "name"]
+        assert "default" not in input_schema["properties"]["name"]
+        assert input_schema["$defs"]["SearchFilters"]["additionalProperties"] is False
+        assert input_schema["$defs"]["SearchFilters"]["required"] == ["city", "radius"]

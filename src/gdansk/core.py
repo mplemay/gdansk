@@ -10,9 +10,8 @@ from typing import TYPE_CHECKING, Any, Final, Literal
 from urllib.parse import urlparse
 
 from httpx import AsyncClient
-from mcp.server.mcpserver.resources import FunctionResource
-from mcp.server.mcpserver.tools.base import Tool
 
+from gdansk._mcp import FunctionResource, Tool
 from gdansk._schema import to_strict_schema
 from gdansk.metadata import Metadata, merge_metadata
 from gdansk.render import render_template
@@ -23,8 +22,9 @@ from gdansk.widget import WidgetMeta, transform
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable
 
-    from mcp.server import MCPServer
     from mcp.types import Icon, ToolAnnotations
+
+    from gdansk._mcp import MCPServer
 
 
 type PathType = str | PathLike[str]

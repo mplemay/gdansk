@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from json import dumps
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -9,6 +9,32 @@ from gdansk.cli import main
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+def mcp_uri(resource: object) -> str:
+    return str(getattr(resource, "uri", ""))
+
+
+def mcp_mime_type(resource: object) -> str:
+    mime_type = getattr(resource, "mime_type", None)
+    if mime_type is not None:
+        return mime_type
+    camel = getattr(resource, "mimeType", None)
+    if camel is None:
+        msg = f"{type(resource)!r} has neither mime_type nor mimeType"
+        raise AttributeError(msg)
+    return camel
+
+
+def mcp_tool_input_schema(tool: object) -> dict[str, Any]:
+    schema = getattr(tool, "input_schema", None)
+    if schema is not None:
+        return schema
+    camel = getattr(tool, "inputSchema", None)
+    if camel is None:
+        msg = f"{type(tool)!r} has neither input_schema nor inputSchema"
+        raise AttributeError(msg)
+    return camel
 
 
 def run_cli(

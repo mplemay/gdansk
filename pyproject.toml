@@ -10,7 +10,7 @@ authors = [
 requires-python = ">=3.12,<3.15"
 dependencies = [
     "belgie>=0.20.0",
-    "mcp==2.0.0a1",
+    "mcp>=1.27",
     "minijinja>=2,<3",
     "pydantic>=2.12.5",
     "starlette>=1.0.0",
@@ -38,6 +38,7 @@ build-backend = "uv_build"
 [tool.uv]
 exclude-newer = "7 days"
 exclude-newer-package = { belgie = false, mcp = false }
+override-dependencies = ["mcp==2.0.0a1"]
 
 [belgie.dependencies.dev]
 oxfmt = "0.53.0"
@@ -116,6 +117,7 @@ markers = [
 ]
 filterwarnings = [
     "error",
+    "default::DeprecationWarning:gdansk.core",
 ]
 
 
