@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-import tomllib
+import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+import rtoml
 
 
 class ProjectError(Exception):
@@ -11,11 +14,43 @@ class ProjectError(Exception):
 
 
 @dataclass(slots=True, kw_only=True, frozen=True)
+class Dependency:
+    alias: str
+    group: str
+    specifier: str
+
+    @property
+    def is_full_specifier(self) -> bool:
+        return self.specifier.startswith(("npm:", "jsr:"))
+
+    def updated_value(self, specifier: str) -> str:
+        if self.is_full_specifier:
+            return specifier
+
+        prefix = f"npm:{self.alias}@"
+        if not specifier.startswith(prefix):
+            msg = f"Updated dependency '{self.alias}' no longer resolves to its npm package: {specifier}"
+            raise ProjectError(msg)
+        return specifier.removeprefix(prefix)
+
+
+@dataclass(slots=True, kw_only=True, frozen=True)
 class GdanskProject:
     root: Path
-    scripts: dict[str, str]
-    has_dependencies: bool
+    commands: dict[str, tuple[str, ...]]
+    dependencies: tuple[Dependency, ...]
     pyproject: dict[str, Any]
+
+    @property
+    def dependency_mapping(self) -> dict[str, str]:
+        return {dependency.alias: dependency.specifier for dependency in self.dependencies}
+
+    @property
+    def has_dependencies(self) -> bool:
+        return bool(self.dependencies)
+
+    def dependency(self, alias: str) -> Dependency | None:
+        return next((dependency for dependency in self.dependencies if dependency.alias == alias), None)
 
 
 def read_pyproject_document(root: Path) -> dict[str, Any]:
@@ -23,42 +58,130 @@ def read_pyproject_document(root: Path) -> dict[str, Any]:
     if not pyproject_path.is_file():
         msg = f"No pyproject.toml found at {root}"
         raise ProjectError(msg)
-    document = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+    try:
+        document = rtoml.load(pyproject_path)
+    except Exception as error:
+        msg = f"Invalid pyproject.toml at {pyproject_path}: {error}"
+        raise ProjectError(msg) from error
     if not isinstance(document, dict):
         msg = f"Invalid pyproject.toml at {pyproject_path}"
         raise ProjectError(msg)
     return document
 
 
-def _belgie_table(document: dict[str, Any]) -> dict[str, Any] | None:
-    belgie = document.get("belgie")
-    if isinstance(belgie, dict):
-        return belgie
+def write_pyproject_document(root: Path, document: dict[str, Any]) -> None:
+    path = root / "pyproject.toml"
+    text = rtoml.dumps(document, pretty=True)
+    atomic_write_text(path, text)
+
+
+def atomic_write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as file:
+            file.write(text)
+        temporary.replace(path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
+def _gdansk_table(document: dict[str, Any]) -> dict[str, Any] | None:
+    gdansk = document.get("gdansk")
+    if isinstance(gdansk, dict):
+        return gdansk
     return None
 
 
-def _load_project_from_document(root: Path, document: dict[str, Any]) -> GdanskProject:
-    belgie = _belgie_table(document)
-    if belgie is None:
-        msg = f"No [belgie] configuration found in {root / 'pyproject.toml'}"
+def _legacy_belgie_error(root: Path) -> ProjectError:
+    return ProjectError(
+        f"Unsupported [belgie] configuration in {root / 'pyproject.toml'}; "
+        "rename [belgie.dependencies] to [gdansk.dependencies] and "
+        "[belgie.scripts] to array-based [gdansk.commands]",
+    )
+
+
+def _parse_dependencies(gdansk: dict[str, Any]) -> tuple[Dependency, ...]:
+    table = gdansk.get("dependencies")
+    if table is None:
+        return ()
+    if not isinstance(table, dict):
+        msg = "[gdansk.dependencies] must be a table"
         raise ProjectError(msg)
 
-    dependencies = belgie.get("dependencies")
-    has_dependencies = isinstance(dependencies, dict) and bool(dependencies)
+    dependencies: list[Dependency] = []
+    aliases: set[str] = set()
+    for alias, value in table.items():
+        if alias == "dev" and isinstance(value, dict):
+            for dev_alias, dev_value in value.items():
+                _append_dependency(dependencies, aliases, dev_alias, dev_value, group="dev")
+            continue
+        if isinstance(value, dict):
+            msg = f"Unsupported dependency group [gdansk.dependencies.{alias}]; only .dev is supported"
+            raise ProjectError(msg)
+        _append_dependency(dependencies, aliases, alias, value, group="default")
+    return tuple(dependencies)
 
-    scripts_table = belgie.get("scripts")
-    scripts: dict[str, str] = {}
-    if isinstance(scripts_table, dict):
-        for name, command in scripts_table.items():
-            if not isinstance(command, str):
-                msg = f"[belgie.scripts] entry '{name}' must be a string shell command"
-                raise ProjectError(msg)
-            scripts[name] = command
+
+def _append_dependency(
+    dependencies: list[Dependency],
+    aliases: set[str],
+    alias: object,
+    value: object,
+    *,
+    group: str,
+) -> None:
+    if (
+        not isinstance(alias, str)
+        or not alias.strip()
+        or alias == "dev"
+        or not isinstance(value, str)
+        or not value.strip()
+    ):
+        msg = f"[gdansk.dependencies{'.dev' if group == 'dev' else ''}] entries must map strings to strings"
+        raise ProjectError(msg)
+    if alias in aliases:
+        msg = f"Duplicate dependency alias '{alias}' across [gdansk.dependencies] groups"
+        raise ProjectError(msg)
+    aliases.add(alias)
+    dependencies.append(Dependency(alias=alias, group=group, specifier=value))
+
+
+def _parse_commands(gdansk: dict[str, Any]) -> dict[str, tuple[str, ...]]:
+    table = gdansk.get("commands")
+    if table is None:
+        return {}
+    if not isinstance(table, dict):
+        msg = "[gdansk.commands] must be a table"
+        raise ProjectError(msg)
+
+    commands: dict[str, tuple[str, ...]] = {}
+    for name, value in table.items():
+        if not isinstance(name, str) or not name.strip() or not isinstance(value, list) or not value:
+            msg = f"[gdansk.commands] entry '{name}' must be a non-empty array of strings"
+            raise ProjectError(msg)
+        if not all(isinstance(item, str) and item for item in value):
+            msg = f"[gdansk.commands] entry '{name}' must be a non-empty array of strings"
+            raise ProjectError(msg)
+        commands[name] = tuple(value)
+    return commands
+
+
+def _load_project_from_document(root: Path, document: dict[str, Any]) -> GdanskProject:
+    if isinstance(document.get("belgie"), dict):
+        raise _legacy_belgie_error(root)
+
+    gdansk = _gdansk_table(document)
+    if gdansk is None:
+        msg = f"No [gdansk] configuration found in {root / 'pyproject.toml'}"
+        raise ProjectError(msg)
 
     return GdanskProject(
         root=root.resolve(),
-        scripts=scripts,
-        has_dependencies=has_dependencies,
+        commands=_parse_commands(gdansk),
+        dependencies=_parse_dependencies(gdansk),
         pyproject=document,
     )
 
@@ -74,10 +197,12 @@ def _find_project_with_document(start: Path | None = None) -> tuple[Path, dict[s
             continue
 
         document = read_pyproject_document(directory)
-        if _belgie_table(document) is not None:
+        if isinstance(document.get("belgie"), dict):
+            raise _legacy_belgie_error(directory)
+        if _gdansk_table(document) is not None:
             return directory, document
 
-    msg = f"Could not find pyproject.toml with a [belgie] table. Searched: {', '.join(searched)}"
+    msg = f"Could not find pyproject.toml with a [gdansk] table. Searched: {', '.join(searched)}"
     raise ProjectError(msg)
 
 

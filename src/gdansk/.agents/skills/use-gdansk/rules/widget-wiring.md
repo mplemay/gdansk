@@ -7,7 +7,7 @@ Align Python tool registration, React widget code, and frontend dependencies.
 - Tool name alignment
 - Default export
 - Production inline bundles
-- belgie dependencies
+- gdansk dependencies
 
 ---
 
@@ -79,14 +79,14 @@ Production widgets return inline JS/CSS inside the `ui://` HTML resource. The on
 
 ---
 
-## belgie dependencies
+## gdansk dependencies
 
 **Incorrect:** adding `package.json` in the frontend root or running `npm install`.
 
-**Correct:** declare deps in `pyproject.toml` and install from the Python project root:
+**Correct:** declare deps in `pyproject.toml` and lock them from the Python project root:
 
 ```toml
-[belgie.dependencies]
+[gdansk.dependencies]
 "@gdansk/vite" = "^0.1.0"
 "@modelcontextprotocol/ext-apps" = "^1.5.0"
 react = "^19"
@@ -94,7 +94,7 @@ vite = "8.0.8"
 ```
 
 ```bash
-uv run gdansk install
+uv run gdansk lock
 ```
 
-Keep the belgie lockfile (`deno.lock`) at the Python project root.
+Keep the gdansk lockfile (`deno.lock`) at the Python project root.

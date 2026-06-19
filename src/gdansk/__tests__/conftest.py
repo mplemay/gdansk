@@ -31,8 +31,9 @@ def run_cli(
 def write_pyproject(
     root: Path,
     *,
-    scripts: dict[str, str] | None = None,
+    commands: dict[str, list[str]] | None = None,
     dependencies: dict[str, str] | None = None,
+    dev_dependencies: dict[str, str] | None = None,
     include_project: bool = True,
     project_scripts: dict[str, str] | None = None,
     project_name: str = "example",
@@ -55,14 +56,20 @@ def write_pyproject(
 
     deps = dependencies if dependencies is not None else {"vite": "8.0.8"}
     if deps:
-        lines.append("[belgie.dependencies]")
+        lines.append("[gdansk.dependencies]")
         lines.extend(f"{dumps(name)} = {dumps(value)}" for name, value in deps.items())
         lines.append("")
 
-    script_map = scripts if scripts is not None else {"build": "vite build", "dev": "vite"}
-    if script_map:
-        lines.append("[belgie.scripts]")
-        lines.extend(f"{dumps(name)} = {dumps(command)}" for name, command in script_map.items())
+    dev_deps = dev_dependencies or {}
+    if dev_deps:
+        lines.append("[gdansk.dependencies.dev]")
+        lines.extend(f"{dumps(name)} = {dumps(value)}" for name, value in dev_deps.items())
+        lines.append("")
+
+    command_map = commands if commands is not None else {"version": ["vite", "--version"]}
+    if command_map:
+        lines.append("[gdansk.commands]")
+        lines.extend(f"{dumps(name)} = {dumps(command)}" for name, command in command_map.items())
         lines.append("")
 
     path = root / "pyproject.toml"
@@ -92,14 +99,16 @@ def write_src_layout_project(
     root: Path,
     *,
     package: str = "example",
-    scripts: dict[str, str] | None = None,
+    commands: dict[str, list[str]] | None = None,
     dependencies: dict[str, str] | None = None,
+    dev_dependencies: dict[str, str] | None = None,
     project_name: str = "example",
 ) -> tuple[Path, Path]:
     write_pyproject(
         root,
-        scripts=scripts,
+        commands=commands,
         dependencies=dependencies,
+        dev_dependencies=dev_dependencies,
         project_name=project_name,
         project_scripts={"main": f"{package}.__main__:main"},
     )

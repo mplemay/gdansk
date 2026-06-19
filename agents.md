@@ -7,20 +7,21 @@
   - *Rules:*
     - **Always run `uv` with elevated permissions.**
     - **Don't use other package managers for python dependencies (ex: `pip`, `poetry`, etc.)**
-- **`belgie`:** Frontend dependency management for gdansk apps (declared in `pyproject.toml`, invoked via gdansk CLI).
-  - *Usage:* `uv run gdansk install`, `uv run gdansk lock`, `uv run gdansk update`, `uv run gdansk build`,
+- **`belgie`:** Frontend dependency execution for gdansk apps (configured by gdansk in `pyproject.toml`).
+  - *Usage:* `uv run gdansk add`, `uv run gdansk lock`, `uv run gdansk update`, `uv run gdansk build`,
     `uv run gdansk dev`
   - *Rules:*
-    - **Declare app/example frontend deps in `[belgie.dependencies]` (and `[belgie.dependencies.dev]`) tables in
+    - **Declare app/example frontend deps in `[gdansk.dependencies]` (and `[gdansk.dependencies.dev]`) tables in
       `pyproject.toml`.**
-    - **Run `uv run gdansk install` after changing belgie dependency tables.**
+    - **Run `uv run gdansk lock` after manually changing gdansk dependency tables.**
+    - **Prefer `uv run gdansk add <alias> <specifier>` when adding frontend dependencies.**
     - **Run frontend tasks via `uv run gdansk build` / `uv run gdansk dev`, not raw `vite` commands.**
     - **Don't use other package managers for javascript / typescript dependencies (ex: `bun`, `npm`, etc.)** in
       app/example roots.
     - **Don't add `package.json` or `deno.json` files to app/example frontend roots.**
     - **Keep `package.json` only for separately published JavaScript packages, such as `packages/vite` (which may use
       npm/deno in its own CI).**
-    - **Commit `deno.lock` at the Python project root when belgie dependencies change.**
+    - **Commit `deno.lock` at the Python project root when gdansk dependencies change.**
 
 ## Conventions
 

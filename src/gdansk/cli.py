@@ -3,35 +3,40 @@ from __future__ import annotations
 import argparse
 import asyncio
 import importlib.metadata
-import re
+import shlex
 import signal
 import sys
-import tomllib
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from importlib import resources
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
-from belgie.dependencies import install as install_packages, lock as lock_packages, update as update_packages
+import rtoml
 from belgie.errors import BelgieRuntimeError
 
 from gdansk._project import (
     GdanskProject,
     ProjectError,
-    _belgie_table,
+    _gdansk_table,
     discover_project,
     load_project,
     read_pyproject_document,
     resolve_frontend_path,
     validate_frontend_root,
+    write_pyproject_document,
 )
-from gdansk.task import DEFAULT_HOST, DEFAULT_PORT, dev_start_kwargs, run_task, start_task
+from gdansk.packages import add_dependency, lock_project, update_project
+from gdansk.task import (
+    DEFAULT_HOST,
+    DEFAULT_PORT,
+    CommandProcess,
+    dev_command_argv,
+    run_command,
+    start_command,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Generator, Sequence
-
-    from belgie.dependencies import PackageInstallResult
-    from belgie.tasks import TaskProcess
 
 PYTHON_MIN: Final[tuple[int, int]] = (3, 12)
 PYTHON_MAX: Final[tuple[int, int]] = (3, 15)
@@ -77,44 +82,26 @@ def _runtime_errors() -> Generator[None, None, None]:
         raise SystemExit(1) from error
 
 
-def _format_package_result(action: str, result: PackageInstallResult) -> str:
-    total = sum(result.groups.values())
-    group_summary = ", ".join(f"{name}: {count}" for name, count in result.groups.items())
-    suffix = f" ({group_summary})" if group_summary else ""
-    return f"{action} {total} dependencies{suffix}. Lockfile: {result.lockfile}"
-
-
-def _dependency_groups(*, with_dev: bool) -> list[str]:
-    if with_dev:
-        return ["default", "dev"]
-    return ["default"]
-
-
-def _resolve_task_frontend(
-    project: GdanskProject,
-    frontend: Path | None,
-) -> Path:
+def _resolve_frontend(project: GdanskProject, frontend: Path | None) -> Path:
     frontend_path = resolve_frontend_path(project, frontend)
     validate_frontend_root(frontend_path)
     return frontend_path
 
 
-def _require_script(project: GdanskProject, script: str) -> None:
-    if script in project.scripts:
-        return
+def _require_command(project: GdanskProject, name: str) -> tuple[str, ...]:
+    command = project.commands.get(name)
+    if command is not None:
+        return command
 
-    _eprint(f"No [belgie.scripts] entry '{script}' in {project.root / 'pyproject.toml'}")
-    if project.scripts:
-        _eprint("Available scripts:")
-        for name, command in sorted(project.scripts.items()):
-            print(f"  {name}  {command}", file=sys.stderr)
-    else:
-        _eprint("Run `gdansk scripts` to list configured scripts.")
+    _eprint(f"No [gdansk.commands] entry '{name}' in {project.root / 'pyproject.toml'}")
+    if project.commands:
+        _eprint("Available commands:")
+        for command_name, command_argv in sorted(project.commands.items()):
+            _eprint(f"  {command_name}  {shlex.join(command_argv)}")
     raise SystemExit(1)
 
 
-async def _run_until_signal(coro: Awaitable[TaskProcess]) -> None:
-    process: TaskProcess | None = None
+async def _run_until_signal(process_awaitable: Awaitable[CommandProcess]) -> None:
     stop_event = asyncio.Event()
     loop = asyncio.get_running_loop()
 
@@ -125,115 +112,120 @@ async def _run_until_signal(coro: Awaitable[TaskProcess]) -> None:
     if sys.platform == "win32":
         signals.append(signal.SIGBREAK)
 
-    for sig in signals:
+    registered: list[signal.Signals] = []
+    for current_signal in signals:
         try:
-            loop.add_signal_handler(sig, request_stop)
+            loop.add_signal_handler(current_signal, request_stop)
+            registered.append(current_signal)
         except NotImplementedError:
-            signal.signal(sig, lambda _signum, _frame: request_stop())
+            signal.signal(current_signal, lambda _signum, _frame: request_stop())
 
+    process: CommandProcess | None = None
+    stop_waiter: asyncio.Task[bool] | None = None
     try:
-        process = await coro
-        await stop_event.wait()
-    finally:
-        if process is not None:
+        process = await process_awaitable
+        stop_waiter = asyncio.create_task(stop_event.wait())
+        done, _ = await asyncio.wait(
+            {process.task, stop_waiter},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if stop_waiter in done:
             await process.stop()
+        else:
+            await process.wait()
+    finally:
+        if process is not None and process.is_running:
+            await process.stop()
+        if stop_waiter is not None:
+            stop_waiter.cancel()
+            with suppress(asyncio.CancelledError):
+                await stop_waiter
+        for current_signal in registered:
+            loop.remove_signal_handler(current_signal)
 
 
-def cmd_install(args: argparse.Namespace) -> None:
+def cmd_add(args: argparse.Namespace) -> None:
     project = discover_project(project=args.project)
     with _runtime_errors():
-        result = install_packages(
-            cwd=project.root,
-            groups=_dependency_groups(with_dev=not args.no_dev),
-            lockfile_only=args.lock_only,
+        add_dependency(
+            project,
+            alias=args.alias,
+            specifier=args.specifier,
+            dev=args.dev,
         )
-        print(_format_package_result("Installed", result))
+    group = "dev" if args.dev else "default"
+    print(f"Added {args.alias} to {group} dependencies. Lockfile: {project.root / 'deno.lock'}")
 
 
 def cmd_lock(args: argparse.Namespace) -> None:
     project = discover_project(project=args.project)
     with _runtime_errors():
-        result = lock_packages(cwd=project.root, groups=_dependency_groups(with_dev=not args.no_dev))
-        print(_format_package_result("Locked", result))
+        result = lock_project(project)
+    print(f"Locked {result.dependencies} dependencies. Lockfile: {project.root / 'deno.lock'}")
 
 
 def cmd_update(args: argparse.Namespace) -> None:
     project = discover_project(project=args.project)
     with _runtime_errors():
-        result = update_packages(
-            cwd=project.root,
-            packages=args.packages or None,
-            groups=_dependency_groups(with_dev=not args.no_dev),
-            latest=args.latest,
-            lockfile_only=args.lock_only,
-        )
-        for change in result.changes:
-            print(f"{change.name}: {change.previous} -> {change.updated}")
-        print(f"Lockfile: {result.lockfile}")
-
-
-def _run_task_command(
-    args: argparse.Namespace,
-    *,
-    script: str,
-    long_running: bool,
-) -> None:
-    project = discover_project(project=args.project)
-    _require_script(project, script)
-
-    frontend_path = _resolve_task_frontend(project, args.frontend)
-    argv = list(args.task_args)
-
-    with _runtime_errors():
-        if long_running:
-            if script == "dev":
-                dev_params = dev_start_kwargs(
-                    args.host or DEFAULT_HOST,
-                    args.port or DEFAULT_PORT,
-                    argv,
-                )
-                task_coro = start_task(
-                    frontend_path,
-                    script,
-                    argv=dev_params.argv,
-                    host=dev_params.host,
-                    port=dev_params.port,
-                )
-            else:
-                task_coro = start_task(
-                    frontend_path,
-                    script,
-                    argv=argv,
-                    host=getattr(args, "host", None),
-                    port=getattr(args, "port", None),
-                )
-            asyncio.run(_run_until_signal(task_coro))
-        else:
-            asyncio.run(run_task(frontend_path, script, argv=argv))
+        result = update_project(project, args.packages or None, latest=args.latest)
+    for change in result.changes:
+        print(f"{change.name}: {change.previous} -> {change.updated}")
+    print(f"Lockfile: {project.root / 'deno.lock'}")
 
 
 def cmd_build(args: argparse.Namespace) -> None:
-    _run_task_command(args, script="build", long_running=False)
+    project = discover_project(project=args.project)
+    frontend = _resolve_frontend(project, args.frontend)
+    with _runtime_errors():
+        asyncio.run(
+            run_command(
+                project,
+                "vite",
+                cwd=frontend,
+                argv=["build", *args.task_args],
+            ),
+        )
 
 
 def cmd_dev(args: argparse.Namespace) -> None:
-    _run_task_command(args, script="dev", long_running=True)
+    project = discover_project(project=args.project)
+    frontend = _resolve_frontend(project, args.frontend)
+    argv = [*dev_command_argv(args.host, args.port), *args.task_args]
+    with _runtime_errors():
+        asyncio.run(
+            _run_until_signal(
+                start_command(project, "vite", cwd=frontend, argv=argv),
+            ),
+        )
 
 
 def cmd_run(args: argparse.Namespace) -> None:
-    long_running = args.script == "dev" or args.watch
-    _run_task_command(args, script=args.script, long_running=long_running)
-
-
-def cmd_scripts(args: argparse.Namespace) -> None:
     project = discover_project(project=args.project)
-    if not project.scripts:
-        _eprint("No [belgie.scripts] entries configured.")
+    configured = _require_command(project, args.name)
+    command, *fixed_arguments = configured
+    argv = [*fixed_arguments, *args.task_args]
+    with _runtime_errors():
+        if args.watch:
+            asyncio.run(
+                _run_until_signal(
+                    start_command(project, command, cwd=project.root, argv=argv),
+                ),
+            )
+        else:
+            asyncio.run(
+                run_command(project, command, cwd=project.root, argv=argv),
+            )
+
+
+def cmd_commands(args: argparse.Namespace) -> None:
+    project = discover_project(project=args.project)
+    if not project.commands:
+        _eprint("No [gdansk.commands] entries configured.")
         raise SystemExit(1)
 
-    width = max(len(name) for name in project.scripts)
-    for name, command in sorted(project.scripts.items()):
-        print(f"{name:<{width}}  {command}")
+    width = max(len(name) for name in project.commands)
+    for name, command in sorted(project.commands.items()):
+        print(f"{name:<{width}}  {shlex.join(command)}")
 
 
 def cmd_doctor(args: argparse.Namespace) -> None:
@@ -258,14 +250,14 @@ def cmd_doctor(args: argparse.Namespace) -> None:
 
     if project is not None:
         if project.has_dependencies:
-            print(f"ok   [belgie.dependencies] in {project.root / 'pyproject.toml'}")
+            print(f"ok   [gdansk.dependencies] in {project.root / 'pyproject.toml'}")
         else:
-            message = "No [belgie.dependencies] table found"
+            message = "No [gdansk.dependencies] table found"
             print(f"fail {message}")
             failures.append(message)
 
         try:
-            frontend_path = _resolve_task_frontend(project, args.frontend)
+            frontend_path = _resolve_frontend(project, args.frontend)
         except ProjectError as error:
             print(f"fail {error}")
             failures.append(str(error))
@@ -277,28 +269,17 @@ def cmd_doctor(args: argparse.Namespace) -> None:
 
             root_lock = project.root / "deno.lock"
             if root_lock.is_file():
-                print(f"ok   belgie lockfile (deno.lock) at project root ({root_lock})")
+                print(f"ok   gdansk lockfile (deno.lock) at project root ({root_lock})")
             else:
-                message = f"belgie lockfile (deno.lock) missing at project root ({root_lock})"
+                message = f"gdansk lockfile (deno.lock) missing at project root ({root_lock})"
                 print(f"warn {message}")
                 warnings.append(message)
 
             legacy_lock = frontend_path / "deno.lock"
             if legacy_lock.is_file() and not root_lock.is_file():
-                message = (
-                    f"Legacy belgie lockfile (deno.lock) found under frontend ({legacy_lock}); "
-                    "move it to the project root"
-                )
+                message = f"Legacy lockfile found under frontend ({legacy_lock}); move it to the project root"
                 print(f"warn {message}")
                 warnings.append(message)
-
-            for script_name in ("build", "dev"):
-                if script_name in project.scripts:
-                    print(f"ok   [belgie.scripts].{script_name}")
-                else:
-                    message = f"Missing [belgie.scripts].{script_name}"
-                    print(f"warn {message}")
-                    warnings.append(message)
 
     for warning in warnings:
         _eprint(f"warning: {warning}")
@@ -313,41 +294,23 @@ def cmd_doctor(args: argparse.Namespace) -> None:
         print("doctor: all checks passed")
 
 
-def _strip_belgie_sections(text: str) -> str:
-    lines = text.splitlines()
-    kept: list[str] = []
-    skipping = False
-
-    for line in lines:
-        if re.match(r"^\[belgie(?:\.[^\]]+)?\]\s*$", line):
-            skipping = True
-            continue
-        if line.startswith("[") and not line.startswith("[belgie"):
-            skipping = False
-        if not skipping:
-            kept.append(line)
-
-    while kept and not kept[-1].strip():
-        kept.pop()
-    return "\n".join(kept) + "\n"
-
-
 def _write_init_pyproject(target: Path, *, package: str, force: bool) -> None:
-    belgie_tables = _template_text("belgie_tables.toml", package=package)
+    gdansk_document = rtoml.loads(_template_text("gdansk_tables.toml", package=package))
 
     if target.exists():
-        text = target.read_text(encoding="utf-8")
-        if _belgie_table(tomllib.loads(text)) is not None and not force:
-            msg = f"[belgie] already present in {target}; use --force to replace belgie tables"
+        document = read_pyproject_document(target.parent)
+        if _gdansk_table(document) is not None and not force:
+            msg = f"[gdansk] already present in {target}; use --force to replace gdansk tables"
             raise ProjectError(msg)
-        if force:
-            text = _strip_belgie_sections(text)
-        text = text.rstrip() + "\n\n" + belgie_tables
-        target.write_text(text, encoding="utf-8")
-        return
+        if isinstance(document.get("belgie"), dict) and not force:
+            msg = f"Legacy [belgie] configuration is present in {target}; use --force to replace it"
+            raise ProjectError(msg)
+        document.pop("belgie", None)
+    else:
+        document = rtoml.loads(_template_text("pyproject.toml", package=package))
 
-    text = _template_text("pyproject.toml", package=package).rstrip() + "\n\n" + belgie_tables
-    target.write_text(text, encoding="utf-8")
+    document["gdansk"] = gdansk_document["gdansk"]
+    write_pyproject_document(target.parent, document)
 
 
 def _write_scaffold_file(path: Path, content: str, *, force: bool) -> None:
@@ -366,13 +329,11 @@ def cmd_init(args: argparse.Namespace) -> None:
     views_path = package_root / "views"
 
     if main_path.exists() and not args.force:
-        msg = f"Refusing to overwrite existing entrypoint: {main_path}"
-        _eprint(msg)
+        _eprint(f"Refusing to overwrite existing entrypoint: {main_path}")
         raise SystemExit(1)
 
     if views_path.exists() and any(views_path.iterdir()) and not args.force:
-        msg = f"Refusing to scaffold into non-empty views directory: {views_path}"
-        _eprint(msg)
+        _eprint(f"Refusing to scaffold into non-empty views directory: {views_path}")
         raise SystemExit(1)
 
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -404,13 +365,12 @@ def cmd_init(args: argparse.Namespace) -> None:
         raise SystemExit(1) from error
 
     project = load_project(target_dir)
-    if not args.no_install:
+    if not args.no_lock:
         with _runtime_errors():
-            lock_packages(cwd=project.root, groups=_dependency_groups(with_dev=True))
+            lock_project(project)
 
     print(f"Initialized gdansk project in {target_dir}")
     print("Next steps:")
-    print("  uv run gdansk install")
     print("  uv run gdansk dev")
     print(f"  uv run python -m {package}")
 
@@ -428,7 +388,7 @@ def _add_project_args(parser: argparse.ArgumentParser) -> None:
         "--project",
         type=Path,
         default=None,
-        help="Project root containing pyproject.toml with [belgie] configuration",
+        help="Project root containing pyproject.toml with [gdansk] configuration",
     )
 
 
@@ -442,67 +402,50 @@ def _add_frontend_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _add_dev_runtime_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--host", default=DEFAULT_HOST, help="Dev server host")
-    parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="Dev server port")
-
-
-def _add_optional_runtime_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--host", default=None, help="Optional HTTP host for long-running tasks")
-    parser.add_argument("--port", type=int, default=None, help="Optional HTTP port for long-running tasks")
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="gdansk", description="Gdansk project tooling")
     parser.add_argument("--version", action="version", version=f"gdansk {importlib.metadata.version('gdansk')}")
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    install = subparsers.add_parser("install", help="Install [belgie.dependencies]")
-    _add_project_args(install)
-    install.add_argument("--no-dev", action="store_true", help="Skip [belgie.dependencies.dev]")
-    install.add_argument(
-        "--lock-only",
-        action="store_true",
-        help="Update belgie lockfile (deno.lock) without caching packages",
-    )
-    install.set_defaults(func=cmd_install)
+    add = subparsers.add_parser("add", help="Add a [gdansk.dependencies] entry and refresh deno.lock")
+    _add_project_args(add)
+    add.add_argument("alias", help="JavaScript import alias")
+    add.add_argument("specifier", help="npm version requirement or full npm:/jsr: specifier")
+    add.add_argument("--dev", action="store_true", help="Add to [gdansk.dependencies.dev]")
+    add.set_defaults(func=cmd_add)
 
-    lock = subparsers.add_parser("lock", help="Update belgie lockfile (deno.lock) without installing packages")
+    lock = subparsers.add_parser("lock", help="Resolve dependencies and write deno.lock")
     _add_project_args(lock)
-    lock.add_argument("--no-dev", action="store_true", help="Skip [belgie.dependencies.dev]")
     lock.set_defaults(func=cmd_lock)
 
-    update = subparsers.add_parser("update", help="Update [belgie.dependencies]")
+    update = subparsers.add_parser("update", help="Update [gdansk.dependencies]")
     _add_project_args(update)
-    update.add_argument("packages", nargs="*", help="Optional package names to update")
-    update.add_argument("--no-dev", action="store_true", help="Skip [belgie.dependencies.dev]")
+    update.add_argument("packages", nargs="*", help="Optional dependency aliases to update")
     update.add_argument("--latest", action="store_true", help="Update to the latest versions")
-    update.add_argument("--lock-only", action="store_true", help="Update lockfile without caching packages")
     update.set_defaults(func=cmd_update)
 
-    build = subparsers.add_parser("build", help="Run [belgie.scripts].build")
+    build = subparsers.add_parser("build", help="Build widgets with Vite")
     _add_project_args(build)
     _add_frontend_args(build)
     build.set_defaults(func=cmd_build)
 
-    dev = subparsers.add_parser("dev", help="Run [belgie.scripts].dev")
+    dev = subparsers.add_parser("dev", help="Run the Vite development server")
     _add_project_args(dev)
     _add_frontend_args(dev)
-    _add_dev_runtime_args(dev)
+    dev.add_argument("--host", default=DEFAULT_HOST, help="Dev server host")
+    dev.add_argument("--port", type=int, default=DEFAULT_PORT, help="Dev server port")
     dev.set_defaults(func=cmd_dev)
 
-    run = subparsers.add_parser("run", help="Run a [belgie.scripts] entry")
+    run = subparsers.add_parser("run", help="Run a [gdansk.commands] entry")
     _add_project_args(run)
-    _add_frontend_args(run)
-    _add_optional_runtime_args(run)
-    run.add_argument("script", help="Script name from [belgie.scripts]")
-    run.add_argument("--watch", action="store_true", help="Keep the task running until interrupted")
+    run.add_argument("name", help="Command name from [gdansk.commands]")
+    run.add_argument("--watch", action="store_true", help="Keep the command running until interrupted")
     run.set_defaults(func=cmd_run)
 
-    scripts = subparsers.add_parser("scripts", help="List [belgie.scripts] entries")
-    _add_project_args(scripts)
-    scripts.set_defaults(func=cmd_scripts)
+    commands = subparsers.add_parser("commands", help="List [gdansk.commands] entries")
+    _add_project_args(commands)
+    commands.set_defaults(func=cmd_commands)
 
     doctor = subparsers.add_parser("doctor", help="Validate environment and project layout")
     _add_project_args(doctor)
@@ -516,8 +459,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Python package directory name under src/ (default: normalized [project].name)",
     )
-    init.add_argument("--force", action="store_true", help="Overwrite existing scaffold files")
-    init.add_argument("--no-install", action="store_true", help="Skip post-init lock")
+    init.add_argument("--force", action="store_true", help="Overwrite existing scaffold files and gdansk tables")
+    init.add_argument("--no-lock", action="store_true", help="Skip post-init dependency locking")
     init.set_defaults(func=cmd_init)
 
     return parser

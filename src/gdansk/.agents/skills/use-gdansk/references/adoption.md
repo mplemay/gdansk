@@ -7,7 +7,7 @@ Use this file when the task is to make gdansk work cleanly in another repository
 ```bash
 uv add gdansk
 uv run gdansk init
-uv run gdansk install
+uv run gdansk lock
 uv run gdansk doctor
 ```
 
@@ -18,11 +18,11 @@ uv run gdansk doctor
 
 - Python: `gdansk` currently requires `>=3.12,<3.15`.
 - Frontend dependencies:
-  - Declared in `[belgie.dependencies]` and grouped tables such as `[belgie.dependencies.dev]`.
+  - Declared in `[gdansk.dependencies]` and grouped tables such as `[gdansk.dependencies.dev]`.
   - React 19 and Vite 8 in the current examples and published plugin package.
 - Runtime tooling:
-  - gdansk runs frontend builds through configured `[belgie.scripts]`.
-  - If the repo uses package scripts directly, the published `@gdansk/vite` package currently declares Node `>=22`.
+  - gdansk runs Vite internally through Belgie `Environment`, `Runtime`, and `Command`.
+  - `[gdansk.commands]` is only for optional user-defined package commands.
 
 ## Minimum external-repo structure
 
@@ -71,7 +71,7 @@ on).
 The Python project should declare frontend dependencies in `pyproject.toml`:
 
 ```toml
-[belgie.dependencies]
+[gdansk.dependencies]
 "@gdansk/vite" = "^0.1.0"
 "@modelcontextprotocol/ext-apps" = "^1.5.0"
 "@vitejs/plugin-react" = "^6.0.2"
@@ -79,22 +79,22 @@ react = "^19"
 react-dom = "^19"
 vite = "8.0.8"
 
-[belgie.dependencies.dev]
+[gdansk.dependencies.dev]
 "@types/react" = "^19"
 "@types/react-dom" = "^19"
 
-[belgie.scripts]
-build = "vite build"
-dev = "vite"
+[gdansk.commands]
+lint = ["oxlint", "--fix"]
 ```
 
-After dependency changes in `pyproject.toml`:
+Prefer `gdansk add` for additions. After manual dependency changes in `pyproject.toml`:
 
 ```bash
-uv run gdansk install
+uv run gdansk add react "^19"
+uv run gdansk lock
 ```
 
-If the repo tracks the belgie lockfile (`deno.lock`), keep it at the Python project root and in sync with the edited
+If the repo tracks the gdansk lockfile (`deno.lock`), keep it at the Python project root and in sync with the edited
 dependencies.
 
 ## Public API checklist

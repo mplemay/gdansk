@@ -25,7 +25,7 @@ exclude-newer-package = { belgie = false, mcp = false }
 [tool.uv.sources]
 gdansk = { path = "../../", editable = true }
 
-[belgie.dependencies]
+[gdansk.dependencies]
 vite = "8.0.8"
 "@gdansk/vite" = "^0.1.0"
 "@modelcontextprotocol/ext-apps" = "^1.7.2"
@@ -34,10 +34,6 @@ vite = "8.0.8"
 react = "19.2.6"
 react-dom = "19.2.6"
 
-[belgie.dependencies.dev]
+[gdansk.dependencies.dev]
 "@types/react" = "^19.2.15"
 "@types/react-dom" = "^19.2.3"
-
-[belgie.scripts]
-build = "vite build"
-dev = "vite"

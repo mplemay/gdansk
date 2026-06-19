@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -11,7 +10,7 @@ from belgie.errors import BelgieRuntimeError
 
 from gdansk.__tests__.conftest import run_cli
 from gdansk.cli import main
-from gdansk.task import DEFAULT_HOST, DEFAULT_PORT
+from gdansk.task import DEFAULT_HOST, DEFAULT_PORT, CommandProcess
 
 
 def test_version_prints_package_version(capsys: pytest.CaptureFixture[str]):
@@ -19,21 +18,21 @@ def test_version_prints_package_version(capsys: pytest.CaptureFixture[str]):
         main(["--version"])
 
     assert exc.value.code == 0
-    captured = capsys.readouterr()
-    assert "gdansk" in captured.out
+    assert "gdansk" in capsys.readouterr().out
 
 
-def test_help_lists_subcommands(capsys: pytest.CaptureFixture[str]):
+def test_help_lists_new_package_commands(capsys: pytest.CaptureFixture[str]):
     with pytest.raises(SystemExit) as exc:
-        main(["install", "--help"])
+        main(["--help"])
 
     assert exc.value.code == 0
-    captured = capsys.readouterr()
-    assert "install" in captured.out
-    assert "--project" in captured.out
+    output = capsys.readouterr().out
+    assert "add" in output
+    assert "lock" in output
+    assert "install" not in output
 
 
-def test_install_dispatches_to_install_packages(
+def test_add_dispatches_alias_specifier_and_group(
     gdansk_project: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -41,58 +40,47 @@ def test_install_dispatches_to_install_packages(
     project_root, _ = gdansk_project
     calls: dict[str, Any] = {}
 
-    def fake_install_packages(**kwargs: Any) -> SimpleNamespace:
+    def fake_add_dependency(project, **kwargs: Any) -> SimpleNamespace:
+        calls["project"] = project
         calls.update(kwargs)
-        return SimpleNamespace(lockfile=str(project_root / "deno.lock"), groups={"default": 2, "dev": 1})
+        return SimpleNamespace(lockfile=str(project_root / "deno.lock"), dependencies=2)
 
-    monkeypatch.setattr("gdansk.cli.install_packages", fake_install_packages)
+    monkeypatch.setattr("gdansk.cli.add_dependency", fake_add_dependency)
 
-    code, stdout, _stderr = run_cli(["install"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    code, stdout, _stderr = run_cli(
+        ["add", "react", "^20", "--dev"],
+        monkeypatch=monkeypatch,
+        cwd=project_root,
+        capsys=capsys,
+    )
 
     assert code == 0
-    assert calls["cwd"] == project_root
-    assert calls["groups"] == ["default", "dev"]
-    assert calls["lockfile_only"] is False
-    assert "Installed 3 dependencies (default: 2, dev: 1)" in stdout
+    assert calls["project"].root == project_root
+    assert calls["alias"] == "react"
+    assert calls["specifier"] == "^20"
+    assert calls["dev"] is True
+    assert "Added react to dev dependencies" in stdout
 
 
-def test_install_no_dev_flag(
+def test_lock_dispatches_project(
     gdansk_project: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ):
     project_root, _ = gdansk_project
-    calls: dict[str, Any] = {}
+    calls: list[Path] = []
 
-    def fake_install_packages(**kwargs: Any) -> SimpleNamespace:
-        calls.update(kwargs)
-        return SimpleNamespace(lockfile=str(project_root / "deno.lock"), groups={"default": 1})
+    def fake_lock_project(project) -> SimpleNamespace:
+        calls.append(project.root)
+        return SimpleNamespace(lockfile=str(project_root / "deno.lock"), dependencies=1)
 
-    monkeypatch.setattr("gdansk.cli.install_packages", fake_install_packages)
+    monkeypatch.setattr("gdansk.cli.lock_project", fake_lock_project)
 
-    run_cli(["install", "--no-dev"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    code, stdout, _stderr = run_cli(["lock"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
-    assert calls["groups"] == ["default"]
-
-
-def test_lock_dispatches_to_lock_packages(
-    gdansk_project: tuple[Path, Path],
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-):
-    project_root, _ = gdansk_project
-    calls: dict[str, Any] = {}
-
-    def fake_lock_packages(**kwargs: Any) -> SimpleNamespace:
-        calls.update(kwargs)
-        return SimpleNamespace(lockfile=str(project_root / "deno.lock"), groups={"default": 1})
-
-    monkeypatch.setattr("gdansk.cli.lock_packages", fake_lock_packages)
-
-    run_cli(["lock"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
-
-    assert calls["cwd"] == project_root
-    assert calls["groups"] == ["default", "dev"]
+    assert code == 0
+    assert calls == [project_root]
+    assert "Locked 1 dependencies" in stdout
 
 
 def test_update_dispatches_packages_and_latest(
@@ -103,14 +91,14 @@ def test_update_dispatches_packages_and_latest(
     project_root, _ = gdansk_project
     calls: dict[str, Any] = {}
 
-    def fake_update_packages(**kwargs: Any) -> SimpleNamespace:
-        calls.update(kwargs)
+    def fake_update_project(project, packages, *, latest: bool) -> SimpleNamespace:
+        calls.update(project=project, packages=packages, latest=latest)
         return SimpleNamespace(
             lockfile=str(project_root / "deno.lock"),
-            changes=[SimpleNamespace(name="vite", previous="8.0.0", updated="8.0.14")],
+            changes=[SimpleNamespace(name="vite", previous="npm:vite@8", updated="npm:vite@9")],
         )
 
-    monkeypatch.setattr("gdansk.cli.update_packages", fake_update_packages)
+    monkeypatch.setattr("gdansk.cli.update_project", fake_update_project)
 
     run_cli(
         ["update", "vite", "react", "--latest"],
@@ -120,94 +108,109 @@ def test_update_dispatches_packages_and_latest(
     )
 
     assert calls["packages"] == ["vite", "react"]
-    assert calls["groups"] == ["default", "dev"]
     assert calls["latest"] is True
 
 
-def test_install_maps_runtime_error_to_exit_1(
+def test_lock_maps_runtime_error_to_exit_1(
     gdansk_project: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ):
     project_root, _ = gdansk_project
 
-    def fake_install_packages(**_kwargs: Any) -> SimpleNamespace:
-        msg = "install failed"
+    def fake_lock_project(_project) -> SimpleNamespace:
+        msg = "lock failed"
         raise BelgieRuntimeError(msg)
 
-    monkeypatch.setattr("gdansk.cli.install_packages", fake_install_packages)
+    monkeypatch.setattr("gdansk.cli.lock_project", fake_lock_project)
 
-    code, _stdout, stderr = run_cli(["install"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    code, _stdout, stderr = run_cli(["lock"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
     assert code == 1
-    assert "install failed" in stderr
+    assert "lock failed" in stderr
 
 
-def test_build_dispatches_run_task(
+def test_build_invokes_internal_vite_command(
     gdansk_project: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ):
-    project_root, _ = gdansk_project
+    project_root, frontend = gdansk_project
     calls: dict[str, Any] = {}
 
-    def fake_run_task_command(_args: Any, *, script: str, long_running: bool) -> None:
-        calls["script"] = script
-        calls["long_running"] = long_running
-        calls["task_args"] = list(_args.task_args)
+    async def fake_run_command(project, command: str, **kwargs: Any) -> None:
+        calls.update(project=project, command=command, **kwargs)
 
-    monkeypatch.setattr("gdansk.cli._run_task_command", fake_run_task_command)
+    monkeypatch.setattr("gdansk.cli.run_command", fake_run_command)
 
-    run_cli(["build"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    run_cli(
+        ["build", "--", "--emptyOutDir"],
+        monkeypatch=monkeypatch,
+        cwd=project_root,
+        capsys=capsys,
+    )
 
-    assert calls["script"] == "build"
-    assert calls["long_running"] is False
-    assert calls["task_args"] == []
+    assert calls["command"] == "vite"
+    assert calls["cwd"] == frontend
+    assert calls["argv"] == ["build", "--emptyOutDir"]
 
 
-def test_build_forwards_task_args(
+def test_dev_invokes_internal_vite_command(
     gdansk_project: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ):
-    project_root, _ = gdansk_project
+    project_root, frontend = gdansk_project
     calls: dict[str, Any] = {}
 
-    def fake_run_task_command(args: Any, *, script: str, long_running: bool) -> None:
-        calls["task_args"] = list(args.task_args)
+    async def fake_start_command(project, command: str, **kwargs: Any) -> SimpleNamespace:
+        calls.update(project=project, command=command, **kwargs)
+        return SimpleNamespace()
 
-    monkeypatch.setattr("gdansk.cli._run_task_command", fake_run_task_command)
+    async def fake_run_until_signal(awaitable) -> None:
+        await awaitable
 
-    run_cli(["build", "--", "--outDir", "dist"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
-
-    assert calls["task_args"] == ["--outDir", "dist"]
-
-
-def test_dev_dispatches_start_task(
-    gdansk_project: tuple[Path, Path],
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-):
-    project_root, _ = gdansk_project
-    calls: dict[str, Any] = {}
-
-    def fake_run_task_command(args: Any, *, script: str, long_running: bool) -> None:
-        calls["script"] = script
-        calls["long_running"] = long_running
-        calls["host"] = args.host
-        calls["port"] = args.port
-
-    monkeypatch.setattr("gdansk.cli._run_task_command", fake_run_task_command)
+    monkeypatch.setattr("gdansk.cli.start_command", fake_start_command)
+    monkeypatch.setattr("gdansk.cli._run_until_signal", fake_run_until_signal)
 
     run_cli(["dev"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
-    assert calls["script"] == "dev"
-    assert calls["long_running"] is True
-    assert calls["host"] == "127.0.0.1"
-    assert calls["port"] == 13714
+    assert calls["command"] == "vite"
+    assert calls["cwd"] == frontend
+    assert calls["argv"] == [
+        "--host",
+        DEFAULT_HOST,
+        "--port",
+        str(DEFAULT_PORT),
+    ]
 
 
-def test_run_unknown_script_suggests_scripts(
+def test_run_executes_configured_argument_array(
+    gdansk_project: tuple[Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    project_root, _ = gdansk_project
+    calls: dict[str, Any] = {}
+
+    async def fake_run_command(project, command: str, **kwargs: Any) -> None:
+        calls.update(project=project, command=command, **kwargs)
+
+    monkeypatch.setattr("gdansk.cli.run_command", fake_run_command)
+
+    run_cli(
+        ["run", "version", "--", "--debug"],
+        monkeypatch=monkeypatch,
+        cwd=project_root,
+        capsys=capsys,
+    )
+
+    assert calls["command"] == "vite"
+    assert calls["cwd"] == project_root
+    assert calls["argv"] == ["--version", "--debug"]
+
+
+def test_run_unknown_command_lists_available_commands(
     gdansk_project: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -217,161 +220,32 @@ def test_run_unknown_script_suggests_scripts(
     code, _stdout, stderr = run_cli(["run", "missing"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
     assert code == 1
-    assert "Available scripts" in stderr
+    assert "Available commands" in stderr
+    assert "version" in stderr
 
 
-def test_run_build_uses_run_task(
-    gdansk_project: tuple[Path, Path],
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-):
-    project_root, _ = gdansk_project
-    calls: dict[str, Any] = {}
-
-    def fake_run_task_command(_args: Any, *, script: str, long_running: bool) -> None:
-        calls["script"] = script
-        calls["long_running"] = long_running
-
-    monkeypatch.setattr("gdansk.cli._run_task_command", fake_run_task_command)
-
-    run_cli(["run", "build"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
-
-    assert calls["script"] == "build"
-    assert calls["long_running"] is False
-
-
-def test_run_dev_uses_start_task(
-    gdansk_project: tuple[Path, Path],
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-):
-    project_root, _ = gdansk_project
-    calls: dict[str, Any] = {}
-
-    def fake_run_task_command(_args: Any, *, script: str, long_running: bool) -> None:
-        calls["script"] = script
-        calls["long_running"] = long_running
-
-    monkeypatch.setattr("gdansk.cli._run_task_command", fake_run_task_command)
-
-    run_cli(["run", "dev"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
-
-    assert calls["script"] == "dev"
-    assert calls["long_running"] is True
-
-
-def test_run_dev_uses_default_host_port(
-    gdansk_project: tuple[Path, Path],
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-):
-    project_root, _ = gdansk_project
-    captured: dict[str, object] = {}
-
-    class FakeTaskProcess:
-        origin = ""
-        is_running = True
-
-        async def stop(self) -> None:
-            return None
-
-    async def fake_start_task(
-        task_cwd: Path,
-        script: str,
-        **kwargs: object,
-    ) -> FakeTaskProcess:
-        captured["script"] = script
-        captured.update(kwargs)
-        return FakeTaskProcess()
-
-    async def fake_run_until_signal(coro: Awaitable[FakeTaskProcess]) -> None:
-        process = await coro
-        await process.stop()
-
-    def fake_asyncio_run(coro: Awaitable[FakeTaskProcess]) -> None:
-        loop = asyncio.new_event_loop()
-        try:
-            loop.run_until_complete(coro)
-        finally:
-            loop.close()
-
-    monkeypatch.setattr("gdansk.cli.start_task", fake_start_task)
-    monkeypatch.setattr("gdansk.cli._run_until_signal", fake_run_until_signal)
-    monkeypatch.setattr("gdansk.cli.asyncio.run", fake_asyncio_run)
-
-    run_cli(["run", "dev"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
-
-    assert captured["script"] == "dev"
-    assert captured["host"] == DEFAULT_HOST
-    assert captured["port"] == DEFAULT_PORT
-    assert captured["argv"] == ["--host", DEFAULT_HOST, "--port", str(DEFAULT_PORT)]
-
-
-def test_run_watch_does_not_pass_dev_host_port(
-    gdansk_project: tuple[Path, Path],
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-):
-    project_root, _ = gdansk_project
-    captured: dict[str, object] = {}
-
-    class FakeTaskProcess:
-        origin = ""
-        is_running = True
-
-        async def stop(self) -> None:
-            return None
-
-    async def fake_start_task(
-        task_cwd: Path,
-        script: str,
-        **kwargs: object,
-    ) -> FakeTaskProcess:
-        captured["task_cwd"] = task_cwd
-        captured["script"] = script
-        captured.update(kwargs)
-        return FakeTaskProcess()
-
-    async def fake_run_until_signal(coro: Awaitable[FakeTaskProcess]) -> None:
-        process = await coro
-        await process.stop()
-
-    def fake_asyncio_run(coro: Awaitable[FakeTaskProcess]) -> None:
-        loop = asyncio.new_event_loop()
-        try:
-            loop.run_until_complete(coro)
-        finally:
-            loop.close()
-
-    monkeypatch.setattr("gdansk.cli.start_task", fake_start_task)
-    monkeypatch.setattr("gdansk.cli._run_until_signal", fake_run_until_signal)
-    monkeypatch.setattr("gdansk.cli.asyncio.run", fake_asyncio_run)
-
-    run_cli(
-        ["run", "build", "--watch"],
-        monkeypatch=monkeypatch,
-        cwd=project_root,
-        capsys=capsys,
-    )
-
-    assert captured["script"] == "build"
-    assert captured.get("host") is None
-    assert captured.get("port") is None
-
-
-def test_scripts_lists_entries(
+def test_commands_lists_argument_arrays(
     gdansk_project: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ):
     project_root, _ = gdansk_project
 
-    code, stdout, _stderr = run_cli(["scripts"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    code, stdout, _stderr = run_cli(["commands"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
     assert code == 0
-    assert "build" in stdout
-    assert "vite build" in stdout
-    assert "dev" in stdout
+    assert "version" in stdout
+    assert "vite --version" in stdout
+
+
+def test_command_process_stop_cancels_task():
+    async def run() -> bool:
+        task = asyncio.create_task(asyncio.sleep(60))
+        process = CommandProcess(task=task)
+        await process.stop()
+        return task.cancelled()
+
+    assert asyncio.run(run()) is True
 
 
 def test_unknown_subcommand_exits_with_argparse_error(capsys: pytest.CaptureFixture[str]):

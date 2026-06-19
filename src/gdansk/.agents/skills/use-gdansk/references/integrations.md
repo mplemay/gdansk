@@ -208,20 +208,20 @@ MCP app.
 
 Style widgets with normal frontend tooling in the frontend root (for example PostCSS, Tailwind, or component
 libraries). Put Vite-specific setup in `vite.config.ts`, import `@gdansk/vite` there, and keep framework plugins in
-that same file. Declare dependencies in `pyproject.toml` under `[belgie.dependencies]`, run `uv run gdansk install`
-from the Python project root, and commit the belgie lockfile (`deno.lock`) when it changes.
+that same file. Add dependencies with `uv run gdansk add <alias> <specifier>` or manually edit
+`[gdansk.dependencies]` and run `uv run gdansk lock`. Commit the gdansk lockfile (`deno.lock`) when it changes.
 
 Example Tailwind dependencies:
 
 ```toml
-[belgie.dependencies]
+[gdansk.dependencies]
 tailwindcss = "^4"
 "@tailwindcss/vite" = "^4"
 postcss = "^8"
 ```
 
-Component libraries such as shadcn/ui install the same way — add their npm packages to `[belgie.dependencies]`
-and configure any required Vite plugins in `vite.config.ts`.
+Component libraries such as shadcn/ui use the same dependency flow: add their npm packages with `gdansk add` and
+configure any required Vite plugins in `vite.config.ts`.
 
 ## Decision matrix
 

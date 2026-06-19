@@ -150,7 +150,7 @@ return <main className={styles.main}>...</main>;
 ```
 
 For Tailwind, PostCSS, or component libraries (shadcn/ui), configure tooling in `vite.config.ts` and
-declare dependencies in `[belgie.dependencies]`. Component libraries install like any other belgie dependency.
+declare dependencies in `[gdansk.dependencies]`. Add component libraries with `gdansk add` like any other dependency.
 For multi-tool server setup, see [integrations.md](integrations.md).
 
 ## Widget metadata and CSP

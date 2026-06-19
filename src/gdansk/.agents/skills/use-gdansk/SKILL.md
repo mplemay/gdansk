@@ -1,10 +1,10 @@
 ---
 name: use-gdansk
 description: >-
-  Build and debug gdansk MCP widget apps — Ship/Vite wiring, React widgets, belgie deps, gdansk init,
-  gdansk doctor, gdansk install, metadata, structured output, FastAPI mounting, and error-driven
+  Build and debug gdansk MCP widget apps — Ship/Vite wiring, React widgets, gdansk dependencies, gdansk init,
+  gdansk doctor, gdansk lock, metadata, structured output, FastAPI mounting, and error-driven
   troubleshooting. Use when the user mentions gdansk, Ship, @gdansk/vite, @ship.widget, MCP UI widgets,
-  belgie.dependencies, or broken widget bundling/render.
+  gdansk.dependencies, or broken widget bundling/render.
 license: MIT
 compatibility: Requires Python >=3.12,<3.15
 allowed-tools: Bash(uv run gdansk *)
@@ -23,7 +23,7 @@ This skill covers adoption, extension, and troubleshooting using only gdansk's p
 Invoke this skill when:
 
 - Bootstrapping gdansk in a new repo or adding widgets to an existing integration
-- Running `gdansk init`, `gdansk install`, `gdansk doctor`, `gdansk build`, or `gdansk dev`
+- Running `gdansk init`, `gdansk lock`, `gdansk doctor`, `gdansk build`, or `gdansk dev`
 - Wiring `ship.mcp(app=...)` with `MCPServer`, `@ship.widget(...)`, and `@gdansk/vite`
 - Adding metadata, structured output, FastAPI mounting, or plain `@mcp.tool` tools
 - Diagnosing widget registration, bundling, render, host/port, or path contract failures
@@ -59,7 +59,7 @@ These rules are **always enforced**. Each links to Incorrect/Correct pairs.
 
 - Python tool `name` must match `callServerTool({ name: ... })` in the React widget.
 - Production `ui://` resources return HTML with inline JS/CSS; there is no static widget asset mount.
-- Declare frontend deps in `[belgie.dependencies]`; run `uv run gdansk install` after changes.
+- Declare frontend deps in `[gdansk.dependencies]`; run `uv run gdansk lock` after changes.
 
 ## Quick-Start Patterns
 
@@ -147,7 +147,7 @@ export default defineConfig({
 ## Agent Workflow
 
 1. **Classify** the request: bootstrap / add widget / extend / debug.
-2. **Bootstrap:** `uv add gdansk` → `uv run gdansk init` → `uv run gdansk install` → `uv run gdansk doctor`.
+2. **Bootstrap:** `uv add gdansk` → `uv run gdansk init` → `uv run gdansk lock` → `uv run gdansk doctor`.
 3. **Wire server:** `Ship` + lifespan + `ship.mcp(...)` — see
    [references/quickstart.md](references/quickstart.md).
 4. **Add widget:** Python `@ship.widget` + `widgets/<name>/widget.tsx` — validate
@@ -182,7 +182,7 @@ Load only the most relevant reference first. Read additional references only if 
 - Pass the frontend root to `Vite(...)`, not the `widgets/` directory.
 - Register widgets with `path=Path("<dir>/widget.tsx")` relative to `widgets/` inside the frontend root.
 - Keep `Vite(Path(...), host=..., port=..., build_directory=...)` aligned with matching `gdansk({...})` options.
-- After changing `[belgie.dependencies]`, run `uv run gdansk install` from the Python project root.
+- Prefer `uv run gdansk add <alias> <specifier>` for additions; run `uv run gdansk lock` after manual table edits.
 - Run frontend tasks via `uv run gdansk dev` or `uv run gdansk build`, not raw `vite` commands.
 - Prefer `gdansk({ refresh: true })` when nearby Python or Jinja edits should reload the browser during development.
 - Treat production widget HTML as the serving boundary; JS, CSS, and imported assets are inlined into the

@@ -13,6 +13,7 @@ dependencies = [
     "mcp==2.0.0a1",
     "minijinja>=2,<3",
     "pydantic>=2.12.5",
+    "rtoml>=0.13,<0.14",
     "starlette>=1.0.0",
     "watchfiles>=1.1.1",
 ]
@@ -39,14 +40,14 @@ build-backend = "uv_build"
 exclude-newer = "7 days"
 exclude-newer-package = { belgie = false, mcp = false }
 
-[belgie.dependencies.dev]
+[gdansk.dependencies.dev]
 oxfmt = "0.53.0"
 oxlint = "1.68.0"
 "oxlint-tsgolint" = "0.23.0"
 
-[belgie.scripts]
-oxfmt = "oxfmt"
-oxlint = "oxlint --fix"
+[gdansk.commands]
+oxfmt = ["oxfmt"]
+oxlint = ["oxlint", "--fix"]
 
 [tool.ruff]
 target-version = "py312"
