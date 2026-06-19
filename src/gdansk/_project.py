@@ -93,9 +93,9 @@ def read_pyproject_document(root: Path) -> dict[str, Any]:
         raise ProjectError(msg)
     try:
         document = rtoml.load(pyproject_path)
-    except (OSError, UnicodeDecodeError, rtoml.TomlParsingError) as error:
-        msg = f"Invalid pyproject.toml at {pyproject_path}: {error}"
-        raise ProjectError(msg) from error
+    except (OSError, UnicodeDecodeError, rtoml.TomlParsingError) as exc:
+        msg = f"Invalid pyproject.toml at {pyproject_path}: {exc}"
+        raise ProjectError(msg) from exc
     if not isinstance(document, dict):
         msg = f"Invalid pyproject.toml at {pyproject_path}"
         raise ProjectError(msg)

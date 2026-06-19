@@ -112,9 +112,9 @@ class Vite:
 
         try:
             manifest = GdanskManifest.model_validate_json(path.read_text(encoding="utf-8"))
-        except ValidationError as e:
+        except ValidationError as exc:
             msg = f"The frontend build produced an invalid manifest at {path}"
-            raise RuntimeError(msg) from e
+            raise RuntimeError(msg) from exc
 
         if manifest.out_dir.strip("/") != self._build_directory:
             msg = (

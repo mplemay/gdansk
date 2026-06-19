@@ -25,6 +25,11 @@
 
 ## Conventions
 
+- Error bindings: name caught exceptions `exc` in Python (`except SomeError as exc:`) and TypeScript/JavaScript
+  (`catch (exc)`). Do not use `e`, `error`, `err`, `callError`, etc. For nested handlers that shadow an outer `exc`,
+  use trailing underscores (`exc_`, `exc__`, …). Omit the binding when the value is unused (`except SomeError:` /
+  `catch {`).
+
 ### Python
 
 - The targets python versions greater than or equal to 3.11

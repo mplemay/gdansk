@@ -79,9 +79,9 @@ def _eprint(message: str) -> None:
 def _runtime_errors() -> Generator[None, None, None]:
     try:
         yield
-    except BelgieRuntimeError as error:
-        _eprint(str(error))
-        raise SystemExit(1) from error
+    except BelgieRuntimeError as exc:
+        _eprint(str(exc))
+        raise SystemExit(1) from exc
 
 
 def _resolve_frontend(project: GdanskProject, frontend: Path | None) -> Path:
@@ -253,9 +253,9 @@ def _doctor_check_frontend(
 ) -> None:
     try:
         frontend_path = _resolve_frontend(project, frontend)
-    except ProjectError as error:
-        print(f"fail {error}")
-        failures.append(str(error))
+    except ProjectError as exc:
+        print(f"fail {exc}")
+        failures.append(str(exc))
         return
 
     print(f"ok   frontend root ({frontend_path})")
@@ -288,9 +288,9 @@ def cmd_doctor(args: argparse.Namespace) -> None:
 
     try:
         project = discover_project(project=args.project)
-    except ProjectError as error:
-        print(f"fail {error}")
-        failures.append(str(error))
+    except ProjectError as exc:
+        print(f"fail {exc}")
+        failures.append(str(exc))
     else:
         _doctor_check_dependencies(project, failures)
         _doctor_check_frontend(project, args.frontend, failures, warnings)
@@ -372,9 +372,9 @@ def cmd_init(args: argparse.Namespace) -> None:
             _template_text("widget.tsx"),
             force=args.force,
         )
-    except ProjectError as error:
-        _eprint(str(error))
-        raise SystemExit(1) from error
+    except ProjectError as exc:
+        _eprint(str(exc))
+        raise SystemExit(1) from exc
 
     project = load_project(target_dir)
     if not args.no_lock:
@@ -488,9 +488,9 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     try:
         args.func(args)
-    except ProjectError as error:
-        _eprint(str(error))
-        raise SystemExit(1) from error
+    except ProjectError as exc:
+        _eprint(str(exc))
+        raise SystemExit(1) from exc
 
 
 if __name__ == "__main__":
