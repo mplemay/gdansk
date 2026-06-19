@@ -18,6 +18,8 @@ from gdansk._project import (
     GdanskProject,
     ProjectError,
     _gdansk_table,
+    _legacy_belgie_error,
+    atomic_write_text,
     discover_project,
     load_project,
     read_pyproject_document,
@@ -154,14 +156,14 @@ def cmd_add(args: argparse.Namespace) -> None:
             dev=args.dev,
         )
     group = "dev" if args.dev else "default"
-    print(f"Added {args.alias} to {group} dependencies. Lockfile: {project.root / 'deno.lock'}")
+    print(f"Added {args.alias} to {group} dependencies. Lockfile: {project.lockfile_path}")
 
 
 def cmd_lock(args: argparse.Namespace) -> None:
     project = discover_project(project=args.project)
     with _runtime_errors():
         result = lock_project(project)
-    print(f"Locked {result.dependencies} dependencies. Lockfile: {project.root / 'deno.lock'}")
+    print(f"Locked {result.dependencies} dependencies. Lockfile: {project.lockfile_path}")
 
 
 def cmd_update(args: argparse.Namespace) -> None:
@@ -170,7 +172,7 @@ def cmd_update(args: argparse.Namespace) -> None:
         result = update_project(project, args.packages or None, latest=args.latest)
     for change in result.changes:
         print(f"{change.name}: {change.previous} -> {change.updated}")
-    print(f"Lockfile: {project.root / 'deno.lock'}")
+    print(f"Lockfile: {project.lockfile_path}")
 
 
 def cmd_build(args: argparse.Namespace) -> None:
@@ -228,6 +230,49 @@ def cmd_commands(args: argparse.Namespace) -> None:
         print(f"{name:<{width}}  {shlex.join(command)}")
 
 
+def _doctor_warn(message: str, warnings: list[str]) -> None:
+    print(f"warn {message}")
+    warnings.append(message)
+
+
+def _doctor_check_dependencies(project: GdanskProject, failures: list[str]) -> None:
+    if project.has_dependencies:
+        print(f"ok   [gdansk.dependencies] in {project.root / 'pyproject.toml'}")
+        return
+
+    message = "No [gdansk.dependencies] table found"
+    print(f"fail {message}")
+    failures.append(message)
+
+
+def _doctor_check_frontend(
+    project: GdanskProject,
+    frontend: Path | None,
+    failures: list[str],
+    warnings: list[str],
+) -> None:
+    try:
+        frontend_path = _resolve_frontend(project, frontend)
+    except ProjectError as error:
+        print(f"fail {error}")
+        failures.append(str(error))
+        return
+
+    print(f"ok   frontend root ({frontend_path})")
+
+    root_lock = project.lockfile_path
+    if root_lock.is_file():
+        print(f"ok   gdansk lockfile (deno.lock) at project root ({root_lock})")
+    else:
+        message = f"gdansk lockfile (deno.lock) missing at project root ({root_lock})"
+        _doctor_warn(message, warnings)
+
+    legacy_lock = frontend_path / "deno.lock"
+    if legacy_lock.is_file() and not root_lock.is_file():
+        message = f"Legacy lockfile found under frontend ({legacy_lock}); move it to the project root"
+        _doctor_warn(message, warnings)
+
+
 def cmd_doctor(args: argparse.Namespace) -> None:
     failures: list[str] = []
     warnings: list[str] = []
@@ -246,40 +291,9 @@ def cmd_doctor(args: argparse.Namespace) -> None:
     except ProjectError as error:
         print(f"fail {error}")
         failures.append(str(error))
-        project = None
-
-    if project is not None:
-        if project.has_dependencies:
-            print(f"ok   [gdansk.dependencies] in {project.root / 'pyproject.toml'}")
-        else:
-            message = "No [gdansk.dependencies] table found"
-            print(f"fail {message}")
-            failures.append(message)
-
-        try:
-            frontend_path = _resolve_frontend(project, args.frontend)
-        except ProjectError as error:
-            print(f"fail {error}")
-            failures.append(str(error))
-            frontend_path = None
-
-        if frontend_path is not None:
-            print(f"ok   frontend root ({frontend_path})")
-            print(f"ok   vite.config.ts and widgets/ in {frontend_path}")
-
-            root_lock = project.root / "deno.lock"
-            if root_lock.is_file():
-                print(f"ok   gdansk lockfile (deno.lock) at project root ({root_lock})")
-            else:
-                message = f"gdansk lockfile (deno.lock) missing at project root ({root_lock})"
-                print(f"warn {message}")
-                warnings.append(message)
-
-            legacy_lock = frontend_path / "deno.lock"
-            if legacy_lock.is_file() and not root_lock.is_file():
-                message = f"Legacy lockfile found under frontend ({legacy_lock}); move it to the project root"
-                print(f"warn {message}")
-                warnings.append(message)
+    else:
+        _doctor_check_dependencies(project, failures)
+        _doctor_check_frontend(project, args.frontend, failures, warnings)
 
     for warning in warnings:
         _eprint(f"warning: {warning}")
@@ -303,8 +317,7 @@ def _write_init_pyproject(target: Path, *, package: str, force: bool) -> None:
             msg = f"[gdansk] already present in {target}; use --force to replace gdansk tables"
             raise ProjectError(msg)
         if isinstance(document.get("belgie"), dict) and not force:
-            msg = f"Legacy [belgie] configuration is present in {target}; use --force to replace it"
-            raise ProjectError(msg)
+            raise _legacy_belgie_error(target.parent)
         document.pop("belgie", None)
     else:
         document = rtoml.loads(_template_text("pyproject.toml", package=package))
@@ -317,8 +330,7 @@ def _write_scaffold_file(path: Path, content: str, *, force: bool) -> None:
     if path.exists() and not force:
         msg = f"Refusing to overwrite existing file: {path}"
         raise ProjectError(msg)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+    atomic_write_text(path, content)
 
 
 def cmd_init(args: argparse.Namespace) -> None:

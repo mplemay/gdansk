@@ -2,11 +2,19 @@ from __future__ import annotations
 
 import os
 import tempfile
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, Final
 
 import rtoml
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+LOCKFILE_NAME: Final[str] = "deno.lock"
+DEFAULT_GROUP: Final[str] = "default"
+DEV_GROUP: Final[str] = "dev"
 
 
 class ProjectError(Exception):
@@ -49,8 +57,33 @@ class GdanskProject:
     def has_dependencies(self) -> bool:
         return bool(self.dependencies)
 
+    @property
+    def lockfile_path(self) -> Path:
+        return self.root / LOCKFILE_NAME
+
     def dependency(self, alias: str) -> Dependency | None:
         return next((dependency for dependency in self.dependencies if dependency.alias == alias), None)
+
+
+def _temporary_file(parent: Path, prefix: str) -> Path:
+    descriptor, temporary_name = tempfile.mkstemp(prefix=prefix, dir=parent)
+    os.close(descriptor)
+    temporary = Path(temporary_name)
+    temporary.unlink()
+    return temporary
+
+
+def atomic_replace(source: Path, target: Path) -> None:
+    source.replace(target)
+
+
+@contextmanager
+def temporary_lockfile(root: Path) -> Iterator[Path]:
+    temporary = _temporary_file(root, f".{LOCKFILE_NAME}.")
+    try:
+        yield temporary
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def read_pyproject_document(root: Path) -> dict[str, Any]:
@@ -60,7 +93,7 @@ def read_pyproject_document(root: Path) -> dict[str, Any]:
         raise ProjectError(msg)
     try:
         document = rtoml.load(pyproject_path)
-    except Exception as error:
+    except (OSError, UnicodeDecodeError, rtoml.TomlParsingError) as error:
         msg = f"Invalid pyproject.toml at {pyproject_path}: {error}"
         raise ProjectError(msg) from error
     if not isinstance(document, dict):
@@ -77,15 +110,13 @@ def write_pyproject_document(root: Path, document: dict[str, Any]) -> None:
 
 def atomic_write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-    temporary = Path(temporary_name)
+    temporary = _temporary_file(path.parent, f".{path.name}.")
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as file:
-            file.write(text)
-        temporary.replace(path)
-    except BaseException:
-        temporary.unlink(missing_ok=True)
-        raise
+        temporary.write_text(text, encoding="utf-8")
+        atomic_replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink(missing_ok=True)
 
 
 def _gdansk_table(document: dict[str, Any]) -> dict[str, Any] | None:
@@ -103,6 +134,57 @@ def _legacy_belgie_error(root: Path) -> ProjectError:
     )
 
 
+def _ensure_dependencies_tables(document: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    gdansk = document.setdefault("gdansk", {})
+    if not isinstance(gdansk, dict):
+        msg = "[gdansk] must be a table"
+        raise ProjectError(msg)
+    dependencies = gdansk.setdefault("dependencies", {})
+    if not isinstance(dependencies, dict):
+        msg = "[gdansk.dependencies] must be a table"
+        raise ProjectError(msg)
+    dev_dependencies = dependencies.setdefault("dev", {})
+    if not isinstance(dev_dependencies, dict):
+        msg = "[gdansk.dependencies.dev] must be a table"
+        raise ProjectError(msg)
+    return dependencies, dev_dependencies
+
+
+def set_dependency_in_document(
+    document: dict[str, Any],
+    alias: str,
+    specifier: str,
+    *,
+    dev: bool,
+) -> None:
+    if not alias.strip() or alias == DEV_GROUP:
+        msg = "Dependency alias must not be empty or use the reserved name 'dev'"
+        raise ProjectError(msg)
+    if not specifier.strip():
+        msg = "Dependency specifier must not be empty"
+        raise ProjectError(msg)
+
+    dependencies, dev_dependencies = _ensure_dependencies_tables(document)
+    dependencies.pop(alias, None)
+    dev_dependencies.pop(alias, None)
+    target = dev_dependencies if dev else dependencies
+    target[alias] = specifier
+
+
+def set_dependency_value_in_document(
+    document: dict[str, Any],
+    group: str,
+    alias: str,
+    value: str,
+) -> None:
+    gdansk = document["gdansk"]
+    dependencies = gdansk["dependencies"]
+    if group == DEFAULT_GROUP:
+        dependencies[alias] = value
+    else:
+        dependencies[group][alias] = value
+
+
 def _parse_dependencies(gdansk: dict[str, Any]) -> tuple[Dependency, ...]:
     table = gdansk.get("dependencies")
     if table is None:
@@ -114,14 +196,14 @@ def _parse_dependencies(gdansk: dict[str, Any]) -> tuple[Dependency, ...]:
     dependencies: list[Dependency] = []
     aliases: set[str] = set()
     for alias, value in table.items():
-        if alias == "dev" and isinstance(value, dict):
+        if alias == DEV_GROUP and isinstance(value, dict):
             for dev_alias, dev_value in value.items():
-                _append_dependency(dependencies, aliases, dev_alias, dev_value, group="dev")
+                _append_dependency(dependencies, aliases, dev_alias, dev_value, group=DEV_GROUP)
             continue
         if isinstance(value, dict):
             msg = f"Unsupported dependency group [gdansk.dependencies.{alias}]; only .dev is supported"
             raise ProjectError(msg)
-        _append_dependency(dependencies, aliases, alias, value, group="default")
+        _append_dependency(dependencies, aliases, alias, value, group=DEFAULT_GROUP)
     return tuple(dependencies)
 
 
@@ -136,11 +218,11 @@ def _append_dependency(
     if (
         not isinstance(alias, str)
         or not alias.strip()
-        or alias == "dev"
+        or alias == DEV_GROUP
         or not isinstance(value, str)
         or not value.strip()
     ):
-        msg = f"[gdansk.dependencies{'.dev' if group == 'dev' else ''}] entries must map strings to strings"
+        msg = f"[gdansk.dependencies{'.dev' if group == DEV_GROUP else ''}] entries must map strings to strings"
         raise ProjectError(msg)
     if alias in aliases:
         msg = f"Duplicate dependency alias '{alias}' across [gdansk.dependencies] groups"
@@ -159,10 +241,13 @@ def _parse_commands(gdansk: dict[str, Any]) -> dict[str, tuple[str, ...]]:
 
     commands: dict[str, tuple[str, ...]] = {}
     for name, value in table.items():
-        if not isinstance(name, str) or not name.strip() or not isinstance(value, list) or not value:
-            msg = f"[gdansk.commands] entry '{name}' must be a non-empty array of strings"
-            raise ProjectError(msg)
-        if not all(isinstance(item, str) and item for item in value):
+        if (
+            not isinstance(name, str)
+            or not name.strip()
+            or not isinstance(value, list)
+            or not value
+            or not all(isinstance(item, str) and item for item in value)
+        ):
             msg = f"[gdansk.commands] entry '{name}' must be a non-empty array of strings"
             raise ProjectError(msg)
         commands[name] = tuple(value)
@@ -184,6 +269,10 @@ def _load_project_from_document(root: Path, document: dict[str, Any]) -> GdanskP
         dependencies=_parse_dependencies(gdansk),
         pyproject=document,
     )
+
+
+def project_from_document(root: Path, document: dict[str, Any]) -> GdanskProject:
+    return _load_project_from_document(root, document)
 
 
 def _find_project_with_document(start: Path | None = None) -> tuple[Path, dict[str, Any]]:
