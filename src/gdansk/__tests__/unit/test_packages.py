@@ -4,9 +4,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Self
 
+import pytest
+
 from gdansk.__tests__.conftest import write_pyproject
-from gdansk._project import load_project, read_pyproject_document
-from gdansk.packages import add_dependency, lock_project, update_project
+from gdansk._project import ProjectError, load_project, read_pyproject_document
+from gdansk.packages import add_dependency, create_environment, lock_project, update_project
 
 
 class FakeEnvironment:
@@ -32,6 +34,14 @@ class FakeEnvironment:
     def update(self, _packages, **_kwargs: bool):
         self.lockfile.write_text('{"version":"5"}\n', encoding="utf-8")
         return SimpleNamespace(lockfile=str(self.lockfile), changes=self.changes)
+
+
+def test_create_environment_frozen_requires_lockfile(tmp_path: Path):
+    write_pyproject(tmp_path)
+    project = load_project(tmp_path)
+
+    with pytest.raises(ProjectError, match=r"Missing gdansk lockfile"):
+        create_environment(project, frozen=True)
 
 
 def test_lock_project_writes_root_lockfile(tmp_path: Path, monkeypatch):

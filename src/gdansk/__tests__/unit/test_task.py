@@ -11,8 +11,9 @@ from belgie.errors import BelgieRuntimeError
 
 from gdansk.__tests__.conftest import write_pyproject
 from gdansk._project import ProjectError, load_project
-from gdansk.packages import create_environment
 from gdansk.task import (
+    DEFAULT_HOST,
+    DEFAULT_PORT,
     CommandProcess,
     dev_command_argv,
     run_command,
@@ -24,41 +25,28 @@ type CommandRunner = Callable[..., Awaitable[None]]
 
 
 class FakeAsyncEnvironment:
-    def __init__(self) -> None:
-        self.events: list[str] = []
-        self.entered = False
-        self.installed = False
-
     async def __aenter__(self) -> Self:
-        self.events.append("env_enter")
-        self.entered = True
         return self
 
     async def __aexit__(self, *_args: object) -> None:
-        self.events.append("env_exit")
+        return None
 
     async def install(self) -> None:
-        self.events.append("install")
-        self.installed = True
+        return None
 
 
 class FakeRuntime:
     def __init__(self, *, env: object) -> None:
         self.env = env
-        self.events: list[str] = []
         self.argv: tuple[str, ...] = ()
-        self.command: object | None = None
 
     async def __aenter__(self) -> Self:
-        self.events.append("runtime_enter")
         return self
 
     async def __aexit__(self, *_args: object) -> None:
-        self.events.append("runtime_exit")
+        return None
 
-    def __call__(self, command: object) -> CommandRunner:
-        self.command = command
-
+    def __call__(self, _command: object) -> CommandRunner:
         async def runner(*argv: str) -> None:
             self.argv = argv
 
@@ -69,7 +57,7 @@ class LifecycleTracker:
     def __init__(self) -> None:
         self.events: list[str] = []
         self.command_calls: list[dict[str, Any]] = []
-        self.captured_runtime: list[FakeRuntime] = []
+        self.captured_runtime: list[TrackingRuntime] = []
 
     def tracking_environment(self) -> TrackingEnvironment:
         return TrackingEnvironment(self)
@@ -86,68 +74,60 @@ class LifecycleTracker:
         return SimpleNamespace(**call)
 
 
-class TrackingEnvironment(FakeAsyncEnvironment):
+class TrackingEnvironment:
     def __init__(self, tracker: LifecycleTracker) -> None:
-        super().__init__()
         self._tracker = tracker
 
     async def __aenter__(self) -> Self:
         self._tracker.events.append("env_enter")
-        return await super().__aenter__()
+        return self
 
     async def __aexit__(self, *_args: object) -> None:
         self._tracker.events.append("env_exit")
-        await super().__aexit__()
 
     async def install(self) -> None:
         self._tracker.events.append("install")
-        await super().install()
 
 
-class TrackingRuntime(FakeRuntime):
+class TrackingRuntime:
     def __init__(self, tracker: LifecycleTracker, *, env: object) -> None:
-        super().__init__(env=env)
         self._tracker = tracker
+        self.env = env
+        self.argv: tuple[str, ...] = ()
 
     async def __aenter__(self) -> Self:
         self._tracker.events.append("runtime_enter")
-        return await super().__aenter__()
+        return self
 
     async def __aexit__(self, *_args: object) -> None:
         self._tracker.events.append("runtime_exit")
-        await super().__aexit__()
 
-    def __call__(self, command: object) -> CommandRunner:
+    def __call__(self, _command: object) -> CommandRunner:
         async def runner(*argv: str) -> None:
             self._tracker.events.append("command_invoke")
             self.argv = argv
 
-        self.command = command
         return runner
 
 
 def test_dev_command_argv_formats_host_and_port():
-    assert dev_command_argv("127.0.0.1", 13_714) == ["--host", "127.0.0.1", "--port", "13714"]
+    assert dev_command_argv(DEFAULT_HOST, DEFAULT_PORT) == [
+        "--host",
+        DEFAULT_HOST,
+        "--port",
+        str(DEFAULT_PORT),
+    ]
 
 
 def test_task_origin_builds_http_url():
-    assert task_origin("127.0.0.1", 13_714) == "http://127.0.0.1:13714"
-
-
-def test_create_environment_frozen_requires_lockfile(tmp_path: Path):
-    write_pyproject(tmp_path, dependencies={"vite": "8.0.8"})
-    project = load_project(tmp_path)
-
-    with pytest.raises(ProjectError, match=r"Missing gdansk lockfile"):
-        create_environment(project, frozen=True)
+    assert task_origin(DEFAULT_HOST, DEFAULT_PORT) == f"http://{DEFAULT_HOST}:{DEFAULT_PORT}"
 
 
 async def test_run_command_enters_environment_installs_before_runtime(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    write_pyproject(tmp_path, dependencies={"vite": "8.0.8"})
-    (tmp_path / "deno.lock").write_text("{}\n", encoding="utf-8")
+    write_pyproject(tmp_path)
     project = load_project(tmp_path)
     tracker = LifecycleTracker()
     fake_environment = tracker.tracking_environment()
@@ -191,8 +171,7 @@ async def test_run_command_forwards_argv_as_separate_args(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    write_pyproject(tmp_path, dependencies={"vite": "8.0.8"})
-    (tmp_path / "deno.lock").write_text("{}\n", encoding="utf-8")
+    write_pyproject(tmp_path)
     project = load_project(tmp_path)
     captured_runtime: list[FakeRuntime] = []
 
@@ -215,7 +194,7 @@ async def test_start_command_surfaces_immediate_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    write_pyproject(tmp_path, dependencies={"vite": "8.0.8"})
+    write_pyproject(tmp_path)
     project = load_project(tmp_path)
 
     async def failing_run_command(*_args: object, **_kwargs: object) -> None:
@@ -229,26 +208,23 @@ async def test_start_command_surfaces_immediate_failure(
 
 
 async def test_command_process_stop_cancels_without_leaking_runtime_error():
-    async def run() -> None:
-        async def long_running_command() -> None:
-            try:
-                await asyncio.sleep(60)
-            except asyncio.CancelledError:
-                msg = "command interrupted"
-                raise BelgieRuntimeError(msg) from None
+    async def long_running_command() -> None:
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            msg = "command interrupted"
+            raise BelgieRuntimeError(msg) from None
 
-        task = asyncio.create_task(long_running_command())
-        process = CommandProcess(task=task)
-        await process.stop()
-
-    await run()
+    task = asyncio.create_task(long_running_command())
+    process = CommandProcess(task=task)
+    await process.stop()
 
 
-def test_command_process_stop_cancels_task():
-    async def run() -> bool:
-        task = asyncio.create_task(asyncio.sleep(60))
-        process = CommandProcess(task=task)
-        await process.stop()
-        return task.cancelled()
+async def test_command_process_stop_cancels_task():
+    async def wait_forever() -> None:
+        await asyncio.Event().wait()
 
-    assert asyncio.run(run()) is True
+    task = asyncio.create_task(wait_forever())
+    process = CommandProcess(task=task)
+    await process.stop()
+    assert task.cancelled() is True

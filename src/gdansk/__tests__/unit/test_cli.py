@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -10,7 +9,7 @@ from belgie.errors import BelgieRuntimeError
 
 from gdansk.__tests__.conftest import run_cli
 from gdansk.cli import main
-from gdansk.task import DEFAULT_HOST, DEFAULT_PORT, CommandProcess
+from gdansk.task import DEFAULT_HOST, DEFAULT_PORT
 
 
 def test_version_prints_package_version(capsys: pytest.CaptureFixture[str]):
@@ -236,16 +235,6 @@ def test_commands_lists_argument_arrays(
     assert code == 0
     assert "version" in stdout
     assert "vite --version" in stdout
-
-
-def test_command_process_stop_cancels_task():
-    async def run() -> bool:
-        task = asyncio.create_task(asyncio.sleep(60))
-        process = CommandProcess(task=task)
-        await process.stop()
-        return task.cancelled()
-
-    assert asyncio.run(run()) is True
 
 
 def test_unknown_subcommand_exits_with_argparse_error(capsys: pytest.CaptureFixture[str]):
