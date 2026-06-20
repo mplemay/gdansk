@@ -9,7 +9,6 @@ from gdansk.__tests__.conftest import write_frontend_tree, write_pyproject
 from gdansk._project import (
     ProjectError,
     discover_project,
-    find_project_root,
     infer_frontend_relative_path,
     load_project,
     resolve_frontend_path,
@@ -85,25 +84,25 @@ def test_legacy_belgie_table_has_migration_error(tmp_path: Path):
         load_project(root)
 
 
-def test_find_project_root_from_nested_directory(gdansk_project: tuple[Path, Path]):
+def test_discover_project_from_nested_directory(gdansk_project: tuple[Path, Path]):
     project_root, frontend_root = gdansk_project
     nested = frontend_root / "widgets" / "hello"
 
-    assert find_project_root(nested) == project_root.resolve()
+    assert discover_project(start=nested).root == project_root.resolve()
 
 
-def test_find_project_root_errors_when_missing(tmp_path: Path):
+def test_discover_project_errors_when_missing(tmp_path: Path):
     with pytest.raises(ProjectError, match="Could not find pyproject.toml"):
-        find_project_root(tmp_path)
+        discover_project(start=tmp_path)
 
 
-def test_find_project_root_errors_without_gdansk_table(tmp_path: Path):
+def test_discover_project_errors_without_gdansk_table(tmp_path: Path):
     root = tmp_path / "project"
     root.mkdir()
     (root / "pyproject.toml").write_text('[project]\nname = "example"\n', encoding="utf-8")
 
     with pytest.raises(ProjectError, match="Could not find pyproject.toml"):
-        find_project_root(root)
+        discover_project(start=root)
 
 
 def test_infer_from_project_scripts(tmp_path: Path):

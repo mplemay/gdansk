@@ -231,7 +231,6 @@ def cmd_commands(args: argparse.Namespace) -> None:
 
 
 def _doctor_warn(message: str, warnings: list[str]) -> None:
-    print(f"warn {message}")
     warnings.append(message)
 
 

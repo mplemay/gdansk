@@ -47,11 +47,12 @@ class GdanskProject:
     root: Path
     commands: dict[str, tuple[str, ...]]
     dependencies: tuple[Dependency, ...]
+    dependencies_by_alias: dict[str, Dependency]
     pyproject: dict[str, Any]
 
     @property
     def dependency_mapping(self) -> dict[str, str]:
-        return {dependency.alias: dependency.specifier for dependency in self.dependencies}
+        return {alias: dependency.specifier for alias, dependency in self.dependencies_by_alias.items()}
 
     @property
     def has_dependencies(self) -> bool:
@@ -62,7 +63,7 @@ class GdanskProject:
         return self.root / LOCKFILE_NAME
 
     def dependency(self, alias: str) -> Dependency | None:
-        return next((dependency for dependency in self.dependencies if dependency.alias == alias), None)
+        return self.dependencies_by_alias.get(alias)
 
 
 def _temporary_file(parent: Path, prefix: str) -> Path:
@@ -71,10 +72,6 @@ def _temporary_file(parent: Path, prefix: str) -> Path:
     temporary = Path(temporary_name)
     temporary.unlink()
     return temporary
-
-
-def atomic_replace(source: Path, target: Path) -> None:
-    source.replace(target)
 
 
 @contextmanager
@@ -113,7 +110,7 @@ def atomic_write_text(path: Path, text: str) -> None:
     temporary = _temporary_file(path.parent, f".{path.name}.")
     try:
         temporary.write_text(text, encoding="utf-8")
-        atomic_replace(temporary, path)
+        temporary.replace(path)
     finally:
         if temporary.exists():
             temporary.unlink(missing_ok=True)
@@ -263,16 +260,14 @@ def _load_project_from_document(root: Path, document: dict[str, Any]) -> GdanskP
         msg = f"No [gdansk] configuration found in {root / 'pyproject.toml'}"
         raise ProjectError(msg)
 
+    dependencies = _parse_dependencies(gdansk)
     return GdanskProject(
         root=root.resolve(),
         commands=_parse_commands(gdansk),
-        dependencies=_parse_dependencies(gdansk),
+        dependencies=dependencies,
+        dependencies_by_alias={dependency.alias: dependency for dependency in dependencies},
         pyproject=document,
     )
-
-
-def project_from_document(root: Path, document: dict[str, Any]) -> GdanskProject:
-    return _load_project_from_document(root, document)
 
 
 def _find_project_with_document(start: Path | None = None) -> tuple[Path, dict[str, Any]]:
@@ -286,18 +281,11 @@ def _find_project_with_document(start: Path | None = None) -> tuple[Path, dict[s
             continue
 
         document = read_pyproject_document(directory)
-        if isinstance(document.get("belgie"), dict):
-            raise _legacy_belgie_error(directory)
         if _gdansk_table(document) is not None:
             return directory, document
 
     msg = f"Could not find pyproject.toml with a [gdansk] table. Searched: {', '.join(searched)}"
     raise ProjectError(msg)
-
-
-def find_project_root(start: Path | None = None) -> Path:
-    root, _ = _find_project_with_document(start)
-    return root
 
 
 def load_project(root: Path) -> GdanskProject:

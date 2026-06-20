@@ -44,11 +44,10 @@ def test_doctor_warns_when_root_lock_missing(
 ):
     project_root, _ = gdansk_project
 
-    code, stdout, stderr = run_cli(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    code, _stdout, stderr = run_cli(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
     assert code == 0
-    assert "warn gdansk lockfile (deno.lock) missing" in stdout
-    assert "warning:" in stderr
+    assert "warning: gdansk lockfile (deno.lock) missing" in stderr
 
 
 def test_doctor_warns_about_legacy_frontend_lock(
@@ -59,8 +58,7 @@ def test_doctor_warns_about_legacy_frontend_lock(
     project_root, frontend_root = gdansk_project
     (frontend_root / "deno.lock").write_text("{}\n", encoding="utf-8")
 
-    code, stdout, stderr = run_cli(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+    code, _stdout, stderr = run_cli(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 
     assert code == 0
-    assert "Legacy lockfile found under frontend" in stdout
-    assert "warning:" in stderr
+    assert "warning: Legacy lockfile found under frontend" in stderr
