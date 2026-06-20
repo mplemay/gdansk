@@ -4,7 +4,6 @@ import signal
 import subprocess
 import sys
 import time
-from importlib.metadata import version
 from pathlib import Path
 
 import pytest
@@ -13,12 +12,6 @@ from gdansk.__tests__.conftest import run_cli, write_pyproject, write_src_layout
 from gdansk._project import read_pyproject_document
 
 pytestmark = pytest.mark.integration
-BELGIE_COMMAND_RUNTIME_BROKEN = version("belgie") == "0.22.0"
-COMMAND_RUNTIME_MARK = pytest.mark.xfail(
-    BELGIE_COMMAND_RUNTIME_BROKEN,
-    reason="belgie 0.22.0 constructs command workers without the required Deno CLI snapshot",
-    strict=True,
-)
 
 
 def test_cli_lock_writes_root_lockfile(
@@ -128,7 +121,6 @@ def test_module_entrypoint_version():
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Vite build loads Rollup's native Node-API addon")
-@COMMAND_RUNTIME_MARK
 def test_cli_build_smoke(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -148,7 +140,6 @@ def test_cli_build_smoke(
     assert (frontend_root / "dist" / "index.html").is_file()
 
 
-@COMMAND_RUNTIME_MARK
 def test_cli_run_package_command(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -171,7 +162,6 @@ def test_cli_run_package_command(
     assert code == 0
 
 
-@COMMAND_RUNTIME_MARK
 def test_cli_run_watch_stops_on_signal(tmp_path: Path):
     write_pyproject(
         tmp_path,
