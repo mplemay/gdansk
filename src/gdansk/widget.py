@@ -149,10 +149,8 @@ def _transform_resource(widget: WidgetMeta, extra: WidgetExtra) -> ResourceMeta:
             out["openai/widgetDomain"] = domain
     openai = widget.get("openai")
     widget_description: str | None = None
-    if openai and "widget_description" in openai:
-        wd = openai["widget_description"]
-        if wd is not None:
-            widget_description = wd
+    if openai and "widget_description" in openai and (wd := openai["widget_description"]) is not None:
+        widget_description = wd
     if widget_description is None and (desc := extra.get("description")):
         widget_description = desc
     if widget_description is not None:
@@ -162,8 +160,7 @@ def _transform_resource(widget: WidgetMeta, extra: WidgetExtra) -> ResourceMeta:
 
 def _transform_tool_ui(ui: WidgetUIMeta | None, extra: WidgetExtra) -> ToolUIMeta | None:
     out: ToolUIMeta = {}
-    resource_uri = ui["resource_uri"] if ui and "resource_uri" in ui else extra["uri"]
-    if resource_uri:
+    if resource_uri := (ui["resource_uri"] if ui and "resource_uri" in ui else extra["uri"]):
         out["resourceUri"] = resource_uri
     if ui and "visibility" in ui and (visibility := ui.get("visibility")):
         out["visibility"] = visibility

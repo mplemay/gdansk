@@ -105,8 +105,7 @@ class Vite:
         return self._frontend is not None
 
     def load_manifest(self) -> GdanskManifest:
-        path = self.manifest_path
-        if not path.is_file():
+        if not (path := self.manifest_path).is_file():
             msg = f"The frontend build did not produce a manifest at {path}"
             raise RuntimeError(msg)
 
@@ -140,11 +139,11 @@ class Vite:
 
     def require_manifest_widget(self, widget_key: str) -> WidgetManifest:
         manifest = self.require_manifest()
-        if widget_key not in manifest.widgets:
+        if (widget := manifest.widgets.get(widget_key)) is None:
             msg = f'The production asset manifest does not contain the widget "{widget_key}"'
             raise RuntimeError(msg)
 
-        return manifest.widgets[widget_key]
+        return widget
 
     def require_origin(self) -> str:
         if self._origin is None:

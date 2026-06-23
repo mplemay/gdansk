@@ -57,11 +57,12 @@ def _default_init_package(target_dir: Path) -> str:
     pyproject_path = target_dir / "pyproject.toml"
     if pyproject_path.is_file():
         document = read_pyproject_document(target_dir)
-        project = document.get("project")
-        if isinstance(project, dict):
-            name = project.get("name")
-            if isinstance(name, str) and name.strip():
-                return _normalize_package_name(name.strip())
+        if (
+            isinstance(project := document.get("project"), dict)
+            and isinstance(name := project.get("name"), str)
+            and (stripped := name.strip())
+        ):
+            return _normalize_package_name(stripped)
     return _normalize_package_name("my-mcp-server")
 
 
@@ -91,8 +92,7 @@ def _resolve_frontend(project: GdanskProject, frontend: Path | None) -> Path:
 
 
 def _require_command(project: GdanskProject, name: str) -> tuple[str, ...]:
-    command = project.commands.get(name)
-    if command is not None:
+    if (command := project.commands.get(name)) is not None:
         return command
 
     _eprint(f"No [gdansk.commands] entry '{name}' in {project.root / 'pyproject.toml'}")

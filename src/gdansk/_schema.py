@@ -94,13 +94,11 @@ def _should_inline_ref(schema: JsonSchema) -> bool:
 
 
 def _inline_ref_with_siblings(schema: JsonSchema, *, root: JsonSchema) -> JsonSchema:
-    ref = schema["$ref"]
-    if not isinstance(ref, str):
+    if not isinstance(ref := schema["$ref"], str):
         msg = f"Expected string $ref, got {type(ref).__name__}"
         raise TypeError(msg)
 
-    resolved = _resolve_ref(root=root, ref=ref)
-    if not isinstance(resolved, dict):
+    if not isinstance(resolved := _resolve_ref(root=root, ref=ref), dict):
         msg = f"Expected $ref {ref} to resolve to a dictionary schema"
         raise TypeError(msg)
 

@@ -68,8 +68,7 @@ class Ship:
     @asynccontextmanager
     async def mcp(self, app: MCPServer, *, watch: bool | None = False) -> AsyncIterator[None]:
         for spec in self._widget_manager.values():
-            existing = app._tool_manager._tools.get(spec.tool.name)  # noqa: SLF001
-            if existing is not None and existing is not spec.tool:
+            if (existing := app._tool_manager._tools.get(spec.tool.name)) is not None and existing is not spec.tool:  # noqa: SLF001
                 msg = f"A tool with the name {spec.tool.name} has already been registered"
                 raise ValueError(msg)
 
@@ -186,9 +185,7 @@ class Ship:
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         posix_path = self._normalize_widget_path(Path(path))
         key = PurePosixPath(*posix_path.parts[:-1]).as_posix()
-        resolved_path = (self._vite.widgets_root / Path(posix_path.as_posix())).resolve()
-
-        if not resolved_path.is_file():
+        if not (self._vite.widgets_root / Path(posix_path.as_posix())).resolve().is_file():
             msg = f"The widget path (i.e. {path}) is not a file"
             raise FileNotFoundError(msg)
 

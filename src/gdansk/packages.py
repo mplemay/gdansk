@@ -29,8 +29,7 @@ def create_environment(project: GdanskProject, *, frozen: bool) -> Environment:
         msg = f"No [gdansk.dependencies] entries found in {project.root / 'pyproject.toml'}"
         raise ProjectError(msg)
 
-    lockfile = project.lockfile_path
-    if frozen and not lockfile.is_file():
+    if frozen and not (lockfile := project.lockfile_path).is_file():
         msg = f"Missing gdansk lockfile at {lockfile}; run `gdansk lock`"
         raise ProjectError(msg)
 
@@ -91,8 +90,7 @@ def update_project(
         temporary.write_bytes(Path(result.lockfile).read_bytes())
 
         for change in result.changes:
-            dependency = project.dependency(change.name)
-            if dependency is None:
+            if (dependency := project.dependency(change.name)) is None:
                 msg = f"Belgie updated unknown dependency alias '{change.name}'"
                 raise ProjectError(msg)
             value = dependency.updated_value(change.updated)
