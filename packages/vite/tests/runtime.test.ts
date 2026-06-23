@@ -1,8 +1,16 @@
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import react from "@vitejs/plugin-react";
-import { createServer, normalizePath, type Plugin, type PluginOption, type UserConfig, type ViteDevServer } from "vite";
+import {
+  createBuilder,
+  createServer,
+  normalizePath,
+  type Plugin,
+  type PluginOption,
+  type UserConfig,
+  type ViteDevServer,
+} from "vite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const viteMocks = vi.hoisted(() => ({
@@ -26,9 +34,11 @@ import gdansk from "../src";
 import { pathExists, resolveOptions } from "../src/context";
 import { normalizeRefreshConfig, resolveRefreshPaths } from "../src/development";
 import { createGdanskRuntime } from "../src/runtime";
+import type { GdanskManifest } from "../src/types";
 
 const fixtureRoots: string[] = [];
 const RENDER_DEPENDENCY_NAME = "__gdansk_render_cjs_dep__";
+const UNSCOPED_DEPENDENCY_NAME = "lucide-react";
 
 type GdanskDevServer = ViteDevServer & {
   __gdansk?: {
@@ -348,6 +358,27 @@ describe("@gdansk/vite", () => {
     await runtime.close();
   }, 15_000);
 
+  it("inlines unscoped package dependencies in plugin production builds", async () => {
+    const root = await createFixture({ withLocalPlugin: false, withUnscopedDependency: true });
+
+    const builder = await createBuilder({
+      appType: "custom",
+      builder: {},
+      configFile: false,
+      plugins: [gdansk({ root }), react()],
+      root,
+    });
+    await builder.buildApp();
+
+    const manifest = JSON.parse(await readFile(`${root}/dist/gdansk-manifest.json`, "utf8")) as GdanskManifest;
+    const script = manifest.widgets.hello.inline.script;
+
+    expect(script).toContain("from lucide fixture");
+    expect(script).not.toMatch(/(?:import|export)\s+[^;]*from\s*["']lucide-react["']/);
+    expect(script).not.toMatch(/import\s*\(\s*["']lucide-react["']\s*\)/);
+    expect(await findMatchingFiles(`${root}/dist`, /\.js$/)).toHaveLength(0);
+  }, 15_000);
+
   it("builds widgets that default-import plain css with co-located css.d.ts typings", async () => {
     const root = await createFixture({ withCssModuleDefaultImport: true, withLocalPlugin: false });
     const runtime = await createGdanskRuntime({ root, port: 0 });
@@ -420,6 +451,7 @@ async function createFixture(options: {
   withLocalCommonjsDependency?: boolean;
   withLocalPlugin: boolean;
   withSharedCss?: boolean;
+  withUnscopedDependency?: boolean;
 }): Promise<string> {
   const root = await mkdtemp(resolve(process.cwd(), ".tmp-vitest-"));
   fixtureRoots.push(root);
@@ -489,6 +521,35 @@ async function createFixture(options: {
     );
     await writeFile(`${dependencyRoot}/index.js`, 'module.exports = "from cjs dependency";\n');
   }
+  if (options.withUnscopedDependency) {
+    const dependencyRoot = `${root}/node_modules/${UNSCOPED_DEPENDENCY_NAME}`;
+    await mkdir(dependencyRoot, { recursive: true });
+    await writeFile(
+      `${dependencyRoot}/package.json`,
+      JSON.stringify(
+        {
+          exports: "./index.js",
+          name: UNSCOPED_DEPENDENCY_NAME,
+          private: true,
+          type: "module",
+          version: "0.0.0",
+        },
+        null,
+        2,
+      ),
+    );
+    await writeFile(
+      `${dependencyRoot}/index.js`,
+      [
+        'import { createElement } from "react";',
+        "",
+        "export function CheckIcon() {",
+        '  return createElement("span", { "data-lucide": "check" }, "from lucide fixture");',
+        "}",
+        "",
+      ].join("\n"),
+    );
+  }
   if (options.withDynamicImport) {
     await writeFile(`${root}/widgets/hello/dynamic-message.ts`, 'export const dynamicMessage = "from dynamic import";\n');
   }
@@ -527,15 +588,26 @@ async function createFixture(options: {
             "}",
             "",
           ].join("\n")
-        : [
-            helloCssImport,
-            ...dynamicImportLines,
-            "",
-            "export default function App() {",
-            `  return <main ${helloClassNameAttr}><h1>Hello production</h1><p>plain widget</p></main>;`,
-            "}",
-            "",
-          ].join("\n"),
+        : options.withUnscopedDependency
+          ? [
+              `import { CheckIcon } from "${UNSCOPED_DEPENDENCY_NAME}";`,
+              helloCssImport,
+              ...dynamicImportLines,
+              "",
+              "export default function App() {",
+              `  return <main ${helloClassNameAttr}><h1>Hello production</h1><CheckIcon /></main>;`,
+              "}",
+              "",
+            ].join("\n")
+          : [
+              helloCssImport,
+              ...dynamicImportLines,
+              "",
+              "export default function App() {",
+              `  return <main ${helloClassNameAttr}><h1>Hello production</h1><p>plain widget</p></main>;`,
+              "}",
+              "",
+            ].join("\n"),
   );
   await writeFile(
     `${root}/widgets/nested/page/widget.tsx`,
