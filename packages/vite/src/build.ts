@@ -12,6 +12,8 @@ import type {
   ResolvedGdanskOptions,
   WidgetDefinition,
 } from "./types";
+import { collectTypedCssModuleStyles } from "./cssModuleStyles";
+import { createGdanskCssModulesPlugin, createSharedCssModulesConfig } from "./cssModules";
 import { createGdanskVirtualModulesPlugin } from "./virtual";
 
 export const GDANSK_MANIFEST_FILENAME = "gdansk-manifest.json";
@@ -49,6 +51,10 @@ type InlineBuildOutput = {
 
 type WidgetBuildFunction = (widget: WidgetDefinition, index: number) => Promise<InlineBuildOutput[]>;
 
+function widgetEnvironmentName(index: number): string {
+  return `gdansk_widget_${index}`;
+}
+
 export function createBuildConfig(options: ResolvedGdanskOptions, prepared: GdanskPreparedProject): UserConfig {
   return {
     appType: "custom",
@@ -76,11 +82,30 @@ export function createBuildConfig(options: ResolvedGdanskOptions, prepared: Gdan
     environments: Object.fromEntries(
       prepared.widgets.map((widget, index) => [
         widgetEnvironmentName(index),
-        {
-          build: createWidgetBuildOptions(options, widget),
-        },
+        createWidgetEnvironmentConfig(options, widget),
       ]),
     ),
+  };
+}
+
+function createWidgetEnvironmentConfig(
+  options: ResolvedGdanskOptions,
+  widget: WidgetDefinition,
+): NonNullable<UserConfig["environments"]>[string] {
+  const build = createWidgetBuildOptions(options, widget);
+
+  return {
+    build: {
+      ...build,
+      emitAssets: true,
+      rolldownOptions: {
+        ...build?.rolldownOptions,
+        external: (source: string) => source.startsWith("node:"),
+      },
+    },
+    resolve: {
+      noExternal: [/^@/, /^react(-dom)?(\/|$)/],
+    },
   };
 }
 
@@ -93,9 +118,13 @@ export async function buildWidgets(
     const result = await build(
       mergeConfig(config, {
         appType: "custom",
-        build: createWidgetBuildOptions(options, widget),
+        build: {
+          ...createWidgetBuildOptions(options, widget),
+          emitAssets: true,
+        },
         configFile: false,
-        plugins: [createGdanskVirtualModulesPlugin(options, prepared)],
+        css: createSharedCssModulesConfig(),
+        plugins: [createGdanskCssModulesPlugin(), createGdanskVirtualModulesPlugin(options, prepared)],
         root: options.root,
       }),
     );
@@ -106,10 +135,6 @@ export async function buildWidgets(
 
 export async function readManifest(path: string): Promise<GdanskManifest> {
   return JSON.parse(await readFile(path, "utf8")) as GdanskManifest;
-}
-
-function widgetEnvironmentName(index: number): string {
-  return `gdansk-widget-${index}`;
 }
 
 function createWidgetBuildOptions(
@@ -152,7 +177,7 @@ async function writeInlineManifestFromWidgetBuilds(
   for (const [index, widget] of widgets.entries()) {
     manifestWidgets[widget.key] = {
       entry: widget.widgetPath,
-      inline: extractInlineWidgetBundle(widget, await buildWidget(widget, index)),
+      inline: await extractInlineWidgetBundle(widget, await buildWidget(widget, index)),
     };
   }
 
@@ -167,7 +192,10 @@ async function writeInlineManifestFromWidgetBuilds(
   return manifest;
 }
 
-function extractInlineWidgetBundle(widget: WidgetDefinition, outputs: InlineBuildOutput[]): InlineWidgetBundle {
+async function extractInlineWidgetBundle(
+  widget: WidgetDefinition,
+  outputs: InlineBuildOutput[],
+): Promise<InlineWidgetBundle> {
   const artifacts = outputs.flatMap((output) => output.output);
   const chunks = artifacts.filter(isChunk);
   const entryChunks = chunks.filter((chunk) => chunk.isEntry);
@@ -187,9 +215,13 @@ function extractInlineWidgetBundle(widget: WidgetDefinition, outputs: InlineBuil
     );
   }
 
-  if (entry.imports.length > 0) {
+  const blockingImports = entry.imports.filter(
+    (specifier) => !specifier.startsWith("node:") && !specifier.startsWith("bun:"),
+  );
+
+  if (blockingImports.length > 0) {
     throw new Error(
-      `Gdansk widget "${widget.key}" emitted imports that cannot be served as one HTML resource: ${entry.imports.join(
+      `Gdansk widget "${widget.key}" emitted imports that cannot be served as one HTML resource: ${blockingImports.join(
         ", ",
       )}`,
     );
@@ -206,9 +238,14 @@ function extractInlineWidgetBundle(widget: WidgetDefinition, outputs: InlineBuil
     );
   }
 
+  let styles = collectInlineStyles(widget, entry, assets);
+  if (styles.length === 0) {
+    styles = await collectTypedCssModuleStyles(widget.entry, entry.code);
+  }
+
   return {
     script: entry.code,
-    styles: collectInlineStyles(widget, entry, assets),
+    styles,
   };
 }
 

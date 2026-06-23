@@ -36,7 +36,7 @@ def create_environment(project: GdanskProject, *, frozen: bool) -> Environment:
 
     return Environment(
         project.dependency_mapping,
-        cwd=project.root,
+        path=project.root,
         lockfile=lockfile if frozen else None,
     )
 

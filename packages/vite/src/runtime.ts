@@ -3,6 +3,7 @@ import { createServer, mergeConfig } from "vite";
 import { buildWidgets, GDANSK_MANIFEST_FILENAME, readManifest } from "./build";
 import { loadUserViteConfig, prepareProject, resolveOptions } from "./context";
 import { resolveViteOrigin } from "./css";
+import { createGdanskCssModulesPlugin, createSharedCssModulesConfig } from "./cssModules";
 import { createRefreshPlugin } from "./development";
 import type {
   GdanskDevRuntimeMetadata,
@@ -64,7 +65,12 @@ class GdanskRuntimeImpl implements GdanskRuntime {
       mergeConfig(config, {
         appType: "custom",
         configFile: false,
-        plugins: [createGdanskVirtualModulesPlugin(this.options, prepared), createRefreshPlugin(this.options)],
+        css: createSharedCssModulesConfig(),
+        plugins: [
+          createGdanskCssModulesPlugin(),
+          createGdanskVirtualModulesPlugin(this.options, prepared),
+          createRefreshPlugin(this.options),
+        ],
         root: this.options.root,
         server: {
           host: this.options.host,

@@ -27,7 +27,7 @@ gdansk = { path = "../../", editable = true }
 
 [gdansk.dependencies]
 vite = "8.0.8"
-"@gdansk/vite" = "^0.1.0"
+"@gdansk/vite" = "file:../../packages/vite"
 "@modelcontextprotocol/ext-apps" = "^1.7.2"
 "@modelcontextprotocol/sdk" = "^1.29.0"
 "@vitejs/plugin-react" = "6.0.2"
