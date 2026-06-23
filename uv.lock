@@ -12,7 +12,6 @@ exclude-newer-span = "P7D"
 
 [options.exclude-newer-package]
 belgie = false
-mcp = false
 
 [[package]]
 name = "annotated-types"
@@ -223,7 +222,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "belgie", specifier = ">=0.25.0" },
-    { name = "mcp", specifier = "==2.0.0a1" },
+    { name = "mcp", specifier = ">=2.0.0a1" },
     { name = "minijinja", specifier = ">=2,<3" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "rtoml", specifier = ">=0.13,<0.14" },
