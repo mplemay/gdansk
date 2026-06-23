@@ -26,9 +26,8 @@ deployment patterns.
 ## Compatibility
 
 - Python: `gdansk` currently requires `>=3.12,<3.15`.
-- Frontend dependencies: declare npm and JSR packages in `[belgie.dependencies]` tables in `pyproject.toml`.
-- Runtime tooling: gdansk runs frontend builds through configured frontend scripts. If you run package scripts
-  directly, the published `@gdansk/vite` package currently declares Node `>=22`.
+- Frontend dependencies: declare npm and JSR packages in `[gdansk.dependencies]` tables in `pyproject.toml`.
+- Runtime tooling: gdansk runs Vite internally through Belgie `Environment`, `Runtime`, and `Command`.
 
 ## Examples
 
@@ -228,10 +227,10 @@ export default defineConfig({
 });
 ```
 
-Install frontend dependencies from the Python project root after editing them:
+Lock frontend dependencies from the Python project root after editing them:
 
 ```bash
-uv run gdansk install
+uv run gdansk lock
 ```
 
 ## CLI
@@ -240,13 +239,13 @@ Gdansk ships a CLI for project setup and frontend tooling:
 
 ```bash
 uv run gdansk init
-uv run gdansk install
+uv run gdansk add <alias> <specifier>
 uv run gdansk lock
 uv run gdansk update
 uv run gdansk build
 uv run gdansk dev
-uv run gdansk run <script>
-uv run gdansk scripts
+uv run gdansk run <command>
+uv run gdansk commands
 uv run gdansk doctor
 ```
 
@@ -255,28 +254,27 @@ identify the Python package. Override that path per command with `--frontend` wh
 
 ## Frontend Dependencies
 
-Use `[belgie.dependencies]`, grouped dependency tables such as `[belgie.dependencies.dev]`, and `[belgie.scripts]` in
+Use `[gdansk.dependencies]`, grouped dependency tables such as `[gdansk.dependencies.dev]`, and `[gdansk.commands]` in
 `pyproject.toml` when frontend builds need npm or JSR packages:
 
 ```toml
-[belgie.dependencies]
+[gdansk.dependencies]
 react = "^19"
-vite = "8.0.8"
+vite = "8.0.14"
 "@gdansk/vite" = "^0.1.0"
 std_path = "jsr:@std/path@^1"
 
-[belgie.dependencies.dev]
+[gdansk.dependencies.dev]
 "@types/react" = "^19"
 
-[belgie.scripts]
-build = "vite build"
-dev = "vite"
+[gdansk.commands]
+lint = ["oxlint", "--fix"]
 ```
 
 Unprefixed values are treated as npm version requirements for the table key, so `react = "^19"` becomes `npm:react@^19`.
-Use `uv run gdansk install`, `uv run gdansk lock`, or `uv run gdansk update` to resolve those dependencies and write the
-belgie lockfile (`deno.lock`) next to `pyproject.toml`. Frontend builds and dev servers run the `build` and `dev`
-entries from `[belgie.scripts]`.
+Use `uv run gdansk add <alias> <specifier>`, `uv run gdansk lock`, or `uv run gdansk update` to resolve dependencies and
+write `deno.lock` next to `pyproject.toml`. `gdansk build` and `gdansk dev` invoke Vite internally; entries under
+`[gdansk.commands]` are optional user commands executed by `gdansk run`.
 
 Gdansk mounts your default export into `#root` automatically and wraps it with `React.StrictMode`.
 

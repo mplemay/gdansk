@@ -9,7 +9,7 @@ Scaffold a new project with the CLI:
 ```bash
 uv add gdansk
 uv run gdansk init
-uv run gdansk install
+uv run gdansk lock
 uv run gdansk doctor
 ```
 
@@ -45,7 +45,7 @@ my-server/
 ├── pyproject.toml
 └── frontend/                   # name is arbitrary; pass any path to Vite(...)
     ├── vite.config.ts
-    ├── deno.lock                 # belgie lockfile at Python project root
+    ├── deno.lock                 # gdansk lockfile at Python project root
     └── widgets/
         └── hello/
             └── widget.tsx
@@ -145,21 +145,20 @@ For richer widget patterns, see [widgets.md](widgets.md).
 `pyproject.toml`
 
 ```toml
-[belgie.dependencies]
-vite = "8.0.8"
+[gdansk.dependencies]
+vite = "8.0.14"
 "@gdansk/vite" = "^0.1.0"
 "@modelcontextprotocol/ext-apps" = "^1.5.0"
 "@vitejs/plugin-react" = "6.0.2"
 react = "19.2.6"
 react-dom = "19.2.6"
 
-[belgie.dependencies.dev]
+[gdansk.dependencies.dev]
 "@types/react" = "^19.2.14"
 "@types/react-dom" = "^19.2.3"
 
-[belgie.scripts]
-build = "vite build"
-dev = "vite"
+[gdansk.commands]
+lint = ["oxlint", "--fix"]
 ```
 
 Add a `vite.config.ts` in the frontend root and import `@gdansk/vite` there alongside any framework plugins:
@@ -183,13 +182,15 @@ files during `vite dev`.
 If you need a non-default build output directory, keep Python and Vite aligned. See
 [rules/config-sync.md](../rules/config-sync.md) for Incorrect/Correct pairs.
 
-After editing dependencies, install from the Python project root:
+After manually editing dependencies, refresh the lockfile from the Python project root:
 
 ```bash
-uv run gdansk install
+uv run gdansk lock
 ```
 
-Commit the belgie lockfile (`deno.lock`) when it changes.
+For additions, prefer `uv run gdansk add <alias> <specifier>`.
+
+Commit the gdansk lockfile (`deno.lock`) when it changes.
 
 ## Run commands
 
@@ -197,7 +198,7 @@ Standard server:
 
 ```bash
 uv sync
-uv run gdansk install
+uv run gdansk lock
 uv run gdansk doctor
 uv run python server.py          # manual layout
 # or

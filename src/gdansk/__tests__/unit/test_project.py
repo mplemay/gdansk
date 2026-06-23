@@ -9,7 +9,6 @@ from gdansk.__tests__.conftest import write_frontend_tree, write_pyproject
 from gdansk._project import (
     ProjectError,
     discover_project,
-    find_project_root,
     infer_frontend_relative_path,
     load_project,
     resolve_frontend_path,
@@ -17,47 +16,93 @@ from gdansk._project import (
 )
 
 
-def test_load_project_parses_full_config(tmp_path: Path):
+def test_load_project_parses_dependencies_and_commands(tmp_path: Path):
     root = tmp_path / "project"
     root.mkdir()
     write_pyproject(
         root,
-        scripts={"build": "vite build", "dev": "vite"},
-        dependencies={"vite": "8.0.8", "react": "19.2.6"},
+        commands={"lint": ["oxlint", "--fix"]},
+        dependencies={"vite": "8.0.14", "react": "^19"},
+        dev_dependencies={"oxlint": "1.68.0"},
     )
 
     project = load_project(root)
 
     assert project.root == root.resolve()
-    assert project.scripts == {"build": "vite build", "dev": "vite"}
-    assert project.has_dependencies is True
+    assert project.commands == {"lint": ("oxlint", "--fix")}
+    assert project.dependency_mapping == {
+        "vite": "8.0.14",
+        "react": "^19",
+        "oxlint": "1.68.0",
+    }
+    dependency = project.dependency("oxlint")
+    assert dependency is not None
+    assert dependency.group == "dev"
 
 
-def test_find_project_root_from_project_root(gdansk_project: tuple[Path, Path]):
-    project_root, _ = gdansk_project
+def test_rejects_duplicate_dependency_aliases(tmp_path: Path):
+    root = tmp_path / "project"
+    root.mkdir()
+    (root / "pyproject.toml").write_text(
+        """
+[gdansk.dependencies]
+react = "^19"
 
-    assert find_project_root(project_root) == project_root.resolve()
+[gdansk.dependencies.dev]
+react = "^20"
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ProjectError, match="Duplicate dependency alias"):
+        load_project(root)
 
 
-def test_find_project_root_from_nested_directory(gdansk_project: tuple[Path, Path]):
+@pytest.mark.parametrize(
+    "command",
+    [
+        'lint = "oxlint --fix"',
+        "lint = []",
+        'lint = ["oxlint", 1]',
+    ],
+)
+def test_rejects_invalid_commands(tmp_path: Path, command: str):
+    root = tmp_path / "project"
+    root.mkdir()
+    (root / "pyproject.toml").write_text(f"[gdansk.commands]\n{command}\n", encoding="utf-8")
+
+    with pytest.raises(ProjectError, match="non-empty array of strings"):
+        load_project(root)
+
+
+def test_legacy_belgie_table_has_migration_error(tmp_path: Path):
+    root = tmp_path / "project"
+    root.mkdir()
+    (root / "pyproject.toml").write_text('[belgie.dependencies]\nvite = "8"\n', encoding="utf-8")
+
+    with pytest.raises(ProjectError, match=r"rename \[belgie\.dependencies\]"):
+        load_project(root)
+
+
+def test_discover_project_from_nested_directory(gdansk_project: tuple[Path, Path]):
     project_root, frontend_root = gdansk_project
     nested = frontend_root / "widgets" / "hello"
 
-    assert find_project_root(nested) == project_root.resolve()
+    assert discover_project(start=nested).root == project_root.resolve()
 
 
-def test_find_project_root_errors_when_missing(tmp_path: Path):
+def test_discover_project_errors_when_missing(tmp_path: Path):
     with pytest.raises(ProjectError, match="Could not find pyproject.toml"):
-        find_project_root(tmp_path)
+        discover_project(start=tmp_path)
 
 
-def test_find_project_root_errors_without_belgie_table(tmp_path: Path):
+def test_discover_project_errors_without_gdansk_table(tmp_path: Path):
     root = tmp_path / "project"
     root.mkdir()
     (root / "pyproject.toml").write_text('[project]\nname = "example"\n', encoding="utf-8")
 
     with pytest.raises(ProjectError, match="Could not find pyproject.toml"):
-        find_project_root(root)
+        discover_project(start=root)
 
 
 def test_infer_from_project_scripts(tmp_path: Path):
@@ -160,10 +205,3 @@ def test_discover_project_with_explicit_root(gdansk_project: tuple[Path, Path]):
     project = discover_project(project=project_root)
 
     assert project.root == project_root.resolve()
-
-
-def test_resolve_frontend_supports_absolute_path(gdansk_project: tuple[Path, Path]):
-    project_root, frontend_root = gdansk_project
-    project = load_project(project_root)
-
-    assert resolve_frontend_path(project, frontend_root) == frontend_root.resolve()

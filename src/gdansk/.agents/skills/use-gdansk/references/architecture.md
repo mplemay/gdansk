@@ -82,23 +82,23 @@ ship = Ship(
 )
 ```
 
-## belgie dependency model
+## gdansk dependency model
 
-Frontend npm/JSR packages live in `[belgie.dependencies]` tables in `pyproject.toml` — not in a `package.json`
+Frontend npm/JSR packages live in `[gdansk.dependencies]` tables in `pyproject.toml` — not in a `package.json`
 at the app frontend root.
 
 ```toml
-[belgie.dependencies]
+[gdansk.dependencies]
 react = "^19"
-vite = "8.0.8"
+vite = "8.0.14"
 "@gdansk/vite" = "^0.1.0"
 
-[belgie.scripts]
-build = "vite build"
-dev = "vite"
+[gdansk.commands]
+lint = ["oxlint", "--fix"]
 ```
 
-- Install with `uv run gdansk install`; belgie writes `deno.lock` at the Python project root.
+- Add dependencies with `uv run gdansk add` or lock manual edits with `uv run gdansk lock`.
+- gdansk writes `deno.lock` at the Python project root and creates temporary Belgie environments for execution.
 - Run builds via `uv run gdansk build` / `uv run gdansk dev`, not raw `vite` commands.
 - `package.json` exists only in separately published packages like `@gdansk/vite` itself.
 
@@ -120,7 +120,7 @@ Before running, confirm:
 - [ ] `Vite(host, port, build_directory)` matches `gdansk({ host, port, buildDirectory })`
 - [ ] `@ship.widget(path=...)` is relative to `widgets/` without `widgets/` prefix
 - [ ] Production deploy includes `dist/gdansk-manifest.json`
-- [ ] `[belgie.dependencies]` installed via `uv run gdansk install`
+- [ ] `[gdansk.dependencies]` installed via `uv run gdansk lock`
 
 For Incorrect/Correct pairs, see [rules/config-sync.md](../rules/config-sync.md) and
 [rules/path-contract.md](../rules/path-contract.md).

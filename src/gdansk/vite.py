@@ -4,17 +4,22 @@ from asyncio import sleep
 from http import HTTPStatus
 from os import PathLike
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from httpx import AsyncClient, RequestError
 from pydantic import ValidationError
 
 from gdansk.manifest import GdanskManifest, WidgetManifest
-from gdansk.task import DEFAULT_HOST, DEFAULT_PORT, dev_start_kwargs, run_task, start_task, task_origin
+from gdansk.task import (
+    DEFAULT_HOST,
+    DEFAULT_PORT,
+    CommandProcess,
+    dev_command_argv,
+    run_project_command,
+    start_project_command,
+    task_origin,
+)
 from gdansk.utils import join_url
-
-if TYPE_CHECKING:
-    from belgie.tasks import TaskProcess
 
 type PathType = str | PathLike[str]
 
@@ -57,7 +62,7 @@ class Vite:
         self._root: Final[Path] = root.absolute().resolve()
         self._widgets_root: Final[Path] = self._root / "widgets"
 
-        self._frontend: TaskProcess | None = None
+        self._frontend: CommandProcess | None = None
         self._manifest: GdanskManifest | None = None
         self._origin: str | None = None
 
@@ -107,9 +112,9 @@ class Vite:
 
         try:
             manifest = GdanskManifest.model_validate_json(path.read_text(encoding="utf-8"))
-        except ValidationError as e:
+        except ValidationError as exc:
             msg = f"The frontend build produced an invalid manifest at {path}"
-            raise RuntimeError(msg) from e
+            raise RuntimeError(msg) from exc
 
         if manifest.out_dir.strip("/") != self._build_directory:
             msg = (
@@ -150,7 +155,12 @@ class Vite:
 
     async def build(self) -> None:
         self.clear_manifest()
-        await run_task(self._root, "build", argv=["--outDir", self._build_directory])
+        await run_project_command(
+            self._root,
+            "vite",
+            cwd=self._root,
+            argv=["build", "--outDir", self._build_directory],
+        )
 
     async def start_dev(self) -> None:
         if self._frontend is not None:
@@ -160,13 +170,11 @@ class Vite:
             self._origin = None
 
         self.clear_manifest()
-        dev_params = dev_start_kwargs(self._host, self._port)
-        self._frontend = await start_task(
+        self._frontend = await start_project_command(
             self._root,
-            "dev",
-            argv=dev_params.argv,
-            host=dev_params.host,
-            port=dev_params.port,
+            "vite",
+            cwd=self._root,
+            argv=dev_command_argv(self._host, self._port),
         )
         self._origin = task_origin(self._host, self._port)
 

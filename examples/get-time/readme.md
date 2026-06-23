@@ -18,7 +18,7 @@ uv run main
 If you change frontend dependencies in `pyproject.toml`, re-run:
 
 ```bash
-uv run gdansk install
+uv run gdansk lock
 ```
 
 For agent-driven setup, prefer `$use-gdansk`.

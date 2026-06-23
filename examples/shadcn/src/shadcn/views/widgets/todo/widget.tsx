@@ -91,8 +91,8 @@ export default function App() {
 
         setTodos(parseTodos(result));
         return true;
-      } catch (callError) {
-        setErrorMessage(callError instanceof Error ? callError.message : "Unexpected error while syncing todos.");
+      } catch (exc) {
+        setErrorMessage(exc instanceof Error ? exc.message : "Unexpected error while syncing todos.");
         return false;
       } finally {
         setIsLoading(false);

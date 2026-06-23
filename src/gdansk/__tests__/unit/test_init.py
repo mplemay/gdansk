@@ -7,90 +7,67 @@ from types import SimpleNamespace
 import pytest
 
 from gdansk.__tests__.conftest import run_cli, write_pyproject
+from gdansk._project import read_pyproject_document
 
 
-def test_init_creates_scaffold_files(
+def test_init_creates_scaffold_and_gdansk_tables(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ):
     target = tmp_path / "new-project"
-    calls: dict[str, object] = {}
+    calls: list[Path] = []
 
-    def fake_lock_packages(**kwargs: object) -> SimpleNamespace:
-        calls.update(kwargs)
-        return SimpleNamespace(lockfile=str(target / "deno.lock"), groups={"default": 4, "dev": 2})
+    def fake_lock_project(project) -> SimpleNamespace:
+        calls.append(project.root)
+        return SimpleNamespace(lockfile=str(target / "deno.lock"), dependencies=6)
 
-    monkeypatch.setattr(
-        "gdansk.cli.lock_packages",
-        fake_lock_packages,
-    )
+    monkeypatch.setattr("gdansk.cli.lock_project", fake_lock_project)
 
     code, stdout, _stderr = run_cli(
-        ["init", "--path", str(target), "--no-install"],
+        ["init", "--path", str(target)],
         monkeypatch=monkeypatch,
         cwd=tmp_path,
         capsys=capsys,
     )
 
     assert code == 0
-    assert calls == {}
-    assert (target / "pyproject.toml").exists()
+    assert calls == [target.resolve()]
     assert (target / "src" / "my_mcp_server" / "__main__.py").exists()
-    assert not (target / "src" / "my_mcp_server" / "views" / "package.json").exists()
     assert (target / "src" / "my_mcp_server" / "views" / "vite.config.ts").exists()
     assert (target / "src" / "my_mcp_server" / "views" / "widgets" / "hello" / "widget.tsx").exists()
+    text = (target / "pyproject.toml").read_text(encoding="utf-8")
+    assert "[gdansk.dependencies]" in text
+    assert "[gdansk.dependencies.dev]" in text
+    assert "[gdansk.commands]" not in text
+    assert "[belgie" not in text
     assert "Initialized gdansk project" in stdout
 
 
-def test_init_pyproject_contains_belgie_tables(
+def test_init_no_lock_skips_locking(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ):
     target = tmp_path / "new-project"
-    calls: dict[str, object] = {}
 
-    def fake_lock_packages(**kwargs: object) -> SimpleNamespace:
-        calls.update(kwargs)
-        return SimpleNamespace(lockfile=str(target / "deno.lock"), groups={"default": 4, "dev": 2})
+    def fail_lock_project(_project) -> SimpleNamespace:
+        msg = "lock should not run"
+        raise AssertionError(msg)
 
-    monkeypatch.setattr(
-        "gdansk.cli.lock_packages",
-        fake_lock_packages,
+    monkeypatch.setattr("gdansk.cli.lock_project", fail_lock_project)
+
+    code, _stdout, _stderr = run_cli(
+        ["init", "--path", str(target), "--no-lock"],
+        monkeypatch=monkeypatch,
+        cwd=tmp_path,
+        capsys=capsys,
     )
 
-    run_cli(["init", "--path", str(target)], monkeypatch=monkeypatch, cwd=tmp_path, capsys=capsys)
-
-    assert calls["cwd"] == target
-    assert calls["groups"] == ["default", "dev"]
-
-    text = (target / "pyproject.toml").read_text(encoding="utf-8")
-    assert "[project]" in text
-    assert 'main = "my_mcp_server.__main__:main"' in text
-    assert "frontend =" not in text
-    assert "[belgie.dependencies]" in text
-    assert "[belgie.scripts]" in text
+    assert code == 0
 
 
-def test_init_main_uses_views_sibling_path(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-):
-    target = tmp_path / "new-project"
-    monkeypatch.setattr(
-        "gdansk.cli.lock_packages",
-        lambda **_kwargs: SimpleNamespace(lockfile=str(target / "deno.lock"), groups={"default": 4}),
-    )
-
-    run_cli(["init", "--path", str(target), "--no-install"], monkeypatch=monkeypatch, cwd=tmp_path, capsys=capsys)
-
-    text = (target / "src" / "my_mcp_server" / "__main__.py").read_text(encoding="utf-8")
-    assert 'Path(__file__).parent / "views"' in text
-
-
-def test_init_appends_belgie_to_existing_pyproject(
+def test_init_appends_gdansk_to_existing_pyproject(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -101,20 +78,21 @@ def test_init_appends_belgie_to_existing_pyproject(
         '[project]\nname = "existing"\nversion = "0.1.0"\n',
         encoding="utf-8",
     )
-    monkeypatch.setattr(
-        "gdansk.cli.lock_packages",
-        lambda **_kwargs: SimpleNamespace(lockfile=str(target / "deno.lock"), groups={"default": 4}),
+
+    run_cli(
+        ["init", "--path", str(target), "--no-lock"],
+        monkeypatch=monkeypatch,
+        cwd=tmp_path,
+        capsys=capsys,
     )
 
-    run_cli(["init", "--path", str(target), "--no-install"], monkeypatch=monkeypatch, cwd=tmp_path, capsys=capsys)
-
-    text = (target / "pyproject.toml").read_text(encoding="utf-8")
-    assert 'name = "existing"' in text
-    assert "[belgie.dependencies]" in text
+    document = read_pyproject_document(target)
+    assert document["project"]["name"] == "existing"
+    assert "dependencies" in document["gdansk"]
     assert (target / "src" / "existing" / "views" / "vite.config.ts").exists()
 
 
-def test_init_refuses_existing_belgie_without_force(
+def test_init_refuses_existing_gdansk_without_force(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -124,7 +102,7 @@ def test_init_refuses_existing_belgie_without_force(
     write_pyproject(target)
 
     code, _stdout, stderr = run_cli(
-        ["init", "--path", str(target), "--no-install"],
+        ["init", "--path", str(target), "--no-lock"],
         monkeypatch=monkeypatch,
         cwd=tmp_path,
         capsys=capsys,
@@ -134,87 +112,36 @@ def test_init_refuses_existing_belgie_without_force(
     assert "already present" in stderr
 
 
-def test_init_force_replaces_belgie_tables(
+def test_init_force_replaces_legacy_belgie_tables(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ):
     target = tmp_path / "existing"
     target.mkdir()
-    write_pyproject(target, dependencies={"old": "1.0.0"})
-    monkeypatch.setattr(
-        "gdansk.cli.lock_packages",
-        lambda **_kwargs: SimpleNamespace(lockfile=str(target / "deno.lock"), groups={"default": 4}),
+    (target / "pyproject.toml").write_text(
+        """
+[project]
+name = "existing"
+version = "0.1.0"
+
+[belgie.dependencies]
+old = "1"
+""",
+        encoding="utf-8",
     )
 
     run_cli(
-        ["init", "--path", str(target), "--force", "--no-install"],
+        ["init", "--path", str(target), "--force", "--no-lock"],
         monkeypatch=monkeypatch,
         cwd=tmp_path,
         capsys=capsys,
     )
 
     text = (target / "pyproject.toml").read_text(encoding="utf-8")
-    assert "frontend =" not in text
-    assert '"old"' not in text
-    assert 'name = "example"' in text
-
-
-def test_init_refuses_existing_main_without_force(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-):
-    target = tmp_path / "existing"
-    target.mkdir()
-    main_path = target / "src" / "my_mcp_server" / "__main__.py"
-    main_path.parent.mkdir(parents=True)
-    main_path.write_text("print('main')\n", encoding="utf-8")
-
-    code, _stdout, stderr = run_cli(
-        ["init", "--path", str(target), "--no-install"],
-        monkeypatch=monkeypatch,
-        cwd=tmp_path,
-        capsys=capsys,
-    )
-
-    assert code == 1
-    assert "__main__.py" in stderr
-
-
-def test_init_runs_lock_by_default(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-):
-    target = tmp_path / "new-project"
-    calls: list[Path] = []
-
-    def fake_lock_packages(**kwargs: object) -> SimpleNamespace:
-        calls.append(Path(str(kwargs["cwd"])))
-        return SimpleNamespace(lockfile=str(target / "deno.lock"), groups={"default": 4})
-
-    monkeypatch.setattr("gdansk.cli.lock_packages", fake_lock_packages)
-
-    run_cli(["init", "--path", str(target)], monkeypatch=monkeypatch, cwd=tmp_path, capsys=capsys)
-
-    assert calls == [target.resolve()]
-
-
-def test_init_no_install_skips_lock(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-):
-    target = tmp_path / "new-project"
-
-    def fail_lock_packages(**_kwargs: object) -> SimpleNamespace:
-        msg = "lock should not run"
-        raise AssertionError(msg)
-
-    monkeypatch.setattr("gdansk.cli.lock_packages", fail_lock_packages)
-
-    run_cli(["init", "--path", str(target), "--no-install"], monkeypatch=monkeypatch, cwd=tmp_path, capsys=capsys)
+    assert "[belgie" not in text
+    assert "[gdansk.dependencies]" in text
+    assert "old" not in text
 
 
 def test_init_custom_package_directory(
@@ -223,20 +150,16 @@ def test_init_custom_package_directory(
     capsys: pytest.CaptureFixture[str],
 ):
     target = tmp_path / "new-project"
-    monkeypatch.setattr(
-        "gdansk.cli.lock_packages",
-        lambda **_kwargs: SimpleNamespace(lockfile=str(target / "deno.lock"), groups={"default": 4}),
-    )
 
     run_cli(
-        ["init", "--path", str(target), "--package", "custom_pkg", "--no-install"],
+        ["init", "--path", str(target), "--package", "custom_pkg", "--no-lock"],
         monkeypatch=monkeypatch,
         cwd=tmp_path,
         capsys=capsys,
     )
 
-    text = (target / "pyproject.toml").read_text(encoding="utf-8")
-    assert 'main = "custom_pkg.__main__:main"' in text
+    document = read_pyproject_document(target)
+    assert document["project"]["scripts"]["main"] == "custom_pkg.__main__:main"
     assert (target / "src" / "custom_pkg" / "views" / "vite.config.ts").exists()
 
 
@@ -248,5 +171,5 @@ def test_templates_are_loadable():
         "vite.config.ts",
         "widget.tsx",
         "pyproject.toml",
-        "belgie_tables.toml",
+        "gdansk_tables.toml",
     } <= names

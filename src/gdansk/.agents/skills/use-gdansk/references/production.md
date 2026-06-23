@@ -85,7 +85,7 @@ Typical CI pipeline:
 
 ```bash
 uv sync
-uv run gdansk install
+uv run gdansk lock
 uv run gdansk build
 uv run gdansk doctor
 uv run pytest

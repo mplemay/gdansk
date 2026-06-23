@@ -9,7 +9,7 @@ from gdansk.vite import Vite
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from belgie.tasks import TaskProcess
+    from gdansk.task import CommandProcess
 
 
 def test_vite_rejects_invalid_runtime_port(views_path: Path):
@@ -44,14 +44,13 @@ def test_vite_has_no_runtime_by_default(views_path: Path):
     assert not hasattr(vite, "_deno")
 
 
-async def test_vite_dev_start_uses_task_runner(
+async def test_vite_dev_start_uses_command_runner(
     views_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
     captured: dict[str, object] | None = None
 
-    class FakeTaskProcess:
-        origin = "http://127.0.0.1:13714"
+    class FakeCommandProcess:
         is_running = True
 
         def __init__(self) -> None:
@@ -60,24 +59,23 @@ async def test_vite_dev_start_uses_task_runner(
         async def stop(self) -> None:
             self.stopped = True
 
-    async def fake_start_task(task_cwd: Path, script: str, **kwargs: object) -> FakeTaskProcess:
+    async def fake_start_command(start: Path, command: str, **kwargs: object) -> FakeCommandProcess:
         nonlocal captured
-        captured = {"task_cwd": task_cwd, "script": script, **kwargs}
-        return FakeTaskProcess()
+        captured = {"start": start, "command": command, **kwargs}
+        return FakeCommandProcess()
 
     vite = Vite(views_path)
-    monkeypatch.setattr("gdansk.vite.start_task", fake_start_task)
+    monkeypatch.setattr("gdansk.vite.start_project_command", fake_start_command)
 
     await vite.start_dev()
 
     frontend = vite._frontend
-    assert isinstance(frontend, FakeTaskProcess)
+    assert isinstance(frontend, FakeCommandProcess)
     assert captured is not None
-    assert captured["task_cwd"] == views_path
-    assert captured["script"] == "dev"
+    assert captured["start"] == views_path
+    assert captured["command"] == "vite"
+    assert captured["cwd"] == views_path
     assert captured["argv"] == ["--host", "127.0.0.1", "--port", "13714"]
-    assert captured["host"] == "127.0.0.1"
-    assert captured["port"] == 13714
     assert vite.require_origin() == "http://127.0.0.1:13714"
     assert vite.has_runtime() is True
     assert not hasattr(vite, "_deno")
@@ -94,7 +92,7 @@ async def test_vite_start_dev_restarts_after_process_exit(
 ):
     start_calls = 0
 
-    class FakeTaskProcess:
+    class FakeCommandProcess:
         def __init__(self, *, running: bool) -> None:
             self.origin = "http://127.0.0.1:13714"
             self._running = running
@@ -107,14 +105,14 @@ async def test_vite_start_dev_restarts_after_process_exit(
         async def stop(self) -> None:
             self.stopped = True
 
-    async def fake_start_task(task_cwd: Path, script: str, **kwargs: object) -> FakeTaskProcess:
+    async def fake_start_command(start: Path, command: str, **kwargs: object) -> FakeCommandProcess:
         nonlocal start_calls
         start_calls += 1
-        return FakeTaskProcess(running=True)
+        return FakeCommandProcess(running=True)
 
     vite = Vite(views_path)
-    monkeypatch.setattr("gdansk.vite.start_task", fake_start_task)
-    vite._frontend = cast("TaskProcess", FakeTaskProcess(running=False))
+    monkeypatch.setattr("gdansk.vite.start_project_command", fake_start_command)
+    vite._frontend = cast("CommandProcess", FakeCommandProcess(running=False))
 
     await vite.start_dev()
 

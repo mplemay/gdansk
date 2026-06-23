@@ -17,8 +17,7 @@ from gdansk.metadata import Metadata
 from gdansk.vite import Vite
 
 if TYPE_CHECKING:
-    from belgie.tasks import TaskProcess
-
+    from gdansk.task import CommandProcess
     from gdansk.widget import WidgetMeta
 
 
@@ -31,7 +30,7 @@ def _app() -> MCPServer:
     return MCPServer(name="test")
 
 
-def _stub_frontend(origin: str) -> TaskProcess:
+def _stub_frontend(origin: str) -> CommandProcess:
     class StubFrontend:
         def __init__(self, origin: str) -> None:
             self.origin = origin
@@ -41,7 +40,7 @@ def _stub_frontend(origin: str) -> TaskProcess:
         async def stop(self) -> None:
             self.stopped = True
 
-    return cast("TaskProcess", StubFrontend(origin))
+    return cast("CommandProcess", StubFrontend(origin))
 
 
 def _stub_vite_runtime(vite: Vite, origin: str) -> None:
@@ -429,19 +428,20 @@ async def test_widget_resource_raises_when_manifest_is_missing_widget(views_path
 async def test_build_uses_task_runner(views_path: Path, monkeypatch: pytest.MonkeyPatch):
     captured: dict[str, object] | None = None
 
-    async def fake_run_task(task_cwd: Path, script: str, **kwargs: object) -> None:
+    async def fake_run_command(start: Path, command: str, **kwargs: object) -> None:
         nonlocal captured
-        captured = {"task_cwd": task_cwd, "script": script, **kwargs}
+        captured = {"start": start, "command": command, **kwargs}
 
     ship = Ship(vite=Vite(views_path))
-    monkeypatch.setattr("gdansk.vite.run_task", fake_run_task)
+    monkeypatch.setattr("gdansk.vite.run_project_command", fake_run_command)
 
     await ship._vite.build()
 
     assert captured is not None
-    assert captured["task_cwd"] == views_path
-    assert captured["script"] == "build"
-    assert captured["argv"] == ["--outDir", "dist"]
+    assert captured["start"] == views_path
+    assert captured["command"] == "vite"
+    assert captured["cwd"] == views_path
+    assert captured["argv"] == ["build", "--outDir", "dist"]
 
 
 async def test_wait_for_vite_timeout_mentions_matching_vite_and_plugin_config(

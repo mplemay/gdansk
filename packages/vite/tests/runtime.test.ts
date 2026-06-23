@@ -347,6 +347,19 @@ describe("@gdansk/vite", () => {
 
     await runtime.close();
   }, 15_000);
+
+  it("builds widgets that default-import plain css with co-located css.d.ts typings", async () => {
+    const root = await createFixture({ withCssModuleDefaultImport: true, withLocalPlugin: false });
+    const runtime = await createGdanskRuntime({ root, port: 0 });
+
+    const manifest = await runtime.build();
+
+    expect(manifest.widgets.hello.inline.script).toContain("Hello production");
+    expect(manifest.widgets.hello.inline.styles.length).toBeGreaterThan(0);
+    expect(manifest.widgets.hello.inline.styles[0]).toMatch(/color:\s*red/);
+
+    await runtime.close();
+  }, 15_000);
   it("starts a dev runtime on a single Vite origin", async () => {
     const root = await createFixture({ withLocalPlugin: true });
     const runtime = await createGdanskRuntime({ root, port: 0 });
@@ -382,6 +395,8 @@ describe("@gdansk/vite", () => {
     expect(metadata?.viteOrigin).toBe(server.resolvedUrls?.local[0]?.replace(/\/$/, ""));
     const viteClientResponse = await fetch(`${metadata!.viteOrigin}/@vite/client`);
     expect(viteClientResponse.status).toBe(200);
+    const clientResponse = await fetch(`${metadata!.viteOrigin}/@gdansk/client/hello.tsx`);
+    expect(clientResponse.status).toBe(200);
 
     await server.waitForRequestsIdle();
     const httpServer = server.httpServer as
@@ -400,6 +415,7 @@ describe("@gdansk/vite", () => {
 
 async function createFixture(options: {
   withCssAsset?: boolean;
+  withCssModuleDefaultImport?: boolean;
   withDynamicImport?: boolean;
   withLocalCommonjsDependency?: boolean;
   withLocalPlugin: boolean;
@@ -476,8 +492,14 @@ async function createFixture(options: {
   if (options.withDynamicImport) {
     await writeFile(`${root}/widgets/hello/dynamic-message.ts`, 'export const dynamicMessage = "from dynamic import";\n');
   }
-  const helloCssImport = options.withSharedCss ? 'import "../shared/global.css";' : 'import "./global.css";';
-  const helloClassName = options.withSharedCss ? "shared" : "hello";
+  const helloCssImport = options.withCssModuleDefaultImport
+    ? 'import styles from "./global.css";'
+    : options.withSharedCss
+      ? 'import "../shared/global.css";'
+      : 'import "./global.css";';
+  const helloClassNameAttr = options.withCssModuleDefaultImport
+    ? "className={styles.hello}"
+    : `className="${options.withSharedCss ? "shared" : "hello"}"`;
   const dynamicImportLines = options.withDynamicImport
     ? ['void import("./dynamic-message").then(({ dynamicMessage }) => console.log(dynamicMessage));']
     : [];
@@ -490,7 +512,7 @@ async function createFixture(options: {
           ...dynamicImportLines,
           "",
           "export default function App() {",
-          `  return <main className="${helloClassName}"><h1>Hello production</h1><p>{message}</p></main>;`,
+          `  return <main ${helloClassNameAttr}><h1>Hello production</h1><p>{message}</p></main>;`,
           "}",
           "",
         ].join("\n")
@@ -501,7 +523,7 @@ async function createFixture(options: {
             ...dynamicImportLines,
             "",
             "export default function App() {",
-            `  return <main className="${helloClassName}"><h1>Hello production</h1><p>{message}</p></main>;`,
+            `  return <main ${helloClassNameAttr}><h1>Hello production</h1><p>{message}</p></main>;`,
             "}",
             "",
           ].join("\n")
@@ -510,7 +532,7 @@ async function createFixture(options: {
             ...dynamicImportLines,
             "",
             "export default function App() {",
-            `  return <main className="${helloClassName}"><h1>Hello production</h1><p>plain widget</p></main>;`,
+            `  return <main ${helloClassNameAttr}><h1>Hello production</h1><p>plain widget</p></main>;`,
             "}",
             "",
           ].join("\n"),
@@ -528,6 +550,19 @@ async function createFixture(options: {
         ].join("\n")
       : ["export default function App() {", "  return <section><h2>Nested widget</h2></section>;", "}", ""].join("\n"),
   );
+
+  if (options.withCssModuleDefaultImport) {
+    await writeFile(
+      `${root}/widgets/hello/global.css.d.ts`,
+      [
+        "declare const styles: {",
+        '  readonly hello: string;',
+        "};",
+        "export default styles;",
+        "",
+      ].join("\n"),
+    );
+  }
 
   if (options.withLocalPlugin) {
     await writeFile(

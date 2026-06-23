@@ -3,6 +3,7 @@ import { mergeConfig, type Plugin, type UserConfig, type ViteDevServer } from "v
 import { createBuildConfig } from "./build";
 import { prepareProject, resolveOptions } from "./context";
 import { resolveViteOrigin } from "./css";
+import { createGdanskCssModulesPlugin, createSharedCssModulesConfig } from "./cssModules";
 import {
   createRefreshPlugin,
   mergeAliasConfig,
@@ -89,7 +90,7 @@ export function gdansk(options: GdanskPluginOptions = {}): Array<{ name: string 
     },
   };
 
-  return [corePlugin, createRefreshPlugin(options)];
+  return [createGdanskCssModulesPlugin(), corePlugin, createRefreshPlugin(options)];
 }
 
 function createSharedConfig(
@@ -101,6 +102,7 @@ function createSharedConfig(
 
   return {
     appType: "custom",
+    css: createSharedCssModulesConfig(),
     resolve: {
       ...(config.resolve ?? {}),
       alias: mergeAliasConfig(config.resolve?.alias, resolved.root),
