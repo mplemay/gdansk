@@ -61,7 +61,6 @@ select = ["ALL"]
 "__init__.py" = [
     "F401", # imported but unused (common in __init__.py to re-export symbols)
 ]
-"main.py" = ["D"]
 "src/gdansk/**/*.py" = ["D"]
 "src/gdansk/cli.py" = [
     "D",
@@ -74,6 +73,7 @@ select = ["ALL"]
     "INP001", # template snippets are not importable package modules
 ]
 "examples/fastapi/main.py" = [
+    "D",      # example entrypoint; docstrings not required
     "INP001", # example entrypoint is intentionally not part of a package
 ]
 "**/__tests__/**/*" = [
