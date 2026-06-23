@@ -34,10 +34,24 @@
 
 - The targets python versions greater than or equal to 3.11
 - Given the project targets a more modern python, use functionality such as:
-  - The walrus operator (`:=`)
   - Modern type hints (`dict`)
   - Type parameters `class MyClass[T: MyParent]: ...`
   - The `Self` type for return types (`from typing import Self`)
+- **Walrus operator (`:=`):** Prefer when a value is computed once and immediately tested, and the bound
+  name is used in the `if` body or error message.
+  - **Prefer when** merging assign + guard removes duplication or an extra line:
+    - `.get()` + None / type guard: `if isinstance(table := gdansk.get("dependencies"), dict):`
+    - `setdefault` + validation: `if not isinstance(gdansk := document.setdefault("gdansk", {}), dict):`
+    - Property / path + guard: `if not (path := self.manifest_path).is_file():`
+    - Avoid duplicate calls: `if isinstance(name, str) and (stripped := name.strip()):`
+    - Dict lookup + reuse: `if (widget := manifest.widgets.get(key)) is None:`
+  - **Do not use when:**
+    - Assignment must happen before state is cleared (capture, mutate, then guard).
+    - The name is needed throughout a function, not just in one guarded block.
+    - Inside `assert` statements (RUF018; assignments are skipped under `python -O`).
+    - The expression is trivial and a separate assign is clearer.
+  - **Review checklist:** Is there an assign on the line above an `if` that only exists to feed that `if`?
+    If yes, merge with `:=`.
 - Type annotations:
   - **Do not** annotate `self` parameters - the type is implicit
   - Use `Self` for return types when returning the instance

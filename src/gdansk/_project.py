@@ -117,8 +117,7 @@ def atomic_write_text(path: Path, text: str) -> None:
 
 
 def _gdansk_table(document: dict[str, Any]) -> dict[str, Any] | None:
-    gdansk = document.get("gdansk")
-    if isinstance(gdansk, dict):
+    if isinstance(gdansk := document.get("gdansk"), dict):
         return gdansk
     return None
 
@@ -132,16 +131,13 @@ def _legacy_belgie_error(root: Path) -> ProjectError:
 
 
 def _ensure_dependencies_tables(document: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
-    gdansk = document.setdefault("gdansk", {})
-    if not isinstance(gdansk, dict):
+    if not isinstance(gdansk := document.setdefault("gdansk", {}), dict):
         msg = "[gdansk] must be a table"
         raise ProjectError(msg)
-    dependencies = gdansk.setdefault("dependencies", {})
-    if not isinstance(dependencies, dict):
+    if not isinstance(dependencies := gdansk.setdefault("dependencies", {}), dict):
         msg = "[gdansk.dependencies] must be a table"
         raise ProjectError(msg)
-    dev_dependencies = dependencies.setdefault("dev", {})
-    if not isinstance(dev_dependencies, dict):
+    if not isinstance(dev_dependencies := dependencies.setdefault("dev", {}), dict):
         msg = "[gdansk.dependencies.dev] must be a table"
         raise ProjectError(msg)
     return dependencies, dev_dependencies
@@ -183,8 +179,7 @@ def set_dependency_value_in_document(
 
 
 def _parse_dependencies(gdansk: dict[str, Any]) -> tuple[Dependency, ...]:
-    table = gdansk.get("dependencies")
-    if table is None:
+    if (table := gdansk.get("dependencies")) is None:
         return ()
     if not isinstance(table, dict):
         msg = "[gdansk.dependencies] must be a table"
@@ -229,8 +224,7 @@ def _append_dependency(
 
 
 def _parse_commands(gdansk: dict[str, Any]) -> dict[str, tuple[str, ...]]:
-    table = gdansk.get("commands")
-    if table is None:
+    if (table := gdansk.get("commands")) is None:
         return {}
     if not isinstance(table, dict):
         msg = "[gdansk.commands] must be a table"
@@ -255,8 +249,7 @@ def _load_project_from_document(root: Path, document: dict[str, Any]) -> GdanskP
     if isinstance(document.get("belgie"), dict):
         raise _legacy_belgie_error(root)
 
-    gdansk = _gdansk_table(document)
-    if gdansk is None:
+    if (gdansk := _gdansk_table(document)) is None:
         msg = f"No [gdansk] configuration found in {root / 'pyproject.toml'}"
         raise ProjectError(msg)
 
@@ -304,12 +297,10 @@ def discover_project(
 
 
 def _entry_point_packages(document: dict[str, Any]) -> list[str]:
-    project = document.get("project")
-    if not isinstance(project, dict):
+    if not isinstance(project := document.get("project"), dict):
         return []
 
-    scripts = project.get("scripts")
-    if not isinstance(scripts, dict):
+    if not isinstance(scripts := project.get("scripts"), dict):
         return []
 
     packages: list[str] = []
@@ -390,7 +381,6 @@ def validate_frontend_root(path: Path) -> None:
         msg = f"Frontend root is missing vite.config.ts: {path}"
         raise ProjectError(msg)
 
-    widgets_dir = path / "widgets"
-    if not widgets_dir.is_dir():
+    if not (path / "widgets").is_dir():
         msg = f"Frontend root is missing widgets/: {path}"
         raise ProjectError(msg)
