@@ -1,6 +1,6 @@
 [gdansk.dependencies]
-vite = "8.0.8"
-"@gdansk/vite" = "^0.1.0"
+vite = "8.0.14"
+"@gdansk/vite" = "file:../../packages/vite"
 "@modelcontextprotocol/ext-apps" = "^1.5.0"
 "@vitejs/plugin-react" = "6.0.2"
 react = "19.2.6"

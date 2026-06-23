@@ -26,9 +26,9 @@ exclude-newer-package = { belgie = false, mcp = false }
 gdansk = { path = "../../", editable = true }
 
 [gdansk.dependencies]
-vite = "8.0.8"
+vite = "8.0.14"
 "@base-ui/react" = "^1.5.0"
-"@gdansk/vite" = "^0.1.0"
+"@gdansk/vite" = "file:../../packages/vite"
 "@modelcontextprotocol/ext-apps" = "^1.7.2"
 "@modelcontextprotocol/sdk" = "^1.29.0"
 "@tailwindcss/vite" = "4.3.0"

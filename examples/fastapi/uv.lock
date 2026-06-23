@@ -57,20 +57,15 @@ wheels = [
 
 [[package]]
 name = "belgie"
-version = "0.1.1"
-source = { editable = "../../../belgie" }
-
-[package.metadata]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "anyio", specifier = ">=4" },
-    { name = "prek", specifier = ">=0.4.4" },
-    { name = "pytest", specifier = ">=9.0.3" },
-    { name = "ruff", specifier = ">=0.15.16" },
-    { name = "rumdl", specifier = ">=0.2.7" },
-    { name = "ty", specifier = ">=0.0.43" },
-    { name = "zizmor", specifier = ">=1.25.2" },
+version = "0.25.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/af/12/9dd05ff4655f2cab2ce9fdba66e4eb03cf9d6b8af229c1ac74732beaa248/belgie-0.25.0.tar.gz", hash = "sha256:b0f8b19e58c29898cd24c1ff8bfe704e81ababf99bea698977ec9bc0b3b874b6", size = 155938, upload-time = "2026-06-22T16:31:50.301Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0f/99/2b035d1625d9ba8de70b2231a6782916063d873ad227209d86f76f9be309/belgie-0.25.0-cp312-abi3-macosx_10_12_x86_64.whl", hash = "sha256:51755b461e8e977a630e4ccd10556bd73aaafac5ab7b114bb42bef849da83d40", size = 57062532, upload-time = "2026-06-22T16:31:23.468Z" },
+    { url = "https://files.pythonhosted.org/packages/b3/1a/a15f3d923e00cf7bcc685bd3d6540c3005542038e7fb3f6d1ee6d222fccf/belgie-0.25.0-cp312-abi3-macosx_11_0_arm64.whl", hash = "sha256:c82e131ce1e042ac4a80284b9f5495e57c9020c0755a114da845968d45005e2c", size = 55138268, upload-time = "2026-06-22T16:31:29.531Z" },
+    { url = "https://files.pythonhosted.org/packages/b7/d4/114c2556699f4a448be0996e7a99fdd4e1192e2bfad48394f005de9f18d1/belgie-0.25.0-cp312-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:924991984a782bfa19acac037dda47b9e34bd31d0cffcab0b95791998d9a4b2e", size = 62208494, upload-time = "2026-06-22T16:31:35.602Z" },
+    { url = "https://files.pythonhosted.org/packages/0b/51/e1a2777709aa76ead0bb4dc172dafd4a2090e7c871f8bc3474f282ddfad8/belgie-0.25.0-cp312-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:08f27536b2cb24dd03b99bbcfe0bf9fe1a1a874a8edfe8e17bd9d043ff304d8c", size = 60472634, upload-time = "2026-06-22T16:31:41.899Z" },
+    { url = "https://files.pythonhosted.org/packages/b9/e5/09f99dcadebd00156b180c4089a434121f12df8460810c21bdef59121d25/belgie-0.25.0-cp312-abi3-win_amd64.whl", hash = "sha256:8342056c4ab52aa70bb7606d175927612cbae11918c629904ca50ef6c29c12f4", size = 53079685, upload-time = "2026-06-22T16:31:47.648Z" },
 ]
 
 [[package]]
@@ -401,7 +396,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "belgie", editable = "../../../belgie" },
+    { name = "belgie", specifier = ">=0.25.0" },
     { name = "mcp", specifier = "==2.0.0a1" },
     { name = "minijinja", specifier = ">=2,<3" },
     { name = "pydantic", specifier = ">=2.12.5" },
