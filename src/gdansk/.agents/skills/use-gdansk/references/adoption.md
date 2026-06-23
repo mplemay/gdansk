@@ -77,7 +77,7 @@ The Python project should declare frontend dependencies in `pyproject.toml`:
 "@vitejs/plugin-react" = "^6.0.2"
 react = "^19"
 react-dom = "^19"
-vite = "8.0.8"
+vite = "8.0.14"
 
 [gdansk.dependencies.dev]
 "@types/react" = "^19"

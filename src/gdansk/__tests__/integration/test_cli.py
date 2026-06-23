@@ -128,7 +128,7 @@ def test_cli_build_smoke(
 ):
     project_root, frontend_root = write_src_layout_project(
         tmp_path,
-        dependencies={"vite": "8.0.8"},
+        dependencies={"vite": "8.0.14"},
         commands={},
     )
     (frontend_root / "index.html").write_text("<main>gdansk</main>\n", encoding="utf-8")

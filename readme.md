@@ -260,7 +260,7 @@ Use `[gdansk.dependencies]`, grouped dependency tables such as `[gdansk.dependen
 ```toml
 [gdansk.dependencies]
 react = "^19"
-vite = "8.0.8"
+vite = "8.0.14"
 "@gdansk/vite" = "^0.1.0"
 std_path = "jsr:@std/path@^1"
 

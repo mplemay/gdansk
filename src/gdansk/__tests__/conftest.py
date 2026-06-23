@@ -54,7 +54,7 @@ def write_pyproject(
             lines.extend(f"{dumps(name)} = {dumps(target)}" for name, target in entry_scripts.items())
             lines.append("")
 
-    deps = dependencies if dependencies is not None else {"vite": "8.0.8"}
+    deps = dependencies if dependencies is not None else {"vite": "8.0.14"}
     if deps:
         lines.append("[gdansk.dependencies]")
         lines.extend(f"{dumps(name)} = {dumps(value)}" for name, value in deps.items())

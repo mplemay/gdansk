@@ -22,7 +22,7 @@ def test_load_project_parses_dependencies_and_commands(tmp_path: Path):
     write_pyproject(
         root,
         commands={"lint": ["oxlint", "--fix"]},
-        dependencies={"vite": "8.0.8", "react": "^19"},
+        dependencies={"vite": "8.0.14", "react": "^19"},
         dev_dependencies={"oxlint": "1.68.0"},
     )
 
@@ -31,7 +31,7 @@ def test_load_project_parses_dependencies_and_commands(tmp_path: Path):
     assert project.root == root.resolve()
     assert project.commands == {"lint": ("oxlint", "--fix")}
     assert project.dependency_mapping == {
-        "vite": "8.0.8",
+        "vite": "8.0.14",
         "react": "^19",
         "oxlint": "1.68.0",
     }

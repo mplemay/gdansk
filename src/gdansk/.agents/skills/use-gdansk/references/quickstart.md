@@ -146,7 +146,7 @@ For richer widget patterns, see [widgets.md](widgets.md).
 
 ```toml
 [gdansk.dependencies]
-vite = "8.0.8"
+vite = "8.0.14"
 "@gdansk/vite" = "^0.1.0"
 "@modelcontextprotocol/ext-apps" = "^1.5.0"
 "@vitejs/plugin-react" = "6.0.2"

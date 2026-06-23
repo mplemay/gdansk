@@ -90,7 +90,7 @@ at the app frontend root.
 ```toml
 [gdansk.dependencies]
 react = "^19"
-vite = "8.0.8"
+vite = "8.0.14"
 "@gdansk/vite" = "^0.1.0"
 
 [gdansk.commands]
