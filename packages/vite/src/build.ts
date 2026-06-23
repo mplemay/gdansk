@@ -95,6 +95,7 @@ function createWidgetEnvironmentConfig(
   const build = createWidgetBuildOptions(options, widget);
 
   return {
+    consumer: "client",
     build: {
       ...build,
       emitAssets: true,
@@ -104,7 +105,7 @@ function createWidgetEnvironmentConfig(
       },
     },
     resolve: {
-      noExternal: [/^@/, /^react(-dom)?(\/|$)/],
+      noExternal: true,
     },
   };
 }
