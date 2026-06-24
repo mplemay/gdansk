@@ -36,6 +36,7 @@ def test_run_package_command(
 
 
 def test_run_watch_stops_on_signal(tmp_path: Path):
+    is_windows = sys.platform == "win32"
     write_pyproject(
         tmp_path,
         dependencies={"zx": "8.5.5"},
@@ -54,7 +55,7 @@ def test_run_watch_stops_on_signal(tmp_path: Path):
     )
 
     command = [sys.executable, "-m", "gdansk", "run", "idle", "--watch"]
-    if sys.platform == "win32":
+    if is_windows:
         process = subprocess.Popen(  # noqa: S603
             command,
             cwd=tmp_path,
@@ -79,10 +80,10 @@ def test_run_watch_stops_on_signal(tmp_path: Path):
             if time.monotonic() > deadline:
                 pytest.fail("timed out waiting for watch-ready")
             time.sleep(0.1)
-        stop_signal = signal.CTRL_BREAK_EVENT if sys.platform == "win32" else signal.SIGINT
+        stop_signal = signal.CTRL_BREAK_EVENT if is_windows else signal.SIGINT
         process.send_signal(stop_signal)
         stdout, stderr = process.communicate(timeout=30)
-        if sys.platform == "win32":
+        if is_windows:
             assert process.returncode == 0, (stdout, stderr)
         else:
             assert process.returncode in {0, -2, -15}, (stdout, stderr)
