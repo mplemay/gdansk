@@ -40,10 +40,12 @@ def test_project_error_maps_to_exit_1(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ):
-    code, _stdout, stderr = run_cli(["lock"], monkeypatch=monkeypatch, cwd=tmp_path, capsys=capsys)
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(SystemExit) as exc:
+        main(["lock"])
 
-    assert code == 1
-    assert "pyproject.toml" in stderr
+    assert exc.value.code == 1
+    assert "pyproject.toml" in capsys.readouterr().err
 
 
 def test_task_args_passed_through_to_command(

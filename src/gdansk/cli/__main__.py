@@ -72,7 +72,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         )
     except ProjectError as exc:
         typer.echo(str(exc), err=True)
-        raise typer.Exit(1) from exc
+        raise SystemExit(1) from exc
 
 
 if __name__ == "__main__":
