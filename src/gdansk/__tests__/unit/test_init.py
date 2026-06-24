@@ -164,7 +164,7 @@ def test_init_custom_package_directory(
 
 
 def test_templates_are_loadable():
-    names = {item.name for item in resources.files("gdansk._cli_templates").iterdir()}
+    names = {item.name for item in resources.files("gdansk.cli.templates").iterdir()}
     assert {
         "__main__.py",
         "__init__.py",

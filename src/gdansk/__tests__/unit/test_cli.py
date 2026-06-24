@@ -237,7 +237,7 @@ def test_commands_lists_argument_arrays(
     assert "vite --version" in stdout
 
 
-def test_unknown_subcommand_exits_with_argparse_error(capsys: pytest.CaptureFixture[str]):
+def test_unknown_subcommand_exits_with_usage_error(capsys: pytest.CaptureFixture[str]):
     with pytest.raises(SystemExit) as exc:
         main(["not-a-command"])
 
