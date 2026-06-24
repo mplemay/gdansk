@@ -15,10 +15,6 @@ PYTHON_MAX: Final[tuple[int, int]] = (3, 15)
 app = typer.Typer()
 
 
-def _doctor_warn(message: str, warnings: list[str]) -> None:
-    warnings.append(message)
-
-
 def _doctor_check_dependencies(project: GdanskProject, failures: list[str]) -> None:
     if project.has_dependencies:
         print(f"ok   [gdansk.dependencies] in {project.root / 'pyproject.toml'}")
@@ -49,12 +45,12 @@ def _doctor_check_frontend(
         print(f"ok   gdansk lockfile (deno.lock) at project root ({root_lock})")
     else:
         message = f"gdansk lockfile (deno.lock) missing at project root ({root_lock})"
-        _doctor_warn(message, warnings)
+        warnings.append(message)
 
     legacy_lock = frontend_path / "deno.lock"
     if legacy_lock.is_file() and not root_lock.is_file():
         message = f"Legacy lockfile found under frontend ({legacy_lock}); move it to the project root"
-        _doctor_warn(message, warnings)
+        warnings.append(message)
 
 
 @app.command()

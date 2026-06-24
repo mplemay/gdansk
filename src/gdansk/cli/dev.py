@@ -10,6 +10,7 @@ from gdansk.cli.core import (
     FrontendDir,
     ProjectDir,
     resolve_frontend,
+    run_until_signal,
     runtime_errors,
     task_args_from_context,
 )
@@ -33,7 +34,7 @@ def dev(
     argv = [*dev_command_argv(host, port), *task_args_from_context(ctx)]
     with runtime_errors():
         asyncio.run(
-            gdansk.cli._run_until_signal(
+            run_until_signal(
                 gdansk.cli.start_command(discovered, "vite", cwd=frontend_path, argv=argv),
             ),
         )

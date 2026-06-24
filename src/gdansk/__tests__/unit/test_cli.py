@@ -170,7 +170,7 @@ def test_dev_invokes_internal_vite_command(
         await awaitable
 
     monkeypatch.setattr("gdansk.cli.start_command", fake_start_command)
-    monkeypatch.setattr("gdansk.cli._run_until_signal", fake_run_until_signal)
+    monkeypatch.setattr("gdansk.cli.dev.run_until_signal", fake_run_until_signal)
 
     run_cli(["dev"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
 

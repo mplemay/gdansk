@@ -6,7 +6,13 @@ from typing import Annotated
 import typer
 
 from gdansk._project import discover_project
-from gdansk.cli.core import ProjectDir, require_command, runtime_errors, task_args_from_context
+from gdansk.cli.core import (
+    ProjectDir,
+    require_command,
+    run_until_signal,
+    runtime_errors,
+    task_args_from_context,
+)
 
 app = typer.Typer()
 
@@ -27,7 +33,7 @@ def run(
     with runtime_errors():
         if watch:
             asyncio.run(
-                gdansk.cli._run_until_signal(
+                run_until_signal(
                     gdansk.cli.start_command(discovered, command, cwd=discovered.root, argv=argv),
                 ),
             )

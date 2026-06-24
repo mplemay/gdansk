@@ -69,7 +69,6 @@ select = ["ALL"]
     "FBT001", # Typer boolean options and version callbacks
     "FBT002",
     "PLC0415", # lazy gdansk.cli imports preserve test monkeypatch targets
-    "SLF001",  # _run_until_signal re-exported for tests
     "TC001",   # Annotated option aliases require runtime imports
     "TC002",
     "TC003",

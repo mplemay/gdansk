@@ -4,8 +4,7 @@ import shlex
 from pathlib import Path
 
 from gdansk._project import GdanskProject, resolve_frontend_path, validate_frontend_root
-
-from .errors import eprint
+from gdansk.cli.core.errors import eprint
 
 
 def resolve_frontend(project: GdanskProject, frontend: Path | None) -> Path:
