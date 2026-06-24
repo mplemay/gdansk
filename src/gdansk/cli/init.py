@@ -16,7 +16,7 @@ from gdansk._project import (
     read_pyproject_document,
     write_pyproject_document,
 )
-from gdansk.cli.core import eprint, runtime_errors
+from gdansk.cli.shared import eprint, runtime_errors
 
 app = typer.Typer()
 

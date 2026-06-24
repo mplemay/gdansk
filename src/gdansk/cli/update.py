@@ -5,7 +5,7 @@ from typing import Annotated
 import typer
 
 from gdansk._project import discover_project
-from gdansk.cli.core import ProjectDir, runtime_errors
+from gdansk.cli.shared import ProjectDir, runtime_errors
 
 app = typer.Typer()
 

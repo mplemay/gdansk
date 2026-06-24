@@ -10,12 +10,12 @@ from gdansk._project import ProjectError
 from gdansk.cli.add import app as add_app
 from gdansk.cli.build import app as build_app
 from gdansk.cli.commands import app as commands_app
-from gdansk.cli.core import split_task_args
 from gdansk.cli.dev import app as dev_app
 from gdansk.cli.doctor import app as doctor_app
 from gdansk.cli.init import app as init_app
 from gdansk.cli.lock import app as lock_app
 from gdansk.cli.run import app as run_app
+from gdansk.cli.shared import split_task_args
 from gdansk.cli.update import app as update_app
 
 if TYPE_CHECKING:

@@ -6,7 +6,7 @@ from typing import Annotated
 import typer
 
 from gdansk._project import discover_project
-from gdansk.cli.core import (
+from gdansk.cli.shared import (
     FrontendDir,
     ProjectDir,
     resolve_frontend,
