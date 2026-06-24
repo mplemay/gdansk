@@ -7,9 +7,44 @@ from contextlib import suppress
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable
+    from collections.abc import Awaitable, Callable
 
     from gdansk.task import CommandProcess
+
+
+def _register_signal_handlers(
+    loop: asyncio.AbstractEventLoop,
+    request_stop: Callable[[], None],
+) -> tuple[list[signal.Signals], list[signal.Signals]]:
+    signals: list[signal.Signals] = [signal.SIGINT, signal.SIGTERM]
+    if sys.platform == "win32":
+        signals.append(signal.SIGBREAK)
+
+    registered: list[signal.Signals] = []
+    stdlib_handlers: list[signal.Signals] = []
+    for current_signal in signals:
+        if sys.platform == "win32" and current_signal is signal.SIGBREAK:
+            signal.signal(current_signal, lambda _signum, _frame: request_stop())
+            stdlib_handlers.append(current_signal)
+            continue
+        try:
+            loop.add_signal_handler(current_signal, request_stop)
+            registered.append(current_signal)
+        except NotImplementedError:
+            signal.signal(current_signal, lambda _signum, _frame: request_stop())
+            stdlib_handlers.append(current_signal)
+    return registered, stdlib_handlers
+
+
+def _unregister_signal_handlers(
+    loop: asyncio.AbstractEventLoop,
+    registered: list[signal.Signals],
+    stdlib_handlers: list[signal.Signals],
+) -> None:
+    for current_signal in registered:
+        loop.remove_signal_handler(current_signal)
+    for current_signal in stdlib_handlers:
+        signal.signal(current_signal, signal.SIG_DFL)
 
 
 async def run_until_signal(process_awaitable: Awaitable[CommandProcess]) -> None:
@@ -19,17 +54,7 @@ async def run_until_signal(process_awaitable: Awaitable[CommandProcess]) -> None
     def request_stop() -> None:
         loop.call_soon_threadsafe(stop_event.set)
 
-    signals: list[signal.Signals] = [signal.SIGINT, signal.SIGTERM]
-    if sys.platform == "win32":
-        signals.append(signal.SIGBREAK)
-
-    registered: list[signal.Signals] = []
-    for current_signal in signals:
-        try:
-            loop.add_signal_handler(current_signal, request_stop)
-            registered.append(current_signal)
-        except NotImplementedError:
-            signal.signal(current_signal, lambda _signum, _frame: request_stop())
+    registered, stdlib_handlers = _register_signal_handlers(loop, request_stop)
 
     process: CommandProcess | None = None
     stop_waiter: asyncio.Task[bool] | None = None
@@ -51,5 +76,4 @@ async def run_until_signal(process_awaitable: Awaitable[CommandProcess]) -> None
             stop_waiter.cancel()
             with suppress(asyncio.CancelledError):
                 await stop_waiter
-        for current_signal in registered:
-            loop.remove_signal_handler(current_signal)
+        _unregister_signal_handlers(loop, registered, stdlib_handlers)

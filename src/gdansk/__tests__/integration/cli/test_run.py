@@ -41,7 +41,10 @@ def test_run_watch_stops_on_signal(tmp_path: Path):
         dependencies={"zx": "8.5.5"},
         commands={"idle": ["zx", "idle.mjs"]},
     )
-    (tmp_path / "idle.mjs").write_text("setInterval(() => {}, 1000);\n", encoding="utf-8")
+    (tmp_path / "idle.mjs").write_text(
+        'import fs from "node:fs";\nfs.writeFileSync("watch-ready", "");\nsetInterval(() => {}, 1000);\n',
+        encoding="utf-8",
+    )
     subprocess.run(
         [sys.executable, "-m", "gdansk", "lock"],
         cwd=tmp_path,
@@ -68,8 +71,14 @@ def test_run_watch_stops_on_signal(tmp_path: Path):
             text=True,
         )
     try:
-        time.sleep(1)
-        assert process.poll() is None
+        ready = tmp_path / "watch-ready"
+        deadline = time.monotonic() + 60
+        while not ready.is_file():
+            if (returncode := process.poll()) is not None:
+                pytest.fail(f"process exited early with {returncode}")
+            if time.monotonic() > deadline:
+                pytest.fail("timed out waiting for watch-ready")
+            time.sleep(0.1)
         stop_signal = signal.CTRL_BREAK_EVENT if sys.platform == "win32" else signal.SIGINT
         process.send_signal(stop_signal)
         stdout, stderr = process.communicate(timeout=30)
