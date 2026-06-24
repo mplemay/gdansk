@@ -15,6 +15,7 @@ dependencies = [
     "pydantic>=2.12.5",
     "rtoml>=0.13,<0.14",
     "starlette>=1.0.0",
+    "typer>=0.26.7",
     "watchfiles>=1.1.1",
 ]
 
