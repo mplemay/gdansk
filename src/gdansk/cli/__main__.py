@@ -16,6 +16,7 @@ from gdansk.cli.init import app as init_app
 from gdansk.cli.lock import app as lock_app
 from gdansk.cli.run import app as run_app
 from gdansk.cli.shared import split_task_args
+from gdansk.cli.shared.errors import eprint
 from gdansk.cli.update import app as update_app
 
 if TYPE_CHECKING:
@@ -50,20 +51,23 @@ def root(
     pass
 
 
-app.add_typer(add_app)
-app.add_typer(lock_app)
-app.add_typer(update_app)
-app.add_typer(build_app)
-app.add_typer(dev_app)
-app.add_typer(run_app)
-app.add_typer(commands_app)
-app.add_typer(doctor_app)
-app.add_typer(init_app)
+SUBCOMMAND_APPS = (
+    add_app,
+    lock_app,
+    update_app,
+    build_app,
+    dev_app,
+    run_app,
+    commands_app,
+    doctor_app,
+    init_app,
+)
+for subcommand_app in SUBCOMMAND_APPS:
+    app.add_typer(subcommand_app)
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    raw_argv = list(sys.argv[1:] if argv is None else argv)
-    cli_argv, task_args = split_task_args(raw_argv)
+    cli_argv, task_args = split_task_args(sys.argv[1:] if argv is None else argv)
     try:
         app(
             cli_argv,
@@ -71,7 +75,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             obj={"task_args": task_args},
         )
     except ProjectError as exc:
-        typer.echo(str(exc), err=True)
+        eprint(str(exc))
         raise SystemExit(1) from exc
 
 
