@@ -15,11 +15,12 @@ dependencies = [
     "pydantic>=2.12.5",
     "rtoml>=0.13,<0.14",
     "starlette>=1.0.0",
+    "typer>=0.26.7",
     "watchfiles>=1.1.1",
 ]
 
 [project.scripts]
-gdansk = "gdansk.cli:main"
+gdansk = "gdansk.cli.__main__:main"
 
 [dependency-groups]
 dev = [
@@ -62,14 +63,30 @@ select = ["ALL"]
     "F401", # imported but unused (common in __init__.py to re-export symbols)
 ]
 "src/gdansk/**/*.py" = ["D"]
-"src/gdansk/cli.py" = [
+"src/gdansk/cli/**" = [
     "D",
     "T201",   # CLI intentionally writes operational output to stdout
+    "FBT001", # Typer boolean options and version callbacks
+    "FBT002",
+    "PLC0415", # lazy gdansk.cli imports preserve test monkeypatch targets
+    "TC001",   # Annotated option aliases require runtime imports
+    "TC002",
+    "TC003",
+]
+"src/gdansk/cli/doctor.py" = [
+    "D",
+    "T201",
     "C901",   # doctor aggregates many independent checks
     "PLR0912",
     "PLR0915",
 ]
-"src/gdansk/_cli_templates/**" = [
+"src/gdansk/cli/init.py" = [
+    "D",
+    "T201",
+    "C901",
+    "PLR0912",
+]
+"src/gdansk/cli/templates/**" = [
     "INP001", # template snippets are not importable package modules
 ]
 "examples/fastapi/main.py" = [
@@ -110,6 +127,7 @@ docstring-code-format = true
 quote-style = "double"
 
 [tool.pytest.ini_options]
+addopts = "--import-mode=importlib"
 anyio_mode = "auto"
 norecursedirs = ["target", "dist", "build", ".venv", "node_modules"]
 markers = [

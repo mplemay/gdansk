@@ -1,3 +1,3 @@
-from gdansk.cli import main
+from gdansk.cli.__main__ import main
 
 main()

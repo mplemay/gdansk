@@ -163,8 +163,50 @@ def test_init_custom_package_directory(
     assert (target / "src" / "custom_pkg" / "views" / "vite.config.ts").exists()
 
 
+def test_init_refuses_existing_main_without_force(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    target = tmp_path / "existing"
+    main_path = target / "src" / "my_mcp_server" / "__main__.py"
+    main_path.parent.mkdir(parents=True)
+    main_path.write_text("def main(): pass\n", encoding="utf-8")
+
+    code, _stdout, stderr = run_cli(
+        ["init", "--path", str(target), "--no-lock"],
+        monkeypatch=monkeypatch,
+        cwd=tmp_path,
+        capsys=capsys,
+    )
+
+    assert code == 1
+    assert "Refusing to overwrite existing entrypoint" in stderr
+
+
+def test_init_refuses_non_empty_views_without_force(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    target = tmp_path / "existing"
+    views_path = target / "src" / "my_mcp_server" / "views"
+    views_path.mkdir(parents=True)
+    (views_path / "existing.txt").write_text("keep\n", encoding="utf-8")
+
+    code, _stdout, stderr = run_cli(
+        ["init", "--path", str(target), "--no-lock"],
+        monkeypatch=monkeypatch,
+        cwd=tmp_path,
+        capsys=capsys,
+    )
+
+    assert code == 1
+    assert "Refusing to scaffold into non-empty views directory" in stderr
+
+
 def test_templates_are_loadable():
-    names = {item.name for item in resources.files("gdansk._cli_templates").iterdir()}
+    names = {item.name for item in resources.files("gdansk.cli.templates").iterdir()}
     assert {
         "__main__.py",
         "__init__.py",
