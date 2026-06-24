@@ -127,6 +127,7 @@ docstring-code-format = true
 quote-style = "double"
 
 [tool.pytest.ini_options]
+addopts = "--import-mode=importlib"
 anyio_mode = "auto"
 norecursedirs = ["target", "dist", "build", ".venv", "node_modules"]
 markers = [

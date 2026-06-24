@@ -62,3 +62,42 @@ def test_doctor_warns_about_legacy_frontend_lock(
 
     assert code == 0
     assert "warning: Legacy lockfile found under frontend" in stderr
+
+
+def test_doctor_fails_when_project_not_found(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    code, stdout, _stderr = run_cli(["doctor"], monkeypatch=monkeypatch, cwd=tmp_path, capsys=capsys)
+
+    assert code == 1
+    assert "fail Could not find pyproject.toml" in stdout
+
+
+def test_doctor_fails_when_frontend_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    write_src_layout_project(project_root)
+    frontend = project_root / "src" / "example" / "views"
+    for child in frontend.iterdir():
+        if child.is_file():
+            child.unlink()
+        else:
+            for nested in child.rglob("*"):
+                if nested.is_file():
+                    nested.unlink()
+            for nested in sorted(child.rglob("*"), reverse=True):
+                if nested.is_dir():
+                    nested.rmdir()
+            child.rmdir()
+    frontend.rmdir()
+
+    code, stdout, _stderr = run_cli(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+
+    assert code == 1
+    assert "fail Frontend root does not exist" in stdout

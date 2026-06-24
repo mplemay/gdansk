@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from json import dumps
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import pytest
+import typer
 
 from gdansk.cli import main
 
-if TYPE_CHECKING:
-    from pathlib import Path
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def run_cli(
@@ -22,10 +22,19 @@ def run_cli(
     exit_code = 0
     try:
         main(argv)
+    except typer.Exit as exc:
+        exit_code = exc.exit_code
     except SystemExit as exc:
         exit_code = exc.code if isinstance(exc.code, int) else 0
     captured = capsys.readouterr()
     return exit_code, captured.out, captured.err
+
+
+def stage_init_vite_package(init_target: Path) -> None:
+    vite_dest = init_target.parent.parent / "packages" / "vite"
+    vite_dest.parent.mkdir(parents=True, exist_ok=True)
+    if not vite_dest.exists():
+        vite_dest.symlink_to(REPO_ROOT / "packages" / "vite", target_is_directory=True)
 
 
 def write_pyproject(
