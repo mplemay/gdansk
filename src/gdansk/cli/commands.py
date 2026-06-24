@@ -5,8 +5,7 @@ import shlex
 import typer
 
 from gdansk._project import discover_project
-from gdansk.cli.core.errors import eprint
-from gdansk.cli.core.options import ProjectDir
+from gdansk.cli.core import ProjectDir, eprint
 
 app = typer.Typer()
 

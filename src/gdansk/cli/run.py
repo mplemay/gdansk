@@ -6,10 +6,7 @@ from typing import Annotated
 import typer
 
 from gdansk._project import discover_project
-from gdansk.cli.core.errors import runtime_errors
-from gdansk.cli.core.helpers import require_command
-from gdansk.cli.core.options import ProjectDir
-from gdansk.cli.core.task_args import task_args_from_context
+from gdansk.cli.core import ProjectDir, require_command, runtime_errors, task_args_from_context
 
 app = typer.Typer()
 
