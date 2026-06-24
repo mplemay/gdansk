@@ -5,10 +5,10 @@ import asyncio
 import typer
 
 from gdansk._project import discover_project
-from gdansk.cli._errors import runtime_errors
-from gdansk.cli._helpers import resolve_frontend
-from gdansk.cli._options import FrontendDir, ProjectDir
-from gdansk.cli._task_args import task_args_from_context
+from gdansk.cli.core.errors import runtime_errors
+from gdansk.cli.core.helpers import resolve_frontend
+from gdansk.cli.core.options import FrontendDir, ProjectDir
+from gdansk.cli.core.task_args import task_args_from_context
 
 app = typer.Typer()
 

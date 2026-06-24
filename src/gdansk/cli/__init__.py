@@ -1,5 +1,5 @@
 from gdansk.cli.__main__ import main
-from gdansk.cli._signals import run_until_signal as _run_until_signal
+from gdansk.cli.core.signals import run_until_signal as _run_until_signal
 from gdansk.packages import add_dependency, lock_project, update_project
 from gdansk.task import run_command, start_command
 

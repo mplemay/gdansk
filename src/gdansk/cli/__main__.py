@@ -7,10 +7,10 @@ from typing import TYPE_CHECKING, Annotated
 import typer
 
 from gdansk._project import ProjectError
-from gdansk.cli._task_args import split_task_args
 from gdansk.cli.add import app as add_app
 from gdansk.cli.build import app as build_app
 from gdansk.cli.commands import app as commands_app
+from gdansk.cli.core.task_args import split_task_args
 from gdansk.cli.dev import app as dev_app
 from gdansk.cli.doctor import app as doctor_app
 from gdansk.cli.init import app as init_app

@@ -7,9 +7,9 @@ from typing import Final
 import typer
 
 from gdansk._project import GdanskProject, ProjectError, discover_project
-from gdansk.cli._errors import eprint
-from gdansk.cli._helpers import resolve_frontend
-from gdansk.cli._options import FrontendDir, ProjectDir
+from gdansk.cli.core.errors import eprint
+from gdansk.cli.core.helpers import resolve_frontend
+from gdansk.cli.core.options import FrontendDir, ProjectDir
 
 PYTHON_MIN: Final[tuple[int, int]] = (3, 12)
 PYTHON_MAX: Final[tuple[int, int]] = (3, 15)
