@@ -121,7 +121,7 @@ uv run gdansk doctor
 Then confirm:
 
 - The server starts with no widget registration errors.
-- Frontend output includes `<frontend-root>/dist/gdansk-manifest.json`.
+- Frontend output is cached inline widget bundle data built from the frontend root.
 - The UI resource renders and contains inline JS/CSS.
 - The widget can call the intended MCP tool.
 

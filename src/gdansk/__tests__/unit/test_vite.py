@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
+from gdansk.manifest import GdanskManifest
 from gdansk.vite import Vite
 
 if TYPE_CHECKING:
@@ -32,7 +33,6 @@ def test_vite_owns_frontend_paths(views_path: Path):
 
     assert vite.build_directory == "public/ui"
     assert vite.build_directory_path == views_path / "public/ui"
-    assert vite.manifest_path == views_path / "public/ui" / "gdansk-manifest.json"
     assert vite.root == views_path
     assert vite.widgets_root == views_path / "widgets"
 
@@ -64,7 +64,11 @@ async def test_vite_dev_start_uses_command_runner(
         captured = {"start": start, "command": command, **kwargs}
         return FakeCommandProcess()
 
+    async def fake_check() -> None:
+        return None
+
     vite = Vite(views_path)
+    monkeypatch.setattr(vite, "_require_version_match", fake_check)
     monkeypatch.setattr("gdansk.vite.start_project_command", fake_start_command)
 
     await vite.start_dev()
@@ -110,7 +114,11 @@ async def test_vite_start_dev_restarts_after_process_exit(
         start_calls += 1
         return FakeCommandProcess(running=True)
 
+    async def fake_check() -> None:
+        return None
+
     vite = Vite(views_path)
+    monkeypatch.setattr(vite, "_require_version_match", fake_check)
     monkeypatch.setattr("gdansk.vite.start_project_command", fake_start_command)
     vite._frontend = cast("CommandProcess", FakeCommandProcess(running=False))
 
@@ -118,6 +126,46 @@ async def test_vite_start_dev_restarts_after_process_exit(
 
     assert start_calls == 1
     assert vite.has_runtime() is True
+
+
+async def test_vite_build_uses_belgie_script(
+    views_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    manifest = GdanskManifest(
+        outDir="dist",
+        root=str(views_path),
+        widgets={},
+    )
+
+    async def fake_check() -> None:
+        return None
+
+    async def fake_run_build_script() -> GdanskManifest:
+        return manifest
+
+    vite = Vite(views_path)
+    monkeypatch.setattr(vite, "_require_version_match", fake_check)
+    monkeypatch.setattr(vite, "_run_build_script", fake_run_build_script)
+
+    result = await vite.build()
+
+    assert result is manifest
+    assert vite.require_manifest() is manifest
+
+
+async def test_vite_rejects_mismatched_package_versions(
+    views_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    async def fake_run_version_script() -> str:
+        return "0.0.0"
+
+    vite = Vite(views_path)
+    monkeypatch.setattr(vite, "_run_version_script", fake_run_version_script)
+
+    with pytest.raises(RuntimeError, match="do not match"):
+        await vite.start_dev()
 
 
 def test_vite_defaults_to_views_under_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

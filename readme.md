@@ -167,10 +167,10 @@ Python or Jinja files change during development.
 `ship.mcp(..., watch=...)` controls how the frontend is prepared:
 
 - **`watch=True`** — runs the Vite dev server in the background with React refresh; JS/CSS load from the Vite origin.
-- **`watch=False`** (default) — runs `vite build` on startup, then loads the inline gdansk manifest from the build
-  directory.
-- **`watch=None`** — skips the frontend build toolchain entirely and loads an existing `gdansk-manifest.json` under the
-  build directory. Use this when widgets are prebuilt (for example in CI) to avoid cold-start build cost.
+- **`watch=False`** (default) — runs `vite build` on startup, then caches the inline widget bundles in memory.
+- **`watch=None`** — skips the frontend build toolchain entirely when a build is already cached in memory; otherwise it
+  builds on demand. Use this when the same process has already built the widgets and you want to avoid a second cold
+  start.
 
 If you need a non-default build output directory, keep the Vite plugin and Python runtime aligned. Widget sources
 always live under `widgets/` at the frontend root (`Vite(root=...)` / Vite `root`).
@@ -201,7 +201,7 @@ single inline `<script type="module">`, so no static widget asset mount is requi
 
 The default production output is intentionally small:
 
-- gdansk runtime manifest: `dist/gdansk-manifest.json`
+- no manifest file is written
 - one inline script payload per widget
 - inline CSS payloads per widget
 - imported assets from the Vite graph inlined as data URLs

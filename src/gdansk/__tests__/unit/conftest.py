@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
+from gdansk.manifest import GdanskManifest
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -45,7 +47,7 @@ def write_manifest(
     manifest_out_dir: str | None = None,
     script: str = 'console.log("hello");\n',
     styles: list[str] | None = None,
-) -> None:
+) -> GdanskManifest:
     resolved_styles = styles if styles is not None else [".hello { color: red; }\n"]
     out_dir = manifest_out_dir or assets_dir
     manifest: dict[str, Any] = {
@@ -65,3 +67,4 @@ def write_manifest(
     path = views / assets_dir / "gdansk-manifest.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(manifest), encoding="utf-8")
+    return GdanskManifest.model_validate(manifest)

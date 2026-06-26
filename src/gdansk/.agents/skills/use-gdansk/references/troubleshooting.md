@@ -52,7 +52,7 @@ Use [rules/config-sync.md](../rules/config-sync.md) for host/port/buildDirectory
 ## Match the failure to the smallest likely fix
 
 - For validation errors, fix the path or duplicate registration directly.
-- For build and startup failures, inspect `vite.config.ts`, gdansk dependencies, and `dist/gdansk-manifest.json`.
+- For build and startup failures, inspect `vite.config.ts`, gdansk dependencies, and whether the build result is cached.
 - For runtime host or port issues, keep `Vite(Path(...), host=..., port=...)` on `Ship(vite=...)` and
   `gdansk({ host, port })` aligned.
 - For build output directory mismatches, keep `Vite(Path(...), build_directory=...)` and
@@ -80,9 +80,9 @@ Use [rules/config-sync.md](../rules/config-sync.md) for host/port/buildDirectory
 | `The frontend dev server did not start in time` | Vite did not boot, or Python and Vite disagree on host or port | Fix the Vite startup issue and keep `Vite(Path(...), host=..., port=...)` and `gdansk({ host, port })` aligned | Check `vite.config.ts`, gdansk dependencies, and the configured host/port on both sides |
 | `Failed to recover TsconfigCache type from napi value` (plugin `vite:oxc`) | Vite 8 + Rolldown NAPI under Belgie/Deno, often with stale lockfiles or older `vite@8.0.8` | Run `uv run gdansk lock` (see missing-deps note above); bump `vite` in `[gdansk.dependencies]` to match the init template; clear `node_modules`, `deno_dir`, and `.vite`; if persistent, try `oxc: false` with `esbuild` in `[gdansk.dependencies]` or upgrade Belgie | Check `deno.lock` resolves the pinned `vite` version |
 | Backend or template edits do not trigger a browser reload | Full-reload watching is disabled | Enable `gdansk({ refresh: true })` or point `refresh` at explicit backend paths | Check `vite.config.ts` for the plugin `refresh` option |
-| `The frontend build did not produce a manifest .../dist/gdansk-manifest.json` | Production build did not finish or stale output was reused | Rebuild the frontend and confirm `dist/gdansk-manifest.json` exists | Check `dist/` after a fresh build |
+| `The frontend build did not produce a manifest` | Production build did not finish or the cached build result was not populated | Rebuild the frontend and confirm the build succeeds | Re-run `gdansk build` |
 | `Execution error: ...` during render | HTML rendering threw at runtime | Fix render-unsafe imports or rendering logic in the widget | Reduce the widget to a minimal default export and reintroduce imports incrementally |
-| Widget loads but CSS is missing | CSS import or manifest extraction issue | Ensure styles are imported from the widget tree and present in `inline.styles` | Inspect `dist/gdansk-manifest.json` |
+| Widget loads but CSS is missing | CSS import or inline bundle extraction issue | Ensure styles are imported from the widget tree and present in `inline.styles` | Inspect the built widget output in memory |
 | Widget loads but tool call fails | Tool name mismatch | Align Python `name=` with `callServerTool({ name: ... })` | See [rules/widget-wiring.md](../rules/widget-wiring.md) |
 | Assets 404 in production | Widget references Vite `public/` files or fetches network resources at runtime | Import assets through the widget graph or serve runtime resources separately | See [production.md](production.md) |
 
@@ -96,7 +96,7 @@ Use [rules/config-sync.md](../rules/config-sync.md) for host/port/buildDirectory
 5. If the repo customizes the build output directory, confirm `Vite(..., build_directory=...)` and
    `gdansk({ buildDirectory })` match.
 6. Confirm the Python project's `pyproject.toml` has the required `[gdansk.dependencies]`.
-7. Confirm `dist/gdansk-manifest.json` exists.
+7. Confirm the build result is cached or can be rebuilt.
 8. For render failures, isolate runtime-safe imports and the default export first.
 9. For CSS failures, confirm the stylesheet is imported somewhere in the widget tree and appears in `inline.styles`.
 
@@ -105,7 +105,7 @@ Use [rules/config-sync.md](../rules/config-sync.md) for host/port/buildDirectory
 1. Run `uv run gdansk doctor` if layout or deps changed.
 2. Restart the server in development if the runtime configuration changed.
 3. Confirm the Vite dev client becomes reachable at `@vite/client`.
-4. Confirm `dist/gdansk-manifest.json` exists.
+4. Confirm the build result is cached or can be rebuilt.
 5. Fetch or open the widget resource and verify the rendered HTML contains inline `<style>` and
    `<script type="module">`.
 6. Re-run the failing user flow instead of assuming the previous error was the only problem.

@@ -8,7 +8,7 @@ production servers without a Vite dev server.
 | Mode | When to use | Build step |
 | --- | --- | --- |
 | `watch=False` | Server builds widgets on startup | Automatic `vite build` in lifespan |
-| `watch=None` | Widgets prebuilt in CI/image | Run `uv run gdansk build` before deploy |
+| `watch=None` | Widgets already built in-process or in CI/image | Run `uv run gdansk build` before deploy if needed |
 
 ### `watch=False` (build on startup)
 
@@ -19,9 +19,9 @@ async def lifespan(app: MCPServer) -> AsyncIterator[None]:
         yield
 ```
 
-The server runs `vite build` during lifespan startup, then reads `dist/gdansk-manifest.json`. Each `ui://` resource
-returns HTML with inline `<style>` and `<script type="module">` tags. Use this when you want a single deployable
-artifact without a separate build step in CI.
+The server runs `vite build` during lifespan startup, then caches the inline widget bundles in memory. Each `ui://`
+resource returns HTML with inline `<style>` and `<script type="module">` tags. Use this when you want a single
+deployable artifact without a separate build step in CI.
 
 ### `watch=None` (prebuilt widgets)
 
@@ -32,12 +32,12 @@ async def lifespan(app: MCPServer) -> AsyncIterator[None]:
         yield
 ```
 
-Skips the frontend build toolchain entirely. Loads existing `gdansk-manifest.json` from the build directory.
-Use in CI/CD or Docker when you build widgets in a prior step:
+Skips the frontend build toolchain entirely. Uses a cached build result if one is already available; otherwise it builds
+on demand. Use in CI/CD or Docker when you want to avoid a second startup build:
 
 ```bash
 uv run gdansk build
-# deploy dist/gdansk-manifest.json alongside the Python server
+# no manifest artifact is required alongside the Python server
 ```
 
 ## Expected `dist/` layout
@@ -46,7 +46,7 @@ After a production build:
 
 ```text
 <frontend-root>/dist/
-└── gdansk-manifest.json       # gdansk runtime manifest with inline widget bundles
+└── (cached in memory)         # gdansk runtime inline widget bundles
 ```
 
 Verify after build:
@@ -57,8 +57,7 @@ find <frontend-root>/dist -type f | sort
 
 ## Production checklist
 
-- [ ] `dist/gdansk-manifest.json` exists (for `watch=False` or `watch=None`)
-- [ ] Each manifest widget has `inline.script` and `inline.styles`
+- [ ] Each widget has `inline.script` and `inline.styles`
 - [ ] No `dist/<widget>/client.js`, `dist/<widget>/client.css`, or `dist/assets/*` files are required
 - [ ] CORS configured if the MCP client accesses the server from a different origin
 
@@ -91,14 +90,14 @@ uv run gdansk doctor
 uv run pytest
 ```
 
-Deploy with `watch=None` and include the built `dist/gdansk-manifest.json` in the image or artifact.
+Deploy with `watch=None` and keep the build result available in memory or rebuild on startup.
 
 ## Development vs production
 
 | Concern | Development | Production |
 | --- | --- | --- |
 | `watch` | `True` | `False` or `None` |
-| JS/CSS source | Vite dev server origin | Inline payloads from `gdansk-manifest.json` |
+| JS/CSS source | Vite dev server origin | Inline payloads from the cached build result |
 | Hot reload | HMR + `refresh: true` | N/A |
 | Build command | Automatic (via `watch=True`) | `gdansk build` or startup build |
 
@@ -109,7 +108,7 @@ For local development, always use `watch=True` with `gdansk({ refresh: true })`.
 | Symptom | Check |
 | --- | --- |
 | Widget HTML loads but JS fails | Rendered HTML contains an inline `<script type="module">` |
-| `gdansk-manifest.json` missing | Run `gdansk build` or use `watch=False` |
+| Build result missing | Run `gdansk build` or use `watch=False` |
 | Assets 404 on client | The widget likely references `public/` or fetches network resources at runtime |
 | Stale widget after deploy | Rebuild `dist/`; confirm `watch=None` reads new manifest |
 

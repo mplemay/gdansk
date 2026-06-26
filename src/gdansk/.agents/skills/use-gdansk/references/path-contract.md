@@ -62,8 +62,8 @@ Examples:
 
 For `hello/widget.tsx`:
 
-- manifest entry: `dist/gdansk-manifest.json` → `widgets.hello.inline.script`
-- optional styles: `dist/gdansk-manifest.json` → `widgets.hello.inline.styles`
+- inline script: cached build result → `widgets.hello.inline.script`
+- optional styles: cached build result → `widgets.hello.inline.styles`
 
 ## Guardrail checklist
 

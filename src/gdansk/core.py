@@ -89,7 +89,6 @@ class Ship:
 
         self._active = True
         self._dev = False
-        self._vite.clear_manifest()
 
     async def _prepare_frontend(self, *, watch: bool | None) -> None:
         match watch:
@@ -99,9 +98,15 @@ class Ship:
                 self._dev = True
             case False:
                 await self._vite.build()
-                self._vite.load_manifest()
+                if not self._vite.has_manifest():
+                    msg = "The frontend build did not produce a manifest"
+                    raise RuntimeError(msg)
             case None:
-                self._vite.load_manifest()
+                if not self._vite.has_manifest():
+                    await self._vite.build()
+                    if not self._vite.has_manifest():
+                        msg = "The frontend build did not produce a manifest"
+                        raise RuntimeError(msg)
 
     async def _require_client(self) -> AsyncClient:
         if self._client is not None:

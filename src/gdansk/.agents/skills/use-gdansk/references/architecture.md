@@ -15,8 +15,8 @@ Python                          Frontend root
 ──────                          ─────────────
 Ship                            vite.config.ts + @gdansk/vite
   └─ Vite(root)                   └─ widgets/<name>/widget.tsx
-  └─ @ship.widget(...)                  └─ dist/gdansk-manifest.json
-  └─ ship.mcp(app, watch)               └─ dist/gdansk-manifest.json
+  └─ @ship.widget(...)                  └─ cached inline widget bundles
+  └─ ship.mcp(app, watch)               └─ cached inline widget bundles
        │
        ├─ registers MCP tool (Python function)
        ├─ registers HTML resource (ui://<widget-key>)
@@ -47,7 +47,7 @@ Need live HMR during development?
 │         Vite dev server runs in background; JS/CSS load from Vite origin.
 └── No → Assets prebuilt in CI or image?
     ├── Yes → ship.mcp(app=app, watch=None)
-    │         Skips Vite; loads existing gdansk-manifest.json from dist/.
+    │         Skips Vite; uses an existing cached build result when available.
     └── No → ship.mcp(app=app, watch=False)   [default]
               Runs vite build on startup; renders inline bundles from the manifest.
 ```
@@ -55,8 +55,8 @@ Need live HMR during development?
 | `watch` | Behavior | Use when |
 | --- | --- | --- |
 | `True` | Vite dev server with HMR | Local development |
-| `False` | Build on startup, render inline bundles from `dist/gdansk-manifest.json` | Production without prebuilt assets |
-| `None` | Skip build, load existing manifest | CI/CD images with prebuilt `dist/` |
+| `False` | Build on startup, render inline bundles from memory | Production without prebuilt assets |
+| `None` | Skip build when already cached; otherwise build on demand | CI/CD images or reused in-process builds |
 
 For production deployment details, see [production.md](production.md).
 
@@ -66,7 +66,7 @@ For production deployment details, see [production.md](production.md).
 | --- | --- |
 | `Ship` | Central orchestrator; widget registration, HTML resource rendering, MCP wiring |
 | `Vite` | Python-side frontend config: root, host, port, build_directory |
-| `@gdansk/vite` | Vite plugin; discovers widgets, emits `gdansk-manifest.json` |
+| `@gdansk/vite` | Vite plugin; discovers widgets and produces inline widget bundles |
 | `Metadata` | Page metadata (`gdansk.metadata.Metadata` TypedDict) |
 | `WidgetMeta` | Tool/resource metadata (CSP, visibility, OpenAI-specific fields) |
 
@@ -119,7 +119,7 @@ Before running, confirm:
 - [ ] `Vite(...)` points at frontend root (not `widgets/`)
 - [ ] `Vite(host, port, build_directory)` matches `gdansk({ host, port, buildDirectory })`
 - [ ] `@ship.widget(path=...)` is relative to `widgets/` without `widgets/` prefix
-- [ ] Production deploy includes `dist/gdansk-manifest.json`
+- [ ] Production deploy has access to the cached build result or can rebuild on startup
 - [ ] `[gdansk.dependencies]` installed via `uv run gdansk lock`
 
 For Incorrect/Correct pairs, see [rules/config-sync.md](../rules/config-sync.md) and

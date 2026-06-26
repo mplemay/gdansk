@@ -53,7 +53,6 @@ export interface GdanskRuntime {
     build(): Promise<GdanskManifest>;
     close(): Promise<void>;
     loadOrBuildManifest(): Promise<GdanskManifest>;
-    manifestPath: string;
     options: ResolvedGdanskOptions;
     startDev(): Promise<GdanskDevRuntimeMetadata>;
     widgets: WidgetDefinition[];

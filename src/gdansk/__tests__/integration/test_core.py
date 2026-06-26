@@ -19,7 +19,7 @@ class SearchFilters(BaseModel):
 
 @pytest.mark.integration
 async def test_widget_resource_renders_through_mcp(views_path: Path):
-    write_manifest(views_path)
+    manifest = write_manifest(views_path)
     ship = Ship(vite=Vite(views_path), metadata=Metadata(title="Base title"))
     app = MCPServer(name="test")
 
@@ -30,6 +30,8 @@ async def test_widget_resource_renders_through_mcp(views_path: Path):
     )
     def hello() -> None:
         return None
+
+    ship._vite._manifest = manifest
 
     async with ship.mcp(app=app, watch=None):
         resources = await app.list_resources()
@@ -62,7 +64,7 @@ async def test_widget_resource_renders_through_mcp(views_path: Path):
 
 @pytest.mark.integration
 async def test_widget_strict_schema_is_exposed_through_list_tools(views_path: Path):
-    write_manifest(views_path)
+    manifest = write_manifest(views_path)
     ship = Ship(vite=Vite(views_path))
     app = MCPServer(name="test")
 
@@ -73,6 +75,8 @@ async def test_widget_strict_schema_is_exposed_through_list_tools(views_path: Pa
     )
     def hello(filters: SearchFilters, name: str | None = None) -> None:
         _ = filters, name
+
+    ship._vite._manifest = manifest
 
     async with ship.mcp(app=app, watch=None):
         tools = await app.list_tools()

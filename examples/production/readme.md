@@ -12,8 +12,8 @@ uv run main
 The Python server uses `MCPServer` with a lifespan that enters `ship.mcp(app=...)` so widget tools and HTML resources
 are registered on the MCP app.
 
-Production builds only `dist/gdansk-manifest.json`; there is no static widget asset mount or separate JS runtime
-server. Development still uses `ship.mcp(..., watch=True)` so the Vite dev server runs in the background with refresh
-enabled.
+Production builds keep the inline widget bundle data in memory; there is no static widget asset mount or separate JS
+runtime server. Development still uses `ship.mcp(..., watch=True)` so the Vite dev server runs in the background with
+refresh enabled.
 
 For agent-driven setup or troubleshooting, prefer `$use-gdansk`.

@@ -102,7 +102,7 @@ script, so the HTTP app only needs to expose the MCP app.
 
 Default production output is:
 
-- `<frontend-root>/dist/gdansk-manifest.json`
+- inline widget bundles cached in memory after `gdansk build`
 
 ## Minimal React widget
 
@@ -216,6 +216,6 @@ After startup, confirm the inline manifest exists:
 find <frontend-root>/dist -maxdepth 3 -type f
 ```
 
-Expected for a basic hello widget: `<frontend-root>/dist/gdansk-manifest.json`.
+Expected for a basic hello widget: inline widget bundles cached in memory after `gdansk build`.
 
 If checks fail, run `uv run gdansk doctor` then see [troubleshooting.md](troubleshooting.md).

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import react from "@vitejs/plugin-react";
@@ -12,6 +12,7 @@ import {
   type ViteDevServer,
 } from "vite";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import packageJson from "../package.json";
 
 const viteMocks = vi.hoisted(() => ({
   createServer: vi.fn(),
@@ -30,11 +31,10 @@ vi.mock("vite", async (importOriginal) => {
   };
 });
 
-import gdansk from "../src";
+import gdansk, { GDANSK_VERSION } from "../src";
 import { pathExists, resolveOptions } from "../src/context";
 import { normalizeRefreshConfig, resolveRefreshPaths } from "../src/development";
 import { createGdanskRuntime } from "../src/runtime";
-import type { GdanskManifest } from "../src/types";
 
 const fixtureRoots: string[] = [];
 const RENDER_DEPENDENCY_NAME = "__gdansk_render_cjs_dep__";
@@ -268,12 +268,12 @@ describe("@gdansk/vite", () => {
   it("builds inline production widgets by default", async () => {
     const root = await createFixture({ withLocalPlugin: true });
     const runtime = await createGdanskRuntime({ root, port: 0 });
-    expect(runtime.manifestPath).toBe(`${root}/dist/gdansk-manifest.json`);
+    expect(GDANSK_VERSION).toBe(packageJson.version);
 
     const manifest = await runtime.build();
 
     expect(Object.keys(manifest.widgets)).toEqual(["hello", "nested/page"]);
-    expect(await listRelativeFiles(`${root}/dist`)).toEqual(["gdansk-manifest.json"]);
+    await expect(pathExists(`${root}/dist`)).resolves.toBe(false);
     expect(manifest.widgets.hello.entry).toBe("hello/widget.tsx");
     expect(manifest.widgets.hello.inline.script).toContain("Hello production");
     expect(manifest.widgets.hello.inline.script).toContain("from plugin");
@@ -300,7 +300,7 @@ describe("@gdansk/vite", () => {
     const manifest = await runtime.loadOrBuildManifest();
 
     expect(Object.keys(manifest.widgets)).toEqual(["hello", "nested/page"]);
-    expect(await listRelativeFiles(`${root}/dist`)).toEqual(["gdansk-manifest.json"]);
+    await expect(pathExists(`${root}/dist`)).resolves.toBe(false);
     expect(manifest.widgets.hello.inline.script).toContain("Hello production");
     await runtime.close();
   }, 15_000);
@@ -312,7 +312,7 @@ describe("@gdansk/vite", () => {
     const manifest = await runtime.build();
 
     expect(manifest.widgets.hello.inline.styles).toEqual([expect.stringContaining("data:image/svg+xml")]);
-    expect(await listRelativeFiles(`${root}/dist`)).toEqual(["gdansk-manifest.json"]);
+    await expect(pathExists(`${root}/dist`)).resolves.toBe(false);
 
     await runtime.close();
   }, 15_000);
@@ -370,13 +370,15 @@ describe("@gdansk/vite", () => {
     });
     await builder.buildApp();
 
-    const manifest = JSON.parse(await readFile(`${root}/dist/gdansk-manifest.json`, "utf8")) as GdanskManifest;
+    const runtime = await createGdanskRuntime({ root, port: 0 });
+    const manifest = await runtime.build();
     const script = manifest.widgets.hello.inline.script;
 
     expect(script).toContain("from lucide fixture");
     expect(script).not.toMatch(/(?:import|export)\s+[^;]*from\s*["']lucide-react["']/);
     expect(script).not.toMatch(/import\s*\(\s*["']lucide-react["']\s*\)/);
-    expect(await findMatchingFiles(`${root}/dist`, /\.js$/)).toHaveLength(0);
+    await expect(pathExists(`${root}/dist`)).resolves.toBe(false);
+    await runtime.close();
   }, 15_000);
 
   it("builds widgets that default-import plain css with co-located css.d.ts typings", async () => {
@@ -676,12 +678,6 @@ async function findMatchingFiles(root: string, pattern: RegExp): Promise<string[
   );
 
   return matches.flat();
-}
-
-async function listRelativeFiles(root: string): Promise<string[]> {
-  return (await findMatchingFiles(root, /./))
-    .map((path) => path.slice(root.length + 1))
-    .sort();
 }
 
 function flattenPluginOptions(option: PluginOption): Plugin[] {

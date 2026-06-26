@@ -75,7 +75,7 @@ uvicorn.run(app, port=3001)
 ```
 
 Production widgets return inline JS/CSS inside the `ui://` HTML resource. The only production file gdansk needs is
-`dist/gdansk-manifest.json`.
+the cached inline widget bundle data.
 
 ---
 

@@ -1,6 +1,6 @@
 import { createServer, mergeConfig } from "vite";
 
-import { buildWidgets, GDANSK_MANIFEST_FILENAME, readManifest } from "./build";
+import { buildWidgets } from "./build";
 import { loadUserViteConfig, prepareProject, resolveOptions } from "./context";
 import { resolveViteOrigin } from "./css";
 import { createGdanskCssModulesPlugin, createSharedCssModulesConfig } from "./cssModules";
@@ -24,7 +24,6 @@ export async function createGdanskRuntime(options: GdanskPluginOptions = {}): Pr
 }
 
 class GdanskRuntimeImpl implements GdanskRuntime {
-  readonly manifestPath: string;
   readonly options: ResolvedGdanskOptions;
   widgets: WidgetDefinition[] = [];
 
@@ -33,7 +32,6 @@ class GdanskRuntimeImpl implements GdanskRuntime {
   #viteServer?: Awaited<ReturnType<typeof createServer>>;
 
   constructor(options: ResolvedGdanskOptions) {
-    this.manifestPath = `${options.buildDirectoryPath}/${GDANSK_MANIFEST_FILENAME}`;
     this.options = options;
   }
 
@@ -94,16 +92,7 @@ class GdanskRuntimeImpl implements GdanskRuntime {
   }
 
   async loadOrBuildManifest(): Promise<GdanskManifest> {
-    if (this.#manifest) {
-      return this.#manifest;
-    }
-
-    try {
-      this.#manifest = await readManifest(this.manifestPath);
-      return this.#manifest;
-    } catch {
-      return this.build();
-    }
+    return this.#manifest ?? this.build();
   }
 
   async prepare(): Promise<GdanskPreparedProject> {

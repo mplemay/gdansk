@@ -84,7 +84,6 @@ def test_ship_uses_vite_build_directory_for_manifest(views_path: Path):
     ship = Ship(vite=Vite(views_path, build_directory="public/ui"))
 
     assert ship._vite.build_directory_path == views_path / "public/ui"
-    assert ship._vite.manifest_path == views_path / "public/ui" / "gdansk-manifest.json"
 
 
 def test_ship_rejects_invalid_base_url(views_path: Path):
@@ -340,7 +339,7 @@ async def test_widget_resource_renders_complete_document(views_path: Path):
 
 
 async def test_widget_resource_renders_production_scripts(views_path: Path):
-    write_manifest(
+    manifest = write_manifest(
         views_path,
         script='console.log("hello");\n',
         styles=[".hello { color: red; }\n"],
@@ -351,7 +350,7 @@ async def test_widget_resource_renders_production_scripts(views_path: Path):
     def hello() -> None:
         return None
 
-    ship._vite.load_manifest()
+    ship._vite._manifest = manifest
 
     html = await ship._widget_manager[Path("hello/widget.tsx")].resource.read()
     assert isinstance(html, str)
@@ -367,7 +366,7 @@ async def test_widget_resource_renders_production_scripts(views_path: Path):
 
 
 async def test_widget_resource_uses_custom_manifest_dir_for_inline_production(views_path: Path):
-    write_manifest(
+    manifest = write_manifest(
         views_path,
         assets_dir="public",
         script='console.log("custom");\n',
@@ -379,7 +378,7 @@ async def test_widget_resource_uses_custom_manifest_dir_for_inline_production(vi
     def hello() -> None:
         return None
 
-    ship._vite.load_manifest()
+    ship._vite._manifest = manifest
 
     html = await ship._widget_manager[Path("hello/widget.tsx")].resource.read()
     assert isinstance(html, str)
@@ -391,7 +390,7 @@ async def test_widget_resource_uses_custom_manifest_dir_for_inline_production(vi
 
 
 async def test_widget_resource_escapes_inline_closing_tags(views_path: Path):
-    write_manifest(
+    manifest = write_manifest(
         views_path,
         script='console.log("</script>");\n',
         styles=[".x::before { content: '</style>'; }\n"],
@@ -402,7 +401,7 @@ async def test_widget_resource_escapes_inline_closing_tags(views_path: Path):
     def hello() -> None:
         return None
 
-    ship._vite.load_manifest()
+    ship._vite._manifest = manifest
 
     html = await ship._widget_manager[Path("hello/widget.tsx")].resource.read()
     assert isinstance(html, str)
@@ -425,23 +424,26 @@ async def test_widget_resource_raises_when_manifest_is_missing_widget(views_path
         await ship.render_widget_page(metadata=None, widget_key="hello")
 
 
-async def test_build_uses_task_runner(views_path: Path, monkeypatch: pytest.MonkeyPatch):
-    captured: dict[str, object] | None = None
+async def test_build_uses_belgie_bridge(views_path: Path, monkeypatch: pytest.MonkeyPatch):
+    manifest = GdanskManifest(outDir="dist", root=str(views_path), widgets={})
+    version_checked = False
 
-    async def fake_run_command(start: Path, command: str, **kwargs: object) -> None:
-        nonlocal captured
-        captured = {"start": start, "command": command, **kwargs}
+    async def fake_require_version_match() -> None:
+        nonlocal version_checked
+        version_checked = True
+
+    async def fake_run_build_script() -> GdanskManifest:
+        return manifest
 
     ship = Ship(vite=Vite(views_path))
-    monkeypatch.setattr("gdansk.vite.run_project_command", fake_run_command)
+    monkeypatch.setattr(ship._vite, "_require_version_match", fake_require_version_match)
+    monkeypatch.setattr(ship._vite, "_run_build_script", fake_run_build_script)
 
-    await ship._vite.build()
+    result = await ship._vite.build()
 
-    assert captured is not None
-    assert captured["start"] == views_path
-    assert captured["command"] == "vite"
-    assert captured["cwd"] == views_path
-    assert captured["argv"] == ["build", "--outDir", "dist"]
+    assert version_checked is True
+    assert result is manifest
+    assert ship._vite.require_manifest() is manifest
 
 
 async def test_wait_for_vite_timeout_mentions_matching_vite_and_plugin_config(
@@ -580,9 +582,11 @@ async def test_start_dev_uses_runtime_port(views_path: Path, monkeypatch: pytest
 
 async def test_start_production_builds_and_loads_manifest(views_path: Path, monkeypatch: pytest.MonkeyPatch):
     ship = Ship(vite=Vite(views_path))
+    manifest = write_manifest(views_path)
 
-    async def fake_build() -> None:
-        write_manifest(views_path)
+    async def fake_build() -> GdanskManifest:
+        ship._vite._manifest = manifest
+        return manifest
 
     monkeypatch.setattr(ship._vite, "build", fake_build)
 
@@ -607,8 +611,9 @@ async def test_start_production_requires_manifest(views_path: Path, monkeypatch:
 
 
 async def test_start_prebuilt_loads_manifest_without_build(views_path: Path, monkeypatch: pytest.MonkeyPatch):
-    write_manifest(views_path)
+    manifest = write_manifest(views_path)
     ship = Ship(vite=Vite(views_path))
+    ship._vite._manifest = manifest
 
     async def fail_build() -> None:
         pytest.fail("build should not run when watch is None")
@@ -623,8 +628,13 @@ async def test_start_prebuilt_loads_manifest_without_build(views_path: Path, mon
     assert ship._vite._manifest is None
 
 
-async def test_start_prebuilt_requires_manifest(views_path: Path):
+async def test_start_prebuilt_requires_manifest(views_path: Path, monkeypatch: pytest.MonkeyPatch):
     ship = Ship(vite=Vite(views_path))
+
+    async def fake_build() -> None:
+        return None
+
+    monkeypatch.setattr(ship._vite, "build", fake_build)
 
     with pytest.raises(RuntimeError, match="did not produce a manifest"):
         async with ship.mcp(app=_app(), watch=None):
@@ -632,8 +642,9 @@ async def test_start_prebuilt_requires_manifest(views_path: Path):
 
 
 async def test_ship_mcp_open_prebuilt_skips_runtime_start(views_path: Path, monkeypatch: pytest.MonkeyPatch):
-    write_manifest(views_path)
+    manifest = write_manifest(views_path)
     ship = Ship(vite=Vite(views_path))
+    ship._vite._manifest = manifest
 
     async def fail_start_dev() -> None:
         pytest.fail("start_dev should not run when watch is None")
@@ -680,17 +691,27 @@ async def test_ship_mcp_registers_widget_tool_and_resource(
         assert tool.meta["ui"]["resourceUri"] == "ui://hello"
 
 
-def test_load_manifest_requires_matching_build_directory(views_path: Path):
-    write_manifest(views_path, assets_dir="public", manifest_out_dir="dist")
+async def test_build_requires_matching_build_directory(views_path: Path, monkeypatch: pytest.MonkeyPatch):
+    manifest = write_manifest(views_path, assets_dir="public", manifest_out_dir="dist")
     ship = Ship(vite=Vite(views_path, build_directory="public"))
 
+    async def fake_require_version_match() -> None:
+        return None
+
+    async def fake_run_build_script() -> GdanskManifest:
+        return manifest
+
+    monkeypatch.setattr(ship._vite, "_require_version_match", fake_require_version_match)
+    monkeypatch.setattr(ship._vite, "_run_build_script", fake_run_build_script)
+
     with pytest.raises(RuntimeError, match="configured build directory"):
-        ship._vite.load_manifest()
+        await ship._vite.build()
 
 
 async def test_ship_mcp_rejects_reentry(views_path: Path):
-    write_manifest(views_path)
+    manifest = write_manifest(views_path)
     ship = Ship(vite=Vite(views_path))
+    ship._vite._manifest = manifest
     app = _app()
 
     async with ship.mcp(app=app, watch=None):

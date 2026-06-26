@@ -1,6 +1,3 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
-
 import { build, mergeConfig } from "vite";
 import type { UserConfig } from "vite";
 
@@ -16,7 +13,6 @@ import { collectTypedCssModuleStyles } from "./cssModuleStyles";
 import { createGdanskCssModulesPlugin, createSharedCssModulesConfig } from "./cssModules";
 import { createGdanskVirtualModulesPlugin } from "./virtual";
 
-export const GDANSK_MANIFEST_FILENAME = "gdansk-manifest.json";
 const MAX_INLINE_ASSET_SIZE = Number.MAX_SAFE_INTEGER;
 const TEXT_DECODER = new TextDecoder();
 
@@ -61,7 +57,7 @@ export function createBuildConfig(options: ResolvedGdanskOptions, prepared: Gdan
     builder: {
       sharedPlugins: true,
       async buildApp(builder) {
-        await writeInlineManifestFromWidgetBuilds(options, prepared.widgets, async (_widget, index) => {
+        await buildInlineManifestFromWidgetBuilds(options, prepared.widgets, async (_widget, index) => {
           const envName = widgetEnvironmentName(index);
           const environment = builder.environments[envName];
           if (!environment) {
@@ -115,7 +111,7 @@ export async function buildWidgets(
   prepared: GdanskPreparedProject,
   config: LoadedProjectConfig = {},
 ): Promise<GdanskManifest> {
-  return writeInlineManifestFromWidgetBuilds(options, prepared.widgets, async (widget) => {
+  return buildInlineManifestFromWidgetBuilds(options, prepared.widgets, async (widget) => {
     const result = await build(
       mergeConfig(config, {
         appType: "custom",
@@ -132,10 +128,6 @@ export async function buildWidgets(
 
     return normalizeBuildOutputs(result);
   });
-}
-
-export async function readManifest(path: string): Promise<GdanskManifest> {
-  return JSON.parse(await readFile(path, "utf8")) as GdanskManifest;
 }
 
 function createWidgetBuildOptions(
@@ -165,14 +157,11 @@ function createWidgetBuildOptions(
   };
 }
 
-async function writeInlineManifestFromWidgetBuilds(
+async function buildInlineManifestFromWidgetBuilds(
   options: ResolvedGdanskOptions,
   widgets: WidgetDefinition[],
   buildWidget: WidgetBuildFunction,
 ): Promise<GdanskManifest> {
-  await rm(options.buildDirectoryPath, { force: true, recursive: true });
-  await mkdir(options.buildDirectoryPath, { recursive: true });
-
   const manifestWidgets: GdanskManifest["widgets"] = {};
 
   for (const [index, widget] of widgets.entries()) {
@@ -187,8 +176,6 @@ async function writeInlineManifestFromWidgetBuilds(
     root: options.root,
     widgets: manifestWidgets,
   };
-
-  await writeJson(resolve(options.buildDirectoryPath, GDANSK_MANIFEST_FILENAME), manifest);
 
   return manifest;
 }
@@ -313,9 +300,4 @@ function assetSourceToString(source: AssetSource): string {
   }
 
   return TEXT_DECODER.decode(source);
-}
-
-async function writeJson(path: string, value: unknown): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${JSON.stringify(value)}\n`);
 }

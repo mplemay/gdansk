@@ -153,8 +153,8 @@ export default defineConfig({
 4. **Add widget:** Python `@ship.widget` + `widgets/<name>/widget.tsx` — validate
    [rules/path-contract.md](rules/path-contract.md).
 5. **Configure Vite:** `@gdansk/vite` with `refresh: true` for development.
-6. **Run and verify:** start server; confirm `dist/gdansk-manifest.json` exists and the `ui://` resource renders inline
-   JS/CSS.
+6. **Run and verify:** start server; confirm the `ui://` resource renders inline and the production build is cached in
+   memory JS/CSS.
 7. **On failure:** run `uv run gdansk doctor`, then follow
    [references/troubleshooting.md](references/troubleshooting.md).
 8. **After fix:** re-verify bundle output and tool calls from the widget UI.
@@ -193,7 +193,7 @@ Load only the most relevant reference first. Read additional references only if 
 Agents commonly make these mistakes with gdansk:
 
 - Prefixing `@ship.widget(path=...)` with `widgets/` or passing absolute paths.
-- Looking for production `client.js` or `client.css` files instead of `dist/gdansk-manifest.json`.
+- Looking for production `client.js` or `client.css` files instead of inline widget bundles.
 - Mismatching `views/` (CLI scaffold default) with a different frontend dir name without updating `Vite(...)`.
 - Running `vite` directly or using npm/deno instead of `uv run gdansk dev` / `uv run gdansk build`.
 - Python tool `name` not matching `callServerTool({ name: ... })` in the React widget.

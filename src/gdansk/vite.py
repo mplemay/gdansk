@@ -2,26 +2,46 @@ from __future__ import annotations
 
 from asyncio import sleep
 from http import HTTPStatus
+from importlib.metadata import version as package_version
 from os import PathLike
 from pathlib import Path, PurePosixPath
 from typing import Final
 
+from belgie import Runtime, Script
 from httpx import AsyncClient, RequestError
 from pydantic import ValidationError
 
+from gdansk._project import discover_project
 from gdansk.manifest import GdanskManifest, WidgetManifest
+from gdansk.packages import create_environment
 from gdansk.task import (
     DEFAULT_HOST,
     DEFAULT_PORT,
     CommandProcess,
     dev_command_argv,
-    run_project_command,
     start_project_command,
     task_origin,
 )
 from gdansk.utils import join_url
 
 type PathType = str | PathLike[str]
+
+GDANSK_BUILD_SCRIPT_SOURCE: Final[str] = """
+import { createGdanskRuntime } from "@gdansk/vite";
+
+export default async function run(options) {
+  const runtime = await createGdanskRuntime(options);
+  return await runtime.build();
+}
+"""
+
+GDANSK_VERSION_SCRIPT_SOURCE: Final[str] = """
+import { GDANSK_VERSION } from "@gdansk/vite";
+
+export default function run() {
+  return GDANSK_VERSION;
+}
+"""
 
 
 class Vite:
@@ -74,6 +94,9 @@ class Vite:
     def build_directory_path(self) -> Path:
         return self._build_directory_path
 
+    def has_manifest(self) -> bool:
+        return self._manifest is not None
+
     @property
     def root(self) -> Path:
         return self._root
@@ -105,30 +128,7 @@ class Vite:
         return self._frontend is not None
 
     def load_manifest(self) -> GdanskManifest:
-        if not (path := self.manifest_path).is_file():
-            msg = f"The frontend build did not produce a manifest at {path}"
-            raise RuntimeError(msg)
-
-        try:
-            manifest = GdanskManifest.model_validate_json(path.read_text(encoding="utf-8"))
-        except ValidationError as exc:
-            msg = f"The frontend build produced an invalid manifest at {path}"
-            raise RuntimeError(msg) from exc
-
-        if manifest.out_dir.strip("/") != self._build_directory:
-            msg = (
-                "The frontend build directory does not match the configured build directory. "
-                f'Ensure Vite(build_directory="{self._build_directory}") matches '
-                f'gdansk({{ buildDirectory: "{self._build_directory}" }}).'
-            )
-            raise RuntimeError(msg)
-
-        self._manifest = manifest
-        return manifest
-
-    @property
-    def manifest_path(self) -> Path:
-        return self._build_directory_path / "gdansk-manifest.json"
+        return self.require_manifest()
 
     def require_manifest(self) -> GdanskManifest:
         if self._manifest is None:
@@ -152,23 +152,31 @@ class Vite:
 
         return self._origin
 
-    async def build(self) -> None:
+    async def build(self) -> GdanskManifest:
         self.clear_manifest()
-        await run_project_command(
-            self._root,
-            "vite",
-            cwd=self._root,
-            argv=["build", "--outDir", self._build_directory],
-        )
+        await self._require_version_match()
+        manifest = await self._run_build_script()
+
+        if manifest.out_dir.strip("/") != self._build_directory:
+            msg = (
+                "The frontend build directory does not match the configured build directory. "
+                f'Ensure Vite(build_directory="{self._build_directory}") matches '
+                f'gdansk({{ buildDirectory: "{self._build_directory}" }}).'
+            )
+            raise RuntimeError(msg)
+
+        self._manifest = manifest
+        return manifest
 
     async def start_dev(self) -> None:
+        self.clear_manifest()
         if self._frontend is not None:
             if self._frontend.is_running:
                 return
             self._frontend = None
             self._origin = None
 
-        self.clear_manifest()
+        await self._require_version_match()
         self._frontend = await start_project_command(
             self._root,
             "vite",
@@ -208,3 +216,45 @@ class Vite:
             f'gdansk({{ host: "{self._host}", port: {self._port} }}).'
         )
         raise RuntimeError(msg)
+
+    async def _require_version_match(self) -> None:
+        ts_version = await self._run_version_script()
+        if not isinstance(ts_version, str):
+            msg = "The frontend runtime reported an invalid belgie package version"
+            raise TypeError(msg)
+
+        python_version = package_version("gdansk")
+        if python_version != ts_version:
+            msg = (
+                "The Python and TypeScript belgie package versions do not match. "
+                f"Python gdansk={python_version}, @gdansk/vite={ts_version}."
+            )
+            raise RuntimeError(msg)
+
+    async def _run_build_script(self) -> GdanskManifest:
+        manifest = await self._run_package_script(GDANSK_BUILD_SCRIPT_SOURCE, self._bridge_options())
+        try:
+            return GdanskManifest.model_validate(manifest)
+        except ValidationError as exc:
+            msg = "The frontend build produced an invalid manifest"
+            raise RuntimeError(msg) from exc
+
+    async def _run_package_script(self, source: str, options: dict[str, object] | None = None) -> object:
+        project = discover_project(start=self._root)
+        environment = create_environment(project, frozen=True)
+        async with environment as active_environment:
+            await active_environment.install()
+            async with Runtime(env=active_environment) as runtime:
+                runner = runtime(Script(source))
+                return await runner(options) if options is not None else await runner()
+
+    async def _run_version_script(self) -> object:
+        return await self._run_package_script(GDANSK_VERSION_SCRIPT_SOURCE)
+
+    def _bridge_options(self) -> dict[str, object]:
+        return {
+            "buildDirectory": self._build_directory,
+            "host": self._host,
+            "port": self._port,
+            "root": str(self._root),
+        }
