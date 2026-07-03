@@ -37,6 +37,24 @@ def test_doctor_fails_without_dependencies_table(
     assert "fail No [gdansk.dependencies]" in stdout
 
 
+def test_doctor_fails_without_widget_package(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    write_src_layout_project(
+        project_root,
+        dependencies={"react": "^19", "react-dom": "^19", "vite": ">=8.1,<9"},
+    )
+
+    code, stdout, _stderr = run_cli(["doctor"], monkeypatch=monkeypatch, cwd=project_root, capsys=capsys)
+
+    assert code == 1
+    assert "Required gdansk dependency '@gdansk/widget' is missing" in stdout
+
+
 def test_doctor_warns_when_root_lock_missing(
     gdansk_project: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,

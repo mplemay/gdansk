@@ -19,7 +19,7 @@
     - **Don't use other package managers for javascript / typescript dependencies (ex: `bun`, `npm`, etc.)** in
       app/example roots.
     - **Don't add `package.json` or `deno.json` files to app/example frontend roots.**
-    - **Keep `package.json` only for separately published JavaScript packages, such as `packages/vite` (which may use
+    - **Keep `package.json` only for separately published JavaScript packages, such as `packages/widget` (which may use
       npm/deno in its own CI).**
     - **Commit `deno.lock` at the Python project root when gdansk dependencies change.**
 

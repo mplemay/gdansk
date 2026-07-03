@@ -34,7 +34,7 @@ def test_init_creates_scaffold_and_gdansk_tables(
     assert code == 0
     assert calls == [target.resolve()]
     assert (target / "src" / "my_mcp_server" / "__main__.py").exists()
-    assert (target / "src" / "my_mcp_server" / "views" / "vite.config.ts").exists()
+    assert not (target / "src" / "my_mcp_server" / "views" / "vite.config.ts").exists()
     assert (target / "src" / "my_mcp_server" / "views" / "widgets" / "hello" / "widget.tsx").exists()
     text = (target / "pyproject.toml").read_text(encoding="utf-8")
     assert "[gdansk.dependencies]" in text
@@ -89,7 +89,7 @@ def test_init_appends_gdansk_to_existing_pyproject(
     document = read_pyproject_document(target)
     assert document["project"]["name"] == "existing"
     assert "dependencies" in document["gdansk"]
-    assert (target / "src" / "existing" / "views" / "vite.config.ts").exists()
+    assert not (target / "src" / "existing" / "views" / "vite.config.ts").exists()
 
 
 def test_init_refuses_existing_gdansk_without_force(
@@ -160,7 +160,7 @@ def test_init_custom_package_directory(
 
     document = read_pyproject_document(target)
     assert document["project"]["scripts"]["main"] == "custom_pkg.__main__:main"
-    assert (target / "src" / "custom_pkg" / "views" / "vite.config.ts").exists()
+    assert not (target / "src" / "custom_pkg" / "views" / "vite.config.ts").exists()
 
 
 def test_init_refuses_existing_main_without_force(
@@ -210,7 +210,6 @@ def test_templates_are_loadable():
     assert {
         "__main__.py",
         "__init__.py",
-        "vite.config.ts",
         "widget.tsx",
         "pyproject.toml",
         "gdansk_tables.toml",

@@ -16,13 +16,20 @@ app = typer.Typer()
 
 
 def _doctor_check_dependencies(project: GdanskProject, failures: list[str]) -> None:
-    if project.has_dependencies:
-        print(f"ok   [gdansk.dependencies] in {project.root / 'pyproject.toml'}")
+    if not project.has_dependencies:
+        message = "No [gdansk.dependencies] table found"
+        print(f"fail {message}")
+        failures.append(message)
         return
 
-    message = "No [gdansk.dependencies] table found"
-    print(f"fail {message}")
-    failures.append(message)
+    print(f"ok   [gdansk.dependencies] in {project.root / 'pyproject.toml'}")
+    for alias in ("@gdansk/widget", "vite", "react", "react-dom"):
+        if project.dependency(alias) is None:
+            message = f"Required gdansk dependency {alias!r} is missing"
+            print(f"fail {message}")
+            failures.append(message)
+        else:
+            print(f"ok   gdansk dependency ({alias})")
 
 
 def _doctor_check_frontend(

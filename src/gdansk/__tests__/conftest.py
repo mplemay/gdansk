@@ -31,10 +31,10 @@ def run_cli(
 
 
 def stage_init_vite_package(init_target: Path) -> None:
-    vite_dest = init_target.parent.parent / "packages" / "vite"
-    vite_dest.parent.mkdir(parents=True, exist_ok=True)
-    if not vite_dest.exists():
-        vite_dest.symlink_to(REPO_ROOT / "packages" / "vite", target_is_directory=True)
+    widget_dest = init_target.parent.parent / "packages" / "widget"
+    widget_dest.parent.mkdir(parents=True, exist_ok=True)
+    if not widget_dest.exists():
+        widget_dest.symlink_to(REPO_ROOT / "packages" / "widget", target_is_directory=True)
 
 
 def write_pyproject(
@@ -63,7 +63,16 @@ def write_pyproject(
             lines.extend(f"{dumps(name)} = {dumps(target)}" for name, target in entry_scripts.items())
             lines.append("")
 
-    deps = dependencies if dependencies is not None else {"vite": "8.0.14"}
+    deps = (
+        dependencies
+        if dependencies is not None
+        else {
+            "@gdansk/widget": f"file:{REPO_ROOT / 'packages' / 'widget'}",
+            "react": "19.2.6",
+            "react-dom": "19.2.6",
+            "vite": "8.1.3",
+        }
+    )
     if deps:
         lines.append("[gdansk.dependencies]")
         lines.extend(f"{dumps(name)} = {dumps(value)}" for name, value in deps.items())
@@ -94,11 +103,8 @@ def write_frontend_tree(
     frontend = root / name
     (frontend / "widgets" / "hello").mkdir(parents=True, exist_ok=True)
     (frontend / "widgets" / "hello" / "widget.tsx").write_text(
-        "export default function App() { return null; }\n",
-        encoding="utf-8",
-    )
-    (frontend / "vite.config.ts").write_text(
-        "export default {};\n",
+        'import { render } from "@gdansk/widget";\n'
+        "export default function widget() { return render({ widget: <main /> }); }\n",
         encoding="utf-8",
     )
     return frontend

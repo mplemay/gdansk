@@ -28,7 +28,7 @@ def test_init_creates_scaffold_and_lockfile(
     assert code == 0
     assert "Initialized gdansk project" in stdout
     assert (target / "src" / "my_mcp_server" / "__main__.py").exists()
-    assert (target / "src" / "my_mcp_server" / "views" / "vite.config.ts").exists()
+    assert not (target / "src" / "my_mcp_server" / "views" / "vite.config.ts").exists()
     assert (target / "src" / "my_mcp_server" / "views" / "widgets" / "hello" / "widget.tsx").exists()
     document = read_pyproject_document(target)
     assert "dependencies" in document["gdansk"]

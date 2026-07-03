@@ -1,5 +1,4 @@
 from gdansk.core import Ship
-from gdansk.metadata import Metadata
 from gdansk.vite import Vite
 from gdansk.widget import FileParam, WidgetMeta
 
@@ -16,7 +15,6 @@ __all__: tuple[str, ...] = (
     "JsonObject",
     "JsonOutput",
     "JsonPrimitive",
-    "Metadata",
     "Ship",
     "Vite",
     "WidgetMeta",

@@ -14,16 +14,13 @@ def test_gdansk_manifest_accepts_outdir_alias() -> None:
             "widgets": {
                 "hello": {
                     "entry": "hello/widget.tsx",
-                    "inline": {
-                        "script": 'console.log("hello");',
-                        "styles": [".hello { color: red; }"],
-                    },
+                    "html": '<!DOCTYPE html><div id="root"></div>',
                 },
             },
         },
     )
     assert manifest.out_dir == "dist"
-    assert manifest.widgets["hello"].inline.script == 'console.log("hello");'
+    assert manifest.widgets["hello"].html.startswith("<!DOCTYPE html>")
 
 
 def test_gdansk_manifest_rejects_external_asset_widget_shape() -> None:

@@ -1,73 +1,13 @@
-# Widget path contract and `@ship.widget` wiring
+# Widget path contract
 
-This file defines the strict `path` contract for `@ship.widget(...)`.
-
-For Incorrect/Correct pairs aimed at agents, see [rules/path-contract.md](../rules/path-contract.md).
-
-## Core rules
-
-1. Pass a relative path only.
-2. Do not include traversal segments (`.` or `..`).
-3. Do not prefix with `widgets/` in decorator input.
-4. The path must end with `widget.tsx` or `widget.jsx`.
-5. Ensure the target file exists under `<frontend-root>/widgets/` relative to the `Vite(...)` root passed to `Ship`.
-
-## Contract table
-
-| `path` input in `@ship.widget` | Accepted | Resolution behavior | Resource URI |
-| --- | --- | --- | --- |
-| `Path("hello/widget.tsx")` | Yes | explicit file under `widgets/hello/` | `ui://hello` |
-| `Path("nested/page/widget.tsx")` | Yes | explicit file under `widgets/nested/page/` | `ui://nested/page` |
-| `Path("hello/widget.jsx")` | Yes | explicit file under `widgets/hello/` | `ui://hello` |
-| `"widgets/hello/widget.tsx"` | No | rejected: must not start with `widgets/` | n/a |
-| `Path("hello")` | No | rejected: must point to `widget.tsx` or `widget.jsx` | n/a |
-| `Path("simple.tsx")` | No | rejected: must point to `widget.tsx` or `widget.jsx` | n/a |
-| `Path("/abs/path/widget.tsx")` | No | rejected: must be relative | n/a |
-| `Path("hello/../hello/widget.tsx")` | No | rejected: traversal not allowed | n/a |
-
-## What gdansk wires for you
-
-Minimal pattern:
+`Vite(...)` receives the frontend root containing `widgets/`. Python decorator paths are relative to that directory:
 
 ```python
-from pathlib import Path
-from mcp.types import TextContent
-
-
 @ship.widget(path=Path("hello/widget.tsx"), name="hello")
-def hello(name: str = "world") -> list[TextContent]:
-    return [TextContent(type="text", text=f"Hello, {name}!")]
 ```
 
-gdansk registers:
+Valid entry names are `widget.tsx` and `widget.jsx`; nested directories are allowed. Do not prefix paths with
+`widgets/`, pass an absolute path, or point `Vite(...)` at the `widgets/` directory itself.
 
-1. The MCP tool for your function.
-2. A UI resource with `mime_type="text/html;profile=mcp-app"`.
-3. Tool metadata with `meta["ui"]["resourceUri"] = "ui://hello"`.
-
-## `ui://` URI derivation
-
-Given `path` like `hello/widget.tsx` or `nested/page/widget.tsx`, the resource URI is:
-
-```text
-ui://<parent_segments>
-```
-
-Examples:
-
-- `hello/widget.tsx` -> `ui://hello`
-- `nested/page/widget.tsx` -> `ui://nested/page`
-
-## Production output mapping
-
-For `hello/widget.tsx`:
-
-- manifest entry: `dist/gdansk-manifest.json` → `widgets.hello.inline.script`
-- optional styles: `dist/gdansk-manifest.json` → `widgets.hello.inline.styles`
-
-## Guardrail checklist
-
-- The decorator `path` value is relative and does not start with `widgets/`.
-- The target widget file exists and is named `widget.tsx` or `widget.jsx`.
-- The React widget default-exports the app component.
-- The Python tool `name` and UI `callServerTool(...)` names are aligned.
+The widget key is the relative parent path (`hello` above). Production stores its complete page at
+`widgets.hello.html` in `gdansk-manifest.json`.

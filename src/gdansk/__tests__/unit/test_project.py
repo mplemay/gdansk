@@ -182,12 +182,9 @@ def test_validate_frontend_root_happy_path(gdansk_project: tuple[Path, Path]):
     validate_frontend_root(frontend_root)
 
 
-def test_validate_frontend_root_errors_without_vite_config(tmp_path: Path):
+def test_validate_frontend_root_accepts_missing_vite_config(tmp_path: Path):
     frontend_root = write_frontend_tree(tmp_path)
-    (frontend_root / "vite.config.ts").unlink()
-
-    with pytest.raises(ProjectError, match="vite.config.ts"):
-        validate_frontend_root(frontend_root)
+    validate_frontend_root(frontend_root)
 
 
 def test_validate_frontend_root_errors_without_widgets(tmp_path: Path):

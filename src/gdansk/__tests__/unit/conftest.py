@@ -48,16 +48,22 @@ def write_manifest(
 ) -> None:
     resolved_styles = styles if styles is not None else [".hello { color: red; }\n"]
     out_dir = manifest_out_dir or assets_dir
+    escaped_script = script.replace("</script", "<\\/script")
+    escaped_styles = [style.replace("</style", "<\\/style") for style in resolved_styles]
+    html = (
+        "<!DOCTYPE html>\n<html>\n<head>\n"
+        + "\n".join(f"<style>{style}</style>" for style in escaped_styles)
+        + '\n</head>\n<body>\n<div id="root"></div>\n'
+        + f'<script type="module">{escaped_script}</script>\n'
+        + "</body>\n</html>\n"
+    )
     manifest: dict[str, Any] = {
         "outDir": out_dir,
         "root": str(views),
         "widgets": {
             "hello": {
                 "entry": "hello/widget.tsx",
-                "inline": {
-                    "script": script,
-                    "styles": resolved_styles,
-                },
+                "html": html,
             },
         },
     }

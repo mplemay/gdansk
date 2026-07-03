@@ -1,25 +1,17 @@
 from __future__ import annotations
 
 from asyncio import sleep
-from http import HTTPStatus
+from json import dumps
 from os import PathLike
 from pathlib import Path, PurePosixPath
+from tempfile import TemporaryDirectory
 from typing import Final
 
 from httpx import AsyncClient, RequestError
 from pydantic import ValidationError
 
-from gdansk.manifest import GdanskManifest, WidgetManifest
-from gdansk.task import (
-    DEFAULT_HOST,
-    DEFAULT_PORT,
-    CommandProcess,
-    dev_command_argv,
-    run_project_command,
-    start_project_command,
-    task_origin,
-)
-from gdansk.utils import join_url
+from gdansk.manifest import DevelopmentWidgetManifest, GdanskDevelopmentManifest, GdanskManifest, WidgetManifest
+from gdansk.task import DEFAULT_HOST, DEFAULT_PORT, CommandProcess, run_widget_command, start_widget_command
 
 type PathType = str | PathLike[str]
 
@@ -35,36 +27,29 @@ class Vite:
     ) -> None:
         if root is None:
             root = Path.cwd() / "views"
-
         if not (root := Path(root)).exists():
             msg = f"The frontend root directory (i.e. {root}) does not exist"
             raise FileNotFoundError(msg)
-
         if not root.is_dir():
             msg = f"The frontend root directory (i.e. {root}) is not a directory"
             raise ValueError(msg)
-
         if not (host := host.strip()):
             msg = "The runtime host must not be empty"
             raise ValueError(msg)
-
         if port <= 0 or port > 65_535:  # noqa: PLR2004
             msg = "The runtime port must be an integer between 1 and 65,535"
             raise ValueError(msg)
 
-        self._build_directory: Final[str] = self._normalize_relative_directory(
-            build_directory,
-            name="build",
-        )
+        self._build_directory: Final[str] = self._normalize_relative_directory(build_directory, name="build")
         self._build_directory_path: Final[Path] = root.absolute().resolve() / self._build_directory
         self._host: Final[str] = host
         self._port: Final[int] = port
         self._root: Final[Path] = root.absolute().resolve()
         self._widgets_root: Final[Path] = self._root / "widgets"
-
+        self._development_manifest: GdanskDevelopmentManifest | None = None
         self._frontend: CommandProcess | None = None
         self._manifest: GdanskManifest | None = None
-        self._origin: str | None = None
+        self._runtime_directory: TemporaryDirectory[str] | None = None
 
     @property
     def build_directory(self) -> str:
@@ -87,19 +72,24 @@ class Vite:
         if not (cleaned := directory.strip().strip("/")):
             msg = f"The {name} directory must not be empty"
             raise ValueError(msg)
-
         posix = PurePosixPath(cleaned)
         if posix.is_absolute() or any(part in {"", ".", ".."} for part in posix.parts):
             msg = f"The {name} directory (i.e. {directory}) must be a relative path without traversal segments"
             raise ValueError(msg)
-
         return posix.as_posix()
 
     def clear_manifest(self) -> None:
         self._manifest = None
+        self._development_manifest = None
 
-    def development_asset_path(self, *, widget_key: str) -> str:
-        return PurePosixPath("/@gdansk/client", f"{widget_key}.tsx").as_posix()
+    def development_widget(self, widget_key: str) -> DevelopmentWidgetManifest:
+        if self._development_manifest is None:
+            msg = "The development manifest is not loaded"
+            raise RuntimeError(msg)
+        if (widget := self._development_manifest.widgets.get(widget_key)) is None:
+            msg = f'The development manifest does not contain the widget "{widget_key}"'
+            raise RuntimeError(msg)
+        return widget
 
     def has_runtime(self) -> bool:
         return self._frontend is not None
@@ -108,21 +98,14 @@ class Vite:
         if not (path := self.manifest_path).is_file():
             msg = f"The frontend build did not produce a manifest at {path}"
             raise RuntimeError(msg)
-
         try:
             manifest = GdanskManifest.model_validate_json(path.read_text(encoding="utf-8"))
         except ValidationError as exc:
             msg = f"The frontend build produced an invalid manifest at {path}"
             raise RuntimeError(msg) from exc
-
         if manifest.out_dir.strip("/") != self._build_directory:
-            msg = (
-                "The frontend build directory does not match the configured build directory. "
-                f'Ensure Vite(build_directory="{self._build_directory}") matches '
-                f'gdansk({{ buildDirectory: "{self._build_directory}" }}).'
-            )
+            msg = f"The frontend build does not match the configured build directory {self._build_directory!r}"
             raise RuntimeError(msg)
-
         self._manifest = manifest
         return manifest
 
@@ -130,81 +113,97 @@ class Vite:
     def manifest_path(self) -> Path:
         return self._build_directory_path / "gdansk-manifest.json"
 
-    def require_manifest(self) -> GdanskManifest:
-        if self._manifest is None:
-            msg = "The production asset manifest is not loaded"
-            raise RuntimeError(msg)
-
-        return self._manifest
-
     def require_manifest_widget(self, widget_key: str) -> WidgetManifest:
         manifest = self.require_manifest()
         if (widget := manifest.widgets.get(widget_key)) is None:
-            msg = f'The production asset manifest does not contain the widget "{widget_key}"'
+            msg = f'The production widget manifest does not contain the widget "{widget_key}"'
             raise RuntimeError(msg)
-
         return widget
 
-    def require_origin(self) -> str:
-        if self._origin is None:
-            msg = "The frontend dev server is not running"
+    def require_manifest(self) -> GdanskManifest:
+        if self._manifest is None:
+            msg = "The production widget manifest is not loaded"
             raise RuntimeError(msg)
-
-        return self._origin
+        return self._manifest
 
     async def build(self) -> None:
         self.clear_manifest()
-        await run_project_command(
+        source = (
+            'import { buildProject } from "@gdansk/widget";\n'
+            "export default async () => await buildProject("
+            f"{dumps(str(self._root))}, {dumps(self._build_directory)});\n"
+        )
+        await run_widget_command(
             self._root,
-            "vite",
-            cwd=self._root,
-            argv=["build", "--outDir", self._build_directory],
+            ["build", "--root", str(self._root), "--out-dir", self._build_directory],
+            local_source=source,
         )
 
-    async def start_dev(self) -> None:
+    async def start_dev(self) -> CommandProcess:
         if self._frontend is not None:
             if self._frontend.is_running:
-                return
+                return self._frontend
             self._frontend = None
-            self._origin = None
-
         self.clear_manifest()
-        self._frontend = await start_project_command(
-            self._root,
-            "vite",
-            cwd=self._root,
-            argv=dev_command_argv(self._host, self._port),
+        self._cleanup_runtime_directory()
+        self._runtime_directory = TemporaryDirectory(prefix="gdansk-runtime-")
+        manifest = Path(self._runtime_directory.name) / "manifest.json"
+        source = (
+            'import { startDevelopment } from "@gdansk/widget";\n'
+            "export default async () => await startDevelopment({"
+            f"host: {dumps(self._host)}, manifest: {dumps(str(manifest))}, "
+            f"port: {self._port}, root: {dumps(str(self._root))}"
+            "});\n"
         )
-        self._origin = task_origin(self._host, self._port)
+        self._frontend = await start_widget_command(
+            self._root,
+            [
+                "dev",
+                "--root",
+                str(self._root),
+                "--host",
+                self._host,
+                "--port",
+                str(self._port),
+                "--manifest",
+                str(manifest),
+            ],
+            local_source=source,
+        )
+        return self._frontend
 
     async def stop(self) -> None:
         frontend = self._frontend
         self._frontend = None
-        self._origin = None
-        if frontend is not None:
-            await frontend.stop()
+        try:
+            if frontend is not None:
+                await frontend.stop()
+        finally:
+            self._cleanup_runtime_directory()
+            self._development_manifest = None
 
     async def wait_until_ready(self, client: AsyncClient) -> None:
-        if self._origin is None:
+        if self._runtime_directory is None:
             msg = "The frontend dev server has not been started"
             raise RuntimeError(msg)
-
-        client_url = join_url(self._origin, "/@vite/client")
-
+        path = Path(self._runtime_directory.name) / "manifest.json"
         for _ in range(1200):
-            try:
-                response = await client.get(client_url, timeout=0.2)
-            except RequestError:
-                pass
-            else:
-                if response.status_code == HTTPStatus.OK:
+            if path.is_file():
+                try:
+                    manifest = GdanskDevelopmentManifest.model_validate_json(path.read_text(encoding="utf-8"))
+                    for widget in manifest.widgets.values():
+                        response = await client.get(widget.page, timeout=0.2)
+                        response.raise_for_status()
+                except (OSError, RequestError, ValidationError):
+                    pass
+                else:
+                    self._development_manifest = manifest
                     return
-
             await sleep(0.05)
-
-        msg = (
-            f"The frontend dev server did not start in time ({client_url}). "
-            f'Ensure Vite(host="{self._host}", port={self._port}) matches '
-            f'gdansk({{ host: "{self._host}", port: {self._port} }}).'
-        )
+        msg = f"The isolated widget dev servers did not start in time ({path})"
         raise RuntimeError(msg)
+
+    def _cleanup_runtime_directory(self) -> None:
+        if self._runtime_directory is not None:
+            self._runtime_directory.cleanup()
+            self._runtime_directory = None

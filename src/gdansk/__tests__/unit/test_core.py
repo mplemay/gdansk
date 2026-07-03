@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from json import dumps
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx
 import pytest
@@ -13,7 +15,6 @@ from pydantic import BaseModel
 from gdansk.__tests__.unit.conftest import write_manifest
 from gdansk.core import Ship
 from gdansk.manifest import GdanskManifest
-from gdansk.metadata import Metadata
 from gdansk.vite import Vite
 
 if TYPE_CHECKING:
@@ -45,7 +46,25 @@ def _stub_frontend(origin: str) -> CommandProcess:
 
 def _stub_vite_runtime(vite: Vite, origin: str) -> None:
     vite._frontend = _stub_frontend(origin)
-    vite._origin = origin
+    runtime_path = vite.root / ".gdansk-test-runtime"
+    runtime_path.mkdir(exist_ok=True)
+    vite._runtime_directory = cast("Any", SimpleNamespace(name=str(runtime_path), cleanup=lambda: None))
+    manifest = Path(vite._runtime_directory.name) / "manifest.json"
+    manifest.write_text(
+        dumps(
+            {
+                "root": str(vite.root),
+                "widgets": {
+                    "hello": {
+                        "entry": "hello/widget.tsx",
+                        "origin": origin,
+                        "page": f"{origin}/@gdansk/page",
+                    },
+                },
+            },
+        ),
+        encoding="utf-8",
+    )
 
 
 def test_ship_defaults_to_vite_under_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -310,33 +329,31 @@ async def test_wait_for_vite_reads_vite_client_endpoint(views_path: Path):
         await ship._vite.wait_until_ready(client)
 
     assert len(requests_seen) == 1
-    assert str(requests_seen[0].url) == "http://runtime.test/@vite/client"
+    assert str(requests_seen[0].url) == "http://runtime.test/@gdansk/page"
     assert requests_seen[0].extensions.get("timeout") == {"connect": 0.2, "read": 0.2, "write": 0.2, "pool": 0.2}
 
 
 async def test_widget_resource_renders_complete_document(views_path: Path):
-    ship = Ship(
-        vite=Vite(views_path),
-        metadata=Metadata(title="Base title"),
-    )
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text='<!DOCTYPE html><html><body><div id="root"></div></body></html>')
 
-    @ship.widget(path=Path("hello/widget.tsx"), name="hello", metadata=Metadata(description="Widget description"))
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    ship = Ship(vite=Vite(views_path), client=client)
+
+    @ship.widget(path=Path("hello/widget.tsx"), name="hello")
     def hello() -> None:
         return None
 
     ship._dev = True
     _stub_vite_runtime(ship._vite, "http://render.test")
+    await ship._vite.wait_until_ready(client)
 
     html = await ship._widget_manager[Path("hello/widget.tsx")].resource.read()
     assert isinstance(html, str)
 
-    assert "<title>Base title</title>" in html
-    assert '<meta name="description" content="Widget description" />' in html
-    assert 'import RefreshRuntime from "http://render.test/@react-refresh"' in html
-    assert "window.__vite_plugin_react_preamble_installed__ = true" in html
+    assert "<!DOCTYPE html>" in html
     assert '<div id="root"></div>' in html
-    assert '<script type="module" src="http://render.test/@vite/client"></script>' in html
-    assert '<script type="module" src="http://render.test/@gdansk/client/hello.tsx"></script>' in html
+    await client.aclose()
 
 
 async def test_widget_resource_renders_production_scripts(views_path: Path):
@@ -422,26 +439,26 @@ async def test_widget_resource_raises_when_manifest_is_missing_widget(views_path
     ship._vite._manifest = GdanskManifest(outDir="dist", root=str(views_path), widgets={})
 
     with pytest.raises(RuntimeError, match='does not contain the widget "hello"'):
-        await ship.render_widget_page(metadata=None, widget_key="hello")
+        await ship.render_widget_page(widget_key="hello")
 
 
 async def test_build_uses_task_runner(views_path: Path, monkeypatch: pytest.MonkeyPatch):
     captured: dict[str, object] | None = None
 
-    async def fake_run_command(start: Path, command: str, **kwargs: object) -> None:
+    async def fake_run_script(start: Path, argv: list[str], *, local_source: str) -> None:
         nonlocal captured
-        captured = {"start": start, "command": command, **kwargs}
+        captured = {"argv": argv, "start": start, "source": local_source}
 
     ship = Ship(vite=Vite(views_path))
-    monkeypatch.setattr("gdansk.vite.run_project_command", fake_run_command)
+    monkeypatch.setattr("gdansk.vite.run_widget_command", fake_run_script)
 
     await ship._vite.build()
 
     assert captured is not None
     assert captured["start"] == views_path
-    assert captured["command"] == "vite"
-    assert captured["cwd"] == views_path
-    assert captured["argv"] == ["build", "--outDir", "dist"]
+    assert captured["argv"] == ["build", "--root", str(views_path), "--out-dir", "dist"]
+    assert "buildProject" in cast("str", captured["source"])
+    assert '"dist"' in cast("str", captured["source"])
 
 
 async def test_wait_for_vite_timeout_mentions_matching_vite_and_plugin_config(
@@ -469,8 +486,7 @@ async def test_wait_for_vite_timeout_mentions_matching_vite_and_plugin_config(
             await ship._vite.wait_until_ready(client)
 
     error = str(exc_info.value)
-    assert 'Ensure Vite(host="localhost", port=43123)' in error
-    assert 'gdansk({ host: "localhost", port: 43123 })' in error
+    assert "isolated widget dev servers" in error
 
 
 async def test_ship_mcp_cleans_up_runtime_on_exit(views_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -489,7 +505,6 @@ async def test_ship_mcp_cleans_up_runtime_on_exit(views_path: Path, monkeypatch:
         assert ship._active is True
         assert ship._dev is True
         assert ship._vite.has_runtime() is True
-        assert ship._vite.require_origin() == "http://127.0.0.1:13714"
 
     assert ship._active is False
     assert ship._dev is False
@@ -588,7 +603,7 @@ async def test_start_production_builds_and_loads_manifest(views_path: Path, monk
 
     async with ship.mcp(app=_app(), watch=False):
         assert ship._vite.has_runtime() is False
-        assert ship._vite.require_manifest().widgets["hello"].inline.script == 'console.log("hello");\n'
+        assert 'console.log("hello");' in ship._vite.require_manifest().widgets["hello"].html
 
     assert ship._vite._manifest is None
 
@@ -617,7 +632,7 @@ async def test_start_prebuilt_loads_manifest_without_build(views_path: Path, mon
 
     async with ship.mcp(app=_app(), watch=None):
         assert ship._vite.has_runtime() is False
-        assert ship._vite.require_manifest().widgets["hello"].inline.script == 'console.log("hello");\n'
+        assert 'console.log("hello");' in ship._vite.require_manifest().widgets["hello"].html
         assert ship._dev is False
 
     assert ship._vite._manifest is None
@@ -644,7 +659,7 @@ async def test_ship_mcp_open_prebuilt_skips_runtime_start(views_path: Path, monk
         assert ship._active is True
         assert ship._dev is False
         assert ship._vite.has_runtime() is False
-        assert ship._vite.require_manifest().widgets["hello"].inline.script == 'console.log("hello");\n'
+        assert 'console.log("hello");' in ship._vite.require_manifest().widgets["hello"].html
 
     assert ship._active is False
     assert ship._vite._manifest is None

@@ -377,10 +377,6 @@ def validate_frontend_root(path: Path) -> None:
         msg = f"Frontend root is not a directory: {path}"
         raise ProjectError(msg)
 
-    if not (path / "vite.config.ts").is_file():
-        msg = f"Frontend root is missing vite.config.ts: {path}"
-        raise ProjectError(msg)
-
     if not (path / "widgets").is_dir():
         msg = f"Frontend root is missing widgets/: {path}"
         raise ProjectError(msg)

@@ -110,11 +110,6 @@ def init(
             force=force,
         )
         _write_scaffold_file(
-            views_path / "vite.config.ts",
-            _template_text("vite.config.ts"),
-            force=force,
-        )
-        _write_scaffold_file(
             views_path / "widgets" / "hello" / "widget.tsx",
             _template_text("widget.tsx"),
             force=force,

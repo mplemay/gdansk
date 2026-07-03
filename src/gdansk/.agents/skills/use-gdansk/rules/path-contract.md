@@ -25,7 +25,7 @@ ship = Ship(vite=Vite(Path(__file__).parent / "views" / "widgets"))
 ship = Ship(vite=Vite(Path(__file__).parent / "views"))
 ```
 
-`Vite(...)` receives the frontend root containing `vite.config.ts` and `widgets/`.
+`Vite(...)` receives the frontend root containing `widgets/`.
 
 ---
 

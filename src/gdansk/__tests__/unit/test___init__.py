@@ -40,7 +40,6 @@ def test_top_level_exports_gdansk_surface() -> None:
         "JsonObject",
         "JsonOutput",
         "JsonPrimitive",
-        "Metadata",
         "Ship",
         "Vite",
         "WidgetMeta",

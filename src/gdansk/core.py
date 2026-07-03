@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from functools import partial
 from os import PathLike
 from pathlib import Path, PurePosixPath
-from re import IGNORECASE, Pattern, compile as compile_pattern
 from typing import TYPE_CHECKING, Any, Final, Literal
 from urllib.parse import urlparse
 
@@ -14,9 +13,6 @@ from mcp.server.mcpserver.resources import FunctionResource
 from mcp.server.mcpserver.tools.base import Tool
 
 from gdansk._schema import to_strict_schema
-from gdansk.metadata import Metadata, merge_metadata
-from gdansk.render import render_template
-from gdansk.utils import join_url
 from gdansk.vite import Vite
 from gdansk.widget import WidgetMeta, transform
 
@@ -29,14 +25,10 @@ if TYPE_CHECKING:
 
 type PathType = str | PathLike[str]
 
-INLINE_SCRIPT_END_TAG_PATTERN: Final[Pattern[str]] = compile_pattern(r"</script", IGNORECASE)
-INLINE_STYLE_END_TAG_PATTERN: Final[Pattern[str]] = compile_pattern(r"</style", IGNORECASE)
-
 
 @dataclass(slots=True, kw_only=True, frozen=True)
 class WidgetSpec:
     key: str
-    metadata: Metadata | None
     resource: FunctionResource
     tool: Tool
     uri: str
@@ -48,7 +40,6 @@ class Ship:
         *,
         vite: Vite | None = None,
         base_url: str | None = None,
-        metadata: Metadata | None = None,
         client: AsyncClient | None = None,
     ) -> None:
         if base_url is not None and urlparse(base_url).hostname is None:
@@ -58,7 +49,6 @@ class Ship:
         self._base_url: Final[str | None] = base_url
         self._client: Final[AsyncClient | None] = client
         self._dev = False
-        self._metadata: Final[Metadata] = metadata or Metadata()
         self._session_client: AsyncClient | None = None
         self._vite: Final[Vite] = vite or Vite()
         self._widget_manager: dict[Path, WidgetSpec] = {}
@@ -123,34 +113,13 @@ class Ship:
                 await self._session_client.aclose()
                 self._session_client = None
 
-    async def render_widget_page(self, *, metadata: Metadata | None, widget_key: str) -> str:
-        body = ""
-        head: list[str] = []
-        inline_scripts: list[str] = []
-        runtime_origin: str | None = None
-
+    async def render_widget_page(self, *, widget_key: str) -> str:
         if self._dev:
-            runtime_origin = self._vite.require_origin()
-            scripts = [
-                join_url(runtime_origin, "/@vite/client"),
-                join_url(runtime_origin, self._vite.development_asset_path(widget_key=widget_key)),
-            ]
-        else:
-            widget = self._vite.require_manifest_widget(widget_key)
-            scripts = []
-            head = [f"<style>{_escape_inline_style(style)}</style>" for style in widget.inline.styles]
-            inline_scripts = [_escape_inline_script(widget.inline.script)]
-
-        return render_template(
-            "base.html",
-            body=body,
-            dev=self._dev,
-            head=head,
-            inline_scripts=inline_scripts,
-            metadata=metadata,
-            runtime_origin=runtime_origin,
-            scripts=scripts,
-        )
+            widget = self._vite.development_widget(widget_key)
+            response = await (await self._require_client()).get(widget.page)
+            response.raise_for_status()
+            return response.text
+        return self._vite.require_manifest_widget(widget_key).html
 
     @staticmethod
     def _normalize_widget_path(path: Path) -> PurePosixPath:
@@ -179,7 +148,6 @@ class Ship:
         annotations: ToolAnnotations | None = None,
         icons: list[Icon] | None = None,
         meta: WidgetMeta | None = None,
-        metadata: Metadata | None = None,
         schema: Literal["default", "strict"] = "default",
         structured_output: bool | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
@@ -198,8 +166,6 @@ class Ship:
                 "description": description,
             },
         )
-
-        merged_metadata = merge_metadata(self._metadata, metadata)
 
         def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
             relative_path = Path(posix_path.as_posix())
@@ -220,7 +186,7 @@ class Ship:
             if schema == "strict":
                 tool.parameters = to_strict_schema(tool.parameters)
             resource = FunctionResource.from_function(
-                fn=partial(self.render_widget_page, metadata=merged_metadata, widget_key=key),
+                fn=partial(self.render_widget_page, widget_key=key),
                 uri=uri,
                 name=name,
                 title=title,
@@ -231,7 +197,6 @@ class Ship:
 
             self._widget_manager[relative_path] = WidgetSpec(
                 key=key,
-                metadata=merged_metadata,
                 resource=resource,
                 tool=tool,
                 uri=uri,
@@ -240,15 +205,3 @@ class Ship:
             return fn
 
         return decorator
-
-
-def _escape_inline_closing_tag(value: str, pattern: Pattern[str], replacement: str) -> str:
-    return pattern.sub(replacement, value)
-
-
-def _escape_inline_script(value: str) -> str:
-    return _escape_inline_closing_tag(value, INLINE_SCRIPT_END_TAG_PATTERN, "<\\/script")
-
-
-def _escape_inline_style(value: str) -> str:
-    return _escape_inline_closing_tag(value, INLINE_STYLE_END_TAG_PATTERN, "<\\/style")

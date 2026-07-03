@@ -87,7 +87,7 @@ Production widgets return inline JS/CSS inside the `ui://` HTML resource. The on
 
 ```toml
 [gdansk.dependencies]
-"@gdansk/vite" = "^0.1.0"
+"@gdansk/widget" = "^0.1.0"
 "@modelcontextprotocol/ext-apps" = "^1.5.0"
 react = "^19"
 vite = "8.0.14"

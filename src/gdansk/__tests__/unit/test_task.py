@@ -17,6 +17,7 @@ from gdansk.task import (
     CommandProcess,
     dev_command_argv,
     run_command,
+    run_widget_command,
     start_command,
     task_origin,
 )
@@ -188,6 +189,47 @@ async def test_run_command_forwards_argv_as_separate_args(
 
     runtime = captured_runtime[-1]
     assert runtime.argv == ("--version",)
+
+
+async def test_widget_command_uses_published_binary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    write_pyproject(
+        tmp_path,
+        dependencies={"@gdansk/widget": "^0.1.0", "react": "^19", "react-dom": "^19", "vite": ">=8.1,<9"},
+    )
+    captured: dict[str, object] = {}
+
+    async def fake_run_command(project: object, command: str, **kwargs: object) -> None:
+        captured.update(project=project, command=command, **kwargs)
+
+    monkeypatch.setattr("gdansk.task.run_command", fake_run_command)
+
+    await run_widget_command(tmp_path, ["build"], local_source="local")
+
+    assert captured["command"] == "gdansk-widget"
+    assert captured["argv"] == ["build"]
+
+
+async def test_widget_command_uses_module_for_local_package(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    write_pyproject(
+        tmp_path,
+        dependencies={"@gdansk/widget": "file:../widget", "react": "^19", "react-dom": "^19", "vite": ">=8.1,<9"},
+    )
+    sources: list[str] = []
+
+    async def fake_run_script(_project: object, source: str) -> None:
+        sources.append(source)
+
+    monkeypatch.setattr("gdansk.task.run_script", fake_run_script)
+
+    await run_widget_command(tmp_path, ["build"], local_source="local")
+
+    assert sources == ["local"]
 
 
 async def test_start_command_surfaces_immediate_failure(

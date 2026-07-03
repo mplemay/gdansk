@@ -44,7 +44,7 @@ def test_vite_has_no_runtime_by_default(views_path: Path):
     assert not hasattr(vite, "_deno")
 
 
-async def test_vite_dev_start_uses_command_runner(
+async def test_vite_dev_start_uses_widget_command(
     views_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -59,13 +59,13 @@ async def test_vite_dev_start_uses_command_runner(
         async def stop(self) -> None:
             self.stopped = True
 
-    async def fake_start_command(start: Path, command: str, **kwargs: object) -> FakeCommandProcess:
+    async def fake_start_widget(start: Path, argv: list[str], *, local_source: str) -> FakeCommandProcess:
         nonlocal captured
-        captured = {"start": start, "command": command, **kwargs}
+        captured = {"argv": argv, "source": local_source, "start": start}
         return FakeCommandProcess()
 
     vite = Vite(views_path)
-    monkeypatch.setattr("gdansk.vite.start_project_command", fake_start_command)
+    monkeypatch.setattr("gdansk.vite.start_widget_command", fake_start_widget)
 
     await vite.start_dev()
 
@@ -73,10 +73,10 @@ async def test_vite_dev_start_uses_command_runner(
     assert isinstance(frontend, FakeCommandProcess)
     assert captured is not None
     assert captured["start"] == views_path
-    assert captured["command"] == "vite"
-    assert captured["cwd"] == views_path
-    assert captured["argv"] == ["--host", "127.0.0.1", "--port", "13714"]
-    assert vite.require_origin() == "http://127.0.0.1:13714"
+    assert cast("list[str]", captured["argv"])[:3] == ["dev", "--root", str(views_path)]
+    assert "startDevelopment" in cast("str", captured["source"])
+    assert 'host: "127.0.0.1"' in cast("str", captured["source"])
+    assert "port: 13714" in cast("str", captured["source"])
     assert vite.has_runtime() is True
     assert not hasattr(vite, "_deno")
 
@@ -105,19 +105,21 @@ async def test_vite_start_dev_restarts_after_process_exit(
         async def stop(self) -> None:
             self.stopped = True
 
-    async def fake_start_command(start: Path, command: str, **kwargs: object) -> FakeCommandProcess:
+    async def fake_start_widget(start: Path, argv: list[str], *, local_source: str) -> FakeCommandProcess:
         nonlocal start_calls
+        _ = start, argv, local_source
         start_calls += 1
         return FakeCommandProcess(running=True)
 
     vite = Vite(views_path)
-    monkeypatch.setattr("gdansk.vite.start_project_command", fake_start_command)
+    monkeypatch.setattr("gdansk.vite.start_widget_command", fake_start_widget)
     vite._frontend = cast("CommandProcess", FakeCommandProcess(running=False))
 
     await vite.start_dev()
 
     assert start_calls == 1
     assert vite.has_runtime() is True
+    await vite.stop()
 
 
 def test_vite_defaults_to_views_under_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

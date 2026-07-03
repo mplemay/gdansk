@@ -1,10 +1,11 @@
 import { useApp } from "@modelcontextprotocol/ext-apps/react";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { render } from "@gdansk/widget";
 import { useState } from "react";
 
 import styles from "./global.css";
 
-export default function App() {
+function App() {
   const [toolResult, setToolResult] = useState<CallToolResult | null>(null);
   const [message, setMessage] = useState("");
   const [logMessage, setLogMessage] = useState("");
@@ -92,4 +93,8 @@ export default function App() {
       </div>
     </main>
   );
+}
+
+export default function widget() {
+  return render({ metadata: { title: "Get Time" }, widget: <App /> });
 }

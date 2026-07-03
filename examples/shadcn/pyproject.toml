@@ -26,13 +26,12 @@ exclude-newer-package = { belgie = false, mcp = false }
 gdansk = { path = "../../", editable = true }
 
 [gdansk.dependencies]
-vite = "8.0.14"
+vite = "8.1.3"
 "@base-ui/react" = "^1.5.0"
-"@gdansk/vite" = "file:../../packages/vite"
+"@gdansk/widget" = "file:../../packages/widget"
 "@modelcontextprotocol/ext-apps" = "^1.7.2"
 "@modelcontextprotocol/sdk" = "^1.29.0"
 "@tailwindcss/vite" = "4.3.0"
-"@vitejs/plugin-react" = "6.0.2"
 class-variance-authority = "^0.7.1"
 clsx = "^2.1.1"
 lucide-react = "^1.17.0"

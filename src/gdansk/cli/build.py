@@ -10,28 +10,21 @@ from gdansk.cli.shared import (
     ProjectDir,
     resolve_frontend,
     runtime_errors,
-    task_args_from_context,
 )
+from gdansk.vite import Vite
 
 app = typer.Typer()
 
 
 @app.command()
 def build(
-    ctx: typer.Context,
+    ctx: typer.Context,  # noqa: ARG001
     project: ProjectDir = None,
     frontend: FrontendDir = None,
 ) -> None:
-    import gdansk.cli
-
     discovered = discover_project(project=project)
     frontend_path = resolve_frontend(discovered, frontend)
     with runtime_errors():
         asyncio.run(
-            gdansk.cli.run_command(
-                discovered,
-                "vite",
-                cwd=frontend_path,
-                argv=["build", *task_args_from_context(ctx)],
-            ),
+            Vite(frontend_path).build(),
         )

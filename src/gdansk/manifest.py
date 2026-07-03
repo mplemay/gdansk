@@ -3,18 +3,11 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class InlineWidgetManifest(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    script: str
-    styles: list[str]
-
-
 class WidgetManifest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     entry: str
-    inline: InlineWidgetManifest
+    html: str
 
 
 class GdanskManifest(BaseModel):
@@ -23,3 +16,18 @@ class GdanskManifest(BaseModel):
     out_dir: str = Field(alias="outDir")
     root: str
     widgets: dict[str, WidgetManifest]
+
+
+class DevelopmentWidgetManifest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    entry: str
+    origin: str
+    page: str
+
+
+class GdanskDevelopmentManifest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    root: str
+    widgets: dict[str, DevelopmentWidgetManifest]

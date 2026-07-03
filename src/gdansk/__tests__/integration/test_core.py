@@ -8,7 +8,6 @@ from pydantic import BaseModel
 
 from gdansk.__tests__.unit.conftest import write_manifest
 from gdansk.core import Ship
-from gdansk.metadata import Metadata
 from gdansk.vite import Vite
 
 
@@ -20,13 +19,12 @@ class SearchFilters(BaseModel):
 @pytest.mark.integration
 async def test_widget_resource_renders_through_mcp(views_path: Path):
     write_manifest(views_path)
-    ship = Ship(vite=Vite(views_path), metadata=Metadata(title="Base title"))
+    ship = Ship(vite=Vite(views_path))
     app = MCPServer(name="test")
 
     @ship.widget(
         path=Path("hello/widget.tsx"),
         name="hello",
-        metadata=Metadata(description="Widget description"),
     )
     def hello() -> None:
         return None
@@ -51,8 +49,6 @@ async def test_widget_resource_renders_through_mcp(views_path: Path):
 
         html = content.content
         assert isinstance(html, str)
-        assert "<title>Base title</title>" in html
-        assert '<meta name="description" content="Widget description" />' in html
         assert "<style>.hello { color: red; }\n</style>" in html
         assert '<script type="module">console.log("hello");\n</script>' in html
         assert "/dist/hello/client.css" not in html

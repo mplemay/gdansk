@@ -1,5 +1,6 @@
 import { useApp } from "@modelcontextprotocol/ext-apps/react";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { render, vitePlugin } from "@gdansk/widget";
 import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -57,7 +58,7 @@ function parseTodos(result: CallToolResult): Todo[] {
   });
 }
 
-export default function App() {
+function App() {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [newTitle, setNewTitle] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -195,4 +196,12 @@ export default function App() {
       </Card>
     </main>
   );
+}
+
+export default function widget() {
+  return render({
+    metadata: { description: "Manage todos from an MCP widget", title: "Todos" },
+    plugins: [vitePlugin("@tailwindcss/vite")],
+    widget: <App />,
+  });
 }

@@ -1,6 +1,7 @@
 import { useApp } from "@modelcontextprotocol/ext-apps/react";
+import { render } from "@gdansk/widget";
 
-export default function App() {
+function App() {
   const { app, error } = useApp({
     appInfo: { name: "Hello", version: "1.0.0" },
     capabilities: {},
@@ -21,4 +22,8 @@ export default function App() {
       </button>
     </main>
   );
+}
+
+export default function widget() {
+  return render({ metadata: { title: "FastAPI Example" }, widget: <App /> });
 }
