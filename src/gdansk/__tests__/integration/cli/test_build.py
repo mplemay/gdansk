@@ -12,10 +12,6 @@ pytestmark = pytest.mark.integration
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Vite build loads Rollup's native Node-API addon")
-@pytest.mark.xfail(
-    strict=True,
-    reason="the published belgie 0.29.0 wheel cannot initialize an Environment-backed Deno worker",
-)
 def test_build_smoke(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -31,5 +27,16 @@ def test_build_smoke(
     assert code == 0
     manifest = loads((frontend_root / "dist" / "gdansk-manifest.json").read_text(encoding="utf-8"))
     assert manifest["widgets"]["hello"]["entry"] == "hello/widget.tsx"
-    assert manifest["widgets"]["hello"]["html"].startswith("<!DOCTYPE html>")
+    html = manifest["widgets"]["hello"]["html"]
+    assert html.startswith("<!DOCTYPE html>")
+    assert '<script type="module" src=' not in html
+    for server_only_import in (
+        "@gdansk/widget/dist/assets/build",
+        "@tailwindcss/vite",
+        "@vitejs/plugin-react",
+        "node:fs",
+        "node:perf_hooks",
+        "node:url",
+    ):
+        assert server_only_import not in html
     assert list((frontend_root / "dist").iterdir()) == [frontend_root / "dist" / "gdansk-manifest.json"]

@@ -30,6 +30,7 @@ export async function loadWidgetDefinition(root: string, widget: WidgetSource): 
   const loaded = await runnerImport<{ default?: unknown }>(widget.entry, {
     configFile: false,
     plugins: [createDescriptorCssPlugin(), react()],
+    resolve: { alias: { "@": root } },
     root,
   });
   if (typeof loaded.module.default !== "function") {

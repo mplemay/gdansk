@@ -14,7 +14,7 @@ uv run gdansk init
 uv run gdansk lock
 ```
 
-Gdansk requires Python `>=3.12,<3.15`, Belgie `>=0.29.0`, and Vite `>=8.1,<9`. Declare frontend dependencies in
+Gdansk requires Python `>=3.12,<3.15`, Belgie `>=0.31.0`, and Vite `>=8.1,<9`. Declare frontend dependencies in
 `[gdansk.dependencies]` in the Python project's `pyproject.toml`; do not add an app-level `package.json`, `deno.json`,
 or `vite.config.ts`.
 

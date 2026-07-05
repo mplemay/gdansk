@@ -3,7 +3,7 @@
 ## Requirements
 
 - Python `>=3.12,<3.15`
-- Belgie `>=0.29.0`
+- Belgie `>=0.31.0`
 - Vite `>=8.1,<9`
 - React 19
 

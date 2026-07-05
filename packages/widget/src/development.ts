@@ -5,7 +5,7 @@ import { createGdanskCssModulesPlugin, createSharedCssModulesConfig } from "./cs
 import { renderDocument } from "./html";
 import { discoverWidgets, loadWidgetDefinition, resolveWidgetPlugins, writeJson } from "./project";
 import type { GdanskDevelopmentManifest, WidgetDefinition, WidgetSource } from "./types";
-import { createClientPlugin, GDANSK_CLIENT_PATH } from "./virtual";
+import { createBrowserDescriptorPlugin, createClientPlugin, GDANSK_CLIENT_PATH } from "./virtual";
 
 export async function startDevelopment(options: {
   host: string;
@@ -52,11 +52,17 @@ async function startWidgetServer(
     plugins: [
       createGdanskCssModulesPlugin(),
       createClientPlugin(widget),
+      createBrowserDescriptorPlugin(),
       createPagePlugin(definition),
       react(),
       ...userPlugins,
     ],
-    resolve: { alias: { "@": root } },
+    resolve: {
+      alias: [
+        { find: /^@gdansk\/widget$/, replacement: "@gdansk/widget/client" },
+        { find: "@", replacement: root },
+      ],
+    },
     root,
     server: { host, port, strictPort: true },
   };

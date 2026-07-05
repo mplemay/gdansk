@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import React from "react";
 
+import { vitePlugin as browserVitePlugin } from "../src/client";
 import { assertWidgetDefinition, render, vitePlugin } from "../src/definition";
 import { escapeInlineScript, escapeInlineStyle, renderDocument } from "../src/html";
 import { renderMetadata } from "../src/metadata";
 import { resolveWidgetPlugins } from "../src/project";
-import { createClientPlugin } from "../src/virtual";
+import { createBrowserDescriptorPlugin, createClientPlugin, createDescriptorCssPlugin } from "../src/virtual";
 
 describe("@gdansk/widget", () => {
   it("creates a branded widget definition", () => {
@@ -33,6 +34,15 @@ describe("@gdansk/widget", () => {
     });
   });
 
+  it("does not retain plugin references in the browser API", () => {
+    expect(browserVitePlugin("@tailwindcss/vite", { args: ["secret"], export: "named" })).toEqual({
+      __gdanskVitePlugin: true,
+      args: [],
+      export: "default",
+      specifier: "",
+    });
+  });
+
   it("resolves and invokes plugin factories only on the server", async () => {
     const definition = render({
       plugins: [
@@ -48,6 +58,25 @@ describe("@gdansk/widget", () => {
     const client = createClientPlugin({ entry: "/widgets/example/widget.tsx", key: "example", widgetPath: "example/widget.tsx" });
     const source = client.load?.call({} as never, "\0virtual:gdansk/client", {}) as string;
     expect(source).not.toContain("data:text/javascript");
+  });
+
+  it("replaces descriptor CSS with a non-CSS virtual module", () => {
+    const plugin = createDescriptorCssPlugin();
+    const resolved = plugin.resolveId?.call({} as never, "./styles.css", "/widget.tsx", { ssr: true }) as string;
+
+    expect(resolved).not.toContain(".css");
+    expect(plugin.load?.call({} as never, resolved, {}) as string).toBe("export default {};");
+  });
+
+  it("removes server-only plugin arguments from browser widget modules", () => {
+    const widget = { entry: "/widgets/example/widget.tsx", key: "example", widgetPath: "example/widget.tsx" };
+    const plugin = createBrowserDescriptorPlugin();
+    const source = 'import { vitePlugin as plugin } from "@gdansk/widget";\nconst value = plugin("secret", { args: [1] });';
+    const transformed = plugin.transform?.call({} as never, source, widget.entry, {}) as { code: string };
+
+    expect(transformed.code).toContain("plugin()");
+    expect(transformed.code).not.toContain("secret");
+    expect(transformed.code).not.toContain("args");
   });
 
   it("rejects framework-owned Vite options", () => {

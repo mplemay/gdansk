@@ -9,7 +9,7 @@ import { createGdanskCssModulesPlugin, createSharedCssModulesConfig } from "./cs
 import { renderDocument } from "./html";
 import { discoverWidgets, loadWidgetDefinition, resolveWidgetPlugins, writeJson } from "./project";
 import type { GdanskManifest, WidgetDefinition, WidgetSource } from "./types";
-import { createClientPlugin, GDANSK_CLIENT_PATH } from "./virtual";
+import { createBrowserDescriptorPlugin, createClientPlugin, GDANSK_CLIENT_PATH } from "./virtual";
 
 export const GDANSK_MANIFEST_FILENAME = "gdansk-manifest.json";
 const MAX_INLINE_ASSET_SIZE = Number.MAX_SAFE_INTEGER;
@@ -78,12 +78,22 @@ async function buildWidget(root: string, widget: WidgetSource, definition: Widge
           write: false,
         },
         consumer: "client",
-        resolve: { noExternal: true },
       },
     },
     logLevel: "warn",
-    plugins: [createGdanskCssModulesPlugin(), createClientPlugin(widget), react(), ...userPlugins],
-    resolve: { alias: { "@": root } },
+    plugins: [
+      createGdanskCssModulesPlugin(),
+      createClientPlugin(widget),
+      createBrowserDescriptorPlugin(),
+      react(),
+      ...userPlugins,
+    ],
+    resolve: {
+      alias: [
+        { find: /^@gdansk\/widget$/, replacement: "@gdansk/widget/client" },
+        { find: "@", replacement: root },
+      ],
+    },
     root,
   };
   const builder = await createBuilder(mergeConfig(definition.vite, controlled));
@@ -102,8 +112,11 @@ async function extractInlineBundle(widget: WidgetSource, outputs: BuildOutput[])
   if (!entry) throw new Error(`Gdansk expected one entry chunk for ${widget.key}.`);
   const extras = chunks.filter((chunk) => chunk !== entry);
   if (extras.length) throw new Error(`Gdansk widget ${widget.key} emitted extra chunks: ${extras.map((item) => item.fileName).join(", ")}`);
-  if (entry.imports.length || entry.dynamicImports.length) {
-    throw new Error(`Gdansk widget ${widget.key} emitted imports and cannot be represented as one HTML resource.`);
+  const imports = [...entry.imports, ...entry.dynamicImports].filter((item) => item !== entry.fileName);
+  if (imports.length) {
+    throw new Error(
+      `Gdansk widget ${widget.key} emitted imports and cannot be represented as one HTML resource: ${imports.join(", ")}`,
+    );
   }
   const assets = artifacts.filter((artifact): artifact is BuildAsset => artifact.type === "asset");
   const nonCss = assets.filter((asset) => !asset.fileName.endsWith(".css"));

@@ -4,7 +4,7 @@ description: >-
   Build and debug gdansk MCP widget apps using Ship, Vite, @gdansk/widget, isolated React widget descriptors,
   gdansk dependencies, metadata, structured output, and FastAPI mounting.
 license: MIT
-compatibility: Requires Python >=3.12,<3.15, Belgie >=0.29.0, and Vite >=8.1,<9
+compatibility: Requires Python >=3.12,<3.15, Belgie >=0.31.0, and Vite >=8.1,<9
 allowed-tools: Bash(uv run gdansk *)
 metadata:
   version: "2.0.0"
