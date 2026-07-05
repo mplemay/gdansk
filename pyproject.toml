@@ -9,7 +9,7 @@ authors = [
 ]
 requires-python = ">=3.12,<3.15"
 dependencies = [
-    "belgie>=0.29.0",
+    "belgie>=0.31.0",
     "mcp>=2.0.0a1",
     "pydantic>=2.12.5",
     "rtoml>=0.13,<0.14",
