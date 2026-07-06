@@ -6,4 +6,5 @@ Use `uv run gdansk build` in CI and deploy the configured build directory with t
 Every manifest widget contains `{ entry, html }`, where `html` is a complete self-contained document. Builds reject
 extra chunks and non-inlined assets, so no static widget asset mount is required.
 
-Use `watch=False` when startup should rebuild widgets. Use `watch=True` only for local development.
+Use `watch=False` when startup should rebuild widgets once. Use `watch=True` for local MCP development with automatic
+rebuilds on file changes. Both modes serve the same inline HTML structure as production.

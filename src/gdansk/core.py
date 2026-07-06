@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
+import asyncio
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from functools import partial
 from os import PathLike
@@ -8,12 +9,12 @@ from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Final, Literal
 from urllib.parse import urlparse
 
-from httpx import AsyncClient
 from mcp.server.mcpserver.resources import FunctionResource
 from mcp.server.mcpserver.tools.base import Tool
 
 from gdansk._schema import to_strict_schema
 from gdansk.vite import Vite
+from gdansk.watch import watch_and_rebuild
 from gdansk.widget import WidgetMeta, transform
 
 if TYPE_CHECKING:
@@ -40,20 +41,17 @@ class Ship:
         *,
         vite: Vite | None = None,
         base_url: str | None = None,
-        client: AsyncClient | None = None,
     ) -> None:
         if base_url is not None and urlparse(base_url).hostname is None:
             msg = "The base URL must be an absolute URL with a hostname"
             raise ValueError(msg)
 
         self._base_url: Final[str | None] = base_url
-        self._client: Final[AsyncClient | None] = client
-        self._dev = False
-        self._session_client: AsyncClient | None = None
         self._vite: Final[Vite] = vite or Vite()
         self._widget_manager: dict[Path, WidgetSpec] = {}
 
         self._active = False
+        self._watch_task: asyncio.Task[None] | None = None
 
     @asynccontextmanager
     async def mcp(self, app: MCPServer, *, watch: bool | None = False) -> AsyncIterator[None]:
@@ -78,47 +76,35 @@ class Ship:
             raise RuntimeError(msg)
 
         self._active = True
-        self._dev = False
+        self._watch_task = None
         self._vite.clear_manifest()
 
     async def _prepare_frontend(self, *, watch: bool | None) -> None:
         match watch:
             case True:
-                await self._vite.start_dev()
-                await self._vite.wait_until_ready(await self._require_client())
-                self._dev = True
+                await self._vite.build()
+                self._vite.load_manifest()
+                self._watch_task = asyncio.create_task(watch_and_rebuild(self._vite))
             case False:
                 await self._vite.build()
                 self._vite.load_manifest()
             case None:
                 self._vite.load_manifest()
 
-    async def _require_client(self) -> AsyncClient:
-        if self._client is not None:
-            return self._client
-
-        if self._session_client is None:
-            self._session_client = AsyncClient()
-
-        return self._session_client
-
     async def _session_end(self) -> None:
+        watch_task = self._watch_task
+        self._watch_task = None
+        if watch_task is not None:
+            watch_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await watch_task
         try:
             await self._vite.stop()
         finally:
             self._vite.clear_manifest()
-            self._dev = False
             self._active = False
-            if self._session_client is not None:
-                await self._session_client.aclose()
-                self._session_client = None
 
     async def render_widget_page(self, *, widget_key: str) -> str:
-        if self._dev:
-            widget = self._vite.development_widget(widget_key)
-            response = await (await self._require_client()).get(widget.page)
-            response.raise_for_status()
-            return response.text
         return self._vite.require_manifest_widget(widget_key).html
 
     @staticmethod

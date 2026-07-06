@@ -92,11 +92,12 @@ Gdansk strips `plugins` and their imports from the browser bundle during build a
 
 ## Watch modes
 
-- `watch=True`: one isolated Vite dev server per widget, with HMR and React Refresh.
+- `watch=True`: build on startup, serve complete inline HTML from `gdansk-manifest.json`, and rebuild on file changes.
 - `watch=False`: build on startup and serve complete HTML from `gdansk-manifest.json`.
 - `watch=None`: serve an existing production manifest without starting frontend tooling.
 
-Production widget HTML is self-contained. Do not mount or expect separate widget JS/CSS assets.
+Use `uv run gdansk dev` for optional standalone Vite HMR outside the MCP host. Production widget HTML is self-contained.
+Do not mount or expect separate widget JS/CSS assets.
 
 ## Reference routing
 

@@ -10,8 +10,12 @@ Production uses Vite `createBuilder` independently per widget. The browser entry
 validates the descriptor, and mounts only `definition.widget`. JavaScript, CSS, and imported assets are inlined into a
 complete escaped HTML document stored at `widgets.<key>.html` in `gdansk-manifest.json`.
 
-Development runs one Vite server per widget in a single `gdansk-widget dev` process. A temporary manifest maps widget
-keys to transformed page endpoints. This isolates plugin state while retaining Vite's module runner, HMR, and React
-Refresh.
+`ship.mcp(watch=True)` and `watch=False` both build widgets and serve that same self-contained HTML. With `watch=True`,
+`watchfiles` rebuilds the manifest when frontend files change. MCP hosts re-serve widget HTML inside sandbox iframes, so
+integrated development must not depend on external Vite dev asset URLs.
 
-`watch=True` starts development servers, `watch=False` builds on startup, and `watch=None` reads a prebuilt manifest.
+`uv run gdansk dev` starts one isolated Vite server per widget for optional standalone HMR outside the MCP host. A
+temporary manifest maps widget keys to transformed page endpoints on ports beginning at `Vite(..., port=13714)`.
+
+`watch=True` builds and watches for changes, `watch=False` builds on startup, and `watch=None` reads a prebuilt
+manifest.

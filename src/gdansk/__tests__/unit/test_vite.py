@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from json import dumps
+from pathlib import Path
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Any, cast
 
+import httpx
 import pytest
 
 from gdansk.vite import Vite
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from gdansk.task import CommandProcess
 
 
@@ -133,3 +135,51 @@ def test_vite_defaults_to_views_under_cwd(tmp_path: Path, monkeypatch: pytest.Mo
     assert vite.build_directory == "dist"
     assert vite.build_directory_path == views / "dist"
     assert vite.widgets_root == views / "widgets"
+
+
+def _stub_vite_runtime(vite: Vite, origin: str) -> None:
+    class StubFrontend:
+        is_running = True
+
+        async def stop(self) -> None:
+            return None
+
+    vite._frontend = cast("CommandProcess", StubFrontend())
+    runtime_path = vite.root / ".gdansk-test-runtime"
+    runtime_path.mkdir(exist_ok=True)
+    vite._runtime_directory = cast("Any", SimpleNamespace(name=str(runtime_path), cleanup=lambda: None))
+    manifest = Path(vite._runtime_directory.name) / "manifest.json"
+    manifest.write_text(
+        dumps(
+            {
+                "root": str(vite.root),
+                "widgets": {
+                    "hello": {
+                        "entry": "hello/widget.tsx",
+                        "origin": origin,
+                        "page": f"{origin}/@gdansk/page",
+                    },
+                },
+            },
+        ),
+        encoding="utf-8",
+    )
+
+
+async def test_wait_for_vite_reads_page_endpoint(views_path: Path):
+    requests_seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests_seen.append(request)
+        return httpx.Response(200)
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        vite = Vite(views_path)
+        _stub_vite_runtime(vite, "http://runtime.test")
+
+        await vite.wait_until_ready(client)
+
+    assert len(requests_seen) == 1
+    assert str(requests_seen[0].url) == "http://runtime.test/@gdansk/page"
+    assert requests_seen[0].extensions.get("timeout") == {"connect": 0.2, "read": 0.2, "write": 0.2, "pool": 0.2}

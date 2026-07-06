@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from copy import deepcopy
 from json import dumps
 from pathlib import Path
@@ -314,46 +315,25 @@ def test_ship_widget_strict_schema_normalizes_tool_parameters(views_path: Path):
     assert spec.tool.parameters["$defs"]["SearchFilters"]["properties"]["radius"]["default"] == 10
 
 
-async def test_wait_for_vite_reads_vite_client_endpoint(views_path: Path):
-    requests_seen: list[httpx.Request] = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        requests_seen.append(request)
-        return httpx.Response(200)
-
-    transport = httpx.MockTransport(handler)
-    async with httpx.AsyncClient(transport=transport) as client:
-        ship = Ship(vite=Vite(views_path), client=client)
-        _stub_vite_runtime(ship._vite, "http://runtime.test")
-
-        await ship._vite.wait_until_ready(client)
-
-    assert len(requests_seen) == 1
-    assert str(requests_seen[0].url) == "http://runtime.test/@gdansk/page"
-    assert requests_seen[0].extensions.get("timeout") == {"connect": 0.2, "read": 0.2, "write": 0.2, "pool": 0.2}
-
-
 async def test_widget_resource_renders_complete_document(views_path: Path):
-    def handler(_: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, text='<!DOCTYPE html><html><body><div id="root"></div></body></html>')
-
-    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    ship = Ship(vite=Vite(views_path), client=client)
+    write_manifest(
+        views_path,
+        script='console.log("hello");\n',
+        styles=[".hello { color: red; }\n"],
+    )
+    ship = Ship(vite=Vite(views_path))
 
     @ship.widget(path=Path("hello/widget.tsx"), name="hello")
     def hello() -> None:
         return None
 
-    ship._dev = True
-    _stub_vite_runtime(ship._vite, "http://render.test")
-    await ship._vite.wait_until_ready(client)
+    ship._vite.load_manifest()
 
     html = await ship._widget_manager[Path("hello/widget.tsx")].resource.read()
     assert isinstance(html, str)
 
     assert "<!DOCTYPE html>" in html
     assert '<div id="root"></div>' in html
-    await client.aclose()
 
 
 async def test_widget_resource_renders_production_scripts(views_path: Path):
@@ -475,122 +455,111 @@ async def test_wait_for_vite_timeout_mentions_matching_vite_and_plugin_config(
         return None
 
     async with httpx.AsyncClient(transport=transport) as client:
-        ship = Ship(
-            vite=Vite(views_path, host="localhost", port=43123),
-            client=client,
-        )
-        _stub_vite_runtime(ship._vite, "http://localhost:43123")
+        vite = Vite(views_path, host="localhost", port=43123)
+        _stub_vite_runtime(vite, "http://localhost:43123")
         monkeypatch.setattr("gdansk.vite.sleep", fake_sleep)
 
         with pytest.raises(RuntimeError) as exc_info:
-            await ship._vite.wait_until_ready(client)
+            await vite.wait_until_ready(client)
 
     error = str(exc_info.value)
     assert "isolated widget dev servers" in error
 
 
-async def test_ship_mcp_cleans_up_runtime_on_exit(views_path: Path, monkeypatch: pytest.MonkeyPatch):
+async def test_ship_mcp_cleans_up_watch_task_on_exit(views_path: Path, monkeypatch: pytest.MonkeyPatch):
     ship = Ship(vite=Vite(views_path))
+    build_calls = 0
 
-    async def fake_start_dev() -> None:
-        _stub_vite_runtime(ship._vite, "http://127.0.0.1:13714")
+    async def fake_build() -> None:
+        nonlocal build_calls
+        build_calls += 1
+        write_manifest(views_path)
 
-    async def fake_wait_until_ready(_client: httpx.AsyncClient) -> None:
-        return None
+    async def fake_watch_and_rebuild(_vite: Vite) -> None:
+        await asyncio.Event().wait()
 
-    monkeypatch.setattr(ship._vite, "start_dev", fake_start_dev)
-    monkeypatch.setattr(ship._vite, "wait_until_ready", fake_wait_until_ready)
+    monkeypatch.setattr(ship._vite, "build", fake_build)
+    monkeypatch.setattr("gdansk.core.watch_and_rebuild", fake_watch_and_rebuild)
 
     async with ship.mcp(app=_app(), watch=True):
         assert ship._active is True
-        assert ship._dev is True
-        assert ship._vite.has_runtime() is True
+        assert ship._watch_task is not None
+        assert build_calls == 1
+        assert 'console.log("hello");' in ship._vite.require_manifest().widgets["hello"].html
 
     assert ship._active is False
-    assert ship._dev is False
-    assert ship._vite.has_runtime() is False
+    assert ship._watch_task is None
     assert ship._vite._manifest is None
-    assert ship._session_client is None
 
 
-async def test_ship_mcp_cleans_up_runtime_on_start_failure(views_path: Path, monkeypatch: pytest.MonkeyPatch):
+async def test_ship_mcp_cleans_up_on_build_failure(views_path: Path, monkeypatch: pytest.MonkeyPatch):
     ship = Ship(vite=Vite(views_path))
 
-    async def fake_start_dev() -> None:
-        _stub_vite_runtime(ship._vite, "http://127.0.0.1:13714")
-
-    async def fake_wait_until_ready(_client: httpx.AsyncClient) -> None:
+    async def fake_build() -> None:
         msg = "boom"
         raise RuntimeError(msg)
 
-    monkeypatch.setattr(ship._vite, "start_dev", fake_start_dev)
-    monkeypatch.setattr(ship._vite, "wait_until_ready", fake_wait_until_ready)
+    monkeypatch.setattr(ship._vite, "build", fake_build)
 
     with pytest.raises(RuntimeError, match="boom"):
         async with ship.mcp(app=_app(), watch=True):
             pytest.fail("Ship session should not yield after startup failure")
 
     assert ship._active is False
-    assert ship._dev is False
-    assert ship._vite.has_runtime() is False
+    assert ship._watch_task is None
     assert ship._vite._manifest is None
-    assert ship._session_client is None
 
 
-async def test_ship_mcp_preserves_startup_error_when_runtime_exits_during_cleanup(
-    views_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-):
-    stop_called = False
-
-    async def fake_start_dev() -> None:
-        _stub_vite_runtime(ship._vite, "http://127.0.0.1:13714")
-
-    async def fake_wait_until_ready(_client: httpx.AsyncClient) -> None:
-        msg = "boom"
-        raise RuntimeError(msg)
-
+async def test_watch_mode_builds_and_starts_watch_task(views_path: Path, monkeypatch: pytest.MonkeyPatch):
     ship = Ship(vite=Vite(views_path))
+    build_calls = 0
 
-    async def fake_stop() -> None:
-        nonlocal stop_called
-        stop_called = True
-        await Vite.stop(ship._vite)
+    async def fake_build() -> None:
+        nonlocal build_calls
+        build_calls += 1
+        write_manifest(views_path)
 
-    monkeypatch.setattr(ship._vite, "start_dev", fake_start_dev)
-    monkeypatch.setattr(ship._vite, "wait_until_ready", fake_wait_until_ready)
-    monkeypatch.setattr(ship._vite, "stop", fake_stop)
-
-    with pytest.raises(RuntimeError, match="boom"):
-        async with ship.mcp(app=_app(), watch=True):
-            pytest.fail("Ship session should not yield after startup failure")
-
-    assert stop_called is True
-    assert ship._active is False
-    assert ship._dev is False
-    assert ship._vite.has_runtime() is False
-    assert ship._vite._manifest is None
-
-
-async def test_start_dev_uses_runtime_port(views_path: Path, monkeypatch: pytest.MonkeyPatch):
-    captured_origin: str | None = None
-
-    async def fake_start_dev() -> None:
-        nonlocal captured_origin
-        captured_origin = f"http://{ship._vite._host}:{ship._vite._port}"
-        _stub_vite_runtime(ship._vite, captured_origin)
-
-    async def fake_wait_until_ready(_client: httpx.AsyncClient) -> None:
+    async def fake_watch_and_rebuild(_vite: Vite) -> None:
         return None
 
-    ship = Ship(vite=Vite(views_path, port=43123))
-    monkeypatch.setattr(ship._vite, "start_dev", fake_start_dev)
-    monkeypatch.setattr(ship._vite, "wait_until_ready", fake_wait_until_ready)
+    monkeypatch.setattr(ship._vite, "build", fake_build)
+    monkeypatch.setattr("gdansk.core.watch_and_rebuild", fake_watch_and_rebuild)
 
     async with ship.mcp(app=_app(), watch=True):
-        pass
+        assert build_calls == 1
+        assert ship._watch_task is not None
+        assert 'console.log("hello");' in ship._vite.require_manifest().widgets["hello"].html
 
-    assert captured_origin == "http://127.0.0.1:43123"
+
+async def test_watch_mode_rebuilds_on_file_change(views_path: Path, monkeypatch: pytest.MonkeyPatch):
+    ship = Ship(vite=Vite(views_path))
+    build_calls = 0
+
+    async def fake_build() -> None:
+        nonlocal build_calls
+        build_calls += 1
+        write_manifest(
+            views_path,
+            script=f'console.log("build-{build_calls}");\n',
+        )
+
+    async def fake_awatch(*_args: object, **_kwargs: object):
+        yield {1}
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(ship._vite, "build", fake_build)
+    monkeypatch.setattr("gdansk.watch.awatch", fake_awatch)
+
+    @ship.widget(path=Path("hello/widget.tsx"), name="hello")
+    def hello() -> None:
+        return None
+
+    async with ship.mcp(app=_app(), watch=True):
+        assert build_calls == 1
+        assert 'console.log("build-1")' in ship._vite.require_manifest().widgets["hello"].html
+        await asyncio.sleep(0)
+        assert build_calls == 2
+        assert 'console.log("build-2")' in ship._vite.require_manifest().widgets["hello"].html
 
 
 async def test_start_production_builds_and_loads_manifest(views_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -633,7 +602,6 @@ async def test_start_prebuilt_loads_manifest_without_build(views_path: Path, mon
     async with ship.mcp(app=_app(), watch=None):
         assert ship._vite.has_runtime() is False
         assert 'console.log("hello");' in ship._vite.require_manifest().widgets["hello"].html
-        assert ship._dev is False
 
     assert ship._vite._manifest is None
 
@@ -646,18 +614,17 @@ async def test_start_prebuilt_requires_manifest(views_path: Path):
             pytest.fail("manifest load should fail before yield")
 
 
-async def test_ship_mcp_open_prebuilt_skips_runtime_start(views_path: Path, monkeypatch: pytest.MonkeyPatch):
+async def test_ship_mcp_open_prebuilt_skips_build(views_path: Path, monkeypatch: pytest.MonkeyPatch):
     write_manifest(views_path)
     ship = Ship(vite=Vite(views_path))
 
-    async def fail_start_dev() -> None:
-        pytest.fail("start_dev should not run when watch is None")
+    async def fail_build() -> None:
+        pytest.fail("build should not run when watch is None")
 
-    monkeypatch.setattr(ship._vite, "start_dev", fail_start_dev)
+    monkeypatch.setattr(ship._vite, "build", fail_build)
 
     async with ship.mcp(app=_app(), watch=None):
         assert ship._active is True
-        assert ship._dev is False
         assert ship._vite.has_runtime() is False
         assert 'console.log("hello");' in ship._vite.require_manifest().widgets["hello"].html
 

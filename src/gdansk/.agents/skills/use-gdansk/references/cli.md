@@ -75,7 +75,8 @@ uv run gdansk dev
 uv run gdansk dev --host 127.0.0.1 --port 14000
 ```
 
-Prefer `ship.mcp(watch=True)` for integrated development.
+Prefer `ship.mcp(watch=True)` for integrated MCP development. Use `gdansk dev` when you want standalone Vite HMR outside
+the MCP host.
 
 ### `gdansk run`
 

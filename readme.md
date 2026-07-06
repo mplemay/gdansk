@@ -148,12 +148,14 @@ specifiers are also accepted. Run `uv run gdansk lock` after dependency changes.
 
 ## Watch modes
 
-- `watch=True`: starts one isolated Vite server per widget with HMR and React Refresh.
+- `watch=True`: builds each widget on startup, serves complete inline HTML from `gdansk-manifest.json`, and rebuilds on
+  file changes.
 - `watch=False`: builds each widget on startup and reads `dist/gdansk-manifest.json`.
 - `watch=None`: skips frontend tooling and reads a prebuilt manifest.
 
-Development allocates widget ports beginning at `Vite(..., port=5173)`. Production rejects extra chunks or assets;
-every manifest widget contains exactly one complete HTML document. No production static-asset mount is required.
+Use `uv run gdansk dev` for optional standalone Vite HMR when developing widgets outside the MCP host. Production
+rejects extra chunks or assets; every manifest widget contains exactly one complete HTML document. No production
+static-asset mount is required.
 
 ```python
 ship = Ship(
