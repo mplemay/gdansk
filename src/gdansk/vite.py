@@ -127,7 +127,6 @@ class Vite:
         return self._manifest
 
     async def build(self) -> None:
-        self.clear_manifest()
         source = (
             'import { buildProject } from "@gdansk/widget";\n'
             "export default async () => await buildProject("

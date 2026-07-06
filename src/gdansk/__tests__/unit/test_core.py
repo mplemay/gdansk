@@ -422,6 +422,26 @@ async def test_widget_resource_raises_when_manifest_is_missing_widget(views_path
         await ship.render_widget_page(widget_key="hello")
 
 
+async def test_render_widget_page_succeeds_during_rebuild(views_path: Path, monkeypatch: pytest.MonkeyPatch):
+    write_manifest(views_path, script='console.log("hello");\n')
+    ship = Ship(vite=Vite(views_path))
+
+    @ship.widget(path=Path("hello/widget.tsx"), name="hello")
+    def hello() -> None:
+        return None
+
+    ship._vite.load_manifest()
+
+    async def fake_run_widget_command(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr("gdansk.vite.run_widget_command", fake_run_widget_command)
+    await ship._vite.build()
+
+    html = await ship.render_widget_page(widget_key="hello")
+    assert 'console.log("hello");' in html
+
+
 async def test_build_uses_task_runner(views_path: Path, monkeypatch: pytest.MonkeyPatch):
     captured: dict[str, object] | None = None
 
