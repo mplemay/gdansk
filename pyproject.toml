@@ -10,7 +10,7 @@ authors = [
 requires-python = ">=3.12,<3.15"
 dependencies = [
     "belgie>=0.31.0",
-    "mcp>=2.0.0a1",
+    "mcp>=2.0.0b1",
     "pydantic>=2.12.5",
     "rtoml>=0.13,<0.14",
     "starlette>=1.0.0",
@@ -38,7 +38,7 @@ build-backend = "uv_build"
 
 [tool.uv]
 exclude-newer = "7 days"
-exclude-newer-package = { belgie = false }
+exclude-newer-package = { belgie = false, mcp = false, mcp-types = false }
 
 [gdansk.dependencies.dev]
 oxfmt = "0.53.0"

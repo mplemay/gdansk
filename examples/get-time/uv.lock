@@ -15,6 +15,15 @@ belgie = false
 mcp = false
 
 [[package]]
+name = "annotated-doc"
+version = "0.0.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/57/ba/046ceea27344560984e26a590f90bc7f4a75b06701f653222458922b558c/annotated_doc-0.0.4.tar.gz", hash = "sha256:fbcda96e87e9c92ad167c2e53839e57503ecfda18804ea28102353485033faa4", size = 7288, upload-time = "2025-11-10T22:07:42.062Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1e/d3/26bf1008eb3d2daa8ef4cacc7f3bfdc11818d111f7e2d0201bc6e3b49d45/annotated_doc-0.0.4-py3-none-any.whl", hash = "sha256:571ac1dc6991c450b25a9c2d84a3705e2ae7a53467b5d111c24fa8baabbed320", size = 5303, upload-time = "2025-11-10T22:07:40.673Z" },
+]
+
+[[package]]
 name = "annotated-types"
 version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
@@ -47,15 +56,15 @@ wheels = [
 
 [[package]]
 name = "belgie"
-version = "0.25.0"
+version = "0.31.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/af/12/9dd05ff4655f2cab2ce9fdba66e4eb03cf9d6b8af229c1ac74732beaa248/belgie-0.25.0.tar.gz", hash = "sha256:b0f8b19e58c29898cd24c1ff8bfe704e81ababf99bea698977ec9bc0b3b874b6", size = 155938, upload-time = "2026-06-22T16:31:50.301Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/2e/f5/abd402718393350f9b782a7bc7b70281e27df6a4880d0d5d36584e025b3d/belgie-0.31.0.tar.gz", hash = "sha256:e37da0c82488d890d4a7e7c76a159fba2489f95e2dcd9bfa0aff8c92ace285a7", size = 374810, upload-time = "2026-07-05T20:50:27.02Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0f/99/2b035d1625d9ba8de70b2231a6782916063d873ad227209d86f76f9be309/belgie-0.25.0-cp312-abi3-macosx_10_12_x86_64.whl", hash = "sha256:51755b461e8e977a630e4ccd10556bd73aaafac5ab7b114bb42bef849da83d40", size = 57062532, upload-time = "2026-06-22T16:31:23.468Z" },
-    { url = "https://files.pythonhosted.org/packages/b3/1a/a15f3d923e00cf7bcc685bd3d6540c3005542038e7fb3f6d1ee6d222fccf/belgie-0.25.0-cp312-abi3-macosx_11_0_arm64.whl", hash = "sha256:c82e131ce1e042ac4a80284b9f5495e57c9020c0755a114da845968d45005e2c", size = 55138268, upload-time = "2026-06-22T16:31:29.531Z" },
-    { url = "https://files.pythonhosted.org/packages/b7/d4/114c2556699f4a448be0996e7a99fdd4e1192e2bfad48394f005de9f18d1/belgie-0.25.0-cp312-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:924991984a782bfa19acac037dda47b9e34bd31d0cffcab0b95791998d9a4b2e", size = 62208494, upload-time = "2026-06-22T16:31:35.602Z" },
-    { url = "https://files.pythonhosted.org/packages/0b/51/e1a2777709aa76ead0bb4dc172dafd4a2090e7c871f8bc3474f282ddfad8/belgie-0.25.0-cp312-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:08f27536b2cb24dd03b99bbcfe0bf9fe1a1a874a8edfe8e17bd9d043ff304d8c", size = 60472634, upload-time = "2026-06-22T16:31:41.899Z" },
-    { url = "https://files.pythonhosted.org/packages/b9/e5/09f99dcadebd00156b180c4089a434121f12df8460810c21bdef59121d25/belgie-0.25.0-cp312-abi3-win_amd64.whl", hash = "sha256:8342056c4ab52aa70bb7606d175927612cbae11918c629904ca50ef6c29c12f4", size = 53079685, upload-time = "2026-06-22T16:31:47.648Z" },
+    { url = "https://files.pythonhosted.org/packages/9b/76/fd84f98f8e3fd6255d687bcfcf706ce953bbebef961810b7b169f8cacad5/belgie-0.31.0-cp312-abi3-macosx_10_12_x86_64.whl", hash = "sha256:6bab937d4454d58d5a7d479fa2b62cbedf34f73df8f0510b536a068f2aa77d63", size = 58038379, upload-time = "2026-07-05T20:49:58.654Z" },
+    { url = "https://files.pythonhosted.org/packages/11/19/4df869ec05b991cfecc0fd20f973577bea4ad8024f80270e2b5eaf2e11f6/belgie-0.31.0-cp312-abi3-macosx_11_0_arm64.whl", hash = "sha256:cfc20eeb27369b2b3b21bb6e3270c9a04388406ea330cd7c88d2aa56131dfe71", size = 56029009, upload-time = "2026-07-05T20:50:04.862Z" },
+    { url = "https://files.pythonhosted.org/packages/5d/ba/27fe0162bf1ab5f821acb4e74b92c9b14c02735005b1a0d6793e27caa991/belgie-0.31.0-cp312-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:31cc446387c052d172572c61a8c41b02e8e64aa653dd798c0551a1caca3847c5", size = 63577140, upload-time = "2026-07-05T20:50:11.438Z" },
+    { url = "https://files.pythonhosted.org/packages/98/c7/fbe67770e2bc8d409d70871a3618eaf6d7f1e2e148d93789ae7fab1eb91d/belgie-0.31.0-cp312-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:6cc7e4938e0d6b8bb31f5ce7f8c3579c06a71ed9c3c3d81de23d1f786085554a", size = 61601070, upload-time = "2026-07-05T20:50:17.868Z" },
+    { url = "https://files.pythonhosted.org/packages/c7/33/63d19f5f6387b868509ff76b4b469d287b64f592617c56673b31681ea76a/belgie-0.31.0-cp312-abi3-win_amd64.whl", hash = "sha256:9c450359986e85c775bb18033b75db0b28ea23155f03b327bab4fca3228caa35", size = 54006956, upload-time = "2026-07-05T20:50:24.761Z" },
 ]
 
 [[package]]
@@ -205,21 +214,21 @@ source = { editable = "../../" }
 dependencies = [
     { name = "belgie" },
     { name = "mcp" },
-    { name = "minijinja" },
     { name = "pydantic" },
     { name = "rtoml" },
     { name = "starlette" },
+    { name = "typer" },
     { name = "watchfiles" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "belgie", specifier = ">=0.25.0" },
-    { name = "mcp", specifier = "==2.0.0a1" },
-    { name = "minijinja", specifier = ">=2,<3" },
+    { name = "belgie", specifier = ">=0.31.0" },
+    { name = "mcp", specifier = ">=2.0.0a1" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "rtoml", specifier = ">=0.13,<0.14" },
     { name = "starlette", specifier = ">=1.0.0" },
+    { name = "typer", specifier = ">=0.26.7" },
     { name = "watchfiles", specifier = ">=1.1.1" },
 ]
 
@@ -328,6 +337,18 @@ wheels = [
 ]
 
 [[package]]
+name = "markdown-it-py"
+version = "4.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "mdurl" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/06/ff/7841249c247aa650a76b9ee4bbaeae59370dc8bfd2f6c01f3630c35eb134/markdown_it_py-4.2.0.tar.gz", hash = "sha256:04a21681d6fbb623de53f6f364d352309d4094dd4194040a10fd51833e418d49", size = 82454, upload-time = "2026-05-07T12:08:28.36Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b3/81/4da04ced5a082363ecfa159c010d200ecbd959ae410c10c0264a38cac0f5/markdown_it_py-4.2.0-py3-none-any.whl", hash = "sha256:9f7ebbcd14fe59494226453aed97c1070d83f8d24b6fc3a3bcf9a38092641c4a", size = 91687, upload-time = "2026-05-07T12:08:27.182Z" },
+]
+
+[[package]]
 name = "mcp"
 version = "2.0.0a1"
 source = { registry = "https://pypi.org/simple" }
@@ -354,22 +375,12 @@ wheels = [
 ]
 
 [[package]]
-name = "minijinja"
-version = "2.20.0"
+name = "mdurl"
+version = "0.1.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/10/43/ebdf02703cafe163402ce09f2c4fd2eaf7f6f667a0f056b9bb1ac893f7f7/minijinja-2.20.0.tar.gz", hash = "sha256:93364945c36a2b44d8b62af068ff0c11c8b3f3fa2b11599190249bd4cd2c31ad", size = 292230, upload-time = "2026-05-20T00:01:47.084Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d6/54/cfe61301667036ec958cb99bd3efefba235e65cdeb9c84d24a8293ba1d90/mdurl-0.1.2.tar.gz", hash = "sha256:bb413d29f5eea38f31dd4754dd7377d4465116fb207585f97bf925588687c1ba", size = 8729, upload-time = "2022-08-14T12:40:10.846Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c4/93/a2dff85e5cc4a2c62fb00c814c6f380830e733cb5b42d5cbfeeb92a3acda/minijinja-2.20.0-cp38-abi3-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl", hash = "sha256:9693c7bc574d881d24e3e64c63f7ba90d9e3dbc64a13cb9d730585f63b7fb058", size = 2118981, upload-time = "2026-05-20T00:01:26.185Z" },
-    { url = "https://files.pythonhosted.org/packages/1d/9a/4a5f57d1fc0d2c58c2e327f2c02cdeeaa550631c901eebed3b6c477f8de2/minijinja-2.20.0-cp38-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:1d1de5065a0cd0158623a35f30d138ef9fc98156dd5f550527f06ba22f4ab70f", size = 1105692, upload-time = "2026-05-20T00:01:28.363Z" },
-    { url = "https://files.pythonhosted.org/packages/cb/e3/b7d03968426748db76823703f5460cc22a8286d58ce834dd967ae2b75cb3/minijinja-2.20.0-cp38-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:698bbc1ece5dad03aa5d322d7af52e54b907febe9971731b59384addf2783c8a", size = 1079016, upload-time = "2026-05-20T00:01:30.014Z" },
-    { url = "https://files.pythonhosted.org/packages/b7/b3/0b14377d8a9171f823aa51640dd23e8256641577b9e01d3a4496aecb5c2c/minijinja-2.20.0-cp38-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:203ab639b0f3b71d6af6910da6311348b3a4f1a84e6702ab7c1c1f392293d16c", size = 1141684, upload-time = "2026-05-20T00:01:31.61Z" },
-    { url = "https://files.pythonhosted.org/packages/3a/34/4b786ec1f99ac470e53098e7888d5efe673230975e76d1e87fce9a91ff90/minijinja-2.20.0-cp38-abi3-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:a60b4396cd68ef02a6a5470d086f0ae8ae0ecdfd16a24457897f6abd5e5cede4", size = 1268541, upload-time = "2026-05-20T00:01:33.197Z" },
-    { url = "https://files.pythonhosted.org/packages/3b/69/fb95c87b560487d87ec38f871ae5b184b1a20bc11bf0b0f6054895b0b508/minijinja-2.20.0-cp38-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:a28d60be22a2f76accf00d84274450aa1264911fa8f45c79e4120bfddf8471cc", size = 1282035, upload-time = "2026-05-20T00:01:35.002Z" },
-    { url = "https://files.pythonhosted.org/packages/b0/d4/7b934a43a144345cd898ae4c70c4cc35783ca685cc81bbf0f6f1d26b4b85/minijinja-2.20.0-cp38-abi3-musllinux_1_2_armv7l.whl", hash = "sha256:cb8d3a1e30666b883eb2ba2b3619620c62504be474e85ecc490cb28334210fd6", size = 1353836, upload-time = "2026-05-20T00:01:36.964Z" },
-    { url = "https://files.pythonhosted.org/packages/16/3f/498458cec8b299a11b44b7812d564ae377b8d51e3d4308925fd203c2ac92/minijinja-2.20.0-cp38-abi3-musllinux_1_2_i686.whl", hash = "sha256:daa32983bc995b53a16616a4cb65f9d3d5e4996fe68b61cda37909161cac4674", size = 1434449, upload-time = "2026-05-20T00:01:38.86Z" },
-    { url = "https://files.pythonhosted.org/packages/b2/1d/339ee68f10f69be825395aeb3e543153300dc80bc3a7181b7334821ed4f1/minijinja-2.20.0-cp38-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:494b8ec3307ab4d69ea74fc9fed927f2bbd38c5636feab16bdb4ef2fc3891aa0", size = 1362165, upload-time = "2026-05-20T00:01:40.705Z" },
-    { url = "https://files.pythonhosted.org/packages/cd/79/4e4c4559e1a77a1509fe2b03c4346b6b2571e2786fe8b566e407f6a4bf24/minijinja-2.20.0-cp38-abi3-win32.whl", hash = "sha256:1a2348e52708d58be056c7c6ddfab0bf008d80221e2264d0e1c1d007ac6903ba", size = 1034517, upload-time = "2026-05-20T00:01:42.57Z" },
-    { url = "https://files.pythonhosted.org/packages/86/9e/fc1d88c3a373c9d49e31c8220bc2e8fa919405538b848bdf681f378100cd/minijinja-2.20.0-cp38-abi3-win_amd64.whl", hash = "sha256:18be801f16cfa0026cb932df32077a169e3737d5808f7d9a2ca19afcea217140", size = 1095692, upload-time = "2026-05-20T00:01:44.908Z" },
+    { url = "https://files.pythonhosted.org/packages/b3/38/89ba8ad64ae25be8de66a6d463314cf1eb366222074cfda9ee839c56a4b4/mdurl-0.1.2-py3-none-any.whl", hash = "sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8", size = 9979, upload-time = "2022-08-14T12:40:09.779Z" },
 ]
 
 [[package]]
@@ -498,6 +509,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pygments"
+version = "2.20.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c3/b2/bc9c9196916376152d655522fdcebac55e66de6603a76a02bca1b6414f6c/pygments-2.20.0.tar.gz", hash = "sha256:6757cd03768053ff99f3039c1a36d6c0aa0b263438fcab17520b30a303a82b5f", size = 4955991, upload-time = "2026-03-29T13:29:33.898Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f4/7e/a72dd26f3b0f4f2bf1dd8923c85f7ceb43172af56d63c7383eb62b332364/pygments-2.20.0-py3-none-any.whl", hash = "sha256:81a9e26dd42fd28a23a2d169d86d7ac03b46e2f8b59ed4698fb4785f946d0176", size = 1231151, upload-time = "2026-03-29T13:29:30.038Z" },
+]
+
+[[package]]
 name = "pyjwt"
 version = "2.13.0"
 source = { registry = "https://pypi.org/simple" }
@@ -557,6 +577,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/22/f5/df4e9027acead3ecc63e50fe1e36aca1523e1719559c499951bb4b53188f/referencing-0.37.0.tar.gz", hash = "sha256:44aefc3142c5b842538163acb373e24cce6632bd54bdb01b21ad5863489f50d8", size = 78036, upload-time = "2025-10-13T15:30:48.871Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2c/58/ca301544e1fa93ed4f80d724bf5b194f6e4b945841c5bfd555878eea9fcb/referencing-0.37.0-py3-none-any.whl", hash = "sha256:381329a9f99628c9069361716891d34ad94af76e461dcb0335825aecc7692231", size = 26766, upload-time = "2025-10-13T15:30:47.625Z" },
+]
+
+[[package]]
+name = "rich"
+version = "15.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "markdown-it-py" },
+    { name = "pygments" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c0/8f/0722ca900cc807c13a6a0c696dacf35430f72e0ec571c4275d2371fca3e9/rich-15.0.0.tar.gz", hash = "sha256:edd07a4824c6b40189fb7ac9bc4c52536e9780fbbfbddf6f1e2502c31b068c36", size = 230680, upload-time = "2026-04-12T08:24:00.75Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/82/3b/64d4899d73f91ba49a8c18a8ff3f0ea8f1c1d75481760df8c68ef5235bf5/rich-15.0.0-py3-none-any.whl", hash = "sha256:33bd4ef74232fb73fe9279a257718407f169c09b78a87ad3d296f548e27de0bb", size = 310654, upload-time = "2026-04-12T08:24:02.83Z" },
 ]
 
 [[package]]
@@ -688,6 +721,15 @@ wheels = [
 ]
 
 [[package]]
+name = "shellingham"
+version = "1.5.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/58/15/8b3609fd3830ef7b27b655beb4b4e9c62313a4e8da8c676e142cc210d58e/shellingham-1.5.4.tar.gz", hash = "sha256:8dbca0739d487e5bd35ab3ca4b36e11c4078f3a234bfce294b0a0291363404de", size = 10310, upload-time = "2023-10-24T04:13:40.426Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e0/f9/0595336914c5619e5f28a1fb793285925a8cd4b432c9da0a987836c7f822/shellingham-1.5.4-py2.py3-none-any.whl", hash = "sha256:7ecfff8f2fd72616f7481040475a65b2bf8af90a56c89140852d1120324e8686", size = 9755, upload-time = "2023-10-24T04:13:38.866Z" },
+]
+
+[[package]]
 name = "sse-starlette"
 version = "3.4.4"
 source = { registry = "https://pypi.org/simple" }
@@ -711,6 +753,21 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/95/66/4d20cdf39a8d6a51e663b7038e3b828ff211d3891a43a713fe7e4643f3a8/starlette-1.1.0.tar.gz", hash = "sha256:e83c7fe0ddecd8719c5b840080325aec0260acec86e9832899e377b91d65e90f", size = 2660060, upload-time = "2026-05-23T16:55:41.376Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/93/79/920b8e0a8b20f793e8d64855095cb8febabf6175b8550b6f7a547d813891/starlette-1.1.0-py3-none-any.whl", hash = "sha256:7f0dfd38e428aad5cb6f9f667f0ca1d2d8ca3f3385dccac8305f79ec98458382", size = 72899, upload-time = "2026-05-23T16:55:39.201Z" },
+]
+
+[[package]]
+name = "typer"
+version = "0.26.8"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "annotated-doc" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "rich" },
+    { name = "shellingham" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/7c/f7/68adc395201b20b872d68e975386832e8005ffeacedd43a1d837a32815be/typer-0.26.8.tar.gz", hash = "sha256:c244a6bd558886fe3f8780efb6bdd28bb9aff005a94eedebaa5cb32926fe2f7e", size = 202097, upload-time = "2026-06-26T09:22:45.705Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/80/87/b9fd69c92c6102a066e1b86a35243f53e70bd4c709f2a26d9f4fee4f4dc0/typer-0.26.8-py3-none-any.whl", hash = "sha256:3512ca79ac5c11113414b36e80281b872884477722440691c89d1112e321a49c", size = 122564, upload-time = "2026-06-26T09:22:44.72Z" },
 ]
 
 [[package]]
