@@ -39,18 +39,10 @@ export async function loadWidgetDefinition(root: string, widget: WidgetSource): 
   return assertWidgetDefinition(loaded.module.default(), widget.widgetPath);
 }
 
-export async function resolveWidgetPlugins(definition: WidgetDefinition): Promise<Plugin[]> {
+export async function flattenWidgetPlugins(definition: WidgetDefinition): Promise<Plugin[]> {
   const plugins: Plugin[] = [];
-  for (const reference of definition.plugins) {
-    const module = (await import(reference.specifier)) as Record<string, unknown>;
-    const factory = module[reference.export];
-    if (typeof factory !== "function") {
-      throw new Error(
-        `Gdansk Vite plugin ${JSON.stringify(reference.specifier)} does not export callable ${JSON.stringify(reference.export)}.`,
-      );
-    }
-    const option = await factory(...reference.args);
-    plugins.push(...(await flattenPlugins(option as PluginOption)));
+  for (const option of definition.plugins) {
+    plugins.push(...(await flattenPlugins(option)));
   }
   return plugins;
 }

@@ -3,7 +3,7 @@ import { createServer, mergeConfig, type InlineConfig, type Plugin, type ViteDev
 
 import { createGdanskCssModulesPlugin, createSharedCssModulesConfig } from "./cssModules";
 import { renderDocument } from "./html";
-import { discoverWidgets, loadWidgetDefinition, resolveWidgetPlugins, writeJson } from "./project";
+import { discoverWidgets, loadWidgetDefinition, flattenWidgetPlugins, writeJson } from "./project";
 import type { GdanskDevelopmentManifest, WidgetDefinition, WidgetSource } from "./types";
 import { createBrowserDescriptorPlugin, createClientPlugin, GDANSK_CLIENT_PATH } from "./virtual";
 
@@ -44,7 +44,7 @@ async function startWidgetServer(
   host: string,
   port: number,
 ): Promise<ViteDevServer> {
-  const userPlugins = await resolveWidgetPlugins(definition);
+  const userPlugins = await flattenWidgetPlugins(definition);
   const controlled: InlineConfig = {
     appType: "custom",
     configFile: false,

@@ -19,19 +19,19 @@ Keep MCP metadata such as CSP, visibility, resource URI, icons, and tool annotat
 ## Tailwind and other Vite plugins
 
 ```tsx
-import { render, vitePlugin } from "@gdansk/widget";
+import tailwindcss from "@tailwindcss/vite";
+import { render } from "@gdansk/widget";
 
 export default function widget() {
   return render({
-    plugins: [vitePlugin("@tailwindcss/vite")],
+    plugins: [tailwindcss()],
     widget: <App />,
   });
 }
 ```
 
-Declare the plugin in `[gdansk.dependencies]`. For named factories or arguments, use
-`vitePlugin("package", { export: "factory", args: [{ option: true }] })`. Never statically import a Vite plugin in a
-widget module.
+Declare the plugin in `[gdansk.dependencies]`. Gdansk strips `plugins` and their imports from the browser bundle;
+declare plugins inline in `render({ plugins: [...] })`.
 
 ## Per-widget Vite settings
 

@@ -5,12 +5,18 @@ import type { WidgetSource } from "./types";
 export const GDANSK_CLIENT_PATH = "/@gdansk/client.tsx";
 const RESOLVED_CLIENT_ID = "\0virtual:gdansk/client";
 const RESOLVED_DESCRIPTOR_CSS_ID = "\0virtual:gdansk/descriptor-css";
+const GDANSK_WIDGET_SOURCES = new Set(["@gdansk/widget", "@gdansk/widget/client"]);
 
 type AstNode = {
   [key: string]: unknown;
   end: number;
   start: number;
   type: string;
+};
+
+type RemovalRange = {
+  end: number;
+  start: number;
 };
 
 export function createClientPlugin(widget: WidgetSource): Plugin {
@@ -37,30 +43,49 @@ export function createClientPlugin(widget: WidgetSource): Plugin {
   };
 }
 
-export function createBrowserDescriptorPlugin(): Plugin {
+export function createWidgetDescriptorPlugin(): Plugin {
   return {
     enforce: "post",
-    name: "@gdansk/widget:browser-descriptor",
-    transform(code) {
-      if (!code.includes("vitePlugin") || !code.includes("@gdansk/widget")) return null;
-      const ast = parseAst(code) as unknown as AstNode;
-      const bindings = findVitePluginBindings(ast);
-      if (!bindings.size) return null;
-      const calls: AstNode[] = [];
+    name: "@gdansk/widget:descriptor",
+    transform(code, id) {
+      if (!code.includes("render") || !code.includes("@gdansk/widget")) return null;
+      const ast = parseAst(code, parserOptions(id), id) as unknown as AstNode;
+      const renderBindings = findRenderBindings(ast);
+      if (!renderBindings.size) return null;
+
+      const pluginProperties: AstNode[] = [];
+      const pluginValues: AstNode[] = [];
       walkAst(ast, (node) => {
         if (node.type !== "CallExpression" || !isAstNode(node.callee) || node.callee.type !== "Identifier") return;
-        if (typeof node.callee.name === "string" && bindings.has(node.callee.name)) calls.push(node);
+        if (typeof node.callee.name !== "string" || !renderBindings.has(node.callee.name)) return;
+        const [argument] = Array.isArray(node.arguments) ? node.arguments : [];
+        if (!isAstNode(argument) || argument.type !== "ObjectExpression") return;
+        for (const property of Array.isArray(argument.properties) ? argument.properties : []) {
+          if (!isAstNode(property) || property.type !== "Property" || !isPluginsPropertyKey(property.key)) continue;
+          pluginProperties.push(property);
+          if (isAstNode(property.value)) pluginValues.push(property.value);
+        }
       });
-      if (!calls.length) return null;
+      if (!pluginProperties.length) return null;
+
+      const pluginIdentifiers = new Set<string>();
+      for (const value of pluginValues) collectIdentifiers(value, pluginIdentifiers);
+
+      const removals: RemovalRange[] = pluginProperties.map((property) => propertyRemovalRange(property, code));
+      const unusedImports = findUnusedPluginImports(ast, pluginIdentifiers, pluginValues);
+      removals.push(...unusedImports);
+
+      if (!removals.length) return null;
       let transformed = code;
-      for (const call of calls.sort((left, right) => right.start - left.start)) {
-        const callee = call.callee as AstNode;
-        transformed = `${transformed.slice(0, call.start)}${code.slice(call.start, callee.end)}()${transformed.slice(call.end)}`;
+      for (const removal of removals.sort((left, right) => right.start - left.start)) {
+        transformed = `${transformed.slice(0, removal.start)}${transformed.slice(removal.end)}`;
       }
       return { code: transformed, map: null };
     },
   };
 }
+
+export const createBrowserDescriptorPlugin = createWidgetDescriptorPlugin;
 
 export function createDescriptorCssPlugin(): Plugin {
   return {
@@ -76,21 +101,24 @@ export function createDescriptorCssPlugin(): Plugin {
   };
 }
 
-function findVitePluginBindings(ast: AstNode): Set<string> {
+function parserOptions(id?: string): { lang: "jsx" | "tsx" } | undefined {
+  if (id?.endsWith(".tsx")) return { lang: "tsx" };
+  if (id?.endsWith(".jsx")) return { lang: "jsx" };
+  return undefined;
+}
+
+function findRenderBindings(ast: AstNode): Set<string> {
   const bindings = new Set<string>();
   const body = Array.isArray(ast.body) ? ast.body : [];
   for (const statement of body) {
     if (!isAstNode(statement) || statement.type !== "ImportDeclaration" || !isAstNode(statement.source)) continue;
-    if (!["@gdansk/widget", "@gdansk/widget/client"].includes(String(statement.source.value))) continue;
+    if (!GDANSK_WIDGET_SOURCES.has(String(statement.source.value))) continue;
     for (const specifier of Array.isArray(statement.specifiers) ? statement.specifiers : []) {
-      if (
-        isAstNode(specifier) &&
-        specifier.type === "ImportSpecifier" &&
-        isAstNode(specifier.imported) &&
-        specifier.imported.name === "vitePlugin" &&
-        isAstNode(specifier.local) &&
-        typeof specifier.local.name === "string"
-      ) {
+      if (!isAstNode(specifier)) continue;
+      if (specifier.type === "ImportSpecifier" && isAstNode(specifier.imported) && specifier.imported.name === "render") {
+        if (isAstNode(specifier.local) && typeof specifier.local.name === "string") bindings.add(specifier.local.name);
+      }
+      if (specifier.type === "ImportDefaultSpecifier" && isAstNode(specifier.local) && specifier.local.name === "render") {
         bindings.add(specifier.local.name);
       }
     }
@@ -98,14 +126,69 @@ function findVitePluginBindings(ast: AstNode): Set<string> {
   return bindings;
 }
 
+function isPluginsPropertyKey(key: unknown): boolean {
+  if (!isAstNode(key)) return false;
+  if (key.type === "Identifier" && key.name === "plugins") return true;
+  return key.type === "Literal" && key.value === "plugins";
+}
+
+function propertyRemovalRange(property: AstNode, code: string): RemovalRange {
+  const body = code.slice(property.start, property.end);
+  const leading = body.match(/^\s*,\s*/);
+  if (leading) return { end: property.end, start: property.start };
+  const trailing = code.slice(property.end).match(/^\s*,\s*/);
+  if (trailing) return { end: property.end + trailing[0].length, start: property.start };
+  const preceding = code.slice(0, property.start).match(/,\s*$/);
+  if (preceding) return { end: property.end, start: property.start - preceding[0].length };
+  return { end: property.end, start: property.start };
+}
+
+function collectIdentifiers(node: AstNode, identifiers: Set<string>): void {
+  walkAst(node, (current) => {
+    if (current.type === "Identifier" && typeof current.name === "string") identifiers.add(current.name);
+  });
+}
+
+function findUnusedPluginImports(ast: AstNode, pluginIdentifiers: Set<string>, pluginValues: AstNode[]): RemovalRange[] {
+  const excluded = new Set<AstNode>(pluginValues);
+  for (const value of pluginValues) walkAst(value, (node) => excluded.add(node));
+
+  const referenced = new Set<string>();
+  walkAst(
+    ast,
+    (node) => {
+      if (excluded.has(node)) return;
+      if (node.type === "Identifier" && typeof node.name === "string") referenced.add(node.name);
+    },
+    (node) => node.type === "ImportDeclaration",
+  );
+
+  const unused = new Set([...pluginIdentifiers].filter((name) => !referenced.has(name)));
+  if (!unused.size) return [];
+
+  const removals: RemovalRange[] = [];
+  const body = Array.isArray(ast.body) ? ast.body : [];
+  for (const statement of body) {
+    if (!isAstNode(statement) || statement.type !== "ImportDeclaration") continue;
+    const specifiers = Array.isArray(statement.specifiers) ? statement.specifiers : [];
+    const locals = specifiers
+      .map((specifier) => (isAstNode(specifier) && isAstNode(specifier.local) ? specifier.local.name : null))
+      .filter((name): name is string => typeof name === "string");
+    if (!locals.length || !locals.every((name) => unused.has(name))) continue;
+    removals.push({ end: statement.end, start: statement.start });
+  }
+  return removals;
+}
+
 function isAstNode(value: unknown): value is AstNode {
   return typeof value === "object" && value !== null && "type" in value;
 }
 
-function walkAst(node: AstNode, visit: (node: AstNode) => void): void {
+function walkAst(node: AstNode, visit: (node: AstNode) => void, skip?: (node: AstNode) => boolean): void {
+  if (skip?.(node)) return;
   visit(node);
   for (const value of Object.values(node)) {
-    if (isAstNode(value)) walkAst(value, visit);
-    else if (Array.isArray(value)) for (const item of value) if (isAstNode(item)) walkAst(item, visit);
+    if (isAstNode(value)) walkAst(value, visit, skip);
+    else if (Array.isArray(value)) for (const item of value) if (isAstNode(item)) walkAst(item, visit, skip);
   }
 }

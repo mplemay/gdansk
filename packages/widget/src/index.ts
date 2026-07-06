@@ -1,12 +1,10 @@
-export { assertWidgetDefinition, render, vitePlugin } from "./definition";
+export { assertWidgetDefinition, render } from "./definition";
 export type {
   GdanskDevelopmentManifest,
   GdanskManifest,
   ManifestWidget,
   Metadata,
   RenderOptions,
-  VitePluginReference,
-  VitePluginReferenceOptions,
   WidgetDefinition,
   WidgetViteConfig,
 } from "./types";

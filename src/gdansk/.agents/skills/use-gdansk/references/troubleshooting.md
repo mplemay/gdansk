@@ -8,7 +8,7 @@ Start with `uv run gdansk doctor`, then check these boundaries in order:
 | Widget not found | Decorator path is relative to `widgets/` and ends in `widget.tsx` or `widget.jsx` |
 | Descriptor validation fails | Default export is a function returning `render({ widget: <Component /> })` |
 | Plugin cannot resolve | Package is in `[gdansk.dependencies]`; run `uv run gdansk lock` |
-| Plugin enters browser graph | Replace its static import with `vitePlugin("specifier")` |
+| Plugin enters browser graph | Declare plugins inline in `render({ plugins: [...] })`; gdansk strips them from the client bundle |
 | Port conflict | Choose a free base `Vite(..., port=...)`; widgets use consecutive ports |
 | Production resource missing | Run `uv run gdansk build` and inspect `dist/gdansk-manifest.json` |
 | CSS missing | Import CSS from the widget tree and confirm it is present inside the manifest HTML |

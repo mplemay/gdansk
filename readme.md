@@ -118,15 +118,16 @@ Shared page metadata should be exported from a TypeScript module and imported by
 
 ## Per-widget Vite configuration
 
-Use `vitePlugin()` for server-only Vite plugins:
+Import Vite plugins directly in the widget descriptor:
 
 ```tsx
-import { render, vitePlugin } from "@gdansk/widget";
+import tailwindcss from "@tailwindcss/vite";
+import { render } from "@gdansk/widget";
 
 export default function widget() {
   return render({
     metadata: { title: "Tailwind widget" },
-    plugins: [vitePlugin("@tailwindcss/vite")],
+    plugins: [tailwindcss()],
     vite: {
       css: { modules: { localsConvention: "camelCaseOnly" } },
       define: { __BUILD_FLAVOR__: JSON.stringify("widget") },
@@ -136,9 +137,8 @@ export default function widget() {
 }
 ```
 
-`vitePlugin(specifier, { export?, args? })` imports the plugin only in gdansk's Deno build/dev process. Do not
-statically import a Vite plugin and call it in the descriptor: that would place Node or native plugin dependencies in
-the browser graph.
+Gdansk strips `plugins` and their imports from the browser bundle during build and dev. Declare plugins inline in
+`render({ plugins: [...] })`.
 
 The optional `vite` object supports per-widget resolution, CSS, `define`, and optimization settings. Gdansk owns
 `root`, `configFile`, `server`, `build`, `builder`, and `environments`.

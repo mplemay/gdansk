@@ -73,21 +73,22 @@ export default function widget() {
 }
 ```
 
-For a Vite plugin, use a server-only reference:
+For a Vite plugin, import it directly in the widget descriptor:
 
 ```tsx
-import { render, vitePlugin } from "@gdansk/widget";
+import tailwindcss from "@tailwindcss/vite";
+import { render } from "@gdansk/widget";
 
 export default function widget() {
   return render({
-    plugins: [vitePlugin("@tailwindcss/vite")],
+    plugins: [tailwindcss()],
     widget: <main className="p-4">Hello</main>,
   });
 }
 ```
 
-Never statically import a Vite plugin from a widget. `vitePlugin(specifier, { export?, args? })` resolves it only in
-the Deno build/dev process and keeps Node/native dependencies out of the browser bundle.
+Gdansk strips `plugins` and their imports from the browser bundle during build and dev. Declare plugins inline in
+`render({ plugins: [...] })`.
 
 ## Watch modes
 

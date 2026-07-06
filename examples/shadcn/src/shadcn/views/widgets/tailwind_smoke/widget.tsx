@@ -1,4 +1,5 @@
-import { render, vitePlugin } from "@gdansk/widget";
+import tailwindcss from "@tailwindcss/vite";
+import { render } from "@gdansk/widget";
 
 import "../../global.css";
 
@@ -9,7 +10,7 @@ function App() {
 export default function widget() {
   return render({
     metadata: { title: "Tailwind Smoke" },
-    plugins: [vitePlugin("@tailwindcss/vite")],
+    plugins: [tailwindcss()],
     widget: <App />,
   });
 }

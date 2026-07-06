@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import type { UserConfig } from "vite";
+import type { PluginOption, UserConfig } from "vite";
 
 export type Primitive = string | number | boolean;
 
@@ -29,18 +29,6 @@ export type Metadata = {
   other?: Record<string, Primitive | Primitive[]>;
 };
 
-export type VitePluginReferenceOptions = {
-  args?: unknown[];
-  export?: string;
-};
-
-export type VitePluginReference = {
-  readonly __gdanskVitePlugin: true;
-  readonly args: unknown[];
-  readonly export: string;
-  readonly specifier: string;
-};
-
 export type WidgetViteConfig = Omit<
   UserConfig,
   "build" | "builder" | "configFile" | "environments" | "plugins" | "preview" | "root" | "server"
@@ -48,7 +36,7 @@ export type WidgetViteConfig = Omit<
 
 export type RenderOptions = {
   metadata?: Metadata;
-  plugins?: VitePluginReference[];
+  plugins?: PluginOption[];
   vite?: WidgetViteConfig;
   widget: ReactElement;
 };
@@ -56,7 +44,7 @@ export type RenderOptions = {
 export type WidgetDefinition = {
   readonly __gdanskWidget: true;
   readonly metadata: Metadata | undefined;
-  readonly plugins: VitePluginReference[];
+  readonly plugins: PluginOption[];
   readonly vite: WidgetViteConfig;
   readonly widget: ReactElement;
 };

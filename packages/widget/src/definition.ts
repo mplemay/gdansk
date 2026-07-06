@@ -1,11 +1,7 @@
 import { isValidElement } from "react";
+import type { PluginOption } from "vite";
 
-import type {
-  RenderOptions,
-  VitePluginReference,
-  VitePluginReferenceOptions,
-  WidgetDefinition,
-} from "./types";
+import type { RenderOptions, WidgetDefinition } from "./types";
 
 const FORBIDDEN_VITE_KEYS = new Set([
   "build",
@@ -18,20 +14,13 @@ const FORBIDDEN_VITE_KEYS = new Set([
   "server",
 ]);
 
-export function vitePlugin(
-  specifier: string,
-  options: VitePluginReferenceOptions = {},
-): VitePluginReference {
-  if (!specifier.trim()) {
-    throw new Error("Gdansk Vite plugin specifier must not be empty.");
-  }
-
-  return Object.freeze({
-    __gdanskVitePlugin: true as const,
-    args: [...(options.args ?? [])],
-    export: options.export ?? "default",
-    specifier,
-  });
+function isPluginOption(value: unknown): boolean {
+  if (value == null) return false;
+  if (Array.isArray(value)) return value.every(isPluginOption);
+  if (typeof value === "function") return true;
+  if (typeof value === "object" && "then" in value && typeof value.then === "function") return true;
+  if (typeof value === "object" && "name" in value && typeof value.name === "string") return true;
+  return false;
 }
 
 export function render(options: RenderOptions): WidgetDefinition {
@@ -46,8 +35,8 @@ export function render(options: RenderOptions): WidgetDefinition {
   }
 
   for (const plugin of options.plugins ?? []) {
-    if (!plugin || plugin.__gdanskVitePlugin !== true) {
-      throw new Error("Gdansk render() plugins must be created with vitePlugin().");
+    if (!isPluginOption(plugin)) {
+      throw new Error("Gdansk render() plugins must be valid Vite plugin options.");
     }
   }
 
