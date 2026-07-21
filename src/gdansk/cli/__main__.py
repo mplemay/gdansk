@@ -26,7 +26,7 @@ app = typer.Typer(
     no_args_is_help=True,
     add_completion=False,
     name="gdansk",
-    help="Gdansk project tooling",
+    help="Gdansk project tooling (deprecated; use belgie: https://github.com/mplemay/belgie)",
 )
 
 
