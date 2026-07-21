@@ -1,8 +1,7 @@
 # Gdansk: React Frontends for Python MCP Servers
 
-> [!WARNING]
-> This project is currently in beta. The APIs are subject to change leading up to v1.0. The v1.0 release will
-> coincide with the v2.0 release of the [python mcp sdk](https://github.com/modelcontextprotocol/python-sdk)
+> [!CAUTION]
+> **This project is deprecated.** Use [belgie](https://github.com/mplemay/belgie) instead.
 
 ## Installation
 
