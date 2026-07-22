@@ -1,3 +1,5 @@
+import warnings
+
 from gdansk.core import Ship
 from gdansk.metadata import Metadata
 from gdansk.vite import Vite
@@ -20,4 +22,10 @@ __all__: tuple[str, ...] = (
     "Ship",
     "Vite",
     "WidgetMeta",
+)
+
+warnings.warn(
+    "The gdansk package is deprecated; use belgie instead: https://github.com/mplemay/belgie",
+    DeprecationWarning,
+    stacklevel=2,
 )

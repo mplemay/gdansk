@@ -1,10 +1,15 @@
 from __future__ import annotations
 
-from importlib import import_module
+from importlib import import_module, reload
 
 import pytest
 
 import gdansk
+
+
+def test_package_emits_deprecation_warning() -> None:
+    with pytest.warns(DeprecationWarning, match=r"deprecated.*belgie"):
+        reload(gdansk)
 
 
 def test_top_level_exports_do_not_include_belgie_runtime_surface() -> None:
